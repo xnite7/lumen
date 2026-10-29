@@ -1,0 +1,63 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Lumen",
+  "version": "0.1.0",
+  "identifier": "app.lumen.player",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Lumen",
+        "width": 1440,
+        "height": 860,
+        "minWidth": 960,
+        "minHeight": 600,
+        "decorations": false,
+        "transparent": true,
+        "shadow": true,
+        "center": true,
+        "visible": true,
+        "dragDropEnabled": false,
+        "backgroundColor": "#00000000"
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": { "enable": true, "scope": [] }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi", "app", "dmg", "appimage"],
+    "publisher": "xnite",
+    "category": "Entertainment",
+    "shortDescription": "A native streaming app for Stremio addons",
+    "longDescription": "Lumen plays everything your Stremio addons find, natively, with mpv.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {},
+    "windows": {
+      "webviewInstallMode": { "type": "embedBootstrapper" },
+      "nsis": { "installMode": "currentUser", "displayLanguageSelector": false }
+    },
+    "iOS": { "minimumSystemVersion": "17.0" }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": { "schemes": ["stremio", "lumen"] },
+      "mobile": [{ "scheme": ["lumen"], "appLink": false }]
+    }
+  }
+}

@@ -1,0 +1,490 @@
+/*
+ * Lumen design tokens.
+ *
+ * Every colour here is a default that a theme overrides through
+ * `applyTheme()` (src/lib/theme.ts). The one thing no theme replaces is the
+ * idea: the app is lit by the title you're looking at. `--ambient-*` comes
+ * from the artwork's palette and tints the glass, the glow behind the hero,
+ * the accent, and (if you let it) the lights in your room.
+ */
+
+:root {
+  /* surfaces */
+  --ink: #0e1220;
+  --ink-2: #151a2b;
+  --text: #f4f6fb;
+  --text-dim: rgb(244 246 251 / 0.62);
+  --text-faint: rgb(244 246 251 / 0.38);
+  --line: rgb(255 255 255 / 0.1);
+
+  /* glass */
+  --glass-tint: rgb(30 34 50 / 0.42);
+  --glass-tint-strong: rgb(24 27 40 / 0.72);
+  --glass-rim: rgb(255 255 255 / 0.16);
+  --glass-spec: rgb(255 255 255 / 0.34);
+  --glass-blur: 26px;
+  --glass-sat: 185%;
+  --glass-shadow: 0 18px 50px -18px rgb(0 0 0 / 0.55), 0 2px 8px -2px rgb(0 0 0 / 0.35);
+
+  /* light from the artwork (set at runtime) */
+  --ambient-1: #ffc22e;
+  --ambient-2: #77b9e4;
+  --ambient-3: #e4736a;
+  --accent: var(--ambient-1);
+  --accent-ink: #1a1305;
+
+  /* shape */
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 18px;
+  --r-lg: 26px;
+  --r-xl: 34px;
+  --r-pill: 999px;
+  --poster-r: 14px;
+
+  /* type */
+  --font-text: "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --fs-caption: 12px;
+  --fs-foot: 13px;
+  --fs-body: 15px;
+  --fs-head: 17px;
+  --fs-title3: 20px;
+  --fs-title2: 24px;
+  --fs-title1: 30px;
+  --fs-large: 38px;
+
+  /* motion (durations scale with Settings → Motion) */
+  --motion: 1;
+  --t-fast: calc(160ms * var(--motion));
+  --t-med: calc(320ms * var(--motion));
+  --t-slow: calc(560ms * var(--motion));
+  /* a lightly under-damped spring, as linear(); replaced at runtime by a
+     solved spring so it matches the JS-driven ones exactly */
+  --spring: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --glide: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* layout */
+  --gutter: clamp(20px, 3.2vw, 56px);
+  --bar-h: 64px;
+  --card-w: clamp(132px, 9.6vw, 176px);
+
+  --grain-opacity: 0.08;
+
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: var(--fs-body);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "ss01", "cv11";
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* While playing natively the video is BEHIND the page. */
+html.playing,
+html.playing body {
+  background: transparent;
+}
+
+#app {
+  height: 100%;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--r-sm);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* thin, overlay scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 0;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.14);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(255 255 255 / 0.26);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-x {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- type */
+
+.large-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-large);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  margin: 0;
+}
+.title1 {
+  font-family: var(--font-display);
+  font-size: var(--fs-title1);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin: 0;
+}
+.title2 {
+  font-family: var(--font-display);
+  font-size: var(--fs-title2);
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  margin: 0;
+}
+.title3 {
+  font-family: var(--font-display);
+  font-size: var(--fs-title3);
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.headline {
+  font-size: var(--fs-head);
+  font-weight: 600;
+  margin: 0;
+}
+.dim {
+  color: var(--text-dim);
+}
+.faint {
+  color: var(--text-faint);
+}
+.caption {
+  font-size: var(--fs-caption);
+}
+.foot {
+  font-size: var(--fs-foot);
+}
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+    line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+    line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------- glass */
+
+/*
+ * The material. Three layers, like the real thing:
+ *   1. tint + blur + saturation of what's behind (backdrop-filter)
+ *   2. a rim: 1px inner stroke, brighter at the top edge (box-shadow inset)
+ *   3. a specular sheen across the top third (::before)
+ */
+.glass {
+  position: relative;
+  background: color-mix(in srgb, var(--glass-tint) 100%, transparent);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  box-shadow:
+    inset 0 1px 0 0 var(--glass-spec),
+    inset 0 0 0 1px var(--glass-rim),
+    var(--glass-shadow);
+  isolation: isolate;
+}
+.glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 0.13) 0%,
+    rgb(255 255 255 / 0.03) 38%,
+    transparent 60%,
+    rgb(255 255 255 / 0.04) 100%
+  );
+  z-index: -1;
+}
+html.refraction .glass {
+  backdrop-filter: url(#lg-refract) blur(calc(var(--glass-blur) * 0.6)) saturate(var(--glass-sat));
+}
+.glass.strong {
+  background: var(--glass-tint-strong);
+}
+.glass.clear {
+  background: rgb(255 255 255 / 0.06);
+}
+
+/* Pressable things squash a little and spring back. */
+.press {
+  transition:
+    transform var(--t-med) var(--spring),
+    background-color var(--t-fast) ease,
+    opacity var(--t-fast) ease;
+}
+.press:active {
+  transform: scale(0.955);
+  transition-duration: 90ms;
+}
+
+/* ---------------------------------------------------------------- bits */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border-radius: var(--r-pill);
+  font-weight: 600;
+  font-size: var(--fs-body);
+  white-space: nowrap;
+}
+.btn.primary {
+  background: var(--text);
+  color: var(--ink);
+}
+.btn.accent {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.btn.tinted {
+  background: rgb(255 255 255 / 0.12);
+}
+.btn.tinted:hover {
+  background: rgb(255 255 255 / 0.18);
+}
+.btn.small {
+  height: 34px;
+  padding: 0 14px;
+  font-size: var(--fs-foot);
+}
+.btn.icon {
+  width: 44px;
+  padding: 0;
+}
+.btn.icon.small {
+  width: 34px;
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  background: rgb(255 255 255 / 0.1);
+  color: var(--text);
+  white-space: nowrap;
+}
+.chip.outline {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.28);
+}
+
+.field {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: var(--r-sm);
+  border: 0;
+  outline: 0;
+  background: rgb(255 255 255 / 0.08);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+  transition: box-shadow var(--t-fast) ease, background var(--t-fast) ease;
+}
+.field:focus {
+  background: rgb(255 255 255 / 0.11);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.field::placeholder {
+  color: var(--text-faint);
+}
+
+.skeleton {
+  background: linear-gradient(100deg, rgb(255 255 255 / 0.05) 20%, rgb(255 255 255 / 0.11) 40%, rgb(255 255 255 / 0.05) 60%) 0 0 / 300% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* film grain over everything: kills banding in the dark gradients */
+.grain {
+  position: fixed;
+  inset: -50%;
+  pointer-events: none;
+  z-index: 9000;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  mix-blend-mode: overlay;
+  animation: grain 1.2s steps(6) infinite;
+}
+@keyframes grain {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-3%, 2%); }
+  40% { transform: translate(2%, -3%); }
+  60% { transform: translate(-2%, -1%); }
+  80% { transform: translate(3%, 3%); }
+  100% { transform: translate(0, 0); }
+}
+
+/* --------------------------------------------------- view transitions */
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--t-med);
+  animation-timing-function: var(--glide);
+}
+::view-transition-old(root) {
+  animation-name: vt-out;
+}
+::view-transition-new(root) {
+  animation-name: vt-in;
+}
+html.vt-back::view-transition-old(root) {
+  animation-name: vt-out-back;
+}
+html.vt-back::view-transition-new(root) {
+  animation-name: vt-in-back;
+}
+@keyframes vt-out {
+  to { opacity: 0; transform: scale(0.985); filter: blur(6px); }
+}
+@keyframes vt-in {
+  from { opacity: 0; transform: scale(1.012); }
+}
+@keyframes vt-out-back {
+  to { opacity: 0; transform: scale(1.012); }
+}
+@keyframes vt-in-back {
+  from { opacity: 0; transform: scale(0.985); filter: blur(6px); }
+}
+/* the poster that was clicked grows into the detail hero */
+::view-transition-group(hero-art) {
+  animation-duration: var(--t-slow);
+  animation-timing-function: var(--spring);
+}
+::view-transition-old(hero-art),
+::view-transition-new(hero-art) {
+  height: 100%;
+  object-fit: cover;
+  overflow: clip;
+}
+::view-transition-group(tabbar),
+::view-transition-group(titlebar) {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion: 0.01;
+  }
+  .grain {
+    animation: none;
+  }
+}
+html.no-motion *,
+html.no-motion *::before,
+html.no-motion *::after {
+  animation-duration: 1ms !important;
+  transition-duration: 1ms !important;
+}
+
+html.playing .grain {
+  display: none;
+}
+
+/* ------------------------------------------------------------ phone (iOS) */
+@media (max-width: 760px) {
+  :root {
+    --gutter: 16px;
+    --card-w: 112px;
+    --bar-h: 52px;
+    --fs-large: 32px;
+  }
+  body {
+    padding-top: env(safe-area-inset-top);
+  }
+}
