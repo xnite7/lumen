@@ -68,14 +68,44 @@ jobs:
       - run: npm ci
       - name: Generate Xcode project
         run: npx tauri ios init --ci
-      - name: Build (unsigned)
+      - name: Build frontend
+        run: npm run build
+      - name: Build Rust library for iOS
+        # Built here instead of inside Xcode: Tauri's Xcode build phase only
+        # works while `tauri ios build` is running, and that command insists
+        # on code signing. The library gets dropped where Xcode expects it.
+        working-directory: src-tauri
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: "14.0"
         run: |
-          npm run build
-          cd src-tauri/gen/apple
-          xcodebuild -project lumen.xcodeproj -scheme lumen_iOS -configuration Release -sdk iphoneos \
-            -destination 'generic/platform=iOS' -derivedDataPath build \
+          cargo build --release --lib --target aarch64-apple-ios --features tauri/custom-protocol
+          mkdir -p gen/apple/Externals/arm64/release gen/apple/Externals/arm64/Release
+          cp target/aarch64-apple-ios/release/liblumen_lib.a gen/apple/Externals/arm64/release/libapp.a
+          cp target/aarch64-apple-ios/release/liblumen_lib.a gen/apple/Externals/arm64/Release/libapp.a
+      - name: Disable Xcode's Rust build phase
+        working-directory: src-tauri/gen/apple
+        run: |
+          python3 - <<'PY'
+          import re, glob
+          p = glob.glob('*.xcodeproj/project.pbxproj')[0]
+          s = open(p).read()
+          s, n = re.subn(r'shellScript = "(?:[^"\\]|\\.)*?xcode-script(?:[^"\\]|\\.)*";', 'shellScript = "true";', s)
+          print("patched build phases:", n)
+          assert n, "Rust build phase not found"
+          open(p, 'w').write(s)
+          PY
+          xcodebuild -list -project lumen.xcodeproj
+      - name: Build app (unsigned)
+        working-directory: src-tauri/gen/apple
+        run: |
+          CONF=$(xcodebuild -list -project lumen.xcodeproj | awk '/Build Configurations:/{f=1;next} f&&NF{print $1; exit}' )
+          for c in release Release; do xcodebuild -list -project lumen.xcodeproj | grep -qx "        $c" && CONF=$c; done
+          echo "configuration: $CONF"
+          xcodebuild -project lumen.xcodeproj -scheme lumen_iOS -configuration "$CONF" -sdk iphoneos \
+            -destination 'generic/platform=iOS' -derivedDataPath build ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
           APP=$(find build/Build/Products -name "*.app" -maxdepth 3 | head -1)
+          echo "app: $APP"
           mkdir -p Payload && cp -R "$APP" Payload/
           zip -qr ../../../Lumen-unsigned.ipa Payload
       - uses: actions/upload-artifact@v4
