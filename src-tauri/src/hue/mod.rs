@@ -9,7 +9,22 @@
 //! - **Artwork mood**: while browsing, the room takes on the palette of the
 //!   title you're looking at -- slow, soft transitions.
 
+#[cfg(desktop)]
 mod entertainment;
+/// Screen-synced lights need the desktop screen sampler; phones get dimming
+/// and artwork moods only.
+#[cfg(mobile)]
+mod entertainment {
+    use crate::{core::CoreRef, error::{AppError, AppResult}};
+    pub struct StreamHandle;
+    impl StreamHandle {
+        pub fn stop(&self) {}
+    }
+    pub async fn start(_: CoreRef, _: String, _: String, _: String, _: String, _: Vec<(u8, f32, f32)>) -> AppResult<StreamHandle> {
+        Err(AppError::msg("Screen sync is only available on PC"))
+    }
+}
+#[cfg(desktop)]
 mod sampler;
 
 use crate::core::CoreRef;
