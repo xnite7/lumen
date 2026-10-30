@@ -78,3 +78,7 @@ incremental = true
 
 [profile.dev.package."*"]
 opt-level = 1
+
+[patch.crates-io]
+# iOS support for bind_device (upstream only gates on macos)
+librqbit-dualstack-sockets = { path = "patches/librqbit-dualstack-sockets" }
