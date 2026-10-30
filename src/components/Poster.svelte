@@ -6,6 +6,8 @@
   import { dwell } from "../lib/stores/gaze.svelte";
   import { openDetail } from "../lib/open";
   import Icon from "./Icon.svelte";
+  import { pressMenu } from "../lib/menu.svelte";
+  import { posterMenu } from "../lib/actions";
 
   let {
     meta,
@@ -63,6 +65,7 @@
   onmouseleave={disarm}
   onclick={click}
   use:dwell={() => el && !hidden && openPreview(meta, el)}
+  use:pressMenu={() => (hidden ? null : posterMenu(meta))}
   aria-label={meta.name}
 >
   {#if rank > 0}
@@ -129,10 +132,10 @@
     aspect-ratio: 2 / 3;
     border-radius: var(--poster-r);
     overflow: hidden;
-    background: rgb(255 255 255 / 0.05);
+    background: var(--fill-4);
     box-shadow:
       0 10px 28px -14px rgb(0 0 0 / 0.65),
-      inset 0 0 0 1px rgb(255 255 255 / 0.08);
+      inset 0 0 0 0.5px rgb(255 255 255 / 0.12);
     transition:
       transform var(--t-med) var(--spring),
       box-shadow var(--t-med) ease;
@@ -140,11 +143,18 @@
   .landscape .art {
     aspect-ratio: 16 / 9;
   }
-  .poster:hover .art {
-    transform: translateY(-3px);
-    box-shadow:
-      0 18px 36px -16px rgb(0 0 0 / 0.75),
-      inset 0 0 0 1px rgb(255 255 255 / 0.16);
+  @media (hover: hover) {
+    .poster:hover .art {
+      transform: translateY(-4px) scale(1.02);
+      box-shadow:
+        0 22px 40px -18px rgb(0 0 0 / 0.8),
+        inset 0 0 0 1px rgb(255 255 255 / 0.18);
+    }
+  }
+  :global(.poster.pressing) .art {
+    transform: scale(0.95);
+    transition-duration: 480ms;
+    transition-timing-function: ease-out;
   }
   img {
     width: 100%;
@@ -215,14 +225,14 @@
   }
   .name {
     font-weight: 600;
-    font-size: 14px;
+    font-size: var(--fs-foot);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .sub {
-    font-size: 12.5px;
-    color: var(--text-dim);
+    font-size: var(--fs-caption);
+    color: var(--label-2);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

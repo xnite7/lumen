@@ -8,6 +8,8 @@ import { setAmbient } from "./ambient.svelte";
 import { loadLibrary } from "./library.svelte";
 import { toast, errorText } from "./toast.svelte";
 import { parseCue, type Cue } from "../subs";
+import { isTauri } from "../api";
+import { nativePlay, onNative, haptic } from "../native";
 
 export interface Segment {
   start: number;
@@ -37,7 +39,18 @@ export const pb = $state({
   loading: false,
   error: "",
   torrent: null as any,
+  /** iPhone: AVPlayer has the video (pb.open stays false) */
+  ios: false,
+  /** a file AVPlayer can't open: offer VLC / Infuse */
+  handoff: "" as string,
 });
+
+const iosNative = () => isTauri && app.platform === "ios";
+/** containers AVPlayer can't play */
+const unplayable = (url: string, stream: Stream | null) => {
+  const name = String(stream?.behaviorHints?.filename ?? url).toLowerCase().split("?")[0];
+  return /\.(mkv|avi|wmv|flv|webm)$/.test(name);
+};
 
 let wired = false;
 
@@ -65,6 +78,43 @@ export function initPlayback() {
   });
   listen<{ message: string }>("player://error", ({ message }) => {
     if (pb.open) pb.error = message;
+  });
+
+  // iPhone: the native player reports back here.
+  onNative<{ pos: number; duration: number; paused: boolean }>("progress", (p) => api.report(p.pos, p.duration, p.paused));
+  onNative<{ pos: number; duration: number }>("closed", async (p) => {
+    api.report(p.pos, p.duration, true);
+    pb.ios = false;
+    await api.stop().catch(() => {});
+    loadLibrary().catch(() => {});
+  });
+  onNative("ended", () => {
+    if (app.settings.playback.autoplayNext && nextVideo()) playNext();
+  });
+  onNative<{ url: string }>("failed", ({ url }) => {
+    pb.ios = false;
+    pb.handoff = url || pb.url;
+  });
+}
+
+async function startIOS(url: string, startAt?: number, headers?: Record<string, string>) {
+  pb.url = url;
+  if (unplayable(url, pb.stream)) {
+    pb.handoff = url;
+    return;
+  }
+  pb.ios = true;
+  haptic("medium");
+  const m = pb.meta;
+  await nativePlay({
+    url,
+    title: m?.name ?? "Lumen",
+    subtitle: pb.episodeTitle || (m?.releaseInfo ? String(m.releaseInfo) : ""),
+    // the plain https address: the native side loads it itself
+    artwork: (m?.background ?? m?.poster ?? "").replace(/\/t\/p\/original\//, "/t/p/w780/"),
+    startAt,
+    tint: getComputedStyle(document.documentElement).getPropertyValue("--ambient-1").trim(),
+    headers,
   });
 }
 
@@ -99,6 +149,13 @@ export async function play(meta: Meta, stream: Stream, videoId: string, opts: { 
   setAmbient(meta.background ?? meta.poster);
   try {
     const r = await api.open({ stream, meta: previewOf(meta), videoId, startAt: opts.startAt, episodeTitle: opts.episodeTitle });
+    if (r.mode === "web" && iosNative() && r.url) {
+      pb.open = false;
+      pb.loading = false;
+      pb.mode = "web";
+      await startIOS(r.url, r.startAt ?? undefined, r.headers as any);
+      return;
+    }
     pb.mode = r.mode;
     pb.url = r.url ?? "";
     pb.ytId = r.ytId ?? "";
@@ -169,6 +226,10 @@ export async function playNext() {
     pb.segments = {};
     pb.mode = r.open.mode;
     pb.url = r.open.url ?? "";
+    if (r.open.mode === "web" && iosNative() && r.open.url) {
+      pb.loading = false;
+      await startIOS(r.open.url, undefined, r.open.headers);
+    }
   } catch (e) {
     pb.loading = false;
     toast(errorText(e), "error");

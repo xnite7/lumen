@@ -45,6 +45,10 @@ pub struct OpenResult {
     pub mode: &'static str,
     pub url: Option<String>,
     pub yt_id: Option<String>,
+    /// Web mode: where the UI's player should start (resume point).
+    pub start_at: Option<f64>,
+    /// Web mode: request headers the stream needs (proxyHeaders).
+    pub headers: Option<serde_json::Map<String, Value>>,
 }
 
 pub struct Player {
@@ -92,11 +96,11 @@ impl Player {
 
     pub async fn open(self: &Arc<Self>, req: PlayRequest) -> AppResult<OpenResult> {
         if let Some(yt) = req.stream.get("ytId").and_then(|y| y.as_str()) {
-            return Ok(OpenResult { mode: "youtube", url: None, yt_id: Some(yt.to_string()) });
+            return Ok(OpenResult { mode: "youtube", url: None, yt_id: Some(yt.to_string()), start_at: None, headers: None });
         }
         if req.stream.get("url").is_none() && req.stream.get("infoHash").is_none() {
             if let Some(ext) = req.stream.get("externalUrl").and_then(|u| u.as_str()) {
-                return Ok(OpenResult { mode: "external", url: Some(ext.to_string()), yt_id: None });
+                return Ok(OpenResult { mode: "external", url: Some(ext.to_string()), yt_id: None, start_at: None, headers: None });
             }
         }
         let url = self.resolve_url(&req.stream).await?.ok_or_else(|| AppError::msg("This stream has nothing playable"))?;
@@ -138,13 +142,13 @@ impl Player {
                 this.core.emit("player://subtitles", subs);
             });
             session::spawn_tracker(self.clone());
-            Ok(OpenResult { mode: "native", url: Some(url), yt_id: None })
+            Ok(OpenResult { mode: "native", url: Some(url), yt_id: None, start_at: start, headers: None })
         }
         #[cfg(not(desktop))]
         {
-            let _ = start;
+            let headers = req.stream.pointer("/behaviorHints/proxyHeaders/request").and_then(|h| h.as_object()).cloned();
             session::spawn_tracker(self.clone());
-            Ok(OpenResult { mode: "web", url: Some(url), yt_id: None })
+            Ok(OpenResult { mode: "web", url: Some(url), yt_id: None, start_at: start, headers })
         }
     }
 

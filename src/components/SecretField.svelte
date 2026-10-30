@@ -38,7 +38,8 @@
   .sf {
     display: flex;
     gap: 8px;
-    width: min(360px, 40vw);
+    width: 100%;
+    max-width: 360px;
   }
   .field {
     height: 36px;

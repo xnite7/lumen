@@ -64,6 +64,7 @@ pub fn run() {
 
     builder
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_lumen_native::init())
         .plugin(tauri_plugin_deep_link::init())
         .register_asynchronous_uri_scheme_protocol("img", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
@@ -213,6 +214,8 @@ pub fn run() {
             commands::continue_watching,
             commands::cw_dismiss,
             commands::stremio_login,
+            commands::stremio_link_start,
+            commands::stremio_link_poll,
             commands::stremio_logout,
             commands::stremio_sync,
             commands::simkl_pin_start,

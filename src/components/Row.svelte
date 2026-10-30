@@ -119,7 +119,7 @@
 <style>
   .row {
     position: relative;
-    margin-top: 30px;
+    margin-top: 26px;
     content-visibility: auto;
     contain-intrinsic-size: auto 320px;
   }
@@ -187,5 +187,35 @@
   }
   .arrow.right {
     right: calc(var(--gutter) - 22px);
+  }
+  @media (max-width: 759px) {
+    .row {
+      margin-top: 22px;
+    }
+    header {
+      margin-bottom: 6px;
+    }
+    .heading {
+      font-size: var(--fs-title3);
+    }
+    .heading :global(svg) {
+      opacity: 0.5;
+      transform: none;
+    }
+    .kind,
+    .addon {
+      display: none;
+    }
+    .rail {
+      gap: 10px;
+      padding-bottom: 12px;
+      scroll-snap-type: x mandatory;
+    }
+    .top10 .rail {
+      gap: 16px;
+    }
+    .arrow {
+      display: none;
+    }
   }
 </style>

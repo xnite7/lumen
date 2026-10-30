@@ -7,6 +7,10 @@
   import { year, runtime } from "../lib/format";
   import YouTube from "./YouTube.svelte";
   import Icon from "./Icon.svelte";
+  import { ui } from "../lib/ui.svelte";
+  import { haptic } from "../lib/native";
+  import { pressMenu } from "../lib/menu.svelte";
+  import { posterMenu } from "../lib/actions";
 
   let { scrollY = 0 }: { scrollY?: number } = $props();
 
@@ -51,7 +55,7 @@
     if (!slides.length) return;
     rotate = setTimeout(() => !paused && !trailerOn && next(), 9000);
     // After sitting at the top for a moment, the slide's trailer takes over.
-    if (app.settings.general.heroTrailers && !app.playing) {
+    if (app.settings.general.heroTrailers && !app.playing && !ui.phone) {
       dwell = setTimeout(async () => {
         const m = cur;
         if (!m || scrollY > 200) return;
@@ -90,10 +94,54 @@
   }
 
   const owned = $derived(cur ? inLibrary(cur.id) : false);
+
+  // phone: a swipeable track of poster cards
+  let track: HTMLElement | undefined = $state();
+  function onTrack() {
+    if (!track) return;
+    const w = track.clientWidth * 0.84;
+    const n = Math.round(track.scrollLeft / Math.max(1, w));
+    if (n !== i && n >= 0 && n < slides.length) {
+      i = n;
+      haptic("selection");
+    }
+  }
+  const facts = (m: Meta) => [m.type === "series" ? "Series" : "Film", year(m), m.runtime ? runtime(m.runtime) : ""].filter(Boolean).join(" · ");
   const lift = $derived(Math.min(1, scrollY / 520));
 </script>
 
-{#if cur}
+{#if cur && ui.phone}
+  <section class="hero-phone" aria-roledescription="carousel">
+    <div class="glow" style:background-image="url({img(cur.poster ?? bg, 'w342')})"></div>
+    <div class="track scroll-x" bind:this={track} onscroll={onTrack}>
+      {#each slides as m, n (m.id)}
+        <article class="card" class:on={n === i} use:pressMenu={() => posterMenu(m)}>
+          <button class="art" onclick={() => openDetail(m)} aria-label={m.name}>
+            <img src={img(m.poster ?? m.background, "w780")} alt="" />
+          </button>
+          <div class="card-shade"></div>
+          <div class="card-info">
+            {#if m.logo}
+              <img class="card-logo" src={img(m.logo)} alt={m.name} />
+            {:else}
+              <h2 class="title1">{m.name}</h2>
+            {/if}
+            <p class="foot facts-line">{[facts(m), m.genres?.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}</p>
+            <div class="card-actions">
+              <button class="btn primary press grow" onclick={() => openDetail(m)}><Icon name="play" size={16} /> Play</button>
+              <button class="btn glass press grow" onclick={() => { haptic("light"); toggleLibrary(m); }}>
+                <Icon name={inLibrary(m.id) ? "check" : "plus"} size={18} /> My List
+              </button>
+            </div>
+          </div>
+        </article>
+      {/each}
+    </div>
+    <div class="pdots" aria-hidden="true">
+      {#each slides as _, n}<span class:on={n === i}></span>{/each}
+    </div>
+  </section>
+{:else if cur}
   <section
     class="hero"
     bind:this={el}
@@ -101,6 +149,7 @@
     onmouseenter={() => (paused = true)}
     onmouseleave={() => (paused = false)}
     aria-roledescription="carousel"
+    role="group"
   >
     <div class="stage">
       {#key cur.id}
@@ -118,27 +167,25 @@
           {#if cur.logo}
             <img class="logo" src={img(cur.logo)} alt={cur.name} />
           {:else}
-            <h1 class="large-title">{cur.name}</h1>
+            <h1 class="xl-title">{cur.name}</h1>
           {/if}
           <div class="facts">
-            <span class="chip">{cur.type === "series" ? "Series" : "Film"}</span>
-            {#if year(cur)}<span class="chip outline">{year(cur)}</span>{/if}
-            {#if cur.imdbRating}<span class="chip outline"><Icon name="star" size={11} fill /> {cur.imdbRating}</span>{/if}
-            {#if cur.runtime}<span class="chip outline">{runtime(cur.runtime)}</span>{/if}
-            {#if cur.certification}<span class="chip outline">{cur.certification}</span>{/if}
-            {#if cur.genres?.length}<span class="genres foot">{cur.genres.slice(0, 3).join(", ")}</span>{/if}
+            {#if cur.imdbRating}<span class="rating"><Icon name="star" size={12} fill /> {cur.imdbRating}</span>{/if}
+            <span class="sub">{facts(cur)}</span>
+            {#if cur.certification}<span class="chip small outline">{cur.certification}</span>{/if}
+            {#if cur.genres?.length}<span class="sub dim">{cur.genres.slice(0, 3).join(" · ")}</span>{/if}
           </div>
           {#if cur.description}<p class="desc clamp-3">{cur.description}</p>{/if}
         </div>
       {/key}
       <div class="actions">
-        <button class="btn primary press" onclick={() => openDetail(cur, el)}><Icon name="play" size={17} /> Watch now</button>
-        <button class="btn tinted glass press" onclick={() => toggleLibrary(cur)}>
-          <Icon name={owned ? "check" : "plus"} size={18} />
-          {owned ? "In library" : "Add to library"}
+        <button class="btn lg primary press" onclick={() => openDetail(cur, el)}><Icon name="play" size={18} /> Play</button>
+        <button class="btn lg glass press" onclick={() => toggleLibrary(cur)}>
+          <Icon name={owned ? "check" : "plus"} size={19} />
+          {owned ? "In My List" : "My List"}
         </button>
         {#if trailer}
-          <button class="btn tinted icon glass press" onclick={() => (muted = !muted)} aria-label={muted ? "Unmute" : "Mute"}>
+          <button class="btn lg icon glass press" onclick={() => (muted = !muted)} aria-label={muted ? "Unmute" : "Mute"}>
             <Icon name={muted ? "mute" : "volume"} size={19} />
           </button>
         {/if}
@@ -154,7 +201,7 @@
     </div>
   </section>
 {:else}
-  <section class="hero empty">
+  <section class="hero empty" class:phone={ui.phone}>
     <div class="stage skeleton"></div>
   </section>
 {/if}
@@ -238,12 +285,16 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 6px 12px;
     transition: opacity var(--t-slow), transform var(--t-slow);
   }
-  .genres {
-    color: var(--text-dim);
-    margin-left: 4px;
+  .rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 700;
+    font-size: var(--fs-sub);
+    color: var(--yellow);
   }
   .desc {
     margin: 0;
@@ -296,19 +347,126 @@
   .empty .stage {
     opacity: 0.4;
   }
-  @media (max-width: 760px) {
-    .hero {
-      height: 72vh;
-      min-height: 420px;
-    }
-    .info {
-      width: auto;
-      right: var(--gutter);
-      bottom: 40px;
-    }
-    .desc,
-    .dots {
-      display: none;
-    }
+  .empty.phone {
+    height: calc(var(--safe-top) + 600px);
+  }
+
+  /* ------------------------------------------------------------ phone */
+  .hero-phone {
+    position: relative;
+    padding-top: calc(var(--safe-top) + 58px);
+  }
+  .glow {
+    position: absolute;
+    inset: -40px -20px 10%;
+    background-size: cover;
+    background-position: center;
+    filter: blur(60px) saturate(1.6);
+    opacity: calc(var(--ambient-strength) * 0.7);
+    transition: background-image 0.8s ease;
+    -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent);
+    mask-image: linear-gradient(180deg, #000 30%, transparent);
+    pointer-events: none;
+  }
+  .track {
+    position: relative;
+    display: flex;
+    gap: 12px;
+    padding: 0 8%;
+    scroll-snap-type: x mandatory;
+  }
+  .card {
+    position: relative;
+    flex: none;
+    width: 84%;
+    aspect-ratio: 2 / 2.9;
+    max-height: 64vh;
+    border-radius: 26px;
+    overflow: hidden;
+    scroll-snap-align: center;
+    box-shadow:
+      inset 0 0 0 0.5px rgb(255 255 255 / 0.16),
+      0 24px 60px -24px rgb(0 0 0 / 0.75);
+    transform: scale(0.94);
+    opacity: 0.7;
+    transition:
+      transform var(--t-slow) var(--spring),
+      opacity var(--t-med) ease;
+  }
+  .card.on {
+    transform: none;
+    opacity: 1;
+  }
+  .art {
+    position: absolute;
+    inset: 0;
+  }
+  .art img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .card-shade {
+    position: absolute;
+    inset: 40% 0 0;
+    background: linear-gradient(180deg, transparent, rgb(0 0 0 / 0.55) 45%, rgb(0 0 0 / 0.85));
+    pointer-events: none;
+  }
+  .card-info {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+    color: #fff;
+  }
+  .card-logo {
+    max-width: 78%;
+    max-height: 84px;
+    object-fit: contain;
+    filter: drop-shadow(0 2px 12px rgb(0 0 0 / 0.5));
+  }
+  .facts-line {
+    margin: 0;
+    color: rgb(255 255 255 / 0.78);
+  }
+  .card-actions {
+    display: flex;
+    gap: 10px;
+    width: 100%;
+    margin-top: 4px;
+  }
+  .grow {
+    flex: 1;
+  }
+  .card-actions .glass {
+    color: #fff;
+    background: rgb(255 255 255 / 0.16);
+  }
+  .card-actions .primary {
+    background: #fff;
+    color: #000;
+  }
+  .pdots {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 14px;
+  }
+  .pdots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--fill-1);
+    transition: width var(--t-med) var(--spring), background var(--t-med);
+  }
+  .pdots span.on {
+    width: 18px;
+    background: var(--label);
   }
 </style>

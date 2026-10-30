@@ -1,27 +1,35 @@
 <script lang="ts">
-  // Every search-capable addon is asked directly and in full, and everything
-  // lands in one wrapping grid grouped by addon -- no ten-item preview rows,
-  // no "See all", no addons left un-asked at the bottom of the list.
+  // Search tab. Empty: recent searches, mood search, and browse tiles for
+  // every catalog and genre. Typing: top hits as you type, then every
+  // search-capable addon's results in one grid, grouped by addon.
   import { api, listen, uid, img, type Meta, type CatalogRef } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
+  import { go } from "../lib/router.svelte";
+  import { ui } from "../lib/ui.svelte";
   import { openDetail } from "../lib/open";
+  import NavBar from "../ui/NavBar.svelte";
   import Poster from "../components/Poster.svelte";
   import Icon from "../components/Icon.svelte";
+  import Controls from "../components/Controls.svelte";
+  import VibeBar from "../components/VibeBar.svelte";
 
   let { q: initial = "" }: { q?: string } = $props();
-  let q = $state(initial);
+  let q = $state("");
   let groups = $state<{ catalog: CatalogRef; metas: Meta[] }[]>([]);
   let pending = $state(false);
   let suggestions = $state<any[]>([]);
   let recents = $state<string[]>([]);
+  let catalogs = $state<CatalogRef[]>([]);
   let input: HTMLInputElement | undefined = $state();
+  let focused = $state(false);
   let reqId = "";
   let typeTimer: ReturnType<typeof setTimeout> | undefined;
   let kind = $state<"all" | "movie" | "series">("all");
 
   $effect(() => {
     api.recents().then((r) => (recents = r ?? []));
-    requestAnimationFrame(() => input?.focus());
+    api.catalogs().then((c) => (catalogs = c.filter((x) => !x.extra.some((e) => e.isRequired && e.name === "search"))));
+    if (!ui.phone) requestAnimationFrame(() => input?.focus());
     let un: (() => void) | undefined;
     listen<any>("search", (c) => {
       if (c.reqId !== reqId) return;
@@ -31,7 +39,10 @@
       }
       if (c.metas?.length) groups = [...groups, { catalog: c.catalog, metas: c.metas }];
     }).then((u) => (un = u));
-    if (initial) run(initial);
+    if (initial) {
+      q = initial;
+      run(initial);
+    }
     return () => un?.();
   });
 
@@ -39,6 +50,7 @@
     const t = text.trim();
     if (t.length < 2) {
       groups = [];
+      pending = false;
       return;
     }
     reqId = uid();
@@ -51,16 +63,25 @@
     clearTimeout(typeTimer);
     typeTimer = setTimeout(() => {
       run(q);
-      if (q.trim()) api.suggest(q).then((s) => (suggestions = s ?? [])).catch(() => {});
+      if (q.trim()) api.suggest(q).then((s) => (suggestions = (s ?? []).slice(0, 5))).catch(() => {});
       else suggestions = [];
     }, 250);
   }
 
-  function pickRecent(r: string) {
+  function pick(r: string) {
     q = r;
     run(r);
+    input?.blur();
+  }
+  function clear() {
+    q = "";
+    groups = [];
+    suggestions = [];
+    pending = false;
+    input?.focus();
   }
 
+  const searching = $derived(q.trim().length >= 2);
   const shown = $derived(
     groups
       .map((g) => ({ ...g, metas: g.metas.filter((m) => kind === "all" || m.type === kind) }))
@@ -68,60 +89,71 @@
       .filter((g) => !(g.catalog.adult && app.settings.general.hideAdult && !app.adultRevealed)),
   );
   const hiddenAdult = $derived(groups.some((g) => g.catalog.adult) && app.settings.general.hideAdult && !app.adultRevealed);
+
+  // ------------------------------------------------------------- browse
+  const tints = ["#6155f5", "#ff375f", "#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#40cbe0", "#ac8e68", "#ff453a", "#5e5ce6"];
+  const typeLabel = (t: string) => (t === "movie" ? "Films" : t === "series" ? "Shows" : t === "tv" ? "Channels" : t.charAt(0).toUpperCase() + t.slice(1));
+  const browse = $derived(
+    catalogs
+      .filter((c) => !(c.adult && app.settings.general.hideAdult && !app.adultRevealed))
+      .filter((c) => !c.extra.some((e) => e.isRequired && !e.options?.length))
+      .slice(0, 12),
+  );
+  const genreSource = $derived(catalogs.find((c) => c.type === "movie" && c.extra.some((e) => e.name === "genre" && e.options?.length)));
+  const genres = $derived(genreSource?.extra.find((e) => e.name === "genre")?.options?.slice(0, 16) ?? []);
 </script>
 
-<div class="search">
-  <aside class="rail">
-    <form
-      class="box glass"
-      onsubmit={(e) => {
-        e.preventDefault();
-        run(q);
-      }}
-    >
-      <Icon name="search" size={19} />
-      <input bind:this={input} bind:value={q} oninput={onInput} placeholder="Films, shows, people…" spellcheck="false" aria-label="Search" />
-      {#if q}<button type="button" class="clear" onclick={() => { q = ""; groups = []; suggestions = []; input?.focus(); }} aria-label="Clear"><Icon name="close" size={14} /></button>{/if}
-    </form>
+<NavBar title="Search" />
 
+<div class="search">
+  <h1 class="large-title">Search</h1>
+
+  <form class="box" class:focused onsubmit={(e) => { e.preventDefault(); run(q); input?.blur(); }}>
+    <Icon name="search" size={18} />
+    <input
+      bind:this={input}
+      bind:value={q}
+      oninput={onInput}
+      onfocus={() => (focused = true)}
+      onblur={() => setTimeout(() => (focused = false), 150)}
+      placeholder="Films, shows, people"
+      spellcheck="false"
+      autocapitalize="off"
+      enterkeyhint="search"
+      aria-label="Search"
+    />
+    {#if q}<button type="button" class="clear" onclick={clear} aria-label="Clear"><Icon name="close" size={11} /></button>{/if}
+  </form>
+
+  {#if searching}
+    <!-- top hits -->
     {#if suggestions.length}
-      <div class="sect">
-        <h3 class="foot faint">Suggestions</h3>
+      <div class="hits group">
         {#each suggestions as s (s.id)}
-          <button class="sugg press" onclick={(e) => openDetail({ id: s.id, type: s.type, name: s.name, poster: s.poster }, e.currentTarget)}>
+          <button class="hit" onclick={(e) => openDetail({ id: s.id, type: s.type, name: s.name, poster: s.poster }, e.currentTarget)}>
             {#if s.poster}<img src={img(s.poster)} alt="" />{:else}<span class="ph"></span>{/if}
-            <span class="st"><span class="nm">{s.name}</span><span class="foot faint">{s.year ?? ""} {s.cast ? `· ${s.cast}` : ""}</span></span>
+            <span class="st">
+              <span class="nm">{s.name}</span>
+              <span class="foot dim">{[s.type === "series" ? "Show" : s.type === "movie" ? "Film" : "", s.year, s.cast].filter(Boolean).join(" · ")}</span>
+            </span>
+            <Icon name="chevron" size={14} class="chev" />
           </button>
         {/each}
       </div>
-    {:else if recents.length && !q}
-      <div class="sect">
-        <div class="sect-h">
-          <h3 class="foot faint">Recent</h3>
-          <button class="foot faint" onclick={() => { api.recentsClear(); recents = []; }}>Clear</button>
-        </div>
-        {#each recents as r}
-          <button class="recent press" onclick={() => pickRecent(r)}><Icon name="refresh" size={14} /> {r}</button>
-        {/each}
-      </div>
     {/if}
-    <p class="tip foot faint">Paste a link or magnet anywhere in Lumen to play it.</p>
-  </aside>
 
-  <main class="results">
     {#if groups.length}
       <div class="filter">
-        {#each [["all", "All"], ["movie", "Films"], ["series", "Shows"]] as [k, l]}
-          <button class="chip press" class:sel={kind === k} onclick={() => (kind = k as any)}>{l}</button>
-        {/each}
+        <Controls kind="segmented" bind:value={kind} options={[{ value: "all", label: "All" }, { value: "movie", label: "Films" }, { value: "series", label: "Shows" }]} label="Kind" />
         {#if hiddenAdult}
-          <button class="chip press" onclick={() => (app.adultRevealed = true)}><Icon name="eye" size={13} /> Show hidden results</button>
+          <button class="chip press" onclick={() => (app.adultRevealed = true)}><Icon name="eye" size={13} /> Show hidden</button>
         {/if}
         {#if pending}<span class="foot faint">Still asking addons…</span>{/if}
       </div>
     {/if}
+
     {#each shown as g (g.catalog.key)}
-      <section class="group">
+      <section class="results rise">
         <h2 class="title3">{g.catalog.name} <span class="foot faint">{g.catalog.addonName}</span></h2>
         <div class="grid">
           {#each g.metas as m (m.id + g.catalog.key)}
@@ -131,127 +163,182 @@
       </section>
     {:else}
       {#if pending}
-        <div class="grid pad">{#each Array(12) as _}<div class="ghost skeleton"></div>{/each}</div>
-      {:else if q.trim().length >= 2}
-        <div class="empty"><p class="headline">Nothing found for “{q}”</p><p class="foot dim">Check the spelling, or install an addon that searches the kind of thing you're after.</p></div>
+        <div class="grid">{#each Array(ui.phone ? 6 : 12) as _}<div class="ghost skeleton"></div>{/each}</div>
       {:else}
-        <div class="empty"><p class="title2">Search every addon at once</p><p class="foot dim">Results from each addon appear as soon as it answers.</p></div>
+        <div class="empty">
+          <Icon name="search" size={44} />
+          <p class="title3">No results for “{q}”</p>
+          <p class="sub dim">Check the spelling, or install an addon that searches this kind of thing.</p>
+        </div>
       {/if}
     {/each}
-  </main>
+  {:else}
+    {#if recents.length}
+      <section class="recents">
+        <div class="sect-h">
+          <h2 class="title3">Recent</h2>
+          <button class="btn plain small" onclick={() => { api.recentsClear(); recents = []; }}>Clear</button>
+        </div>
+        <div class="recent-list scroll-x">
+          {#each recents as r}
+            <button class="chip press" onclick={() => pick(r)}><Icon name="search" size={13} /> {r}</button>
+          {/each}
+        </div>
+      </section>
+    {/if}
+
+    <div class="vibe-wrap"><VibeBar /></div>
+
+    {#if browse.length}
+      <section>
+        <h2 class="title3 sect-title">Browse</h2>
+        <div class="tiles">
+          {#each browse as c, n (c.key)}
+            <button class="tile press" style:--t={tints[n % tints.length]} onclick={() => go({ name: "discover", type: c.type, catalog: c.key })}>
+              <span class="tile-name">{c.name}</span>
+              <span class="tile-sub">{typeLabel(c.type)} · {c.addonName}</span>
+            </button>
+          {/each}
+        </div>
+      </section>
+    {/if}
+
+    {#if genres.length && genreSource}
+      <section>
+        <h2 class="title3 sect-title">Genres</h2>
+        <div class="genres">
+          {#each genres as g, n}
+            <button class="genre press" style:--t={tints[(n + 3) % tints.length]} onclick={() => go({ name: "discover", type: genreSource!.type, catalog: genreSource!.key, genre: g })}>{g}</button>
+          {/each}
+        </div>
+      </section>
+    {/if}
+
+    <p class="tip foot faint">Tip: paste a link or magnet anywhere in Lumen to play it.</p>
+  {/if}
 </div>
 
 <style>
   .search {
-    display: grid;
-    grid-template-columns: 320px 1fr;
-    gap: 28px;
-    padding: calc(var(--bar-h) + 32px) var(--gutter) 60px;
-    min-height: 100%;
-  }
-  .rail {
-    position: sticky;
-    top: calc(var(--bar-h) + 32px);
-    align-self: start;
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: calc(var(--safe-top) + var(--bar-h) + 18px) var(--gutter) calc(var(--safe-bottom) + 120px);
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 20px;
+  }
+  .large-title {
+    margin-bottom: -8px;
   }
   .box {
+    position: sticky;
+    top: calc(var(--safe-top) + 12px);
+    z-index: 30;
     display: flex;
     align-items: center;
-    gap: 10px;
-    height: 52px;
-    padding: 0 14px 0 18px;
+    gap: 8px;
+    height: 44px;
+    padding: 0 12px 0 14px;
     border-radius: var(--r-pill);
+    background: var(--fill-3);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    color: var(--label-2);
+    max-width: 680px;
+    transition: box-shadow var(--t-fast);
+  }
+  .box.focused {
+    box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  @media (min-width: 760px) {
+    .box {
+      top: calc(var(--safe-top) + 64px);
+    }
   }
   .box input {
     flex: 1;
+    min-width: 0;
     background: none;
     border: 0;
     outline: 0;
-    font-size: 17px;
+    color: var(--label);
+    font-size: var(--fs-body);
     height: 100%;
   }
+  .box input::placeholder {
+    color: var(--label-2);
+  }
   .clear {
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: rgb(255 255 255 / 0.18);
+    background: var(--label-3);
+    color: var(--bg);
   }
-  .sect {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+  .hits {
+    max-width: 680px;
   }
-  .sect-h {
-    display: flex;
-    justify-content: space-between;
-  }
-  h3 {
-    margin: 0 0 4px 6px;
-    font-weight: 600;
-  }
-  .sugg,
-  .recent {
+  .hit {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 7px 8px;
-    border-radius: var(--r-sm);
+    width: 100%;
+    padding: 8px 16px 8px 10px;
     text-align: left;
   }
-  .sugg:hover,
-  .recent:hover {
-    background: rgb(255 255 255 / 0.07);
+  .hit:active {
+    background: var(--cell-press);
   }
-  .sugg img,
+  .hit + .hit::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 64px;
+    right: 0;
+    height: 0.5px;
+    background: var(--separator);
+  }
+  .hit img,
   .ph {
-    width: 34px;
-    height: 50px;
+    width: 40px;
+    height: 60px;
     object-fit: cover;
-    border-radius: 6px;
+    border-radius: 7px;
     flex: none;
-    background: rgb(255 255 255 / 0.08);
+    background: var(--fill-3);
   }
   .st {
+    flex: 1;
     display: flex;
     flex-direction: column;
+    gap: 2px;
     min-width: 0;
   }
   .nm {
     font-weight: 600;
-    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .recent {
-    color: var(--text-dim);
-    font-size: 14px;
-  }
-  .tip {
-    margin: 0 6px;
+  .hit :global(.chev) {
+    color: var(--label-3);
   }
   .filter {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 18px;
+    flex-wrap: wrap;
+    gap: 10px;
   }
-  .chip.sel {
-    background: var(--text);
-    color: var(--ink);
-  }
-  .group {
-    margin-bottom: 34px;
-  }
-  .group h2 {
-    margin-bottom: 14px;
+  .results h2 {
+    margin-bottom: 12px;
   }
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(var(--card-w), 1fr));
-    gap: 22px 16px;
+    gap: 20px 14px;
   }
   .grid :global(.poster) {
     width: auto;
@@ -261,18 +348,105 @@
     border-radius: var(--poster-r);
   }
   .empty {
-    padding: 80px 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     text-align: center;
+    gap: 6px;
+    padding: 70px 20px;
+    color: var(--label-3);
   }
   .empty p {
-    margin: 0 0 6px;
+    margin: 0;
+    color: var(--label);
   }
-  @media (max-width: 760px) {
-    .search {
-      grid-template-columns: 1fr;
+  .empty .dim {
+    color: var(--label-2);
+    max-width: 360px;
+  }
+  .sect-h {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .recent-list {
+    display: flex;
+    gap: 8px;
+    margin: 0 calc(-1 * var(--gutter));
+    padding: 0 var(--gutter);
+  }
+  .recent-list .chip {
+    flex: none;
+    font-weight: 500;
+  }
+  .vibe-wrap :global(.vibe) {
+    margin: 0;
+  }
+  .sect-title {
+    margin-bottom: 12px;
+  }
+  .tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .tile {
+    position: relative;
+    height: 104px;
+    border-radius: var(--r-md);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    text-align: left;
+    overflow: hidden;
+    color: #fff;
+    background:
+      radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--t) 50%, white 0%), transparent 60%),
+      linear-gradient(150deg, color-mix(in srgb, var(--t) 90%, white 10%), color-mix(in srgb, var(--t) 60%, black 40%));
+    box-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.3);
+  }
+  .tile-name {
+    font-size: var(--fs-head);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .tile-sub {
+    font-size: var(--fs-caption);
+    opacity: 0.78;
+  }
+  .genres {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .genre {
+    height: 38px;
+    padding: 0 16px;
+    border-radius: var(--r-pill);
+    font-weight: 600;
+    font-size: var(--fs-sub);
+    background: color-mix(in srgb, var(--t) 24%, transparent);
+    color: color-mix(in srgb, var(--t) 40%, var(--label));
+    box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--t) 40%, transparent);
+  }
+  .tip {
+    text-align: center;
+    margin: 10px 0 0;
+  }
+  @media (max-width: 759px) {
+    .tiles {
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
     }
-    .rail {
-      position: static;
+    .tile {
+      height: 92px;
+      padding: 12px;
+    }
+    .grid {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px 10px;
     }
   }
 </style>

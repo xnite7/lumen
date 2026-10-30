@@ -4,6 +4,35 @@
   import { toast, errorText } from "../lib/stores/toast.svelte";
   import Sheet from "../components/Sheet.svelte";
   import Icon from "../components/Icon.svelte";
+  import NavBar from "../ui/NavBar.svelte";
+  import { openMenu } from "../lib/menu.svelte";
+  import { haptic } from "../lib/native";
+
+  let selected = $state<AddonDescriptor | null>(null);
+  let detailOpen = $state(false);
+  function openAddon(a: AddonDescriptor) {
+    selected = a;
+    detailOpen = true;
+  }
+  function move(a: AddonDescriptor, dir: number) {
+    const userList = list.filter((x) => !x.flags.protected);
+    const i = userList.findIndex((x) => x.transportUrl === a.transportUrl);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= userList.length) return;
+    [userList[i], userList[j]] = [userList[j], userList[i]];
+    list = [...list.filter((x) => x.flags.protected), ...userList];
+    api.reorder(userList.map((x) => x.transportUrl));
+    haptic("selection");
+  }
+  function moreMenu(e: MouseEvent) {
+    openMenu(e.currentTarget as HTMLElement, [
+      { label: checking ? "Checking…" : "Check health", icon: "gauge", disabled: checking, run: check },
+      { label: "Refresh manifests", icon: "refresh", run: refresh },
+      { label: "Copy addon list", icon: "upload", run: exportList },
+      { label: "Import from clipboard", icon: "download", run: importList },
+      { label: "Browse community addons", icon: "globe", run: () => api.openExternal("https://stremio-addons.net") },
+    ]);
+  }
 
   let { install: installUrl }: { install?: string } = $props();
 
@@ -57,6 +86,7 @@
   }
 
   async function remove(a: AddonDescriptor) {
+    detailOpen = false;
     await api.uninstall(a.transportUrl);
     toast(`Removed ${a.manifest.name}`, "info", {
       label: "Undo",
@@ -130,87 +160,67 @@
   const builtins = $derived(list.filter((a) => a.flags.protected));
 </script>
 
+<NavBar title="Addons">
+  {#snippet actions()}
+    <button class="orb glass press" onclick={moreMenu} aria-label="More"><Icon name="more" size={22} /></button>
+  {/snippet}
+</NavBar>
+
 <div class="addons">
-  <header>
-    <h1 class="large-title">Addons</h1>
-    <div class="right">
-      <button class="btn tinted small press" onclick={check} disabled={checking}><Icon name="gauge" size={15} /> {checking ? "Checking…" : "Check health"}</button>
-      <button class="btn tinted small icon press" onclick={refresh} title="Refresh manifests" aria-label="Refresh manifests"><Icon name="refresh" size={15} /></button>
-      <button class="btn tinted small icon press" onclick={exportList} title="Copy addon list" aria-label="Copy addon list"><Icon name="upload" size={15} /></button>
-      <button class="btn tinted small icon press" onclick={importList} title="Import addon list from clipboard" aria-label="Import addon list"><Icon name="download" size={15} /></button>
-    </div>
-  </header>
+  <h1 class="large-title">Addons</h1>
 
-  <form
-    class="add glass"
-    onsubmit={(e) => {
-      e.preventDefault();
-      preview();
-    }}
-  >
+  <form class="add" onsubmit={(e) => { e.preventDefault(); preview(); }}>
     <Icon name="link" size={18} />
-    <input bind:value={url} placeholder="Paste an addon link (https://… or stremio://…)" spellcheck="false" />
-    <button class="btn accent small press" disabled={!url.trim() || busy}>Add</button>
+    <input bind:value={url} placeholder="Paste an addon link" spellcheck="false" autocapitalize="off" />
+    <button class="btn small accent press" disabled={!url.trim() || busy}>Add</button>
   </form>
-  <p class="foot faint hint">
-    Install buttons on addon websites open here too.
-    <button class="link" onclick={() => api.openExternal("https://stremio-addons.net")}>Browse community addons</button>
-  </p>
+  <p class="group-foot">Install buttons on addon websites open Lumen too. Drag to reorder: the order decides which addon answers first.</p>
 
-  <section class="group">
+  <h3 class="group-head">Installed</h3>
+  <section class="group list">
     {#each userAddons as a, i (a.transportUrl)}
       {@const h = health[a.transportUrl]}
       <div
-        class="addon glass"
+        class="addon"
         class:over={dragOver === i}
         class:dragging={dragFrom === i}
         draggable="true"
         ondragstart={() => (dragFrom = i)}
-        ondragover={(e) => {
-          e.preventDefault();
-          dragOver = i;
-        }}
+        ondragover={(e) => { e.preventDefault(); dragOver = i; }}
         ondragend={() => (dragFrom = dragOver = -1)}
         ondrop={() => onDrop(i)}
         role="listitem"
       >
-        <span class="grip" aria-hidden="true"><Icon name="grip" size={18} /></span>
-        <div class="logo">
-          {#if a.manifest.logo}<img src={img(a.manifest.logo)} alt="" />{:else}<Icon name="addons" size={22} />{/if}
-        </div>
-        <div class="txt">
-          <div class="nm">
-            {a.manifest.name}
-            <span class="faint foot">v{a.manifest.version}</span>
-            {#if h}<span class="health {h.status}" title={h.detail ?? ""}>{h.status === "ok" ? `${h.ms} ms` : h.status === "slow" ? `slow · ${(h.ms / 1000).toFixed(1)} s` : h.status === "dead" ? "not answering" : "skipped"}</span>{/if}
-          </div>
-          {#if a.manifest.description}<p class="foot dim clamp-2">{a.manifest.description}</p>{/if}
-          <div class="tags">
-            {#each resources(a) as r}<span class="chip outline">{r}</span>{/each}
-          </div>
-        </div>
-        <div class="acts">
-          {#if a.manifest.behaviorHints?.configurable}
-            <button class="btn tinted small press" onclick={() => configure(a)}>Configure</button>
-          {/if}
-          <button class="btn tinted small icon press danger" onclick={() => remove(a)} aria-label="Remove {a.manifest.name}" title="Remove"><Icon name="trash" size={16} /></button>
-        </div>
+        <button class="row" onclick={() => openAddon(a)}>
+          <span class="logo">{#if a.manifest.logo}<img src={img(a.manifest.logo)} alt="" />{:else}<Icon name="addons" size={20} />{/if}</span>
+          <span class="txt">
+            <span class="nm">
+              {a.manifest.name}
+              {#if h}<span class="health {h.status}" title={h.detail ?? ""}>{h.status === "ok" ? `${h.ms} ms` : h.status === "slow" ? `slow` : h.status === "dead" ? "down" : "skipped"}</span>{/if}
+            </span>
+            <span class="foot dim clamp-1">{resources(a).join(" · ")}</span>
+          </span>
+          <span class="grip" aria-hidden="true"><Icon name="grip" size={18} /></span>
+          <Icon name="chevron" size={14} class="chev" />
+        </button>
       </div>
+    {:else}
+      <div class="none foot dim">No addons yet. Paste a link above.</div>
     {/each}
   </section>
 
   {#if builtins.length}
-    <section class="group">
-      <h2 class="title3">Built in</h2>
+    <h3 class="group-head">Built in</h3>
+    <section class="group list">
       {#each builtins as a (a.transportUrl)}
-        <div class="addon glass">
-          <div class="logo sunlogo"><span></span></div>
-          <div class="txt">
-            <div class="nm">{a.manifest.name}</div>
-            <p class="foot dim">{a.manifest.description}</p>
-          </div>
-          <div class="acts">
-            <button class="btn tinted small press" onclick={() => {
+        <div class="addon">
+          <div class="row static">
+            <span class="logo sunlogo"><span></span></span>
+            <span class="txt">
+              <span class="nm">{a.manifest.name}</span>
+              <span class="foot dim clamp-2">{a.manifest.description}</span>
+            </span>
+            <button class="btn small tinted press" onclick={() => {
               app.settings.integrations.builtinCatalogs = !app.settings.integrations.builtinCatalogs;
               saveSettings();
               setTimeout(load, 500);
@@ -222,7 +232,34 @@
   {/if}
 </div>
 
-<Sheet bind:open={sheet} width={560}>
+<Sheet bind:open={detailOpen} width={520} title={selected?.manifest.name ?? ""}>
+  {#if selected}
+    {@const a = selected}
+    {@const idx = userAddons.findIndex((x) => x.transportUrl === a.transportUrl)}
+    <div class="pv">
+      <div class="logo big">{#if a.manifest.logo}<img src={img(a.manifest.logo)} alt="" />{:else}<Icon name="addons" size={30} />{/if}</div>
+      <p class="foot faint">Version {a.manifest.version}</p>
+      {#if a.manifest.description}<p class="sub dim">{a.manifest.description}</p>{/if}
+      <div class="tags center">
+        {#each resources(a) as r}<span class="chip small">{r}</span>{/each}
+        {#each a.manifest.types as t}<span class="chip small outline">{t}</span>{/each}
+      </div>
+    </div>
+    <div class="group">
+      {#if a.manifest.behaviorHints?.configurable}
+        <button class="srow" onclick={() => configure(a)}><span>Configure</span><Icon name="forward" size={14} /></button>
+      {/if}
+      <button class="srow" disabled={idx <= 0} onclick={() => move(a, -1)}><span>Move up</span><Icon name="chevronUp" size={16} /></button>
+      <button class="srow" disabled={idx < 0 || idx >= userAddons.length - 1} onclick={() => move(a, 1)}><span>Move down</span><Icon name="chevronDown" size={16} /></button>
+      <button class="srow" onclick={() => { navigator.clipboard?.writeText(a.transportUrl); toast("Link copied", "ok", undefined, 1400); }}><span>Copy link</span><Icon name="link" size={16} /></button>
+    </div>
+    <div class="group danger-group">
+      <button class="srow destructive" onclick={() => remove(a)}><span>Remove addon</span><Icon name="trash" size={16} /></button>
+    </div>
+  {/if}
+</Sheet>
+
+<Sheet bind:open={sheet} width={520} title="Install addon">
   {#if previewing}
     <div class="pv">
       <div class="logo big">{#if previewing.manifest.logo}<img src={img(previewing.manifest.logo)} alt="" />{:else}<Icon name="addons" size={30} />{/if}</div>
@@ -244,57 +281,53 @@
 
 <style>
   .addons {
-    padding: calc(var(--bar-h) + 36px) var(--gutter) 60px;
-    max-width: 1100px;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: calc(var(--safe-top) + var(--bar-h) + 18px) var(--gutter) calc(var(--safe-bottom) + 120px);
   }
-  header {
-    display: flex;
-    align-items: center;
-    margin-bottom: 22px;
-  }
-  .right {
-    margin-left: auto;
-    display: flex;
-    gap: 8px;
+  .large-title {
+    margin-bottom: 18px;
   }
   .add {
     display: flex;
     align-items: center;
-    gap: 12px;
-    height: 54px;
-    padding: 0 8px 0 18px;
+    gap: 10px;
+    height: 50px;
+    padding: 0 8px 0 16px;
     border-radius: var(--r-pill);
+    background: var(--fill-3);
+    color: var(--label-2);
   }
   .add input {
     flex: 1;
+    min-width: 0;
     background: none;
     border: 0;
     outline: 0;
-    font-size: 15.5px;
+    color: var(--label);
+    font-size: var(--fs-callout);
   }
-  .hint {
-    margin: 10px 18px 26px;
+  .add input::placeholder {
+    color: var(--label-2);
   }
-  .link {
-    color: var(--accent);
-    font-weight: 600;
+  .group-foot {
+    margin-bottom: 26px;
   }
   .group {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-bottom: 30px;
-  }
-  .group h2 {
-    margin: 8px 0 4px;
+    margin-bottom: 26px;
   }
   .addon {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 14px 16px;
-    border-radius: var(--r-lg);
+    position: relative;
     transition: transform var(--t-med) var(--spring), opacity var(--t-fast);
+  }
+  .addon + .addon::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 68px;
+    right: 0;
+    height: 0.5px;
+    background: var(--separator);
   }
   .addon.dragging {
     opacity: 0.4;
@@ -302,18 +335,37 @@
   .addon.over {
     transform: translateY(6px);
   }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 10px 16px;
+    text-align: left;
+  }
+  button.row:active {
+    background: var(--cell-press);
+  }
+  .row :global(.chev) {
+    color: var(--label-3);
+  }
   .grip {
-    color: var(--text-faint);
+    color: var(--label-3);
     cursor: grab;
   }
+  @media (hover: none) {
+    .grip {
+      display: none;
+    }
+  }
   .logo {
-    width: 52px;
-    height: 52px;
-    border-radius: 14px;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
     overflow: hidden;
     display: grid;
     place-items: center;
-    background: rgb(255 255 255 / 0.08);
+    background: var(--fill-3);
     flex: none;
   }
   .logo img {
@@ -322,8 +374,8 @@
     object-fit: contain;
   }
   .sunlogo span {
-    width: 26px;
-    height: 26px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     background: radial-gradient(circle at 50% 40%, #fff4cc, #ffc22e 55%, #e4736a);
   }
@@ -332,51 +384,34 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: 4px;
-  }
-  .txt p {
-    margin: 0;
+    gap: 2px;
   }
   .nm {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 8px;
-    font-weight: 650;
-    font-size: 16px;
+    font-weight: 600;
   }
   .health {
-    font-size: 12px;
-    font-weight: 600;
-    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 1px 7px;
     border-radius: 6px;
   }
   .health.ok {
-    color: #4ade80;
-    background: rgb(74 222 128 / 0.12);
+    color: var(--green);
+    background: color-mix(in srgb, var(--green) 14%, transparent);
   }
   .health.slow {
-    color: #fbbf24;
-    background: rgb(251 191 36 / 0.12);
+    color: var(--orange);
+    background: color-mix(in srgb, var(--orange) 14%, transparent);
   }
   .health.dead {
-    color: #f87171;
-    background: rgb(248 113 113 / 0.14);
+    color: var(--red);
+    background: color-mix(in srgb, var(--red) 14%, transparent);
   }
-  .tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-  }
-  .tags .chip {
-    height: 22px;
-    font-size: 11px;
-  }
-  .acts {
-    display: flex;
-    gap: 8px;
-  }
-  .danger:hover {
-    background: rgb(255 69 58 / 0.25);
+  .none {
+    padding: 18px 16px;
   }
   .pv {
     display: flex;
@@ -384,27 +419,68 @@
     align-items: center;
     text-align: center;
     gap: 8px;
-    padding-top: 6px;
+    padding: 4px 0 18px;
   }
   .pv p {
     margin: 0;
   }
   .logo.big {
-    width: 76px;
-    height: 76px;
-    border-radius: 20px;
-    margin-bottom: 6px;
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    margin-bottom: 4px;
+  }
+  .tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
   }
   .center {
     justify-content: center;
-    margin: 6px 0;
+    margin-top: 4px;
   }
   .warn {
-    color: #fbbf24;
+    color: var(--orange);
   }
   .pv-acts {
     display: flex;
     gap: 10px;
     margin-top: 14px;
+    width: 100%;
+  }
+  .pv-acts .btn {
+    flex: 1;
+  }
+  .srow {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: 50px;
+    padding: 0 16px;
+    font-size: var(--fs-body);
+    color: var(--accent);
+  }
+  .srow + .srow::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 16px;
+    right: 0;
+    height: 0.5px;
+    background: var(--separator);
+  }
+  .srow:active {
+    background: var(--cell-press);
+  }
+  .srow:disabled {
+    opacity: 0.35;
+  }
+  .srow.destructive {
+    color: var(--red);
+  }
+  .danger-group {
+    margin-bottom: 0;
   }
 </style>

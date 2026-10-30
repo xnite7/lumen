@@ -3,13 +3,15 @@
   import { app } from "../lib/stores/app.svelte";
   import Poster from "../components/Poster.svelte";
   import Controls from "../components/Controls.svelte";
+  import NavBar from "../ui/NavBar.svelte";
+  import { untrack } from "svelte";
 
-  let { type: initialType, catalog: initialCatalog }: { type?: string; catalog?: string } = $props();
+  let { type: initialType, catalog: initialCatalog, genre: initialGenre }: { type?: string; catalog?: string; genre?: string } = $props();
 
   let all = $state<CatalogRef[]>([]);
-  let type = $state(initialType ?? "movie");
-  let key = $state(initialCatalog ?? "");
-  let genre = $state<string>("");
+  let type = $state(untrack(() => initialType) ?? "movie");
+  let key = $state(untrack(() => initialCatalog) ?? "");
+  let genre = $state<string>(untrack(() => initialGenre) ?? "");
   let items = $state<Meta[]>([]);
   let loading = $state(false);
   let more = $state(true);
@@ -94,9 +96,11 @@
   }
 </script>
 
+<NavBar title={genre || cat?.name || "Browse"} />
+
 <div class="discover">
   <header>
-    <h1 class="large-title">Discover</h1>
+    <h1 class="large-title">{genre || cat?.name || "Browse"}</h1>
     <Controls kind="segmented" value={type} options={types.map((t) => ({ value: t, label: typeLabel(t) }))} onchange={setType} label="Type" />
   </header>
   <div class="cats scroll-x">
@@ -125,13 +129,14 @@
 
 <style>
   .discover {
-    padding: calc(var(--bar-h) + 36px) var(--gutter) 60px;
+    padding: calc(var(--safe-top) + var(--bar-h) + 18px) var(--gutter) calc(var(--safe-bottom) + 120px);
   }
   header {
     display: flex;
     align-items: center;
-    gap: 22px;
-    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 12px 22px;
+    margin-bottom: 18px;
   }
   .cats,
   .genres {
@@ -148,12 +153,23 @@
     margin-left: 6px;
     font-weight: 500;
   }
-  .chip.sel {
-    background: var(--text);
-    color: var(--ink);
+  .cats,
+  .genres {
+    margin-left: calc(-1 * var(--gutter));
+    margin-right: calc(-1 * var(--gutter));
+    padding: 0 var(--gutter);
+  }
+  .cats .chip {
+    flex: none;
   }
   .chip.sel span {
-    color: color-mix(in srgb, var(--ink) 60%, transparent);
+    color: color-mix(in srgb, var(--bg) 60%, transparent);
+  }
+  @media (max-width: 759px) {
+    .grid {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px 10px;
+    }
   }
   .g {
     padding: 6px 2px;

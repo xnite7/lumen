@@ -1,0 +1,13 @@
+[package]
+name = "tauri-plugin-lumen-native"
+version = "0.1.0"
+edition = "2021"
+links = "tauri-plugin-lumen-native"
+description = "Lumen's native iPhone features: haptics, share sheet, Safari sign-in, AVPlayer with PiP and a Live Activity."
+publish = false
+
+[dependencies]
+tauri = "2.12"
+
+[build-dependencies]
+tauri-plugin = { version = "2", features = ["build"] }

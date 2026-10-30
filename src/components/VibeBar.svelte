@@ -60,7 +60,7 @@
         ask();
       }}
     >
-      <span class="orb" aria-hidden="true"></span>
+      <span class="blobs" aria-hidden="true"></span>
       <Icon name="sparkles" size={19} />
       <input
         bind:value={q}
@@ -126,7 +126,7 @@
     overflow: hidden;
   }
   /* soft colour blobs from the hero artwork drifting behind the glass */
-  .orb {
+  .blobs {
     position: absolute;
     inset: -40%;
     z-index: -2;
@@ -138,7 +138,7 @@
     opacity: 0.55;
     animation: drift 14s ease-in-out infinite alternate;
   }
-  .busy .orb {
+  .busy .blobs {
     animation-duration: 3s;
     opacity: 0.9;
   }
@@ -179,10 +179,16 @@
   .chips {
     display: flex;
     gap: 8px;
-    margin: 12px 4px 0;
-    flex-wrap: wrap;
+    margin: 12px calc(-1 * var(--gutter)) 0;
+    padding: 0 var(--gutter);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .chips::-webkit-scrollbar {
+    display: none;
   }
   .chips .chip {
+    flex: none;
     height: 32px;
     font-size: 13px;
     font-weight: 500;
@@ -234,7 +240,17 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  @media (max-width: 760px) {
+  @media (max-width: 759px) {
+    .vibe {
+      margin: 22px var(--gutter) 4px;
+    }
+    .field-wrap {
+      height: 50px;
+      padding-left: 16px;
+    }
+    input {
+      font-size: var(--fs-callout);
+    }
     .picks {
       grid-template-columns: 1fr;
     }

@@ -7,7 +7,14 @@
   import { initPlayback, pb, play } from "./lib/stores/playback.svelte";
   import { toast } from "./lib/stores/toast.svelte";
   import { nav, current, back, go, savedScroll } from "./lib/router.svelte";
-  import TitleBar from "./components/TitleBar.svelte";
+  import { ui, onScroll } from "./lib/ui.svelte";
+  import { isTauri } from "./lib/api";
+  import TabBar from "./ui/TabBar.svelte";
+  import ContextMenu from "./ui/ContextMenu.svelte";
+  import Icon from "./components/Icon.svelte";
+  import Onboarding from "./views/Onboarding.svelte";
+  import Profile from "./views/Profile.svelte";
+  import Handoff from "./ui/Handoff.svelte";
   import Ambient from "./components/Ambient.svelte";
   import PreviewCard from "./components/PreviewCard.svelte";
   import Toasts from "./components/Toasts.svelte";
@@ -22,8 +29,8 @@
   import Player from "./views/Player.svelte";
 
   let scroller: HTMLElement | undefined = $state();
-  let scrollY = $state(0);
   const route = $derived(current());
+  const winControls = $derived(isTauri && (app.platform === "windows" || app.platform === "linux"));
 
   $effect(() => {
     (async () => {
@@ -33,7 +40,7 @@
       initGaze();
       initPlayback();
       loadLibrary();
-      firstRun();
+      if (!app.settings.general.onboarded) ui.onboarding = true;
     })();
     listen<string>("deeplink", handleLink);
     listen("library-changed", () => loadLibrary());
@@ -43,31 +50,18 @@
   // Restore scroll when going back; top of page for new pages.
   $effect(() => {
     void nav.stack.length;
+    void nav.tab;
     void route;
-    requestAnimationFrame(() => scroller && (scroller.scrollTop = savedScroll()));
+    requestAnimationFrame(() => {
+      if (!scroller) return;
+      scroller.scrollTop = savedScroll();
+      onScroll(scroller.scrollTop);
+    });
   });
-
-  // First launch on the old app's machine: offer to bring its keys along.
-  function firstRun() {
-    let seen = false;
-    try {
-      seen = !!localStorage.getItem("lumen.welcomed");
-      localStorage.setItem("lumen.welcomed", "1");
-    } catch {}
-    if (seen || app.platform !== "windows" || app.secrets.simkl_token) return;
-    toast("Welcome to Lumen. Bring your keys over from Stremio Enhanced?", "info", {
-      label: "Import",
-      run: async () => {
-        try {
-          const r = await api.importEnhanced();
-          await refreshSecrets();
-          toast(`Imported ${Object.keys(r).length} settings`, "ok");
-        } catch (e) {
-          toast(String(e), "error");
-        }
-      },
-    }, 12000);
-  }
+  $effect(() => {
+    document.documentElement.classList.toggle("onboarding", ui.onboarding);
+    document.documentElement.dataset.platform = app.platform;
+  });
 
   function handleLink(raw: string) {
     const u = raw.trim();
@@ -123,6 +117,11 @@
       go({ name: "search" });
     } else if (e.altKey && e.key === "ArrowLeft") back();
   }
+  function startDrag(e: MouseEvent) {
+    if (e.button !== 0) return;
+    if (e.detail === 2) api.window("maximize");
+    else api.window("drag");
+  }
   function onMouse(e: MouseEvent) {
     if (e.button === 3) {
       e.preventDefault();
@@ -145,19 +144,20 @@
 {#if app.ready}
   <Ambient />
   <div class="grain" aria-hidden="true"></div>
-  <TitleBar scrolled={scrollY > 40} />
 
-  <main class="scroller" bind:this={scroller} data-scroller onscroll={() => (scrollY = scroller!.scrollTop)} class:behind={pb.open}>
+  <main class="scroller" bind:this={scroller} data-scroller onscroll={() => onScroll(scroller!.scrollTop)} class:behind={pb.open} style:--win-controls={winControls ? "118px" : "0px"}>
     {#key route}
       <div class="page">
         {#if route.name === "home"}
-          <Home {scrollY} />
+          <Home scrollY={ui.scrollY} />
         {:else if route.name === "discover"}
-          <Discover type={route.type} catalog={route.catalog} />
+          <Discover type={route.type} catalog={route.catalog} genre={route.genre} />
         {:else if route.name === "library"}
           <Library />
         {:else if route.name === "search"}
           <Search q={route.q} />
+        {:else if route.name === "profile"}
+          <Profile />
         {:else if route.name === "detail"}
           <Detail type={route.type} id={route.id} hint={route.hint} preview={route.preview} />
         {:else if route.name === "person"}
@@ -171,8 +171,26 @@
     {/key}
   </main>
 
+  {#if ui.phone}<div class="edge-bottom" aria-hidden="true"></div>{/if}
+  <TabBar />
+
+  {#if winControls}
+    <!-- borderless window: the strip along the top drags it -->
+    <div class="drag" onmousedown={startDrag} role="presentation"></div>
+    <div class="win" class:hidden={app.playing}>
+      <button onclick={() => api.window("minimize")} aria-label="Minimize"><Icon name="minimize" size={14} /></button>
+      <button onclick={() => api.window("maximize")} aria-label="Maximize"><Icon name="maximize" size={13} /></button>
+      <button class="x" onclick={() => api.window("close")} aria-label="Close"><Icon name="close" size={14} /></button>
+    </div>
+  {/if}
+
   <PreviewCard />
   {#if pb.open}<Player />{/if}
+  <ContextMenu />
+  <Handoff />
+  {#if ui.onboarding}
+    <Onboarding ondone={() => (ui.onboarding = false)} />
+  {/if}
   <Toasts />
 {:else}
   <div class="splash"><span class="sun"></span></div>
@@ -191,6 +209,44 @@
   }
   .page {
     min-height: 100%;
+  }
+  .drag {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: calc(var(--bar-h) + 10px);
+    z-index: 50;
+  }
+  .win {
+    position: fixed;
+    z-index: 71;
+    top: 16px;
+    right: 14px;
+    display: flex;
+    gap: 2px;
+    transition: opacity var(--t-med) ease;
+  }
+  .win.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .win button {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: var(--label-2);
+    transition: background var(--t-fast), color var(--t-fast);
+  }
+  .win button:hover {
+    background: var(--fill-3);
+    color: var(--label);
+  }
+  .win .x:hover {
+    background: #e5484d;
+    color: white;
   }
   .splash {
     height: 100%;

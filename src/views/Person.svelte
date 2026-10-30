@@ -1,4 +1,5 @@
 <script lang="ts">
+  import NavBar from "../ui/NavBar.svelte";
   // A person's own page: portrait, the facts that matter, gallery, and
   // everything of theirs you can open. TMDB for actors; for adult
   // performers, any adult addon that exposes a performer route.
@@ -48,6 +49,8 @@
     } else openDetail(m, el);
   }
 </script>
+
+<NavBar title={name} showAfter={260} />
 
 <div class="person">
   {#if error}
@@ -104,7 +107,7 @@
 
 <style>
   .person {
-    padding: calc(var(--bar-h) + 40px) var(--gutter) 60px;
+    padding: calc(var(--safe-top) + var(--bar-h) + 24px) var(--gutter) calc(var(--safe-bottom) + 120px);
   }
   .head {
     display: grid;

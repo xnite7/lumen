@@ -11,6 +11,9 @@
   import StreamsSheet from "../components/StreamsSheet.svelte";
   import Poster from "../components/Poster.svelte";
   import Icon from "../components/Icon.svelte";
+  import NavBar from "../ui/NavBar.svelte";
+  import { share, haptic } from "../lib/native";
+  import { ui } from "../lib/ui.svelte";
 
   let { type, id, hint, preview }: { type: string; id: string; hint?: string; preview?: any } = $props();
 
@@ -22,6 +25,12 @@
   let sheetVideo = $state<Video | null>(null);
   let rating = $state<number | null>(null);
   let hoverStar = $state(0);
+  let descOpen = $state(false);
+  function doShare() {
+    const mm = meta ?? preview;
+    if (!mm) return;
+    share({ title: mm.name, url: mm.id?.startsWith("tt") ? `https://www.imdb.com/title/${mm.id.split(":")[0]}/` : undefined });
+  }
 
   const m = $derived(meta ?? (preview as Meta | undefined) ?? null);
 
@@ -131,6 +140,11 @@
     <p class="foot dim">{error}</p>
   </div>
 {:else if m}
+  <NavBar title={m.name} showAfter={ui.phone ? 360 : 420} transparent={ui.scrollY < 300}>
+    {#snippet actions()}
+      <button class="orb glass press" onclick={doShare} aria-label="Share"><Icon name="share" size={19} /></button>
+    {/snippet}
+  </NavBar>
   <article class="detail">
     <section class="hero">
       {#if backdrop}
@@ -144,45 +158,55 @@
           <h1 class="large-title">{m.name}</h1>
         {/if}
         <div class="facts">
-          {#if m.imdbRating}<span class="chip"><Icon name="star" size={11} fill /> {m.imdbRating}</span>{/if}
-          {#if year(m)}<span class="chip outline">{year(m)}</span>{/if}
-          {#if m.runtime || extra?.runtime}<span class="chip outline">{runtime(m.runtime ?? extra?.runtime)}</span>{/if}
-          {#if extra?.certification}<span class="chip outline">{extra.certification}</span>{/if}
-          {#if seasons.filter((s) => s > 0).length}<span class="chip outline">{seasons.filter((s) => s > 0).length} seasons</span>{/if}
-          {#if (extra?.genres ?? m.genres)?.length}<span class="genres foot">{(extra?.genres ?? m.genres).slice(0, 3).join(", ")}</span>{/if}
+          {#if m.imdbRating}<span class="rating"><Icon name="star" size={12} fill /> {m.imdbRating}</span>{/if}
+          <span class="sub">{[m.type === "series" ? "Series" : "Film", year(m), m.runtime || extra?.runtime ? runtime(m.runtime ?? extra?.runtime) : "", seasons.filter((s) => s > 0).length ? `${seasons.filter((s) => s > 0).length} seasons` : ""].filter(Boolean).join(" · ")}</span>
+          {#if extra?.certification}<span class="chip small outline">{extra.certification}</span>{/if}
+          {#if (extra?.genres ?? m.genres)?.length}<span class="sub dim">{(extra?.genres ?? m.genres).slice(0, 3).join(" · ")}</span>{/if}
         </div>
-        {#if extra?.tagline}<p class="tagline">{extra.tagline}</p>{/if}
-        {#if m.description || extra?.overview}<p class="desc">{m.description ?? extra?.overview}</p>{/if}
         <div class="actions">
           {#if primary}
-            <button class="btn primary big press" onclick={() => openStreams(primary.video)}>
+            <button class="btn lg primary press cta" onclick={() => { haptic("medium"); openStreams(primary.video); }}>
               <Icon name="play" size={18} />
-              {primary.label}{#if primary.sub}<span class="sub">{primary.sub}</span>{/if}
+              {primary.label}{#if primary.sub}<span class="psub">{primary.sub}</span>{/if}
             </button>
           {/if}
-          {#if trailerKey()}
-            <button class="btn tinted glass press" onclick={() => playTrailer()}><Icon name="film" size={18} /> Trailer</button>
-          {/if}
-          <button class="btn tinted glass icon press" onclick={() => toggleLibrary(m)} aria-label={owned ? "Remove from library" : "Add to library"} title={owned ? "In your library" : "Add to library"}>
-            <Icon name={owned ? "check" : "plus"} size={20} />
-          </button>
-          <button class="btn tinted glass icon press" onclick={() => setWatched(m, null, !(item?.state?.flaggedWatched))} aria-label="Mark watched" title={item?.state?.flaggedWatched ? "Watched" : "Mark as watched"}>
-            <Icon name={item?.state?.flaggedWatched ? "eye" : "eyeOff"} size={19} />
-          </button>
-          {#if app.secrets.simkl_token}
-            <div class="stars glass" role="radiogroup" aria-label="Your rating" onmouseleave={() => (hoverStar = 0)}>
-              {#each Array(10) as _, n}
-                <button
-                  class="star"
-                  class:on={(hoverStar || rating || 0) > n}
-                  onmouseenter={() => (hoverStar = n + 1)}
-                  onclick={() => rate(rating === n + 1 ? null : n + 1)}
-                  aria-label="{n + 1} out of 10"
-                ><Icon name="star" size={15} fill={(hoverStar || rating || 0) > n} /></button>
-              {/each}
-            </div>
-          {/if}
+          <div class="secondary">
+            <button class="act press" onclick={() => { haptic("light"); toggleLibrary(m); }} aria-label={owned ? "Remove from My List" : "Add to My List"}>
+              <span class="act-ic glass"><Icon name={owned ? "check" : "plus"} size={20} /></span><span class="act-l">My List</span>
+            </button>
+            <button class="act press" onclick={() => { haptic("light"); setWatched(m, null, !(item?.state?.flaggedWatched)); }} aria-label="Mark watched">
+              <span class="act-ic glass" class:lit={item?.state?.flaggedWatched}><Icon name="checkCircle" size={20} /></span><span class="act-l">{item?.state?.flaggedWatched ? "Watched" : "Mark watched"}</span>
+            </button>
+            {#if trailerKey()}
+              <button class="act press" onclick={() => playTrailer()}>
+                <span class="act-ic glass"><Icon name="film" size={19} /></span><span class="act-l">Trailer</span>
+              </button>
+            {/if}
+            <button class="act press" onclick={doShare} aria-label="Share">
+              <span class="act-ic glass"><Icon name="share" size={19} /></span><span class="act-l">Share</span>
+            </button>
+          </div>
         </div>
+        {#if extra?.tagline}<p class="tagline">{extra.tagline}</p>{/if}
+        {#if m.description || extra?.overview}
+          <button class="desc-wrap" onclick={() => (descOpen = !descOpen)} aria-expanded={descOpen}>
+            <p class="desc" class:clamp-3={!descOpen && ui.phone}>{m.description ?? extra?.overview}</p>
+          </button>
+        {/if}
+        {#if app.secrets.simkl_token}
+          <div class="stars" role="radiogroup" tabindex="-1" aria-label="Your rating" onmouseleave={() => (hoverStar = 0)}>
+            <span class="foot dim">Your rating</span>
+            {#each Array(10) as _, n}
+              <button
+                class="star"
+                class:on={(hoverStar || rating || 0) > n}
+                onmouseenter={() => (hoverStar = n + 1)}
+                onclick={() => { haptic("selection"); rate(rating === n + 1 ? null : n + 1); }}
+                aria-label="{n + 1} out of 10"
+              ><Icon name="star" size={16} fill={(hoverStar || rating || 0) > n} /></button>
+            {/each}
+          </div>
+        {/if}
       </div>
     </section>
 
@@ -357,11 +381,15 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
+    gap: 6px 12px;
   }
-  .genres {
-    color: var(--text-dim);
-    margin-left: 4px;
+  .rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 700;
+    font-size: var(--fs-sub);
+    color: var(--yellow);
   }
   .tagline {
     margin: 0;
@@ -383,25 +411,48 @@
     gap: 10px;
     margin-top: 4px;
   }
-  .btn.big {
-    height: 50px;
-    padding: 0 26px;
-    font-size: 16px;
-  }
-  .sub {
+  .psub {
     font-weight: 500;
     opacity: 0.6;
     margin-left: 4px;
   }
+  .secondary {
+    display: flex;
+    gap: 10px;
+  }
+  .act {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .act-ic {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+  }
+  .act-ic.lit {
+    color: var(--green);
+  }
+  .act-l {
+    display: none;
+  }
+  .desc-wrap {
+    text-align: left;
+    cursor: default;
+  }
   .stars {
     display: flex;
-    padding: 6px 10px;
-    border-radius: var(--r-pill);
+    align-items: center;
     gap: 1px;
+  }
+  .stars .foot {
+    margin-right: 8px;
   }
   .star {
     padding: 3px;
-    color: rgb(255 255 255 / 0.35);
+    color: var(--label-3);
     transition: transform var(--t-fast) var(--spring), color var(--t-fast);
   }
   .star.on {
@@ -430,10 +481,7 @@
     padding: 0 14px;
     font-size: 13px;
   }
-  .chip.sel {
-    background: var(--text);
-    color: var(--ink);
-  }
+
   .eps {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
@@ -635,16 +683,106 @@
   .err p {
     margin: 0;
   }
-  @media (max-width: 760px) {
+  @media (max-width: 759px) {
+    .hero {
+      min-height: 0;
+    }
+    .bg {
+      height: 72vw;
+      max-height: 480px;
+      inset: 0 0 auto 0;
+      -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent 100%);
+      mask-image: linear-gradient(180deg, #000 60%, transparent 100%);
+    }
+    .hero-shade {
+      display: none;
+    }
     .info {
       width: auto;
-      padding-top: 70vw;
+      padding: calc(min(72vw, 480px) - 70px) var(--gutter) 6px;
+      align-items: center;
+      text-align: center;
+      gap: 14px;
+    }
+    .logo {
+      object-position: center bottom;
+      max-height: 110px;
+      max-width: 80%;
+    }
+    .facts {
+      justify-content: center;
+    }
+    .actions {
+      width: 100%;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .cta {
+      width: 100%;
+    }
+    .secondary {
+      width: 100%;
+      justify-content: space-around;
+    }
+    .act {
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+    }
+    .act-ic {
+      width: 46px;
+      height: 46px;
+    }
+    .act-l {
+      display: block;
+      font-size: var(--fs-caption);
+      color: var(--label-2);
+      font-weight: 500;
+    }
+    .desc {
+      text-align: left;
+      font-size: var(--fs-sub);
+    }
+    .tagline {
+      font-size: var(--fs-callout);
+    }
+    .stars {
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .stars .foot {
+      width: 100%;
+      margin: 0 0 4px;
+    }
+    .block {
+      margin-top: 28px;
+    }
+    .block-h {
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .block-h .title2 {
+      font-size: var(--fs-title3);
+    }
+    .seasons {
+      width: calc(100% + var(--gutter));
+      margin-right: calc(-1 * var(--gutter));
+    }
+    .seasons .chip {
+      flex: none;
     }
     .eps {
       grid-template-columns: 1fr;
     }
     .thumb {
       width: 140px;
+    }
+    .about dl {
+      grid-template-columns: 1fr;
+      gap: 2px;
+    }
+    dd {
+      margin-bottom: 10px;
     }
   }
 </style>

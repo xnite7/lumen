@@ -82,6 +82,13 @@ jobs:
           mkdir -p gen/apple/Externals/arm64/release gen/apple/Externals/arm64/Release
           cp target/aarch64-apple-ios/release/liblumen_lib.a gen/apple/Externals/arm64/release/libapp.a
           cp target/aarch64-apple-ios/release/liblumen_lib.a gen/apple/Externals/arm64/Release/libapp.a
+      - name: Add widget extension and iPhone permissions
+        working-directory: src-tauri/gen/apple
+        run: |
+          pip3 install --quiet --break-system-packages pyyaml || pip3 install --quiet pyyaml
+          python3 ../../../scripts/ios-project.py
+          which xcodegen || brew install xcodegen
+          xcodegen generate --spec project.yml
       - name: Disable Xcode's Rust build phase
         working-directory: src-tauri/gen/apple
         run: |

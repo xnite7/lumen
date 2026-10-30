@@ -1,70 +1,126 @@
 <script lang="ts">
-  // A sheet that rises from the bottom edge (iOS) and sits in a glass panel.
-  // Escape, the scrim, or dragging the grabber down closes it.
+  // iOS 27 sheet. On phones it floats inset from the screen edges with the
+  // device's corner radius and follows your finger -- a quick flick or a
+  // long pull dismisses it; otherwise it springs back. On wide screens it's
+  // a centred card (or a side panel with `side`).
   import type { Snippet } from "svelte";
+  import Icon from "./Icon.svelte";
+  import { haptic } from "../lib/native";
+
   let {
     open = $bindable(false),
     title = "",
-    width = 720,
+    width = 640,
     side = false,
+    closeButton = true,
     children,
     header,
     onclose,
-  }: { open?: boolean; title?: string; width?: number; side?: boolean; children: Snippet; header?: Snippet; onclose?: () => void } = $props();
+  }: {
+    open?: boolean;
+    title?: string;
+    width?: number;
+    side?: boolean;
+    closeButton?: boolean;
+    children: Snippet;
+    header?: Snippet;
+    onclose?: () => void;
+  } = $props();
 
   let panel: HTMLElement | undefined = $state();
-  let dragY = $state(0);
-  let dragging = false;
+  let content: HTMLElement | undefined = $state();
+  let dy = $state(0);
+  let dragging = $state(false);
+  let closing = $state(false);
   let startY = 0;
+  let lastY = 0;
+  let lastT = 0;
+  let vel = 0;
 
   function close() {
-    open = false;
-    onclose?.();
+    if (closing) return;
+    closing = true;
+    setTimeout(() => {
+      open = false;
+      closing = false;
+      dy = 0;
+      onclose?.();
+    }, 260);
   }
+
   function down(e: PointerEvent) {
+    if (side || e.button !== 0) return;
+    const t = e.target as HTMLElement;
+    // only start a drag from the header, or from content scrolled to the top
+    const inContent = content?.contains(t);
+    if (inContent && (content!.scrollTop > 0 || t.closest("input, textarea, button, a, [role=slider]"))) return;
+    if (!inContent && t.closest("button, input")) return;
     dragging = true;
-    startY = e.clientY;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    startY = lastY = e.clientY;
+    lastT = performance.now();
+    vel = 0;
+    panel?.setPointerCapture(e.pointerId);
   }
   function move(e: PointerEvent) {
-    if (dragging) dragY = Math.max(0, e.clientY - startY);
+    if (!dragging) return;
+    const now = performance.now();
+    vel = (e.clientY - lastY) / Math.max(1, now - lastT);
+    lastY = e.clientY;
+    lastT = now;
+    const raw = e.clientY - startY;
+    // rubber-band upward
+    dy = raw > 0 ? raw : -Math.sqrt(-raw) * 3;
   }
   function up() {
     if (!dragging) return;
     dragging = false;
-    if (dragY > 120) close();
-    dragY = 0;
+    if (dy > 140 || (vel > 0.6 && dy > 24)) {
+      haptic("light");
+      close();
+    } else dy = 0;
   }
+
   $effect(() => {
-    if (open) requestAnimationFrame(() => panel?.focus());
+    if (open) {
+      closing = false;
+      requestAnimationFrame(() => panel?.focus());
+    }
   });
 </script>
 
 <svelte:window onkeydown={(e) => open && e.key === "Escape" && close()} />
 
 {#if open}
-  <div class="scrim" onclick={close} role="presentation"></div>
+  <div class="scrim" class:closing onclick={close} role="presentation" style:opacity={dy > 0 ? Math.max(0.2, 1 - dy / 500) : undefined}></div>
   <div
     class="sheet glass strong"
     class:side
+    class:closing
+    class:dragging
     bind:this={panel}
     style:--w="{width}px"
-    style:transform={dragY ? `translateY(${dragY}px)` : undefined}
-    style:transition={dragY ? "none" : undefined}
+    style:--dy="{dy}px"
+    onpointerdown={down}
+    onpointermove={move}
+    onpointerup={up}
+    onpointercancel={up}
     role="dialog"
     aria-modal="true"
     aria-label={title}
     tabindex="-1"
   >
-    {#if !side}
-      <div class="grab" onpointerdown={down} onpointermove={move} onpointerup={up} role="presentation"><span></span></div>
-    {/if}
+    {#if !side}<div class="grab" aria-hidden="true"><span></span></div>{/if}
     {#if header}
       {@render header()}
-    {:else if title}
-      <header><h2 class="title2">{title}</h2></header>
+    {:else if title || closeButton}
+      <header>
+        <h2 class="headline">{title}</h2>
+        {#if closeButton}
+          <button class="x press" onclick={close} aria-label="Close"><Icon name="close" size={15} /></button>
+        {/if}
+      </header>
     {/if}
-    <div class="content">
+    <div class="content" bind:this={content}>
       {@render children()}
     </div>
   </div>
@@ -75,9 +131,12 @@
     position: fixed;
     inset: 0;
     z-index: 80;
-    background: rgb(0 0 0 / 0.38);
-    backdrop-filter: blur(2px);
+    background: var(--scrim);
     animation: fade var(--t-med) ease both;
+    transition: opacity var(--t-med) ease;
+  }
+  .scrim.closing {
+    opacity: 0 !important;
   }
   @keyframes fade {
     from {
@@ -88,30 +147,41 @@
     position: fixed;
     z-index: 81;
     left: 50%;
-    bottom: 12px;
+    bottom: max(12px, var(--safe-bottom));
     width: min(var(--w), calc(100vw - 24px));
-    max-height: min(86vh, 900px);
-    margin-left: calc(min(var(--w), calc(100vw - 24px)) / -2);
-    border-radius: var(--r-xl);
+    max-height: min(88vh, 920px);
+    border-radius: var(--r-sheet);
     display: flex;
     flex-direction: column;
     outline: none;
+    transform: translate(-50%, var(--dy));
     animation: rise var(--t-slow) var(--spring) both;
-    transition: transform var(--t-med) var(--spring);
+    transition: transform var(--t-slow) var(--spring);
+    touch-action: pan-x;
+  }
+  .sheet.dragging {
+    transition: none;
+  }
+  .sheet.closing {
+    transform: translate(-50%, 110%);
+    transition: transform 260ms var(--ease-out);
+  }
+  @keyframes rise {
+    from {
+      transform: translate(-50%, 105%);
+    }
   }
   .sheet.side {
     left: auto;
     right: 12px;
     top: 12px;
     bottom: 12px;
-    margin-left: 0;
     max-height: none;
+    transform: none;
     animation-name: slide;
   }
-  @keyframes rise {
-    from {
-      transform: translateY(105%);
-    }
+  .sheet.side.closing {
+    transform: translateX(110%);
   }
   @keyframes slide {
     from {
@@ -121,23 +191,54 @@
   .grab {
     display: grid;
     place-items: center;
-    height: 22px;
-    cursor: grab;
+    height: 16px;
     flex: none;
+    cursor: grab;
   }
   .grab span {
-    width: 40px;
+    width: 36px;
     height: 5px;
-    border-radius: 5px;
-    background: rgb(255 255 255 / 0.28);
+    border-radius: 3px;
+    background: var(--fill-1);
   }
   header {
-    padding: 4px 24px 12px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0 60px;
     flex: none;
+  }
+  header h2 {
+    text-align: center;
+  }
+  .x {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    margin-top: -15px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--fill-2);
+    color: var(--label-2);
   }
   .content {
     overflow-y: auto;
-    padding: 0 24px 24px;
+    padding: 6px 20px 22px;
     overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+  @media (max-width: 759px) {
+    .sheet {
+      width: calc(100vw - 16px);
+      bottom: max(8px, calc(var(--safe-bottom) - 26px));
+    }
+    .content {
+      padding: 6px 16px calc(var(--safe-bottom) + 8px);
+    }
   }
 </style>

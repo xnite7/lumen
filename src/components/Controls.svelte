@@ -3,6 +3,7 @@
 </script>
 
 <script lang="ts">
+  import { haptic } from "../lib/native";
   let {
     kind,
     value = $bindable(),
@@ -31,7 +32,13 @@
     if (el) thumb = { x: el.offsetLeft, w: el.offsetWidth };
   });
 
+  let lastTick = 0;
   function set(v: any) {
+    if (kind !== "slider") haptic(kind === "switch" ? "light" : "selection");
+    else if (performance.now() - lastTick > 70) {
+      lastTick = performance.now();
+      haptic("selection");
+    }
     value = v;
     onchange?.(v);
   }
@@ -68,12 +75,12 @@
     width: 51px;
     height: 31px;
     border-radius: 31px;
-    background: rgb(120 120 128 / 0.32);
+    background: var(--fill-1);
     transition: background var(--t-med) ease;
     flex: none;
   }
   .switch.on {
-    background: #34c759;
+    background: var(--green);
   }
   .knob {
     position: absolute;
@@ -81,38 +88,45 @@
     left: 2px;
     width: 27px;
     height: 27px;
-    border-radius: 50%;
+    border-radius: 27px;
     background: #fff;
     box-shadow:
       0 3px 8px rgb(0 0 0 / 0.15),
       0 3px 1px rgb(0 0 0 / 0.06);
-    transition: transform var(--t-med) var(--spring);
+    transition:
+      transform var(--t-med) var(--spring),
+      width var(--t-med) var(--spring);
   }
   .on .knob {
     transform: translateX(20px);
   }
   .switch:active .knob {
-    width: 32px;
+    width: 33px;
   }
   .on:active .knob {
-    transform: translateX(15px);
+    transform: translateX(14px);
   }
 
+  /* iOS 27 segmented control: capsule track, glass thumb */
   .seg {
     position: relative;
     display: inline-flex;
     padding: 2px;
-    border-radius: 10px;
-    background: rgb(118 118 128 / 0.24);
+    height: 32px;
+    border-radius: var(--r-pill);
+    background: var(--fill-3);
+    max-width: 100%;
   }
   .seg .thumb {
     position: absolute;
     top: 2px;
     bottom: 2px;
     left: 0;
-    border-radius: 8px;
-    background: rgb(255 255 255 / 0.22);
-    box-shadow: 0 3px 8px rgb(0 0 0 / 0.12);
+    border-radius: var(--r-pill);
+    background: color-mix(in srgb, var(--label) 18%, transparent);
+    box-shadow:
+      inset 1px 1px 0 -0.5px rgb(255 255 255 / 0.3),
+      0 3px 8px rgb(0 0 0 / 0.12);
     transition:
       transform var(--t-med) var(--spring),
       width var(--t-med) var(--spring);
@@ -122,15 +136,17 @@
   }
   .seg button {
     position: relative;
-    padding: 6px 14px;
+    flex: 1;
+    padding: 0 14px;
     font-size: 13px;
     font-weight: 600;
-    border-radius: 8px;
-    color: var(--text-dim);
+    border-radius: var(--r-pill);
+    color: var(--label-2);
     white-space: nowrap;
+    transition: color var(--t-fast);
   }
   .seg button.active {
-    color: var(--text);
+    color: var(--label);
   }
 
   .slider {
@@ -140,23 +156,24 @@
     height: 28px;
     background: transparent;
     cursor: pointer;
+    touch-action: pan-y;
   }
   .slider::-webkit-slider-runnable-track {
-    height: 4px;
-    border-radius: 4px;
-    background: linear-gradient(90deg, var(--accent) var(--p), rgb(255 255 255 / 0.18) var(--p));
+    height: 6px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, var(--accent) var(--p), var(--fill-2) var(--p));
   }
   .slider::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 26px;
-    height: 26px;
-    margin-top: -11px;
-    border-radius: 50%;
+    width: 28px;
+    height: 24px;
+    margin-top: -9px;
+    border-radius: 24px;
     background: #fff;
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+    box-shadow: 0 0.5px 4px rgb(0 0 0 / 0.12), 0 6px 13px rgb(0 0 0 / 0.12);
     transition: transform var(--t-fast) var(--spring);
   }
   .slider:active::-webkit-slider-thumb {
-    transform: scale(1.12);
+    transform: scale(1.15, 1.25);
   }
 </style>

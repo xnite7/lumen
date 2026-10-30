@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS = {
     previewMuted: true,
     showTitlesUnderPosters: false,
     topTenRanks: true,
+    onboarded: false,
   },
   playback: {
     autoplayNext: true,

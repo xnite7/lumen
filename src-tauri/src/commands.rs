@@ -452,6 +452,21 @@ pub async fn stremio_login(s: S<'_>, email: String, password: String) -> AppResu
 }
 
 #[tauri::command]
+pub async fn stremio_link_start(s: S<'_>) -> AppResult<Value> {
+    stremio::link_start(&s.core).await
+}
+
+#[tauri::command]
+pub async fn stremio_link_poll(s: S<'_>, code: String) -> AppResult<bool> {
+    if !stremio::link_poll(&s.core, &code).await? {
+        return Ok(false);
+    }
+    let _ = stremio::pull_addons(&s.core, &s.addons).await;
+    let _ = stremio::sync_library(&s.core).await;
+    Ok(true)
+}
+
+#[tauri::command]
 pub fn stremio_logout(s: S<'_>) -> AppResult<()> {
     stremio::logout(&s.core)
 }

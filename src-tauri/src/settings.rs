@@ -58,6 +58,8 @@ pub struct General {
     pub preview_muted: bool,
     pub show_titles_under_posters: bool,
     pub top_ten_ranks: bool,
+    /// First-run setup finished.
+    pub onboarded: bool,
 }
 
 impl Default for General {
@@ -79,6 +81,7 @@ impl Default for General {
             preview_muted: true,
             show_titles_under_posters: false,
             top_ten_ranks: true,
+            onboarded: false,
         }
     }
 }

@@ -250,7 +250,7 @@ export const api = {
   recentsClear: () => invoke<void>("recents_clear"),
   skip: (videoId: string, durationMs?: number) => invoke<any>("skip_segments", { videoId, durationMs }),
   open: (req: { stream: Stream; meta: Partial<Meta>; videoId: string; startAt?: number; episodeTitle?: string }) =>
-    invoke<{ mode: "native" | "web" | "youtube" | "external"; url?: string; ytId?: string }>("player_open", { req }),
+    invoke<{ mode: "native" | "web" | "youtube" | "external"; url?: string; ytId?: string; startAt?: number | null; headers?: Record<string, string> | null }>("player_open", { req }),
   cmd: (cmd: string, args?: Record<string, unknown>) => invoke<any>("player_cmd", { cmd, args }),
   stop: () => invoke<void>("player_stop"),
   playerState: () => invoke<PlayerState>("player_state"),
@@ -281,6 +281,8 @@ export const api = {
   secrets: () => invoke<Record<string, any>>("secrets_status"),
   openExternal: (url: string) => invoke<void>("open_external", { url }),
   stremioLogin: (email: string, password: string) => invoke<any>("stremio_login", { email, password }),
+  stremioLinkStart: () => invoke<{ code: string; link: string; qrcode: string }>("stremio_link_start"),
+  stremioLinkPoll: (code: string) => invoke<boolean>("stremio_link_poll", { code }),
   stremioLogout: () => invoke<void>("stremio_logout"),
   stremioSync: (pullAddons: boolean) => invoke<{ pulled: number; pushed: number }>("stremio_sync", { pullAddons }),
   simklPinStart: () => invoke<any>("simkl_pin_start"),

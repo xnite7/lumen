@@ -14,6 +14,7 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-close",
     "opener:default",
-    "deep-link:default"
+    "deep-link:default",
+    "lumen-native:default"
   ]
 }

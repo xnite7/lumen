@@ -4,6 +4,21 @@
   let { name, size = 22, fill = false, class: cls = "" }: { name: string; size?: number; fill?: boolean; class?: string } = $props();
 
   const P: Record<string, string> = {
+    chevron: "M9.5 5.5 16 12l-6.5 6.5",
+    personCircle: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm0-8.6a3.1 3.1 0 1 0 0-6.2 3.1 3.1 0 0 0 0 6.2ZM6.4 18.1c1.1-2.2 3.2-3.5 5.6-3.5s4.5 1.3 5.6 3.5",
+    qr: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2.5v2.5H14zM17.5 17.5H20V20h-2.5zM17.5 14H20M14 20h2.5M6.5 6.5h1M16.5 6.5h1M6.5 16.5h1",
+    key: "M14.5 13.5a5 5 0 1 0-4.6-3.1L3.5 16.8V20h3.2v-2h2v-2h2l1.7-1.7a5 5 0 0 0 2.1.2ZM16 8h.01",
+    rows: "M4 5.5h16M4 12h16M4 18.5h16",
+    sliders: "M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4",
+    storage: "M4 7.5c0-1.4 3.6-2.5 8-2.5s8 1.1 8 2.5-3.6 2.5-8 2.5-8-1.1-8-2.5Zm0 0v9c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-9M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5",
+    wand: "M5 19 15.5 8.5M14 4.5v2M19.5 10h-2M17.4 6.6l1.4-1.4M15.5 8.5l1.5 1.5",
+    share: "M12 15V3.5M8 7.5l4-4 4 4M6.5 11H5v9.5h14V11h-1.5",
+    mail: "M3.5 6h17v12h-17zM3.5 6.5 12 13l8.5-6.5",
+    phone: "M8 3h8a1.5 1.5 0 0 1 1.5 1.5v15A1.5 1.5 0 0 1 16 21H8a1.5 1.5 0 0 1-1.5-1.5v-15A1.5 1.5 0 0 1 8 3ZM10.5 18h3",
+    signout: "M14.5 7.5V5A1.5 1.5 0 0 0 13 3.5H5.5A1.5 1.5 0 0 0 4 5v14a1.5 1.5 0 0 0 1.5 1.5H13a1.5 1.5 0 0 0 1.5-1.5v-2.5M10 12h10.5M17.5 9l3 3-3 3",
+    bookmark: "M6.5 3.5h11v17L12 16l-5.5 4.5z",
+    checkCircle: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM8 12.3l2.7 2.7L16.2 9.5",
+    hand: "M8 13V6.5a1.5 1.5 0 0 1 3 0V12M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V5.5a1.5 1.5 0 0 1 3 0V13M17 9.5a1.5 1.5 0 0 1 3 0v4.5a7 7 0 0 1-7 7h-.6a6 6 0 0 1-4.6-2.1L4.4 15a1.5 1.5 0 0 1 2.2-2L8 14.5",
     home: "M3.5 11.2 12 4l8.5 7.2M5.8 9.6V20h4.4v-5.6h3.6V20h4.4V9.6",
     discover: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm3.8-12.8-2.2 5.4-5.4 2.2 2.2-5.4 5.4-2.2Z",
     library: "M4 5.5h3.2V19H4zM9.4 5.5h3.2V19H9.4zM15 6.2l3.1-.8 3 12.9-3.1.8z",
@@ -56,6 +71,7 @@
     palette: "M12 21a9 9 0 1 1 9-9c0 2-1.6 3-3.2 3H16a1.6 1.6 0 0 0-1.2 2.7c.6.7.4 3.3-2.8 3.3ZM7.5 11h.01M10 7.5h.01M14.5 7.5h.01M17 11h.01",
   };
   const filled = new Set(["play", "pause", "next", "bolt"]);
+  const strokeW = $derived(size <= 16 ? 2 : 1.8);
   const d = $derived(P[name] ?? P.info);
   const isFill = $derived(fill || filled.has(name));
 </script>
@@ -67,7 +83,7 @@
   viewBox="0 0 24 24"
   fill={isFill ? "currentColor" : "none"}
   stroke="currentColor"
-  stroke-width={isFill ? 0 : 1.8}
+  stroke-width={isFill ? 0 : strokeW}
   stroke-linecap="round"
   stroke-linejoin="round"
   aria-hidden="true"><path {d} /></svg>

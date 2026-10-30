@@ -73,17 +73,33 @@ const streams = [
 ];
 
 let emit: ((e: string, p: unknown) => void) | null = null;
+let polls = 0;
+const q = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
 
 export async function mock(cmd: string, args: any): Promise<any> {
   if (!emit) emit = (await import("./api")).emitLocal;
   await new Promise((r) => setTimeout(r, 60 + Math.random() * 160));
   switch (cmd) {
     case "app_info":
-      return { version: "0.1.0", native: false, platform: "browser", dataDir: "" };
-    case "settings_get":
-      return structuredClone(DEFAULT_SETTINGS);
+      return { version: "0.2.0", native: false, platform: q.get("platform") ?? "browser", dataDir: "" };
+    case "settings_get": {
+      const st = structuredClone(DEFAULT_SETTINGS);
+      st.general.onboarded = q.has("onboarded");
+      if (q.get("theme")) st.general.theme = q.get("theme")!;
+      return st;
+    }
     case "secrets_status":
-      return { tmdb: false, simkl_client_id: true, simkl_token: true, anthropic: true, simklUser: { user: { name: "xnite" } } };
+      return {
+        tmdb: false, simkl_client_id: true, simkl_token: true, anthropic: true, simklUser: { user: { name: "xnite" } },
+        ...(q.has("signed") ? { stremio_auth: true, stremioUser: { email: "xnite7@icloud.com", fullname: "Sultan" } } : {}),
+      };
+    case "stremio_link_start":
+      return { code: "U1DA", link: "https://link.stremio.com/U1DA", qrcode: "https://link.stremio.com/qr?data=https%3A%2F%2Flink.stremio.com%2FU1DA" };
+    case "stremio_link_poll":
+      return ++polls > 3;
+    case "settings_set":
+    case "secret_set":
+      return null;
     case "catalogs_list":
       return catalogs;
     case "catalog_fetch": {

@@ -40,6 +40,41 @@ pub async fn login(core: &Core, email: &str, password: &str) -> AppResult<Value>
     Ok(r.get("user").cloned().unwrap_or(Value::Null))
 }
 
+const LINK: &str = "https://link.stremio.com/api/v2";
+
+/// Sign in from another device (or the browser) -- the way Stremio's TV app
+/// does it. Works for Apple, Facebook and email accounts alike: the person
+/// approves the code wherever they're already signed in.
+pub async fn link_start(core: &Core) -> AppResult<Value> {
+    let v: Value = core.http.client().get(format!("{LINK}/create?type=Create")).timeout(Duration::from_secs(15)).send().await?.json().await?;
+    let r = v.get("result").cloned().ok_or_else(|| AppError::msg("Stremio didn't return a code"))?;
+    Ok(json!({ "code": r["code"], "link": r["link"], "qrcode": r["qrcode"] }))
+}
+
+/// `true` once the code was approved (and the account is stored).
+pub async fn link_poll(core: &Core, code: &str) -> AppResult<bool> {
+    let v: Value = core
+        .http
+        .client()
+        .get(format!("{LINK}/read?type=Read&code={}", urlencode(code)))
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await?
+        .json()
+        .await?;
+    let Some(key) = v.pointer("/result/authKey").and_then(|k| k.as_str()) else {
+        return Ok(false);
+    };
+    core.db.set_secret("stremio_auth", Some(key))?;
+    let user = call(core, "getUser", json!({ "type": "GetUser", "authKey": key })).await.unwrap_or(Value::Null);
+    core.db.set("stremio_user", &user)?;
+    Ok(true)
+}
+
+fn urlencode(s: &str) -> String {
+    s.chars().filter(|c| c.is_ascii_alphanumeric()).collect()
+}
+
 pub fn logout(core: &Core) -> AppResult<()> {
     core.db.set_secret("stremio_auth", None)?;
     core.db.del("stremio_user")
