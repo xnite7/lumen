@@ -37,6 +37,7 @@ fn image_response(bytes: Vec<u8>, ct: &str) -> Response<Vec<u8>> {
 pub fn run() {
     let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,librqbit=warn,tracing=warn")).try_init();
 
+    #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
 
     #[cfg(desktop)]

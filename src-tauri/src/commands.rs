@@ -580,22 +580,27 @@ pub fn tobii_stop(s: S<'_>) {
 
 #[tauri::command]
 pub fn window_action(app: AppHandle, action: String) -> AppResult<()> {
-    let w = app.get_webview_window("main").ok_or_else(|| AppError::msg("no window"))?;
-    match action.as_str() {
-        "minimize" => w.minimize()?,
-        "maximize" => {
-            if w.is_maximized()? {
-                w.unmaximize()?
-            } else {
-                w.maximize()?
+    #[cfg(desktop)]
+    {
+        let w = app.get_webview_window("main").ok_or_else(|| AppError::msg("no window"))?;
+        match action.as_str() {
+            "minimize" => w.minimize()?,
+            "maximize" => {
+                if w.is_maximized()? {
+                    w.unmaximize()?
+                } else {
+                    w.maximize()?
+                }
             }
+            "close" => w.close()?,
+            "fullscreen" => w.set_fullscreen(!w.is_fullscreen()?)?,
+            "exit-fullscreen" => w.set_fullscreen(false)?,
+            "drag" => w.start_dragging()?,
+            _ => {}
         }
-        "close" => w.close()?,
-        "fullscreen" => w.set_fullscreen(!w.is_fullscreen()?)?,
-        "exit-fullscreen" => w.set_fullscreen(false)?,
-        "drag" => w.start_dragging()?,
-        _ => {}
     }
+    #[cfg(mobile)]
+    let _ = (app, action);
     Ok(())
 }
 
@@ -603,37 +608,42 @@ pub fn window_action(app: AppHandle, action: String) -> AppResult<()> {
 /// borderless window in the corner -- mpv keeps rendering into it.
 #[tauri::command]
 pub fn window_pip(app: AppHandle, on: bool) -> AppResult<()> {
-    use tauri::{LogicalPosition, LogicalSize, Position, Size};
-    let w = app.get_webview_window("main").ok_or_else(|| AppError::msg("no window"))?;
-    let core = crate::state::get(&app).core.clone();
-    if on {
-        if w.is_fullscreen()? {
-            w.set_fullscreen(false)?;
-        }
-        let scale = w.scale_factor()?;
-        let pos = w.outer_position()?.to_logical::<f64>(scale);
-        let size = w.inner_size()?.to_logical::<f64>(scale);
-        core.db.set("pip_restore", &json!({ "x": pos.x, "y": pos.y, "w": size.width, "h": size.height, "max": w.is_maximized()? }))?;
-        if w.is_maximized()? {
-            w.unmaximize()?;
-        }
-        let (pw, ph) = (480.0, 270.0);
-        let mon = w.current_monitor()?.ok_or_else(|| AppError::msg("no monitor"))?;
-        let ms = mon.size().to_logical::<f64>(mon.scale_factor());
-        let mp = mon.position().to_logical::<f64>(mon.scale_factor());
-        w.set_always_on_top(true)?;
-        w.set_size(Size::Logical(LogicalSize::new(pw, ph)))?;
-        w.set_position(Position::Logical(LogicalPosition::new(mp.x + ms.width - pw - 28.0, mp.y + ms.height - ph - 72.0)))?;
-    } else {
-        w.set_always_on_top(false)?;
-        if let Some(r) = core.db.get::<Value>("pip_restore") {
-            w.set_size(Size::Logical(LogicalSize::new(r["w"].as_f64().unwrap_or(1280.0), r["h"].as_f64().unwrap_or(800.0))))?;
-            w.set_position(Position::Logical(LogicalPosition::new(r["x"].as_f64().unwrap_or(80.0), r["y"].as_f64().unwrap_or(80.0))))?;
-            if r["max"].as_bool().unwrap_or(false) {
-                w.maximize()?;
+    #[cfg(desktop)]
+    {
+        use tauri::{LogicalPosition, LogicalSize, Position, Size};
+        let w = app.get_webview_window("main").ok_or_else(|| AppError::msg("no window"))?;
+        let core = crate::state::get(&app).core.clone();
+        if on {
+            if w.is_fullscreen()? {
+                w.set_fullscreen(false)?;
+            }
+            let scale = w.scale_factor()?;
+            let pos = w.outer_position()?.to_logical::<f64>(scale);
+            let size = w.inner_size()?.to_logical::<f64>(scale);
+            core.db.set("pip_restore", &json!({ "x": pos.x, "y": pos.y, "w": size.width, "h": size.height, "max": w.is_maximized()? }))?;
+            if w.is_maximized()? {
+                w.unmaximize()?;
+            }
+            let (pw, ph) = (480.0, 270.0);
+            let mon = w.current_monitor()?.ok_or_else(|| AppError::msg("no monitor"))?;
+            let ms = mon.size().to_logical::<f64>(mon.scale_factor());
+            let mp = mon.position().to_logical::<f64>(mon.scale_factor());
+            w.set_always_on_top(true)?;
+            w.set_size(Size::Logical(LogicalSize::new(pw, ph)))?;
+            w.set_position(Position::Logical(LogicalPosition::new(mp.x + ms.width - pw - 28.0, mp.y + ms.height - ph - 72.0)))?;
+        } else {
+            w.set_always_on_top(false)?;
+            if let Some(r) = core.db.get::<Value>("pip_restore") {
+                w.set_size(Size::Logical(LogicalSize::new(r["w"].as_f64().unwrap_or(1280.0), r["h"].as_f64().unwrap_or(800.0))))?;
+                w.set_position(Position::Logical(LogicalPosition::new(r["x"].as_f64().unwrap_or(80.0), r["y"].as_f64().unwrap_or(80.0))))?;
+                if r["max"].as_bool().unwrap_or(false) {
+                    w.maximize()?;
+                }
             }
         }
     }
+    #[cfg(mobile)]
+    let _ = (app, on);
     Ok(())
 }
 
