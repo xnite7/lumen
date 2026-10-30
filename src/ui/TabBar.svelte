@@ -88,7 +88,7 @@
       {#if t === "profile" && initial}
         <span class="avatar">{initial}</span>
       {:else}
-        <Icon name={items[t].icon} size={ui.phone ? 24 : 18} fill={i === active && t !== "search"} />
+        <Icon name={items[t].icon} size={ui.phone ? 24 : 18} fill={i === active && (t === "home" || t === "library")} />
       {/if}
       <span class="label">{items[t].label}</span>
     </button>

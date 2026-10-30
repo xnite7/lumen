@@ -11,6 +11,7 @@
   import Item from "../ui/Item.svelte";
   import { untrack } from "svelte";
   import SignIn from "../ui/SignIn.svelte";
+  import ThemeCard from "../ui/ThemeCard.svelte";
   import SecretField from "../components/SecretField.svelte";
 
   let { start = 0, ondone }: { start?: number; ondone?: () => void } = $props();
@@ -226,16 +227,7 @@
         </div>
         <div class="themes scroll-x">
           {#each themes.list as t (t.id)}
-            {@const on = app.settings.general.theme === t.id}
-            <button class="theme press" class:on onclick={() => pickTheme(t.id)} aria-pressed={on}>
-              <span class="mock" style:background={t.preview?.[0] ?? t.tokens.bg ?? t.tokens.ink ?? "#07080c"}>
-                <span class="m-hero" style:background="linear-gradient(135deg, {t.preview?.[2] ?? '#ffc22e'}, {t.preview?.[1] ?? '#3a4157'})"></span>
-                <span class="m-row">{#each [0, 1, 2] as _}<i style:background={t.preview?.[1] ?? "#3a4157"}></i>{/each}</span>
-                <span class="m-bar" style:background={t.appearance === "light" ? "rgb(255 255 255 / .7)" : "rgb(255 255 255 / .14)"}></span>
-              </span>
-              <span class="tn">{t.name}</span>
-              <span class="check" class:show={on}><Icon name="check" size={14} /></span>
-            </button>
+            <ThemeCard theme={t} on={app.settings.general.theme === t.id} onclick={() => pickTheme(t.id)} />
           {/each}
         </div>
         <div class="body narrow">
@@ -563,82 +555,6 @@
     padding: 6px var(--gutter) 12px;
     scroll-snap-type: x mandatory;
     justify-content: safe center;
-  }
-  .theme {
-    position: relative;
-    flex: none;
-    width: 150px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 9px;
-    scroll-snap-align: center;
-  }
-  .mock {
-    position: relative;
-    width: 150px;
-    height: 230px;
-    border-radius: 24px;
-    overflow: hidden;
-    box-shadow:
-      inset 0 0 0 0.5px rgb(255 255 255 / 0.18),
-      0 18px 40px -16px rgb(0 0 0 / 0.6);
-    transition: box-shadow var(--t-med) ease;
-  }
-  .theme.on .mock {
-    box-shadow:
-      0 0 0 3px var(--bg),
-      0 0 0 5.5px var(--label),
-      0 18px 40px -16px rgb(0 0 0 / 0.6);
-  }
-  .m-hero {
-    position: absolute;
-    inset: 0 0 46% 0;
-    -webkit-mask-image: linear-gradient(#000 55%, transparent);
-    mask-image: linear-gradient(#000 55%, transparent);
-  }
-  .m-row {
-    position: absolute;
-    left: 10px;
-    right: -20px;
-    bottom: 46px;
-    display: flex;
-    gap: 6px;
-  }
-  .m-row i {
-    width: 40px;
-    height: 58px;
-    border-radius: 6px;
-    opacity: 0.85;
-  }
-  .m-bar {
-    position: absolute;
-    left: 22px;
-    right: 22px;
-    bottom: 10px;
-    height: 24px;
-    border-radius: 12px;
-  }
-  .tn {
-    font-size: var(--fs-sub);
-    font-weight: 600;
-  }
-  .check {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    background: var(--label);
-    color: var(--bg);
-    transform: scale(0);
-    transition: transform var(--t-med) var(--spring);
-  }
-  .check.show {
-    transform: scale(1);
   }
   .mini-switch {
     width: 51px;

@@ -23,7 +23,7 @@ export const BUILTIN_THEMES: Theme[] = [
     appearance: "dark",
     tokens: {},
     effects: { grain: 0.07, ambient: 0.75 },
-    preview: ["#0e1220", "#3a4157", "#ffc22e"],
+    preview: ["#07080c", "#3a4157", "#ffc22e"],
   },
   {
     // From your "cozy innocent death" palette. The dread comes from too much
@@ -122,11 +122,23 @@ export const BUILTIN_THEMES: Theme[] = [
 
 let applied: string[] = [];
 
+/** Theme files written for the first design system keep working. */
+const LEGACY: Record<string, string> = {
+  ink: "bg",
+  "ink-2": "bg-2",
+  text: "label",
+  "text-dim": "label-2",
+  "text-faint": "label-3",
+  line: "separator",
+};
+
 export function applyTheme(t: Theme, opts: { grain: boolean; ambient: boolean }) {
   const root = document.documentElement;
   for (const k of applied) root.style.removeProperty(`--${k}`);
-  applied = Object.keys(t.tokens);
-  for (const [k, v] of Object.entries(t.tokens)) root.style.setProperty(`--${k}`, v);
+  const tokens: Record<string, string> = {};
+  for (const [k, v] of Object.entries(t.tokens)) tokens[LEGACY[k] ?? k] = v;
+  applied = Object.keys(tokens);
+  for (const [k, v] of Object.entries(tokens)) root.style.setProperty(`--${k}`, v);
   root.dataset.theme = t.id;
   root.dataset.appearance = t.appearance;
   root.style.colorScheme = t.appearance;
@@ -149,9 +161,9 @@ export function themeTemplate(base: Theme): Theme {
     author: "",
     appearance: base.appearance,
     tokens: {
-      ink: "#0e1220",
-      text: "#f4f6fb",
-      "text-dim": "rgb(244 246 251 / 0.62)",
+      bg: "#07080c",
+      label: "#ffffff",
+      "label-2": "rgb(235 235 245 / 0.62)",
       "glass-tint": "rgb(30 34 50 / 0.42)",
       "glass-rim": "rgb(255 255 255 / 0.16)",
       "glass-blur": "26px",

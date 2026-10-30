@@ -12,6 +12,7 @@
   import Icon from "../components/Icon.svelte";
   import NavBar from "../ui/NavBar.svelte";
   import SignIn from "../ui/SignIn.svelte";
+  import ThemeCard from "../ui/ThemeCard.svelte";
   import { SECTIONS, sectionById } from "../lib/sections";
 
   let { section = "appearance" }: { section?: string } = $props();
@@ -166,15 +167,9 @@
   {#key section}
       <div class="inner">
         {#if section === "appearance"}
-          <div class="themes">
+          <div class="themes scroll-x">
             {#each themes.list as t (t.id)}
-              <button class="theme press" class:on={s.general.theme === t.id} onclick={() => { s.general.theme = t.id; changed(); }}>
-                <span class="sw">
-                  {#each t.preview ?? [t.tokens.ink ?? "#0e1220", t.tokens.text ?? "#f4f6fb", t.tokens.accent ?? "#ffc22e"] as c}<i style:background={c}></i>{/each}
-                </span>
-                <span class="tn">{t.name}</span>
-                <span class="foot faint">{t.user ? "Your theme" : t.author}</span>
-              </button>
+              <ThemeCard theme={t} on={s.general.theme === t.id} onclick={() => { s.general.theme = t.id; changed(); }} />
             {/each}
           </div>
           {#if app.platform !== "ios"}<div class="group">
@@ -500,36 +495,11 @@
     padding: 16px;
   }
   .themes {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 12px;
-    margin-bottom: 18px;
-  }
-  .theme {
     display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 10px;
-    border-radius: var(--r-md);
-    text-align: left;
-    background: rgb(255 255 255 / 0.05);
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
-  }
-  .theme.on {
-    box-shadow: inset 0 0 0 2px var(--accent);
-  }
-  .sw {
-    display: flex;
-    height: 54px;
-    border-radius: 10px;
-    overflow: hidden;
-    margin-bottom: 6px;
-  }
-  .sw i {
-    flex: 1;
-  }
-  .tn {
-    font-weight: 650;
+    gap: 14px;
+    margin: 0 calc(-1 * var(--gutter)) 22px;
+    padding: 4px var(--gutter) 10px;
+    scroll-snap-type: x proximity;
   }
   .langs {
     display: flex;

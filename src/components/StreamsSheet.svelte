@@ -8,6 +8,7 @@
   import { bytes } from "../lib/format";
   import Sheet from "./Sheet.svelte";
   import Icon from "./Icon.svelte";
+  import { haptic } from "../lib/native";
 
   let { open = $bindable(false), meta, video = null }: { open?: boolean; meta: Meta; video?: Video | null } = $props();
 
@@ -78,6 +79,7 @@
   const best = (res: string) => visible.filter((x) => x._lumen?.res === res).sort((a, b) => b._lumen.score - a._lumen.score)[0];
 
   function choose(st: Stream) {
+    haptic("medium");
     open = false;
     const title = video ? video.title || video.name || `Episode ${video.episode ?? video.number}` : undefined;
     play(meta, st, videoId, { episodeTitle: title });
@@ -192,9 +194,8 @@
     gap: 6px;
     padding: 0 24px 12px;
   }
-  .chip.sel {
-    background: var(--text);
-    color: var(--ink);
+  .filters .chip {
+    flex: none;
   }
   .chip.bad {
     opacity: 0.6;
@@ -239,14 +240,19 @@
     text-align: left;
     padding: 12px 14px;
     border-radius: var(--r-md);
-    background: rgb(255 255 255 / 0.055);
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.05);
+    background: var(--cell);
+    box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.06);
     display: flex;
     flex-direction: column;
     gap: 8px;
   }
-  .stream:hover {
-    background: rgb(255 255 255 / 0.1);
+  @media (hover: hover) {
+    .stream:hover {
+      background: var(--cell-press);
+    }
+  }
+  .stream:active {
+    background: var(--cell-press);
   }
   .l1 {
     display: flex;
@@ -282,7 +288,7 @@
     border-radius: 6px;
     font-size: 11.5px;
     font-weight: 650;
-    background: rgb(255 255 255 / 0.09);
+    background: var(--fill-3);
   }
   .pill.instant {
     background: color-mix(in srgb, #34c759 26%, transparent);
@@ -317,5 +323,30 @@
   }
   .empty .headline {
     color: var(--text);
+  }
+  @media (max-width: 759px) {
+    .head {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+      padding: 2px 16px 12px;
+    }
+    .head .title2 {
+      font-size: var(--fs-title3);
+      text-align: center;
+    }
+    .head p {
+      text-align: center;
+    }
+    .best .btn {
+      flex: 1;
+      height: 44px;
+    }
+    .filters {
+      padding: 0 16px 10px;
+    }
+    .label {
+      font-size: var(--fs-foot);
+    }
   }
 </style>

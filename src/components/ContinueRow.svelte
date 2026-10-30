@@ -9,6 +9,15 @@
   import { go } from "../lib/router.svelte";
   import { episodeLabel, remaining } from "../lib/format";
   import Icon from "./Icon.svelte";
+  import { pressMenu } from "../lib/menu.svelte";
+  import { posterMenu } from "../lib/actions";
+  import { loadLibrary } from "../lib/stores/library.svelte";
+
+  function cwMenu(it: LibraryItem) {
+    return posterMenu({ ...asMeta(it), background: it.background ?? it.poster, posterShape: "landscape" }, [
+      { label: "Remove from Continue Watching", icon: "close", destructive: true, run: async () => { await api.dismiss(it._id); loadLibrary(); } },
+    ]);
+  }
 
   const ART_KEY = "lumen.cwArt";
   let art = $state<Record<string, string | null>>(load());
@@ -68,6 +77,7 @@
           onmouseenter={(e) => arm(it, e.currentTarget)}
           onmousemove={(e) => arm(it, e.currentTarget)}
           onmouseleave={() => disarm(it)}
+          use:pressMenu={() => cwMenu(it)}
         >
           <div class="art">
             {#if wide}
@@ -117,8 +127,14 @@
     box-shadow: 0 12px 30px -16px rgb(0 0 0 / 0.7), inset 0 0 0 1px rgb(255 255 255 / 0.08);
     transition: transform var(--t-med) var(--spring);
   }
-  .card:hover .art {
-    transform: translateY(-3px);
+  @media (hover: hover) {
+    .card:hover .art {
+      transform: translateY(-4px) scale(1.015);
+    }
+  }
+  :global(.card.pressing) .art {
+    transform: scale(0.96);
+    transition-duration: 480ms;
   }
   .art > img:first-child {
     width: 100%;
@@ -185,10 +201,33 @@
   }
   .t {
     font-weight: 600;
-    font-size: 14px;
+    font-size: var(--fs-foot);
   }
   .s {
-    font-size: 12.5px;
-    color: var(--text-dim);
+    font-size: var(--fs-caption);
+    color: var(--label-2);
+  }
+  @media (max-width: 759px) {
+    .row {
+      margin-top: 24px;
+    }
+    header {
+      margin-bottom: 6px;
+    }
+    .rail {
+      gap: 10px;
+      scroll-snap-type: x mandatory;
+      scroll-padding: 0 var(--gutter);
+    }
+    .card {
+      width: 74vw;
+      scroll-snap-align: start;
+    }
+    .play {
+      opacity: 1;
+      transform: none;
+      width: 36px;
+      height: 36px;
+    }
   }
 </style>

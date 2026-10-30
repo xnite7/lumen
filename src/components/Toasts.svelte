@@ -22,7 +22,7 @@
     left: 50%;
     bottom: 26px;
     transform: translateX(-50%);
-    z-index: 200;
+    z-index: 300;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -69,5 +69,22 @@
   .txt {
     font-size: 14px;
     font-weight: 500;
+  }
+  /* phone: drops from under the Dynamic Island, like system HUDs */
+  @media (max-width: 759px) {
+    .stack {
+      bottom: auto;
+      top: calc(var(--safe-top) + 8px);
+      flex-direction: column-reverse;
+    }
+    .toast {
+      animation-name: drop;
+    }
+    @keyframes drop {
+      from {
+        opacity: 0;
+        transform: translateY(-24px) scale(0.9);
+      }
+    }
   }
 </style>

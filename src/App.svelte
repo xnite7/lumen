@@ -117,6 +117,37 @@
       go({ name: "search" });
     } else if (e.altKey && e.key === "ArrowLeft") back();
   }
+  // iOS: swipe in from the left edge to go back; the page follows the finger.
+  let edge: { x: number; y: number; dx: number; page: HTMLElement } | null = null;
+  function edgeDown(e: PointerEvent) {
+    if (e.pointerType === "mouse" || e.clientX > 24 || nav.stack.length < 2) return;
+    const page = scroller?.querySelector(".page") as HTMLElement | null;
+    if (page) edge = { x: e.clientX, y: e.clientY, dx: 0, page };
+  }
+  function edgeMove(e: PointerEvent) {
+    if (!edge) return;
+    const dx = e.clientX - edge.x;
+    if (edge.dx === 0 && Math.abs(e.clientY - edge.y) > Math.abs(dx)) {
+      edge = null;
+      return;
+    }
+    edge.dx = Math.max(0, dx);
+    edge.page.style.transition = "none";
+    edge.page.style.transform = `translateX(${edge.dx}px)`;
+    edge.page.style.boxShadow = "-20px 0 40px rgb(0 0 0 / .35)";
+  }
+  function edgeUp() {
+    if (!edge) return;
+    const { dx, page } = edge;
+    edge = null;
+    page.style.transition = "transform var(--t-med) var(--spring)";
+    page.style.boxShadow = "";
+    if (dx > Math.min(120, window.innerWidth * 0.3)) {
+      page.style.transform = "translateX(100%)";
+      setTimeout(() => back(), 120);
+    } else page.style.transform = "";
+  }
+
   function startDrag(e: MouseEvent) {
     if (e.button !== 0) return;
     if (e.detail === 2) api.window("maximize");
@@ -145,7 +176,7 @@
   <Ambient />
   <div class="grain" aria-hidden="true"></div>
 
-  <main class="scroller" bind:this={scroller} data-scroller onscroll={() => onScroll(scroller!.scrollTop)} class:behind={pb.open} style:--win-controls={winControls ? "118px" : "0px"}>
+  <main class="scroller" bind:this={scroller} data-scroller onscroll={() => onScroll(scroller!.scrollTop)} onpointerdown={edgeDown} onpointermove={edgeMove} onpointerup={edgeUp} onpointercancel={edgeUp} class:behind={pb.open} style:--win-controls={winControls ? "118px" : "0px"}>
     {#key route}
       <div class="page">
         {#if route.name === "home"}

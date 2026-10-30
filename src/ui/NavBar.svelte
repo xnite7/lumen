@@ -56,6 +56,7 @@
     pointer-events: auto;
   }
   .trail {
+    grid-column: 3;
     justify-content: flex-end;
   }
   .mid {
