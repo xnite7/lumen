@@ -36,7 +36,7 @@ spec.setdefault("packages", {})["MPVKit"] = {
     "url": "https://github.com/mpvkit/MPVKit",
     "revision": "98c3453e252922e3136422da3fbb2e341ed9edc8",  # 1.1.0-n9.0.2
 }
-app["deploymentTarget"] = "15.0"  # MPVKit's minimum
+app["deploymentTarget"] = "16.0"  # MPVKit needs 15; EDR + Live Activities want 16
 srcs = app.setdefault("sources", [])
 if not any((s.get("path") if isinstance(s, dict) else s) == "../../ios-player" for s in srcs):
     srcs.append({"path": "../../ios-player"})
