@@ -104,6 +104,8 @@
     gap: 0;
     border-radius: var(--r-pill);
     touch-action: none;
+    /* denser than default glass: labels must read over bright artwork */
+    background: color-mix(in srgb, var(--glass-tint-strong) 78%, transparent);
     transition:
       transform var(--t-slow) var(--spring),
       padding var(--t-med) var(--spring),
@@ -145,10 +147,7 @@
     transition: color var(--t-fast) ease;
   }
   .tab.on {
-    color: var(--accent);
-  }
-  :global([data-appearance="light"]) .tab.on {
-    color: color-mix(in srgb, var(--accent) 70%, black);
+    color: var(--accent-text);
   }
   .label {
     font-size: 10px;
@@ -217,7 +216,7 @@
       font-size: 11px;
     }
     .tab:not(.on):hover {
-      color: var(--accent);
+      color: var(--accent-text);
     }
   }
 </style>

@@ -352,8 +352,8 @@
     -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
     mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
     background:
-      linear-gradient(0deg, color-mix(in srgb, var(--ink) 55%, transparent) 0%, transparent 45%),
-      linear-gradient(90deg, color-mix(in srgb, var(--ink) 85%, transparent) 0%, transparent 58%);
+      linear-gradient(0deg, color-mix(in srgb, var(--bg) 70%, transparent) 0%, transparent 50%),
+      linear-gradient(90deg, color-mix(in srgb, var(--bg) 92%, transparent) 0%, color-mix(in srgb, var(--bg) 60%, transparent) 38%, transparent 66%);
   }
   .info {
     position: relative;
@@ -389,7 +389,10 @@
     gap: 4px;
     font-weight: 700;
     font-size: var(--fs-sub);
-    color: var(--yellow);
+    color: var(--rating);
+  }
+  :global(:root:not([data-appearance="light"])) .info {
+    text-shadow: 0 1px 14px rgb(0 0 0 / 0.5);
   }
   .tagline {
     margin: 0;
@@ -456,7 +459,7 @@
     transition: transform var(--t-fast) var(--spring), color var(--t-fast);
   }
   .star.on {
-    color: #f2b01e;
+    color: var(--rating);
   }
   .star:hover {
     transform: scale(1.2);

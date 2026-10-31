@@ -160,6 +160,7 @@ export async function mock(cmd: string, args: any): Promise<any> {
       setTimeout(() => emit!("player://state", { pos: 1234, duration: 5400, paused: false, buffering: false, cacheAhead: 300, bufferingPct: 100, volume: 80, muted: false, speed: 1, aid: "1", sid: "2", ended: false, idle: false, subOverlay: true, subDelay: 0, video: { width: 3840, height: 2160, hdr: true, gamma: "pq", codec: "hevc", hwdec: "d3d11va", fps: 23.976 } }), 300);
       setTimeout(() => emit!("player://sub", { text: "(soft static)\nThe porch light's been on all summer." }), 400);
       setTimeout(() => emit!("player://loaded", {}), 350);
+      if (q.has("playerError")) setTimeout(() => emit!("player://error", { message: "This stream wouldn't open. The link may have expired, or the server isn't answering. Try another stream." }), 600);
       return { mode: "native", url: "" };
     case "skip_segments":
       return { intro: [{ start: 1200, end: 1290 }], credits: [{ start: 5200, end: null }] };

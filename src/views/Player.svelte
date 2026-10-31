@@ -348,7 +348,7 @@
           <button class="ic press" onclick={mute} aria-label={st.muted ? "Unmute" : "Mute"}><Icon name={st.muted || st.volume === 0 ? "mute" : "volume"} size={22} /></button>
           <input type="range" min="0" max={pbs.volumeBoost ? 200 : 100} value={st.volume} oninput={(e) => setVolume(+(e.target as HTMLInputElement).value)} aria-label="Volume" style:--p="{(st.volume / (pbs.volumeBoost ? 200 : 100)) * 100}%" />
         </div>
-        <span class="time foot">{time(st.pos)} <span class="faint">/ {time(st.duration)}</span></span>
+        <span class="time foot">{time(st.pos)} <span class="dim">/ {time(st.duration)}</span></span>
       </div>
       <div class="grp">
         {#if native}
@@ -398,12 +398,32 @@
 </div>
 
 <style>
+  /* Video is always dark, whatever the theme: the player's chrome uses its
+     own dark material so it stays readable over any picture. */
   .player {
     position: fixed;
     inset: 0;
     z-index: 100;
     background: #000;
     color: #fff;
+    color-scheme: dark;
+    --label: #fff;
+    --label-2: rgb(255 255 255 / 0.72);
+    --label-3: rgb(255 255 255 / 0.45);
+    --text: #fff;
+    --text-dim: rgb(255 255 255 / 0.72);
+    --text-faint: rgb(255 255 255 / 0.45);
+    --fill-1: rgb(255 255 255 / 0.28);
+    --fill-2: rgb(255 255 255 / 0.2);
+    --fill-3: rgb(255 255 255 / 0.14);
+    --fill-4: rgb(255 255 255 / 0.08);
+    --separator: rgb(255 255 255 / 0.14);
+    --glass-tint: rgb(16 16 20 / 0.52);
+    --glass-tint-strong: rgb(14 14 18 / 0.88);
+    --glass-spec: rgb(255 255 255 / 0.32);
+    --glass-rim: rgb(255 255 255 / 0.12);
+    --glass-edge: rgb(0 0 0 / 0.3);
+    --glass-shadow: 0 12px 36px -12px rgb(0 0 0 / 0.6);
   }
   .player.native {
     background: transparent;
@@ -649,8 +669,10 @@
     gap: 6px;
   }
   .badges .chip {
-    background: rgb(255 255 255 / 0.16);
+    background: rgb(0 0 0 / 0.42);
+    color: #fff;
     backdrop-filter: blur(12px);
+    box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.18);
   }
   .bottom {
     position: absolute;

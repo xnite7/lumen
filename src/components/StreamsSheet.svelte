@@ -92,7 +92,7 @@
 
   function seedColor(n?: number) {
     if (n == null) return "";
-    return n >= 200 ? "#4ade80" : n >= 50 ? "#facc15" : n >= 1 ? "#fb923c" : "#f87171";
+    return n >= 200 ? "var(--good-text)" : n >= 50 ? "var(--tier-720)" : n >= 1 ? "var(--orange)" : "var(--red)";
   }
 </script>
 
@@ -139,7 +139,7 @@
       {#if g.tier}
         <button class="group-h" onclick={() => (collapsed[g.tier] = !collapsed[g.tier])}>
           <span class="tier t-{g.tier}">{tierLabel[g.tier]}</span>
-          <span class="foot faint">{g.items.length}</span>
+          <span class="foot dim">{g.items.length}</span>
           <Icon name={collapsed[g.tier] ? "chevronDown" : "chevronUp"} size={16} />
         </button>
       {/if}
@@ -164,7 +164,7 @@
                 {#if p?.sizeBytes}<span class="pill plain">{bytes(p.sizeBytes)}</span>{/if}
                 {#if p?.kind === "torrent"}<span class="pill plain"><Icon name="magnet" size={11} /> P2P</span>{/if}
                 {#each p?.languages ?? [] as f}<span class="flag">{f}</span>{/each}
-                <span class="src faint">{st._addonName}{p?.debrid ? ` · ${p.debrid}` : ""}</span>
+                <span class="src dim">{st._addonName}{p?.debrid ? ` · ${p.debrid}` : ""}</span>
               </div>
             </button>
           {/each}
@@ -223,13 +223,13 @@
     color: var(--text);
   }
   .t-4K {
-    color: #8ab8ff;
+    color: var(--tier-4k);
   }
   .t-1080p {
-    color: #6fe3a0;
+    color: var(--tier-1080);
   }
   .t-720p {
-    color: #f6d55c;
+    color: var(--tier-720);
   }
   .list {
     display: flex;
@@ -291,16 +291,16 @@
     background: var(--fill-3);
   }
   .pill.instant {
-    background: color-mix(in srgb, #34c759 26%, transparent);
-    color: #8ff0ab;
+    background: var(--good-bg);
+    color: var(--good-text);
   }
   .pill.hdr {
-    background: color-mix(in srgb, #f0abfc 18%, transparent);
-    color: #f5c6ff;
+    background: var(--hdr-bg);
+    color: var(--hdr-text);
   }
   .pill.plain {
     background: transparent;
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+    box-shadow: inset 0 0 0 1px var(--fill-1);
   }
   .flag {
     font-size: 14px;

@@ -148,6 +148,6 @@
     color: var(--red);
   }
   .accent .label {
-    color: var(--accent);
+    color: var(--accent-text);
   }
 </style>

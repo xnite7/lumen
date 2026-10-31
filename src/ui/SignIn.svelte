@@ -208,7 +208,7 @@
     color: var(--label-3);
   }
   .linkish {
-    color: var(--accent);
+    color: var(--accent-text);
     font-weight: 600;
   }
   .alt {

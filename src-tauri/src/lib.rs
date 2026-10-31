@@ -10,6 +10,7 @@ mod integrations;
 mod library;
 mod migrate;
 mod player;
+mod relay;
 mod settings;
 mod state;
 mod streams;

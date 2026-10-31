@@ -244,8 +244,8 @@
     -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
     mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
     background:
-      linear-gradient(0deg, color-mix(in srgb, var(--ink) 55%, transparent) 0%, transparent 45%),
-      linear-gradient(90deg, color-mix(in srgb, var(--ink) 78%, transparent) 0%, transparent 52%);
+      linear-gradient(0deg, color-mix(in srgb, var(--bg) 70%, transparent) 0%, transparent 50%),
+      linear-gradient(90deg, color-mix(in srgb, var(--bg) 90%, transparent) 0%, color-mix(in srgb, var(--bg) 55%, transparent) 34%, transparent 62%);
   }
   .info {
     position: absolute;
@@ -294,7 +294,10 @@
     gap: 4px;
     font-weight: 700;
     font-size: var(--fs-sub);
-    color: var(--yellow);
+    color: var(--rating);
+  }
+  :global(:root:not([data-appearance="light"])) .info {
+    text-shadow: 0 1px 14px rgb(0 0 0 / 0.55);
   }
   .desc {
     margin: 0;
@@ -408,8 +411,8 @@
   }
   .card-shade {
     position: absolute;
-    inset: 40% 0 0;
-    background: linear-gradient(180deg, transparent, rgb(0 0 0 / 0.55) 45%, rgb(0 0 0 / 0.85));
+    inset: 35% 0 0;
+    background: linear-gradient(180deg, transparent, rgb(0 0 0 / 0.62) 42%, rgb(0 0 0 / 0.9));
     pointer-events: none;
   }
   .card-info {
@@ -433,7 +436,7 @@
   }
   .facts-line {
     margin: 0;
-    color: rgb(255 255 255 / 0.78);
+    color: rgb(255 255 255 / 0.88);
   }
   .card-actions {
     display: flex;

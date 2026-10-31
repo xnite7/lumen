@@ -460,7 +460,7 @@
     height: 50px;
     padding: 0 16px;
     font-size: var(--fs-body);
-    color: var(--accent);
+    color: var(--accent-text);
   }
   .srow + .srow::before {
     content: "";

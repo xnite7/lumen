@@ -214,7 +214,7 @@
       </section>
     {/if}
 
-    <p class="tip foot faint">Tip: paste a link or magnet anywhere in Lumen to play it.</p>
+    <p class="tip foot dim">Tip: paste a link or magnet anywhere in Lumen to play it.</p>
   {/if}
 </div>
 
@@ -404,7 +404,8 @@
     color: #fff;
     background:
       radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--t) 50%, white 0%), transparent 60%),
-      linear-gradient(150deg, color-mix(in srgb, var(--t) 90%, white 10%), color-mix(in srgb, var(--t) 60%, black 40%));
+      linear-gradient(150deg, color-mix(in srgb, var(--t) 82%, black 18%), color-mix(in srgb, var(--t) 45%, black 55%));
+    text-shadow: 0 1px 8px rgb(0 0 0 / 0.35);
     box-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.3);
   }
   .tile-name {
@@ -414,7 +415,8 @@
   }
   .tile-sub {
     font-size: var(--fs-caption);
-    opacity: 0.78;
+    font-weight: 500;
+    opacity: 0.92;
   }
   .genres {
     display: flex;
@@ -427,8 +429,8 @@
     border-radius: var(--r-pill);
     font-weight: 600;
     font-size: var(--fs-sub);
-    background: color-mix(in srgb, var(--t) 24%, transparent);
-    color: color-mix(in srgb, var(--t) 40%, var(--label));
+    background: color-mix(in srgb, var(--t) 22%, transparent);
+    color: color-mix(in oklab, var(--t) 35%, var(--label));
     box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--t) 40%, transparent);
   }
   .tip {

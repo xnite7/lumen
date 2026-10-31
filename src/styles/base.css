@@ -47,6 +47,17 @@
   --ambient-3: #e4736a;
   --accent: var(--ambient-1);
   --accent-ink: #1a1305;
+  /* accent used AS text (links, selected tabs): kept readable on light themes */
+  --accent-text: var(--accent);
+  --rating: #ffd60a;
+  /* status colours for small text and badges */
+  --good-text: #6fe3a0;
+  --good-bg: rgb(52 199 89 / 0.24);
+  --hdr-text: #f5c6ff;
+  --hdr-bg: rgb(240 171 252 / 0.18);
+  --tier-4k: #8ab8ff;
+  --tier-1080: #6fe3a0;
+  --tier-720: #f6d55c;
   --ambient-strength: 0.75;
 
   /* ------------------------------------------------------ Liquid Glass */
@@ -154,6 +165,15 @@
   --glass-rim: rgb(255 255 255 / 0.7);
   --glass-edge: rgb(0 0 0 / 0.06);
   --glass-shadow: 0 10px 30px -12px rgb(30 30 60 / 0.28), 0 1px 3px rgb(30 30 60 / 0.1);
+  --accent-text: color-mix(in oklab, var(--accent) 52%, #000);
+  --rating: #9a6700;
+  --good-text: #13792f;
+  --good-bg: rgb(52 199 89 / 0.18);
+  --hdr-text: #8a2aa0;
+  --hdr-bg: rgb(203 48 224 / 0.12);
+  --tier-4k: #1f5fd1;
+  --tier-1080: #13792f;
+  --tier-720: #8a6200;
   color-scheme: light;
 }
 
@@ -495,7 +515,7 @@ html.refraction .glass {
 }
 .btn.plain {
   background: none;
-  color: var(--accent);
+  color: var(--accent-text);
   padding: 0 8px;
 }
 .btn.destructive {

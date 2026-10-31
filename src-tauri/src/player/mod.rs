@@ -57,6 +57,7 @@ pub struct Player {
     #[cfg(desktop)]
     backend: mpv::Mpv,
     session: parking_lot::Mutex<Option<Session>>,
+    relay: tokio::sync::OnceCell<Arc<crate::relay::Relay>>,
 }
 
 impl Player {
@@ -67,7 +68,26 @@ impl Player {
             core,
             torrents,
             session: parking_lot::Mutex::new(None),
+            relay: tokio::sync::OnceCell::new(),
         })
+    }
+
+    /// Remote http(s) streams go through the local relay so the player
+    /// resolves nothing itself (DNS-blocked hosts still play). Returns the
+    /// address to open and whether request headers were absorbed.
+    async fn route(&self, url: &str, headers: &[(String, String)]) -> (String, bool) {
+        let remote = url.starts_with("http") && !url.starts_with("http://127.0.0.1") && !url.starts_with("http://localhost");
+        if !remote || !self.core.settings.read().network.doh {
+            return (url.to_string(), false);
+        }
+        let core = self.core.clone();
+        match self.relay.get_or_try_init(|| crate::relay::Relay::start(move || core.http.client())).await {
+            Ok(r) => (r.register(url, headers), true),
+            Err(e) => {
+                log::warn!("relay unavailable: {e}");
+                (url.to_string(), false)
+            }
+        }
     }
 
     pub fn native(&self) -> bool {
@@ -120,7 +140,9 @@ impl Player {
                 .and_then(|h| h.as_object())
                 .map(|h| h.iter().filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_string()))).collect::<Vec<_>>())
                 .unwrap_or_default();
-            self.backend.load(&url, start, &headers)?;
+            let (play_url, absorbed) = self.route(&url, &headers).await;
+            let headers = if absorbed { vec![] } else { headers };
+            self.backend.load(&play_url, start, &headers)?;
             // Subtitles from addons arrive a beat later and are added as
             // external tracks; mpv picks them up without a reload.
             let this = self.clone();
@@ -142,13 +164,15 @@ impl Player {
                 this.core.emit("player://subtitles", subs);
             });
             session::spawn_tracker(self.clone());
-            Ok(OpenResult { mode: "native", url: Some(url), yt_id: None, start_at: start, headers: None })
+            Ok(OpenResult { mode: "native", url: Some(play_url), yt_id: None, start_at: start, headers: None })
         }
         #[cfg(not(desktop))]
         {
             let headers = req.stream.pointer("/behaviorHints/proxyHeaders/request").and_then(|h| h.as_object()).cloned();
+            let pairs: Vec<(String, String)> = headers.iter().flatten().filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_string()))).collect();
+            let (play_url, absorbed) = self.route(&url, &pairs).await;
             session::spawn_tracker(self.clone());
-            Ok(OpenResult { mode: "web", url: Some(url), yt_id: None, start_at: start, headers })
+            Ok(OpenResult { mode: "web", url: Some(play_url), yt_id: None, start_at: start, headers: if absorbed { None } else { headers } })
         }
     }
 

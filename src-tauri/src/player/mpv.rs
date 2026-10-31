@@ -287,7 +287,7 @@ impl Mpv {
                         }
                         Some(Ok(Event::Shutdown)) => break,
                         Some(Err(e)) => {
-                            core.emit("player://error", json!({ "message": e.to_string() }));
+                            core.emit("player://error", json!({ "message": friendly(&e) }));
                         }
                         _ => {}
                     }
@@ -540,5 +540,20 @@ mod zorder {
             let h = HWND(main as isize as *mut _);
             let _ = EnumChildWindows(Some(h), Some(visit), LPARAM(main as isize));
         }
+    }
+}
+
+
+/// mpv's error codes, in words a person can act on.
+fn friendly(e: &libmpv2::Error) -> String {
+    let raw = format!("{e:?}");
+    let code: Option<i32> = raw.strip_prefix("Raw(").and_then(|r| r.trim_end_matches(')').parse().ok());
+    match code {
+        Some(-13) => "This stream wouldn't open. The link may have expired, or the server isn't answering. Try another stream.".into(),
+        Some(-16) => "There's nothing playable in this stream. Try another one.".into(),
+        Some(-17) => "This file is in a format the player doesn't recognise. Try another stream.".into(),
+        Some(-14) => "No audio device is available. Check your sound output.".into(),
+        Some(-15) => "The video renderer couldn't start. Turn off Settings → Playback → Video inside Lumen and try again.".into(),
+        _ => format!("The player hit an error ({raw}). Try another stream."),
     }
 }
