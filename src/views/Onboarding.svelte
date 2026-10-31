@@ -12,6 +12,7 @@
   import { untrack } from "svelte";
   import SignIn from "../ui/SignIn.svelte";
   import ThemeCard from "../ui/ThemeCard.svelte";
+  import SimklConnect from "../ui/SimklConnect.svelte";
   import SecretField from "../components/SecretField.svelte";
 
   let { start = 0, ondone }: { start?: number; ondone?: () => void } = $props();
@@ -109,26 +110,6 @@
       const n = Object.keys(imported).length;
       toast(n ? `Brought over ${n} setting${n > 1 ? "s" : ""}` : "Nothing found to bring over", n ? "ok" : "warn");
       if (n) haptic("success");
-    } catch (err) {
-      toast(errorText(err), "error");
-    }
-  }
-  let pin = $state<{ user_code: string; verification_url: string } | null>(null);
-  let pinTimer: ReturnType<typeof setInterval> | undefined;
-  async function simkl() {
-    try {
-      pin = await api.simklPinStart();
-      if (pin?.verification_url) api.openExternal(pin.verification_url);
-      clearInterval(pinTimer);
-      pinTimer = setInterval(async () => {
-        if (!pin) return clearInterval(pinTimer);
-        if (await api.simklPinPoll(pin.user_code).catch(() => false)) {
-          clearInterval(pinTimer);
-          pin = null;
-          await refreshSecrets();
-          haptic("success");
-        }
-      }, 5000);
     } catch (err) {
       toast(errorText(err), "error");
     }
@@ -282,18 +263,7 @@
             </div>
           {/if}
           <div class="group">
-            <Item label="Simkl" detail={app.secrets.simkl_token ? (app.secrets.simklUser?.user?.name ? `Connected as ${app.secrets.simklUser.user.name}` : "Connected") : pin ? `Enter ${pin.user_code} at simkl.com/pin` : "Watch history, ratings and recommendations"} icon="checkCircle" tint="#1c1c1e">
-              {#if app.secrets.simkl_token}
-                <Icon name="checkCircle" size={22} class="ok" />
-              {:else if pin}
-                <span class="code">{pin.user_code}</span>
-              {:else}
-                <button class="btn small tinted press" disabled={!app.secrets.simkl_client_id} onclick={simkl}>Connect</button>
-              {/if}
-            </Item>
-            {#if !app.secrets.simkl_client_id && !app.secrets.simkl_token}
-              <div class="keyrow"><SecretField name="simkl_client_id" placeholder="Simkl client ID (simkl.com/settings/developer)" /></div>
-            {/if}
+            <SimklConnect />
             <Item label="More keys" detail="TMDB, vibe search, skip intros" icon="key" tint="var(--gray)" chevron onclick={() => (moreKeys = !moreKeys)} />
             {#if moreKeys}
               <div class="keyrow"><span class="foot dim">TMDB (a shared key works until you add yours)</span><SecretField name="tmdb" placeholder="TMDB v3 key" /></div>

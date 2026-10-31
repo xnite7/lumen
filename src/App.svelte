@@ -66,6 +66,16 @@
   function handleLink(raw: string) {
     const u = raw.trim();
     if (!u) return;
+    if (u.startsWith("lumen://auth/simkl")) {
+      api
+        .simklOAuthFinish(u)
+        .then(async () => {
+          await refreshSecrets();
+          toast("Simkl connected", "ok");
+        })
+        .catch((e) => toast(String(e), "warn"));
+      return;
+    }
     if (u.startsWith("stremio://") && u.includes("manifest.json")) {
       go({ name: "addons", install: u });
       return;

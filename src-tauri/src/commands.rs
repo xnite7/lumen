@@ -9,7 +9,7 @@ use crate::settings::Settings;
 use crate::state::AppState;
 use crate::{images, library, streams};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 type S<'a> = State<'a, AppState>;
 
@@ -66,6 +66,11 @@ pub fn secrets_status(s: S<'_>) -> Value {
     for k in SECRETS {
         m.insert(k.to_string(), json!(s.core.db.secret(k).is_some()));
     }
+    // "connected" means either sign-in generation; V1 needs its own client id
+    let v2 = s.core.db.secret("simkl_v2_access").is_some();
+    m.insert("simkl_token".into(), json!(v2 || s.core.db.secret("simkl_token").is_some()));
+    m.insert("simkl_v2".into(), json!(v2));
+    m.insert("simkl_client_id".into(), json!(true));
     m.insert("simklUser".into(), s.core.db.get::<Value>("simkl_user").unwrap_or(Value::Null));
     m.insert("stremioUser".into(), s.core.db.get::<Value>("stremio_user").unwrap_or(Value::Null));
     Value::Object(m)
@@ -491,9 +496,65 @@ pub async fn simkl_pin_poll(s: S<'_>, code: String) -> AppResult<bool> {
 }
 
 #[tauri::command]
-pub fn simkl_logout(s: S<'_>) -> AppResult<()> {
-    s.core.db.set_secret("simkl_token", None)?;
-    s.core.db.del("simkl_user")
+pub async fn simkl_logout(s: S<'_>) -> AppResult<()> {
+    simkl::logout(&s.core).await
+}
+
+/// One-tap Simkl sign-in (AUTH V2). On a computer the browser comes back to
+/// a tiny server on this machine; on iPhone it comes back through
+/// `lumen://auth/simkl`, which the page passes to `simkl_oauth_finish`.
+#[tauri::command]
+pub async fn simkl_oauth_start(app: AppHandle, s: S<'_>) -> AppResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    #[cfg(desktop)]
+    {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
+        let port = listener.local_addr()?.port();
+        let url = simkl::oauth_start(&s.core, &format!("http://127.0.0.1:{port}/auth/simkl"));
+        let core = s.core.clone();
+        let h = app.clone();
+        tauri::async_runtime::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let accept = tokio::time::timeout(std::time::Duration::from_secs(600), listener.accept()).await;
+            let Ok(Ok((mut sock, _))) = accept else { return };
+            let mut buf = vec![0u8; 8192];
+            let n = sock.read(&mut buf).await.unwrap_or(0);
+            let head = String::from_utf8_lossy(&buf[..n]).to_string();
+            let path = head.split_whitespace().nth(1).unwrap_or("/").to_string();
+            let result = simkl::oauth_finish(&core, &path).await;
+            let (title, line) = match &result {
+                Ok(_) => ("Connected", "Simkl is connected to Lumen. You can close this tab."),
+                Err(_) => ("Didn't work", "Simkl sign-in didn't finish. Go back to Lumen and try again."),
+            };
+            let page = format!(
+                "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>Lumen</title><body style=\"margin:0;height:100vh;display:grid;place-items:center;background:#07080c;color:#fff;font:17px -apple-system,Segoe UI,system-ui\"><div style=text-align:center><div style=\"width:64px;height:64px;margin:0 auto 18px;border-radius:50%;background:radial-gradient(circle at 50% 38%,#fff4cc,#ffc22e 55%,#e4736a)\"></div><h1 style=\"font-size:28px;margin:0 0 8px\">{title}</h1><p style=\"opacity:.7;margin:0\">{line}</p></div><script>setTimeout(()=>window.close(),1500)</script>"
+            );
+            let _ = sock.write_all(format!("HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{page}", page.len()).as_bytes()).await;
+            let _ = h.emit("simkl-auth", json!({ "ok": result.is_ok(), "error": result.err().map(|e| e.to_string()) }));
+        });
+        app.opener().open_url(url, None::<&str>).map_err(|e| AppError::msg(e.to_string()))?;
+    }
+    #[cfg(mobile)]
+    {
+        let url = simkl::oauth_start(&s.core, "lumen://auth/simkl");
+        app.opener().open_url(url, None::<&str>).map_err(|e| AppError::msg(e.to_string()))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn simkl_oauth_finish(s: S<'_>, url: String) -> AppResult<()> {
+    simkl::oauth_finish(&s.core, &url).await
+}
+
+#[tauri::command]
+pub async fn simkl_device_start(s: S<'_>) -> AppResult<Value> {
+    simkl::device_start(&s.core).await
+}
+
+#[tauri::command]
+pub async fn simkl_device_poll(s: S<'_>) -> AppResult<bool> {
+    simkl::device_poll(&s.core).await
 }
 
 #[tauri::command]

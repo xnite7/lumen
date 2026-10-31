@@ -1,4 +1,5 @@
-//! Simkl: sign-in (PIN flow), lists, ratings, history, scrobbling.
+//! Simkl: sign-in (AUTH V2 OAuth + device code, with the old V1 PIN flow
+//! still honoured for existing tokens), lists, ratings, history, scrobbling.
 //!
 //! Simkl wants the client id as a query parameter AND the `simkl-api-key`
 //! header; with only the header it answers 401 even on a valid token (found
@@ -12,12 +13,30 @@ use std::time::Duration;
 pub const API: &str = "https://api.simkl.com";
 const APP: &str = "lumen";
 
+/// Lumen's AUTH V2 app ("Mobile, desktop & browser apps"). Client ids are
+/// public by design; PKCE protects the sign-in. Overridable in secrets.
+pub const V2_CLIENT_ID: &str = "9c325049149440f9e66dc4499c37fc140ba6962583a3fa7927d8e27e3bd68cfc";
+const SCOPE: &str = "media:read media:write";
+
+fn v2_id(core: &Core) -> String {
+    core.db.secret("simkl_v2_client_id").unwrap_or_else(|| V2_CLIENT_ID.to_string())
+}
+
+fn v2(core: &Core) -> bool {
+    core.db.secret("simkl_v2_access").is_some()
+}
+
+/// The client id that matches the token in use (V2 wins once signed in).
 pub fn client_id(core: &Core) -> Option<String> {
-    core.db.secret("simkl_client_id")
+    if v2(core) {
+        Some(v2_id(core))
+    } else {
+        core.db.secret("simkl_client_id")
+    }
 }
 
 pub fn token(core: &Core) -> Option<String> {
-    core.db.secret("simkl_token")
+    core.db.secret("simkl_v2_access").or_else(|| core.db.secret("simkl_token"))
 }
 
 pub fn connected(core: &Core) -> bool {
@@ -46,6 +65,7 @@ fn req(core: &Core, method: reqwest::Method, path: &str) -> AppResult<reqwest::R
 }
 
 pub async fn get(core: &Core, path: &str) -> AppResult<Value> {
+    ensure_fresh(core).await;
     let res = req(core, reqwest::Method::GET, path)?.send().await?;
     if !res.status().is_success() {
         return Err(AppError::msg(format!("Simkl HTTP {} on {path}", res.status())));
@@ -54,6 +74,7 @@ pub async fn get(core: &Core, path: &str) -> AppResult<Value> {
 }
 
 pub async fn post(core: &Core, path: &str, body: Value) -> AppResult<Value> {
+    ensure_fresh(core).await;
     let res = req(core, reqwest::Method::POST, path)?.json(&body).send().await?;
     let status = res.status();
     let v = res.json::<Value>().await.unwrap_or(Value::Null);
@@ -86,6 +107,202 @@ pub async fn pin_poll(core: &Core, user_code: &str) -> AppResult<bool> {
         return Ok(true);
     }
     Ok(false)
+}
+
+// ------------------------------------------------------- AUTH V2
+
+use base64::Engine as _;
+use sha2::Digest as _;
+use std::sync::Mutex;
+
+struct Pending {
+    verifier: String,
+    state: String,
+    redirect: String,
+}
+static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
+static DEVICE: Mutex<Option<String>> = Mutex::new(None);
+
+fn random_token(len: usize) -> String {
+    use rand::Rng;
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+    let mut r = rand::rng();
+    (0..len).map(|_| CHARS[r.random_range(0..CHARS.len())] as char).collect()
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+/// Step 1 of the browser sign-in: the consent page URL (PKCE S256).
+pub fn oauth_start(core: &Core, redirect: &str) -> String {
+    let verifier = random_token(64);
+    let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(verifier.as_bytes()));
+    let state = random_token(24);
+    let url = format!(
+        "https://simkl.com/oauth2/authorize?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}&code_challenge={}&code_challenge_method=S256",
+        urlencoding::encode(&v2_id(core)),
+        urlencoding::encode(redirect),
+        urlencoding::encode(SCOPE),
+        state,
+        challenge
+    );
+    *PENDING.lock().unwrap() = Some(Pending { verifier, state, redirect: redirect.to_string() });
+    url
+}
+
+/// Step 2: the redirect came back (`...?code=..&state=..`); swap the code
+/// for tokens.
+pub async fn oauth_finish(core: &Core, callback: &str) -> AppResult<()> {
+    let query = callback.split_once('?').map(|(_, q)| q).unwrap_or("");
+    let params: std::collections::HashMap<String, String> = query
+        .split('&')
+        .filter_map(|kv| kv.split_once('='))
+        .map(|(k, v)| (k.to_string(), urlencoding::decode(&v.replace('+', " ")).map(|c| c.into_owned()).unwrap_or_default()))
+        .collect();
+    if let Some(e) = params.get("error") {
+        return Err(AppError::msg(if e == "access_denied" { "Simkl sign-in was cancelled".to_string() } else { format!("Simkl sign-in failed: {e}") }));
+    }
+    let code = params.get("code").ok_or_else(|| AppError::msg("Simkl didn't send a sign-in code back"))?;
+    let pending = PENDING.lock().unwrap().take().ok_or_else(|| AppError::msg("No Simkl sign-in in progress. Start again."))?;
+    if params.get("state") != Some(&pending.state) {
+        return Err(AppError::msg("That Simkl sign-in link doesn't match. Start again."));
+    }
+    let v = token_request(
+        core,
+        &[
+            ("grant_type", "authorization_code"),
+            ("client_id", &v2_id(core)),
+            ("code", code),
+            ("redirect_uri", &pending.redirect),
+            ("code_verifier", &pending.verifier),
+        ],
+    )
+    .await?;
+    store_tokens(core, &v).await
+}
+
+/// Backup: a short code to approve on any device (RFC 8628).
+pub async fn device_start(core: &Core) -> AppResult<Value> {
+    let res = core
+        .http
+        .client()
+        .post(format!("{API}/oauth2/device"))
+        .header("User-Agent", "Lumen/1.0")
+        .form(&[("client_id", v2_id(core).as_str()), ("scope", SCOPE)])
+        .timeout(Duration::from_secs(12))
+        .send()
+        .await?;
+    let v: Value = res.json().await?;
+    let dc = v.get("device_code").and_then(|d| d.as_str()).ok_or_else(|| AppError::msg(v.get("error_description").and_then(|e| e.as_str()).unwrap_or("Simkl didn't return a code").to_string()))?;
+    *DEVICE.lock().unwrap() = Some(dc.to_string());
+    // never hand the device code itself to the page
+    Ok(json!({
+        "user_code": v["user_code"],
+        "verification_url": v.get("verification_uri_complete").or_else(|| v.get("verification_uri")),
+        "interval": v["interval"],
+        "expires_in": v["expires_in"],
+    }))
+}
+
+/// Poll the device code. `true` once approved and stored.
+pub async fn device_poll(core: &Core) -> AppResult<bool> {
+    let Some(dc) = DEVICE.lock().unwrap().clone() else { return Ok(false) };
+    match token_request(core, &[("grant_type", "urn:ietf:params:oauth:grant-type:device_code"), ("client_id", &v2_id(core)), ("device_code", &dc)]).await {
+        Ok(v) => {
+            *DEVICE.lock().unwrap() = None;
+            store_tokens(core, &v).await?;
+            Ok(true)
+        }
+        Err(e) => {
+            let m = e.to_string();
+            if m.contains("authorization_pending") || m.contains("slow_down") {
+                Ok(false)
+            } else {
+                *DEVICE.lock().unwrap() = None;
+                Err(e)
+            }
+        }
+    }
+}
+
+async fn token_request(core: &Core, form: &[(&str, &str)]) -> AppResult<Value> {
+    let res = core
+        .http
+        .client()
+        .post(format!("{API}/oauth2/token"))
+        .header("User-Agent", "Lumen/1.0")
+        .form(form)
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await?;
+    let status = res.status();
+    let v: Value = res.json().await.unwrap_or(Value::Null);
+    if !status.is_success() || v.get("access_token").is_none() {
+        let e = v.get("error").and_then(|e| e.as_str()).unwrap_or("error");
+        let d = v.get("error_description").and_then(|e| e.as_str()).unwrap_or("");
+        return Err(AppError::msg(format!("{e}: {d}")));
+    }
+    Ok(v)
+}
+
+async fn store_tokens(core: &Core, v: &Value) -> AppResult<()> {
+    let access = v.get("access_token").and_then(|t| t.as_str()).ok_or_else(|| AppError::msg("No access token"))?;
+    core.db.set_secret("simkl_v2_access", Some(access))?;
+    if let Some(r) = v.get("refresh_token").and_then(|t| t.as_str()) {
+        core.db.set_secret("simkl_v2_refresh", Some(r))?;
+    }
+    let ttl = v.get("expires_in").and_then(|e| e.as_u64()).unwrap_or(7 * 86400);
+    core.db.set("simkl_v2_expires", &json!(now_secs() + ttl))?;
+    if let Ok(me) = get(core, "/users/settings").await {
+        let _ = core.db.set("simkl_user", &me);
+    }
+    Ok(())
+}
+
+/// Access tokens last 7 days; refresh a day early so a request never fails.
+async fn ensure_fresh(core: &Core) {
+    if !v2(core) {
+        return;
+    }
+    let exp = core.db.get::<Value>("simkl_v2_expires").and_then(|v| v.as_u64()).unwrap_or(0);
+    if exp > now_secs() + 86400 {
+        return;
+    }
+    let Some(rt) = core.db.secret("simkl_v2_refresh") else { return };
+    match token_request(core, &[("grant_type", "refresh_token"), ("client_id", &v2_id(core)), ("refresh_token", &rt)]).await {
+        Ok(v) => {
+            let _ = store_tokens_quiet(core, &v);
+        }
+        Err(e) => log::warn!("simkl refresh: {e}"),
+    }
+}
+
+fn store_tokens_quiet(core: &Core, v: &Value) -> AppResult<()> {
+    if let Some(a) = v.get("access_token").and_then(|t| t.as_str()) {
+        core.db.set_secret("simkl_v2_access", Some(a))?;
+    }
+    let ttl = v.get("expires_in").and_then(|e| e.as_u64()).unwrap_or(7 * 86400);
+    core.db.set("simkl_v2_expires", &json!(now_secs() + ttl))
+}
+
+pub async fn logout(core: &Core) -> AppResult<()> {
+    if let Some(rt) = core.db.secret("simkl_v2_refresh") {
+        let _ = core
+            .http
+            .client()
+            .post(format!("{API}/oauth2/revoke"))
+            .header("User-Agent", "Lumen/1.0")
+            .form(&[("client_id", v2_id(core).as_str()), ("token", rt.as_str())])
+            .timeout(Duration::from_secs(8))
+            .send()
+            .await;
+    }
+    for k in ["simkl_v2_access", "simkl_v2_refresh", "simkl_token"] {
+        core.db.set_secret(k, None)?;
+    }
+    core.db.del("simkl_v2_expires")?;
+    core.db.del("simkl_user")
 }
 
 // -------------------------------------------------------------- ids

@@ -28,6 +28,8 @@ info.update({
     "ITSAppUsesNonExemptEncryption": False,
     "UIViewControllerBasedStatusBarAppearance": False,
     "UIStatusBarStyle": "UIStatusBarStyleLightContent",
+    # lumen:// (Simkl sign-in coming back, links) and stremio:// (addon installs)
+    "CFBundleURLTypes": [{"CFBundleURLName": bundle_id, "CFBundleURLSchemes": ["lumen", "stremio"]}],
 })
 
 # Lumen's own player: mpv through MPVKit (Swift package binaries), plus its

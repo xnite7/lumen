@@ -142,10 +142,12 @@ pub fn run() {
                 }
             });
 
-            #[cfg(desktop)]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
+                #[cfg(desktop)]
                 let _ = app.deep_link().register_all();
+                // iPhone too: lumen:// links (Simkl sign-in coming back,
+                // addon installs) arrive here.
                 let h = handle.clone();
                 app.deep_link().on_open_url(move |ev| {
                     for u in ev.urls() {
@@ -222,6 +224,10 @@ pub fn run() {
             commands::simkl_pin_start,
             commands::simkl_pin_poll,
             commands::simkl_logout,
+            commands::simkl_oauth_start,
+            commands::simkl_oauth_finish,
+            commands::simkl_device_start,
+            commands::simkl_device_poll,
             commands::simkl_rate,
             commands::simkl_item_status,
             commands::ai_vibe,

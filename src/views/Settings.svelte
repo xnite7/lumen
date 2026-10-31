@@ -13,6 +13,7 @@
   import NavBar from "../ui/NavBar.svelte";
   import SignIn from "../ui/SignIn.svelte";
   import ThemeCard from "../ui/ThemeCard.svelte";
+  import SimklConnect from "../ui/SimklConnect.svelte";
   import { SECTIONS, sectionById } from "../lib/sections";
 
   let { section = "appearance" }: { section?: string } = $props();
@@ -29,31 +30,6 @@
   });
 
   // ------------------------------------------------------------ accounts
-  let pin = $state<{ user_code: string; verification_url: string } | null>(null);
-  let pinTimer: ReturnType<typeof setInterval> | undefined;
-  async function simklConnect() {
-    try {
-      pin = await api.simklPinStart();
-      if (pin?.verification_url) api.openExternal(pin.verification_url);
-      clearInterval(pinTimer);
-      pinTimer = setInterval(async () => {
-        if (!pin) return clearInterval(pinTimer);
-        try {
-          if (await api.simklPinPoll(pin.user_code)) {
-            clearInterval(pinTimer);
-            pin = null;
-            await refreshSecrets();
-            toast("Simkl connected", "ok");
-          }
-        } catch {
-          /* keep polling */
-        }
-      }, 5000);
-    } catch (e) {
-      toast(errorText(e), "error");
-    }
-  }
-
   async function importOld() {
     try {
       const r = await api.importEnhanced();
@@ -319,21 +295,7 @@
           </div>
           <h3 class="group-head">Simkl</h3>
           <div class="group">
-            <Cell label="Client ID" hint="From your app at simkl.com/settings/developer."><SecretField name="simkl_client_id" placeholder="Simkl client id" /></Cell>
-            {#if app.secrets.simkl_token}
-              <Cell label={app.secrets.simklUser?.user?.name ? `Connected as ${app.secrets.simklUser.user.name}` : "Connected"}>
-                <button class="btn tinted small press" onclick={async () => { await api.simklLogout(); await refreshSecrets(); }}>Disconnect</button>
-              </Cell>
-            {:else if pin}
-              <Cell label="Enter this code at simkl.com/pin" hint="Lumen connects as soon as you approve it.">
-                <span class="code">{pin.user_code}</span>
-              </Cell>
-            {:else}
-              <Cell label="Connect" hint="Or paste an existing access token below.">
-                <button class="btn accent small press" disabled={!app.secrets.simkl_client_id} onclick={simklConnect}>Connect Simkl</button>
-              </Cell>
-              <Cell label="Access token"><SecretField name="simkl_token" placeholder="Existing token" /></Cell>
-            {/if}
+            <SimklConnect />
             <Cell label="Scrobble what you watch"><Controls kind="switch" bind:value={s.integrations.simklScrobble} onchange={changed} /></Cell>
             <Cell label="Library is your Plan to Watch"><Controls kind="switch" bind:value={s.integrations.simklSyncWatchlist} onchange={changed} /></Cell>
           </div>
