@@ -121,6 +121,9 @@ pub struct Playback {
     /// Draw video inside Lumen's window (under the UI). Off = mpv opens its
     /// own window, as a fallback for unusual GPU/driver setups.
     pub embed_video: bool,
+    /// iPhone: "auto" (Apple's player for MP4/HLS, Lumen's for the rest) |
+    /// "lumen" (always Lumen's own mpv player).
+    pub ios_player: String,
 }
 
 impl Default for Playback {
@@ -150,6 +153,7 @@ impl Default for Playback {
             native_ass: false,
             watched_threshold: 84,
             embed_video: true,
+            ios_player: "auto".into(),
         }
     }
 }

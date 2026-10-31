@@ -30,6 +30,22 @@ info.update({
     "UIStatusBarStyle": "UIStatusBarStyleLightContent",
 })
 
+# Lumen's own player: mpv through MPVKit (Swift package binaries), plus its
+# Swift sources, compiled into the app target.
+spec.setdefault("packages", {})["MPVKit"] = {
+    "url": "https://github.com/mpvkit/MPVKit",
+    "revision": "98c3453e252922e3136422da3fbb2e341ed9edc8",  # 1.1.0-n9.0.2
+}
+app["deploymentTarget"] = "15.0"  # MPVKit's minimum
+srcs = app.setdefault("sources", [])
+if not any((s.get("path") if isinstance(s, dict) else s) == "../../ios-player" for s in srcs):
+    srcs.append({"path": "../../ios-player"})
+info["UISupportedInterfaceOrientations"] = [
+    "UIInterfaceOrientationPortrait",
+    "UIInterfaceOrientationLandscapeLeft",
+    "UIInterfaceOrientationLandscapeRight",
+]
+
 targets["LumenWidgets"] = {
     "type": "app-extension",
     "platform": "iOS",
@@ -61,6 +77,8 @@ targets["LumenWidgets"] = {
 deps = app.setdefault("dependencies", [])
 if not any(d.get("target") == "LumenWidgets" for d in deps):
     deps.append({"target": "LumenWidgets", "embed": True})
+if not any(d.get("package") == "MPVKit" for d in deps):
+    deps.append({"package": "MPVKit", "product": "MPVKit"})
 
 yaml.safe_dump(spec, open(spec_path, "w"), sort_keys=False)
 print(f"patched {app_name} ({bundle_id}) + LumenWidgets", file=sys.stderr)

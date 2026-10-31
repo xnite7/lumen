@@ -46,11 +46,6 @@ export const pb = $state({
 });
 
 const iosNative = () => isTauri && app.platform === "ios";
-/** containers AVPlayer can't play */
-const unplayable = (url: string, stream: Stream | null) => {
-  const name = String(stream?.behaviorHints?.filename ?? url).toLowerCase().split("?")[0];
-  return /\.(mkv|avi|wmv|flv|webm)$/.test(name);
-};
 
 let wired = false;
 
@@ -99,10 +94,6 @@ export function initPlayback() {
 
 async function startIOS(url: string, startAt?: number, headers?: Record<string, string>) {
   pb.url = url;
-  if (unplayable(url, pb.stream)) {
-    pb.handoff = url;
-    return;
-  }
   pb.ios = true;
   haptic("medium");
   const m = pb.meta;
@@ -115,6 +106,10 @@ async function startIOS(url: string, startAt?: number, headers?: Record<string, 
     startAt,
     tint: getComputedStyle(document.documentElement).getPropertyValue("--ambient-1").trim(),
     headers,
+    engine: app.settings.playback.iosPlayer,
+    // mpv takes ISO 639-2 codes, same as the settings store
+    subLangs: app.settings.subtitles.enabledByDefault ? app.settings.subtitles.languages : [],
+    audioLangs: app.settings.playback.audioLanguages,
   });
 }
 

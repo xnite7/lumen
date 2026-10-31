@@ -46,6 +46,7 @@ export const DEFAULT_SETTINGS = {
     nativeAss: false,
     watchedThreshold: 84,
     embedVideo: true,
+    iosPlayer: "auto",
   },
   subtitles: {
     languages: ["eng", "ara"],

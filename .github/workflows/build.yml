@@ -110,6 +110,7 @@ jobs:
           echo "configuration: $CONF"
           xcodebuild -project lumen.xcodeproj -scheme lumen_iOS -configuration "$CONF" -sdk iphoneos \
             -destination 'generic/platform=iOS' -derivedDataPath build ARCHS=arm64 \
+            -skipPackagePluginValidation -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
           APP=$(find build/Build/Products -name "*.app" -maxdepth 3 | head -1)
           echo "app: $APP"

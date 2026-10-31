@@ -32,6 +32,10 @@ class PlayArgs: Decodable {
     let startAt: Double?
     let tint: String?
     let headers: [String: String]?
+    /// "auto" (Apple's player when it can, Lumen's otherwise) | "lumen"
+    let engine: String?
+    let subLangs: [String]?
+    let audioLangs: [String]?
 }
 
 /// Lumen's native layer on iPhone.
@@ -56,6 +60,8 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
     private var presented = false
     private var inPip = false
     private var activity: Any?
+    private var mpvActive = false
+    private var observing = false
 
     // MARK: haptics
 
@@ -142,6 +148,11 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
         }
         DispatchQueue.main.async {
             self.teardown(dismiss: true)
+            self.observeLumenPlayer()
+            if (args.engine == "lumen" || Self.needsLumenPlayer(args.url)), self.presentLumenPlayer(args) {
+                invoke.resolve()
+                return
+            }
             let session = AVAudioSession.sharedInstance()
             try? session.setCategory(.playback, mode: .moviePlayback)
             try? session.setActive(true)
@@ -184,6 +195,10 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
 
     @objc public func stop(_ invoke: Invoke) throws {
         DispatchQueue.main.async {
+            if self.mpvActive, let vc = self.top(), NSStringFromClass(type(of: vc)) == "LumenMPVPlayer" {
+                self.mpvActive = false
+                vc.perform(NSSelectorFromString("close"))
+            }
             self.finish()
             invoke.resolve()
         }
@@ -245,10 +260,65 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
         trigger("closed", data: data)
     }
 
+    /// Apple's player couldn't open it: Lumen's own player takes over.
     private func failed() {
-        let url = current?.url ?? ""
+        guard let args = current else { return }
+        let wasPresented = playerVC?.presentingViewController != nil
         teardown(dismiss: true)
-        trigger("failed", data: ["url": url])
+        let fallback = { [weak self] in
+            guard let self = self else { return }
+            if !self.presentLumenPlayer(args) { self.trigger("failed", data: ["url": args.url]) }
+        }
+        if wasPresented { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: fallback) } else { fallback() }
+    }
+
+    // MARK: Lumen's own player (mpv, in the app target)
+
+    /// Containers AVPlayer can't open at all.
+    static func needsLumenPlayer(_ url: String) -> Bool {
+        let path = (URL(string: url)?.path ?? url).lowercased()
+        return ["mkv", "avi", "webm", "wmv", "flv", "ts", "m2ts", "mts", "ogm", "divx", "3gp"].contains((path as NSString).pathExtension)
+    }
+
+    private func presentLumenPlayer(_ a: PlayArgs) -> Bool {
+        guard let cls = NSClassFromString("LumenMPVPlayer") as? UIViewController.Type, let host = top() else { return false }
+        let vc = cls.init(nibName: nil, bundle: nil)
+        var cfg: [String: Any] = ["url": a.url, "title": a.title ?? "Lumen", "subtitle": a.subtitle ?? "", "artwork": a.artwork ?? ""]
+        if let s = a.startAt { cfg["startAt"] = s }
+        if let h = a.headers, !h.isEmpty { cfg["headers"] = h }
+        if let s = a.subLangs { cfg["subLangs"] = s }
+        if let l = a.audioLangs { cfg["audioLangs"] = l }
+        vc.setValue(cfg as NSDictionary, forKey: "config")
+        vc.modalPresentationStyle = .fullScreen
+        current = a
+        mpvActive = true
+        host.present(vc, animated: true)
+        startActivity(a)
+        return true
+    }
+
+    private func observeLumenPlayer() {
+        guard !observing else { return }
+        observing = true
+        let nc = NotificationCenter.default
+        nc.addObserver(forName: Notification.Name("lumen.player.progress"), object: nil, queue: .main) { [weak self] n in
+            guard let self = self, let u = n.userInfo else { return }
+            let pos = u["pos"] as? Double ?? 0
+            let dur = u["duration"] as? Double ?? 0
+            let paused = u["paused"] as? Bool ?? false
+            self.trigger("progress", data: ["pos": pos, "duration": dur, "paused": paused])
+            self.updateActivity(paused: paused, position: pos, duration: dur)
+        }
+        nc.addObserver(forName: Notification.Name("lumen.player.ended"), object: nil, queue: .main) { [weak self] _ in
+            self?.trigger("ended", data: [:] as JSObject)
+        }
+        nc.addObserver(forName: Notification.Name("lumen.player.closed"), object: nil, queue: .main) { [weak self] n in
+            guard let self = self else { return }
+            self.mpvActive = false
+            self.endActivity()
+            let u = n.userInfo ?? [:]
+            self.trigger("closed", data: ["pos": u["pos"] as? Double ?? 0, "duration": u["duration"] as? Double ?? 0])
+        }
     }
 
     private func teardown(dismiss: Bool) {
@@ -344,6 +414,14 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
         #if canImport(ActivityKit)
         guard #available(iOS 16.2, *), let act = activity as? Activity<LumenActivityAttributes>, let p = player else { return }
         let state = LumenActivityAttributes.ContentState(paused: p.timeControlStatus != .playing, position: position, duration: duration, sampledAt: Date())
+        Task { await act.update(.init(state: state, staleDate: nil)) }
+        #endif
+    }
+
+    private func updateActivity(paused: Bool, position: Double, duration: Double) {
+        #if canImport(ActivityKit)
+        guard #available(iOS 16.2, *), let act = activity as? Activity<LumenActivityAttributes> else { return }
+        let state = LumenActivityAttributes.ContentState(paused: paused, position: position, duration: duration, sampledAt: Date())
         Task { await act.update(.init(state: state, staleDate: nil)) }
         #endif
     }
