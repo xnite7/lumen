@@ -9,7 +9,7 @@
   import { api, img } from "../lib/api";
   import { refreshSecrets } from "../lib/stores/app.svelte";
   import { toast, errorText } from "../lib/stores/toast.svelte";
-  import { openAuth, closeAuth, isIOS, haptic } from "../lib/native";
+  import { closeAuth, isIOS, haptic } from "../lib/native";
   import Icon from "../components/Icon.svelte";
 
   let { ondone, compact = false }: { ondone?: () => void; compact?: boolean } = $props();
@@ -60,11 +60,17 @@
     setTimeout(() => ondone?.(), 900);
   }
 
+  // Stremio's page runs Sign in with Apple in a pop-up, which in-app
+  // browser sheets block, so it opens in Safari itself. Lumen keeps polling
+  // and checks again the moment you switch back.
   async function apple() {
     const l = await startLink();
     if (!l) return;
     mode = "waiting";
-    if (!(await openAuth(l.link))) api.openExternal(l.link);
+    api.openExternal(l.link);
+  }
+  function onVisible() {
+    if (document.visibilityState === "visible" && link && timer) poll();
   }
 
   async function emailLogin(e: Event) {
@@ -82,7 +88,11 @@
 
   $effect(() => {
     if (mode === "code" && !link) startLink();
-    return stop;
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   });
 </script>
 
@@ -102,9 +112,10 @@
   {:else if mode === "waiting"}
     <div class="waiting">
       <span class="spinner"></span>
-      <p class="headline">Approve in the Stremio page</p>
-      <p class="foot dim">Sign in with Apple there. Lumen picks it up the moment you're in.</p>
-      <button class="btn plain" onclick={() => link && openAuth(link.link)}>Open it again</button>
+      <p class="headline">Finish in Safari</p>
+      <p class="foot dim">Tap Apple on the Stremio page, sign in, then come back here. Lumen signs in by itself.</p>
+      {#if link}<p class="code-hint foot dim">Code <b>{link.code}</b></p>{/if}
+      <button class="btn plain" onclick={() => link && api.openExternal(link.link)}>Open Safari again</button>
       <button class="btn plain dim" onclick={() => { stop(); mode = "choose"; }}>Back</button>
     </div>
   {:else if mode === "code"}
@@ -244,6 +255,10 @@
   .waiting p,
   .done p {
     margin: 0;
+  }
+  .code-hint b {
+    color: var(--label);
+    letter-spacing: 0.12em;
   }
   .spinner {
     width: 30px;
