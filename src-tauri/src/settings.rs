@@ -268,6 +268,8 @@ pub struct Integrations {
     pub simkl_scrobble: bool,
     pub simkl_sync_watchlist: bool,
     pub simkl_mirror_watched: bool,
+    /// Log watching something again as a separate viewing (Simkl PRO/VIP).
+    pub simkl_rewatches: bool,
     pub tidb_enabled: bool,
     pub ai_enabled: bool,
     pub ai_model: String,
@@ -287,6 +289,7 @@ impl Default for Integrations {
             simkl_scrobble: true,
             simkl_sync_watchlist: true,
             simkl_mirror_watched: true,
+            simkl_rewatches: false,
             tidb_enabled: true,
             ai_enabled: true,
             ai_model: "claude-opus-5".into(),

@@ -47,6 +47,8 @@ pub struct OpenResult {
     pub yt_id: Option<String>,
     /// Web mode: where the UI's player should start (resume point).
     pub start_at: Option<f64>,
+    /// Resume as a fraction (0..1) when only Simkl knows the position.
+    pub start_pct: Option<f64>,
     /// Web mode: request headers the stream needs (proxyHeaders).
     pub headers: Option<serde_json::Map<String, Value>>,
 }
@@ -116,11 +118,11 @@ impl Player {
 
     pub async fn open(self: &Arc<Self>, req: PlayRequest) -> AppResult<OpenResult> {
         if let Some(yt) = req.stream.get("ytId").and_then(|y| y.as_str()) {
-            return Ok(OpenResult { mode: "youtube", url: None, yt_id: Some(yt.to_string()), start_at: None, headers: None });
+            return Ok(OpenResult { mode: "youtube", url: None, yt_id: Some(yt.to_string()), start_at: None, start_pct: None, headers: None });
         }
         if req.stream.get("url").is_none() && req.stream.get("infoHash").is_none() {
             if let Some(ext) = req.stream.get("externalUrl").and_then(|u| u.as_str()) {
-                return Ok(OpenResult { mode: "external", url: Some(ext.to_string()), yt_id: None, start_at: None, headers: None });
+                return Ok(OpenResult { mode: "external", url: Some(ext.to_string()), yt_id: None, start_at: None, start_pct: None, headers: None });
             }
         }
         let url = self.resolve_url(&req.stream).await?.ok_or_else(|| AppError::msg("This stream has nothing playable"))?;
@@ -131,6 +133,9 @@ impl Player {
         *self.session.lock() = Some(session.clone());
 
         let start = req.start_at.or_else(|| self.resume_point(&req));
+        // Paused in another Simkl app? Resume there (as a fraction: Simkl
+        // stores percent, and the length isn't known until the file opens).
+        let start_pct = if start.is_none() { self.simkl_resume(&req) } else { None };
 
         #[cfg(desktop)]
         {
@@ -142,7 +147,7 @@ impl Player {
                 .unwrap_or_default();
             let (play_url, absorbed) = self.route(&url, &headers).await;
             let headers = if absorbed { vec![] } else { headers };
-            self.backend.load(&play_url, start, &headers)?;
+            self.backend.load(&play_url, start, start_pct, &headers)?;
             // Subtitles from addons arrive a beat later and are added as
             // external tracks; mpv picks them up without a reload.
             let this = self.clone();
@@ -164,7 +169,7 @@ impl Player {
                 this.core.emit("player://subtitles", subs);
             });
             session::spawn_tracker(self.clone());
-            Ok(OpenResult { mode: "native", url: Some(play_url), yt_id: None, start_at: start, headers: None })
+            Ok(OpenResult { mode: "native", url: Some(play_url), yt_id: None, start_at: start, start_pct, headers: None })
         }
         #[cfg(not(desktop))]
         {
@@ -172,7 +177,7 @@ impl Player {
             let pairs: Vec<(String, String)> = headers.iter().flatten().filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_string()))).collect();
             let (play_url, absorbed) = self.route(&url, &pairs).await;
             session::spawn_tracker(self.clone());
-            Ok(OpenResult { mode: "web", url: Some(play_url), yt_id: None, start_at: start, headers: if absorbed { None } else { headers } })
+            Ok(OpenResult { mode: "web", url: Some(play_url), yt_id: None, start_at: start, start_pct, headers: if absorbed { None } else { headers } })
         }
     }
 
@@ -191,6 +196,13 @@ impl Player {
         } else {
             Some(t)
         }
+    }
+
+    fn simkl_resume(&self, req: &PlayRequest) -> Option<f64> {
+        let parts: Vec<&str> = req.video_id.split(':').collect();
+        let imdb = parts.first().copied().filter(|p| p.starts_with("tt"))?;
+        let (s, e) = if parts.len() >= 3 { (parts[parts.len() - 2].parse().ok(), parts[parts.len() - 1].parse().ok()) } else { (None, None) };
+        crate::integrations::simkl_sync::resume_fraction(&self.core, imdb, s, e)
     }
 
     /// Persist the last position and tell Simkl we stopped.

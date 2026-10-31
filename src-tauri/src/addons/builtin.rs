@@ -9,10 +9,12 @@ use super::types::*;
 use super::BUILTIN_TRANSPORT;
 use crate::core::Core;
 use crate::error::{AppError, AppResult};
-use crate::integrations::{motn, simkl, tmdb};
+use crate::integrations::{motn, simkl, simkl_sync, tmdb};
 use serde_json::{json, Value};
 
 const SIMKL_ROWS: &[(&str, &str, &[&str])] = &[
+    ("simkl-upnext", "Up Next", &["series"]),
+    ("simkl-new", "New Episodes", &["series"]),
     ("simkl-watching", "Watching on Simkl", &["series"]),
     ("simkl-plantowatch", "Plan to Watch", &["movie", "series"]),
     ("simkl-recs", "Because You Watched", &["movie", "series"]),
@@ -114,6 +116,8 @@ pub async fn handle(core: &Core, resource: &str, kind: &str, id: &str, extra: &[
                     v.extend(anime);
                     dedupe(v)
                 }
+                "simkl-upnext" => up_next(core, skip).await?,
+                "simkl-new" => new_episodes(core, skip).await?,
                 "simkl-watching" => simkl_list(core, "watching", kind, skip).await?,
                 "simkl-plantowatch" => simkl_list(core, "plantowatch", kind, skip).await?,
                 "simkl-recs" => recommendations(core, kind, skip).await?,
@@ -143,16 +147,92 @@ async fn search_anime(core: &Core, q: &str) -> Vec<Value> {
     }
 }
 
+/// Read from the local Simkl mirror (kept current by activities-gated
+/// delta sync), so a Home load costs no Simkl requests at all.
 async fn simkl_list(core: &Core, status: &str, kind: &str, skip: u32) -> AppResult<Vec<Value>> {
     if !simkl::connected(core) || skip > 0 {
         return Ok(vec![]);
     }
-    let d = simkl::get(core, &format!("/sync/all-items/all/{status}?extended=full")).await?;
-    let mut rows = Vec::new();
-    for k in ["shows", "movies", "anime"] {
-        rows.extend(d.get(k).and_then(|a| a.as_array()).cloned().unwrap_or_default());
+    if !simkl_sync::has_data(core) {
+        let _ = simkl_sync::sync(core).await;
     }
-    Ok(dedupe(rows.iter().filter_map(|r| simkl::to_meta(r, Some(kind))).collect()))
+    Ok(dedupe(simkl_sync::list(core, status, kind).iter().filter_map(|r| simkl::to_meta(r, Some(kind))).collect()))
+}
+
+/// Shows with a next episode ready: Simkl fills `next_to_watch` itself the
+/// moment a new episode airs for a show you're caught up on.
+async fn up_next(core: &Core, skip: u32) -> AppResult<Vec<Value>> {
+    if !simkl::connected(core) || skip > 0 {
+        return Ok(vec![]);
+    }
+    if !simkl_sync::has_data(core) {
+        let _ = simkl_sync::sync(core).await;
+    }
+    Ok(dedupe(
+        simkl_sync::up_next(core)
+            .iter()
+            .filter_map(|e| {
+                let mut m = simkl::to_meta(e, Some("series"))?;
+                if let Some(n) = e.get("next_to_watch_info").filter(|n| !n.is_null()) {
+                    let s = n.get("season").and_then(|v| v.as_u64());
+                    let ep = n.get("episode").and_then(|v| v.as_u64());
+                    let label = match (s, ep) {
+                        (Some(s), Some(ep)) => format!("S{s} · E{ep}"),
+                        (None, Some(ep)) => format!("Episode {ep}"),
+                        _ => String::new(),
+                    };
+                    m["upNext"] = json!([label, n.get("title").and_then(|t| t.as_str()).unwrap_or("").to_string()].iter().filter(|x| !x.is_empty()).cloned().collect::<Vec<_>>().join(" · "));
+                }
+                Some(m)
+            })
+            .collect(),
+    ))
+}
+
+/// Episodes from the last week of shows you watch or plan to, from Simkl's
+/// calendar data files (CDN, no API quota).
+async fn new_episodes(core: &Core, skip: u32) -> AppResult<Vec<Value>> {
+    if !simkl::connected(core) || skip > 0 {
+        return Ok(vec![]);
+    }
+    let mine: std::collections::HashMap<String, Value> = ["watching", "plantowatch", "hold"]
+        .iter()
+        .flat_map(|st| simkl_sync::list(core, st, "series"))
+        .filter_map(|e| simkl::inner(&e).pointer("/ids/simkl").map(|i| (i.to_string(), e.clone())))
+        .collect();
+    if mine.is_empty() {
+        return Ok(vec![]);
+    }
+    let cid = simkl::client_id(core).unwrap_or_default();
+    let now = chrono_now();
+    let mut hits: Vec<(i64, Value)> = vec![];
+    for file in ["tv", "anime"] {
+        let u = format!("https://data.simkl.in/calendar/v2/{file}.json?client_id={}&app-name=lumen&app-version=1.0", urlencoding::encode(&cid));
+        let Ok(cal) = core.http.get_json_cached::<Value>(&u, std::time::Duration::from_secs(3600 * 3), std::time::Duration::from_secs(12)).await else { continue };
+        for c in cal.as_array().into_iter().flatten() {
+            let Some(id) = c.pointer("/ids/simkl_id").map(|i| i.to_string()) else { continue };
+            let Some(entry) = mine.get(&id) else { continue };
+            let t = c.get("date").and_then(|d| d.as_str()).map(crate::library::parse_iso).unwrap_or(0);
+            if t == 0 || t > now || now - t > 7 * 86_400_000 {
+                continue;
+            }
+            let Some(mut m) = simkl::to_meta(entry, Some("series")) else { continue };
+            let s = c.pointer("/episode/season").and_then(|v| v.as_u64());
+            let e = c.pointer("/episode/episode").and_then(|v| v.as_u64());
+            if let (Some(s), Some(e)) = (s, e) {
+                m["upNext"] = json!(format!("S{s} · E{e}"));
+            } else if let Some(e) = e {
+                m["upNext"] = json!(format!("Episode {e}"));
+            }
+            hits.push((t, m));
+        }
+    }
+    hits.sort_by_key(|(t, _)| std::cmp::Reverse(*t));
+    Ok(dedupe(hits.into_iter().map(|(_, m)| m).collect()))
+}
+
+fn chrono_now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
 
 /// TMDB recommendations seeded from what you finished and rated 7+.
@@ -160,15 +240,12 @@ async fn recommendations(core: &Core, kind: &str, skip: u32) -> AppResult<Vec<Va
     if !simkl::connected(core) || skip > 0 {
         return Ok(vec![]);
     }
-    let d = simkl::get(core, "/sync/all-items/all/completed?extended=full").await?;
-    let mut rows = Vec::new();
-    for k in ["shows", "movies", "anime"] {
-        rows.extend(d.get(k).and_then(|a| a.as_array()).cloned().unwrap_or_default());
+    if !simkl_sync::has_data(core) {
+        let _ = simkl_sync::sync(core).await;
     }
-    // Most recently finished first, so the row follows what you're into now.
-    rows.sort_by(|a, b| {
-        b.get("last_watched_at").and_then(|v| v.as_str()).unwrap_or("").cmp(a.get("last_watched_at").and_then(|v| v.as_str()).unwrap_or(""))
-    });
+    // Most recently finished first (the mirror's order), so the row follows
+    // what you're into now.
+    let rows = simkl_sync::list(core, "completed", kind);
     let tkind = tmdb::kind_of(kind);
     let seeds: Vec<String> = rows
         .iter()

@@ -250,7 +250,7 @@ export const api = {
   recentsClear: () => invoke<void>("recents_clear"),
   skip: (videoId: string, durationMs?: number) => invoke<any>("skip_segments", { videoId, durationMs }),
   open: (req: { stream: Stream; meta: Partial<Meta>; videoId: string; startAt?: number; episodeTitle?: string }) =>
-    invoke<{ mode: "native" | "web" | "youtube" | "external"; url?: string; ytId?: string; startAt?: number | null; headers?: Record<string, string> | null }>("player_open", { req }),
+    invoke<{ mode: "native" | "web" | "youtube" | "external"; url?: string; ytId?: string; startAt?: number | null; startPct?: number | null; headers?: Record<string, string> | null }>("player_open", { req }),
   cmd: (cmd: string, args?: Record<string, unknown>) => invoke<any>("player_cmd", { cmd, args }),
   stop: () => invoke<void>("player_stop"),
   playerState: () => invoke<PlayerState>("player_state"),
@@ -288,6 +288,7 @@ export const api = {
   simklPinStart: () => invoke<any>("simkl_pin_start"),
   simklPinPoll: (code: string) => invoke<boolean>("simkl_pin_poll", { code }),
   simklLogout: () => invoke<void>("simkl_logout"),
+  simklSync: () => invoke<boolean>("simkl_sync"),
   simklOAuthStart: () => invoke<void>("simkl_oauth_start"),
   simklOAuthFinish: (url: string) => invoke<void>("simkl_oauth_finish", { url }),
   simklDeviceStart: () => invoke<{ user_code: string; verification_url: string; interval: number; expires_in: number }>("simkl_device_start"),

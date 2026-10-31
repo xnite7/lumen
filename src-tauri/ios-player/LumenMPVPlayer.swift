@@ -230,7 +230,11 @@ final class LumenMPVPlayer: UIViewController {
 
     private func load(_ url: String) {
         var opts: [String] = []
-        if let s = config["startAt"] as? Double, s > 1 { opts.append("start=\(Int(s))") }
+        if let s = config["startAt"] as? Double, s > 1 {
+            opts.append("start=\(Int(s))")
+        } else if let p = config["startPct"] as? Double, p > 0.01 {
+            opts.append(String(format: "start=%.2f%%", p * 100))
+        }
         // loadfile <url> replace <index> <options>  (mpv >= 0.38)
         command(opts.isEmpty ? ["loadfile", url, "replace"] : ["loadfile", url, "replace", "-1", opts.joined(separator: ",")])
     }

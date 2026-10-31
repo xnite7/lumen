@@ -138,6 +138,11 @@ pub fn run() {
                             }
                         }
                     }
+                    // Simkl: one tiny /sync/activities call; real fetches only
+                    // when something moved.
+                    if integrations::simkl_sync::sync(&c2).await.unwrap_or(false) {
+                        let _ = c2.app.emit("library-changed", ());
+                    }
                     tokio::time::sleep(std::time::Duration::from_secs(600)).await;
                 }
             });
@@ -224,6 +229,7 @@ pub fn run() {
             commands::simkl_pin_start,
             commands::simkl_pin_poll,
             commands::simkl_logout,
+            commands::simkl_sync,
             commands::simkl_oauth_start,
             commands::simkl_oauth_finish,
             commands::simkl_device_start,

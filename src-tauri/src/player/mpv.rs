@@ -303,7 +303,7 @@ impl Mpv {
             .expect("mpv event thread");
     }
 
-    pub fn load(&self, url: &str, start: Option<f64>, headers: &[(String, String)]) -> AppResult<()> {
+    pub fn load(&self, url: &str, start: Option<f64>, start_pct: Option<f64>, headers: &[(String, String)]) -> AppResult<()> {
         let mpv = self.ensure()?;
         let s = self.core.settings();
         let mut fields: Vec<String> = headers
@@ -315,7 +315,12 @@ impl Mpv {
         let _ = mpv.set_property("http-header-fields", fields.join(",").as_str());
         let ua = headers.iter().find(|(k, _)| k.eq_ignore_ascii_case("user-agent")).map(|(_, v)| v.clone()).unwrap_or_else(|| crate::http::UA.into());
         let _ = mpv.set_property("user-agent", ua.as_str());
-        let _ = mpv.set_property("start", start.map(|t| format!("+{t:.2}")).unwrap_or_else(|| "none".into()).as_str());
+        let start_opt = match (start, start_pct) {
+            (Some(t), _) => format!("+{t:.2}"),
+            (None, Some(p)) => format!("{:.2}%", p * 100.0),
+            _ => "none".into(),
+        };
+        let _ = mpv.set_property("start", start_opt.as_str());
         let _ = mpv.set_property("sub-visibility", false);
         self.apply_aspect(&mpv, &s.playback.aspect);
         {

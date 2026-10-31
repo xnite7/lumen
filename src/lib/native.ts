@@ -51,6 +51,7 @@ export interface NativePlay {
   subtitle?: string;
   artwork?: string;
   startAt?: number;
+  startPct?: number;
   tint?: string;
   headers?: Record<string, string>;
   engine?: string;

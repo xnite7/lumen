@@ -89,6 +89,7 @@ export const DEFAULT_SETTINGS = {
     simklScrobble: true,
     simklSyncWatchlist: true,
     simklMirrorWatched: true,
+    simklRewatches: false,
     tidbEnabled: true,
     aiEnabled: true,
     aiModel: "claude-opus-5",

@@ -44,6 +44,14 @@
     })();
     listen<string>("deeplink", handleLink);
     listen("library-changed", () => loadLibrary());
+    // Coming back to Lumen: ask Simkl what changed (one tiny request; the
+    // real fetch only happens when something did).
+    let lastSync = 0;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible" || Date.now() - lastSync < 120_000 || !app.secrets.simkl_token) return;
+      lastSync = Date.now();
+      api.simklSync().catch(() => {});
+    });
     listen<{ kind: string; text: string }>("toast", (t) => toast(t.text, (t.kind as any) ?? "info"));
   });
 

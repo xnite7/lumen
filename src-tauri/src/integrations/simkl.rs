@@ -56,6 +56,7 @@ fn req(core: &Core, method: reqwest::Method, path: &str) -> AppResult<reqwest::R
         .client()
         .request(method, url(core, path)?)
         .header("simkl-api-key", cid)
+        .header("User-Agent", "Lumen/1.0")
         .header("Content-Type", "application/json")
         .timeout(Duration::from_secs(12));
     if let Some(t) = token(core) {
@@ -71,6 +72,12 @@ pub async fn get(core: &Core, path: &str) -> AppResult<Value> {
         return Err(AppError::msg(format!("Simkl HTTP {} on {path}", res.status())));
     }
     Ok(res.json().await?)
+}
+
+pub async fn delete(core: &Core, path: &str) -> AppResult<()> {
+    ensure_fresh(core).await;
+    req(core, reqwest::Method::DELETE, path)?.send().await?;
+    Ok(())
 }
 
 pub async fn post(core: &Core, path: &str, body: Value) -> AppResult<Value> {
@@ -247,6 +254,8 @@ async fn token_request(core: &Core, form: &[(&str, &str)]) -> AppResult<Value> {
 }
 
 async fn store_tokens(core: &Core, v: &Value) -> AppResult<()> {
+    // a new sign-in may be a different account: rebuild the mirror from scratch
+    super::simkl_sync::clear(core);
     let access = v.get("access_token").and_then(|t| t.as_str()).ok_or_else(|| AppError::msg("No access token"))?;
     core.db.set_secret("simkl_v2_access", Some(access))?;
     if let Some(r) = v.get("refresh_token").and_then(|t| t.as_str()) {
@@ -301,6 +310,7 @@ pub async fn logout(core: &Core) -> AppResult<()> {
     for k in ["simkl_v2_access", "simkl_v2_refresh", "simkl_token"] {
         core.db.set_secret(k, None)?;
     }
+    super::simkl_sync::clear(core);
     core.db.del("simkl_v2_expires")?;
     core.db.del("simkl_user")
 }
@@ -386,20 +396,71 @@ fn wrap_list(kind: &str, id: &str, extra: Value) -> Value {
 
 // ------------------------------------------------------------ actions
 
-pub async fn scrobble(core: &Core, action: &str, kind: &str, video_id: &str, progress: f64) -> AppResult<()> {
-    let s = core.settings.read().integrations.clone();
+/// Scrobble one player event (start / pause / stop), the way Simkl's guide
+/// wants it: every identifier we have plus title and year, `min_progress` set
+/// to the user's own "count as watched" threshold on every call so all of
+/// Simkl's checks agree with Lumen's, and `allow_rewatch` only when the user
+/// turned rewatch logging on and the title is already completed.
+pub async fn scrobble(core: &Core, action: &str, meta: &Value, video_id: &str, progress: f64, ident: Option<&Value>) -> AppResult<Value> {
+    let (s, th) = {
+        let st = core.settings.read();
+        (st.integrations.clone(), st.playback.watched_threshold)
+    };
     if !connected(core) || !s.simkl_scrobble {
-        return Ok(());
+        return Ok(Value::Null);
     }
+    let kind = meta.get("type").and_then(|t| t.as_str()).unwrap_or("movie");
     let parts: Vec<&str> = video_id.split(':').collect();
     let (season, episode) = if kind == "series" && parts.len() >= 3 {
         (parts[parts.len() - 2].parse().ok(), parts[parts.len() - 1].parse().ok())
     } else {
         (None, None)
     };
-    let mut body = item_body(kind, video_id, season, episode);
-    body["progress"] = json!((progress * 100.0).clamp(0.0, 100.0));
-    post(core, &format!("/scrobble/{action}"), body).await.map(|_| ())
+    let mut body = match ident {
+        // a raw link/magnet identified by its file name (/search/file)
+        Some(found) => found.clone(),
+        None => item_body(kind, video_id, season, episode),
+    };
+    if ident.is_none() {
+        let key = if kind == "series" { "show" } else { "movie" };
+        if let Some(obj) = body.get_mut(key).and_then(|o| o.as_object_mut()) {
+            if let Some(t) = meta.get("name").and_then(|n| n.as_str()) {
+                obj.insert("title".into(), json!(t));
+            }
+            if let Some(y) = meta.get("releaseInfo").and_then(|y| y.as_str()).and_then(|y| y.get(0..4)).and_then(|y| y.parse::<u32>().ok()) {
+                obj.insert("year".into(), json!(y));
+            }
+            if let (Some(ids), Some(tmdb)) = (obj.get_mut("ids").and_then(|i| i.as_object_mut()), meta.get("tmdbId").and_then(|t| t.as_u64())) {
+                ids.insert("tmdb".into(), json!(tmdb));
+            }
+        }
+    }
+    body["progress"] = json!(((progress * 100.0).clamp(0.0, 100.0) * 100.0).round() / 100.0);
+    let mut path = format!("/scrobble/{action}?min_progress={}", th.clamp(50, 100));
+    if action == "stop" && s.simkl_rewatches && progress * 100.0 >= th as f64 {
+        let imdb = video_id.split(':').next().unwrap_or(video_id);
+        if super::simkl_sync::entry(core, imdb).map_or(false, |e| e["status"] == "completed") {
+            path.push_str("&allow_rewatch=yes");
+        }
+    }
+    post(core, &path, body).await
+}
+
+/// Identify a raw link or magnet from its file name, for scrobbling.
+pub async fn identify_file(core: &Core, filename: &str) -> Option<Value> {
+    if !connected(core) || filename.trim().is_empty() {
+        return None;
+    }
+    let v = post(core, "/search/file", json!({ "file": filename })).await.ok()?;
+    if let Some(m) = v.get("movie").filter(|m| !m.is_null()) {
+        return Some(json!({ "movie": { "ids": m.get("ids"), "title": m.get("title"), "year": m.get("year") } }));
+    }
+    let show = v.get("show").filter(|s| !s.is_null())?;
+    let ep = v.get("episode")?;
+    Some(json!({
+        "show": { "ids": show.get("ids"), "title": show.get("title"), "year": show.get("year") },
+        "episode": { "season": ep.get("season"), "number": ep.get("episode").or_else(|| ep.get("number")) },
+    }))
 }
 
 pub async fn rate(core: &Core, kind: &str, id: &str, rating: Option<u8>) -> AppResult<()> {
@@ -430,41 +491,53 @@ pub async fn watchlist(core: &Core, kind: &str, id: &str, add: bool) -> AppResul
     if add {
         post(core, "/sync/add-to-list", wrap_list(kind, id, json!({ "to": "plantowatch" }))).await?;
     } else {
-        post(core, "/sync/history/remove", wrap_list(kind, id, json!({}))).await?;
+        // `/sync/history/remove` un-tracks the title completely, history and
+        // all -- so only do it when it's sitting in Plan to Watch. Removing
+        // something you've watched from Lumen's library must not erase it on
+        // Simkl.
+        let imdb = id.split(':').next().unwrap_or(id);
+        match super::simkl_sync::entry(core, imdb) {
+            Some(e) if e["status"] == "plantowatch" => {
+                post(core, "/sync/history/remove", wrap_list(kind, id, json!({}))).await?;
+            }
+            _ => {}
+        }
     }
     Ok(())
 }
 
-/// The user's own state for one title: rating + list status.
+/// The user's own state for one title: rating + list status. Read from the
+/// local mirror (no API call); falls back to one `/sync/watched` lookup
+/// before the first sync has finished.
 pub async fn status_of(core: &Core, kind: &str, id: &str) -> AppResult<Value> {
     if !connected(core) {
         return Ok(Value::Null);
     }
     let imdb = id.split(':').next().unwrap_or(id);
-    let body = if kind == "series" {
-        json!([{ "imdb": imdb, "type": "show" }])
-    } else {
-        json!([{ "imdb": imdb, "type": "movie" }])
-    };
+    if super::simkl_sync::has_data(core) {
+        let e = super::simkl_sync::entry(core, imdb);
+        return Ok(json!({
+            "watched": e.as_ref().map(|e| json!({
+                "status": e.get("status"),
+                "last_watched_at": e.get("last_watched_at"),
+                "episodes_watched": e.get("watched_episodes_count"),
+                "episodes_total": e.get("total_episodes_count"),
+                "next_to_watch": e.get("next_to_watch_info").or_else(|| e.get("next_to_watch")),
+            })),
+            "rating": e.as_ref().and_then(|e| e.get("user_rating").cloned()),
+        }));
+    }
+    let body = json!([{ "imdb": imdb, "type": if kind == "series" { "show" } else { "movie" } }]);
     let v = post(core, "/sync/watched?extended=counters", body).await.unwrap_or(Value::Null);
-    let ratings = get(core, &format!("/sync/ratings/{}", if kind == "series" { "shows" } else { "movies" })).await.unwrap_or(Value::Null);
-    let rating = ratings
-        .get(if kind == "series" { "shows" } else { "movies" })
-        .and_then(|a| a.as_array())
-        .and_then(|a| a.iter().find(|e| inner(e).pointer("/ids/imdb").and_then(|i| i.as_str()) == Some(imdb)))
-        .and_then(|e| e.get("user_rating").cloned());
-    Ok(json!({ "watched": v.get(0), "rating": rating }))
+    Ok(json!({ "watched": v.get(0), "rating": Value::Null }))
 }
 
-/// Trending this week on Simkl, for the hero.
+/// Trending this week on Simkl, for the hero. Uses Simkl's pre-built data
+/// file (CDN, no key or token needed, refreshed daily) instead of the API.
 pub async fn trending(core: &Core) -> AppResult<Vec<Value>> {
-    let u = format!(
-        "{API}/movies/trending/week?extended=overview,metadata,tmdb,genres,trailer&client_id={}",
-        urlencoding::encode(&client_id(core).unwrap_or_default())
-    );
-    let v: Value = core.http.get_json_cached(&u, Duration::from_secs(3600 * 3), Duration::from_secs(10)).await?;
-    let tv_u = u.replace("/movies/", "/tv/");
-    let tv: Value = core.http.get_json_cached(&tv_u, Duration::from_secs(3600 * 3), Duration::from_secs(10)).await.unwrap_or(Value::Null);
+    let u = format!("https://data.simkl.in/discover/trending/week_100.json?client_id={}&app-name={APP}&app-version=1.0", urlencoding::encode(&v2_id(core)));
+    let d: Value = core.http.get_json_cached(&u, Duration::from_secs(3600 * 6), Duration::from_secs(12)).await?;
+    let (v, tv) = (d.get("movies").cloned().unwrap_or(Value::Null), d.get("tv").cloned().unwrap_or(Value::Null));
     let mut out = Vec::new();
     let take = |arr: &Value, kind: &str, out: &mut Vec<Value>| {
         for e in arr.as_array().into_iter().flatten().take(10) {
@@ -474,14 +547,14 @@ pub async fn trending(core: &Core) -> AppResult<Vec<Value>> {
                 "type": kind,
                 "name": e.get("title"),
                 "description": e.get("overview"),
-                "releaseInfo": e.get("release_date").and_then(|d| d.as_str()).and_then(|d| d.get(0..4)),
+                "releaseInfo": e.get("release_date").and_then(|d| d.as_str()).and_then(|d| d.rsplit('/').next()).map(|y| y.get(0..4).unwrap_or(y).to_string()),
                 "genres": e.get("genres"),
                 "imdbRating": e.pointer("/ratings/imdb/rating"),
                 "runtime": e.get("runtime"),
                 "background": e.get("fanart").and_then(|f| f.as_str()).map(|f| format!("https://simkl.in/fanart/{f}_medium.jpg")).unwrap_or_else(|| metahub(imdb, "background")),
                 "poster": metahub(imdb, "poster"),
                 "logo": metahub(imdb, "logo"),
-                "trailer": e.pointer("/trailer/youtube").or_else(|| e.get("trailer")),
+                "trailer": e.get("trailer"),
                 "certification": e.get("certification"),
             }));
         }

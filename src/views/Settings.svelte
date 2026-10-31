@@ -297,6 +297,7 @@
           <div class="group">
             <SimklConnect />
             <Cell label="Scrobble what you watch"><Controls kind="switch" bind:value={s.integrations.simklScrobble} onchange={changed} /></Cell>
+            <Cell label="Log rewatches" hint="Watching something again records a separate viewing on Simkl, instead of nothing. Simkl PRO or VIP."><Controls kind="switch" bind:value={s.integrations.simklRewatches} onchange={changed} /></Cell>
             <Cell label="Library is your Plan to Watch"><Controls kind="switch" bind:value={s.integrations.simklSyncWatchlist} onchange={changed} /></Cell>
           </div>
         {:else if section === "integrations"}

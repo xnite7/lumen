@@ -90,10 +90,10 @@
       <div class="progress"><span style:width="{Math.max(4, progress * 100)}%"></span></div>
     {/if}
   </div>
-  {#if showTitle || landscape}
+  {#if showTitle || landscape || meta.upNext}
     <div class="label">
       <span class="name">{meta.name}</span>
-      {#if subtitle}<span class="sub">{subtitle}</span>{/if}
+      {#if subtitle || meta.upNext}<span class="sub">{subtitle || meta.upNext}</span>{/if}
     </div>
   {/if}
 </button>

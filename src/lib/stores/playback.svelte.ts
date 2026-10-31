@@ -92,7 +92,7 @@ export function initPlayback() {
   });
 }
 
-async function startIOS(url: string, startAt?: number, headers?: Record<string, string>) {
+async function startIOS(url: string, startAt?: number, headers?: Record<string, string>, startPct?: number) {
   pb.url = url;
   pb.ios = true;
   haptic("medium");
@@ -104,6 +104,7 @@ async function startIOS(url: string, startAt?: number, headers?: Record<string, 
     // the plain https address: the native side loads it itself
     artwork: (m?.background ?? m?.poster ?? "").replace(/\/t\/p\/original\//, "/t/p/w780/"),
     startAt,
+    startPct,
     tint: getComputedStyle(document.documentElement).getPropertyValue("--ambient-1").trim(),
     headers,
     engine: app.settings.playback.iosPlayer,
@@ -148,7 +149,7 @@ export async function play(meta: Meta, stream: Stream, videoId: string, opts: { 
       pb.open = false;
       pb.loading = false;
       pb.mode = "web";
-      await startIOS(r.url, r.startAt ?? undefined, r.headers as any);
+      await startIOS(r.url, r.startAt ?? undefined, r.headers as any, r.startPct ?? undefined);
       return;
     }
     pb.mode = r.mode;

@@ -239,7 +239,8 @@ pub async fn person_get(s: S<'_>, name: String, tmdb_id: Option<u64>, adult: boo
 
 #[tauri::command]
 pub async fn hero_items(s: S<'_>) -> AppResult<Vec<Value>> {
-    if simkl::client_id(&s.core).is_some() {
+    // Simkl's trending data file needs no account, so this works signed out
+    {
         if let Ok(v) = simkl::trending(&s.core).await {
             if !v.is_empty() {
                 return Ok(v);
@@ -438,12 +439,33 @@ pub async fn library_set_watched(s: S<'_>, meta: Value, video_id: Option<String>
 
 #[tauri::command]
 pub fn continue_watching(s: S<'_>) -> AppResult<Vec<Value>> {
-    library::continue_watching(&s.core)
+    let mut v = library::continue_watching(&s.core)?;
+    // Pauses from any other Simkl app (phone, TV, Plex...) join the row.
+    if simkl::connected(&s.core) {
+        let have: std::collections::HashSet<String> = v.iter().filter_map(|i| i["_id"].as_str().map(|x| x.to_string())).collect();
+        v.extend(crate::integrations::simkl_sync::continue_items(&s.core, &have));
+        v.sort_by_key(|i| -crate::library::parse_iso(i["state"]["lastWatched"].as_str().unwrap_or("")));
+    }
+    Ok(v)
 }
 
 #[tauri::command]
-pub fn cw_dismiss(s: S<'_>, id: String) -> AppResult<()> {
-    library::dismiss(&s.core, &id)
+pub async fn cw_dismiss(s: S<'_>, id: String) -> AppResult<()> {
+    library::dismiss(&s.core, &id)?;
+    if simkl::connected(&s.core) {
+        let _ = crate::integrations::simkl_sync::delete_playback(&s.core, &id).await;
+    }
+    Ok(())
+}
+
+/// Check Simkl for changes now (cheap when nothing moved).
+#[tauri::command]
+pub async fn simkl_sync(app: AppHandle, s: S<'_>) -> AppResult<bool> {
+    let changed = crate::integrations::simkl_sync::sync(&s.core).await?;
+    if changed {
+        let _ = app.emit("library-changed", ());
+    }
+    Ok(changed)
 }
 
 // ------------------------------------------------------------- accounts

@@ -30,6 +30,8 @@ class PlayArgs: Decodable {
     let subtitle: String?
     let artwork: String?
     let startAt: Double?
+    /// resume as a fraction of the length (a Simkl pause point)
+    let startPct: Double?
     let tint: String?
     let headers: [String: String]?
     /// "auto" (Apple's player when it can, Lumen's otherwise) | "lumen"
@@ -61,6 +63,7 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
     private var inPip = false
     private var activity: Any?
     private var mpvActive = false
+    private var resumedPct = false
     private var observing = false
 
     // MARK: haptics
@@ -176,6 +179,7 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
             self.player = p
             self.playerVC = vc
             self.current = args
+            self.resumedPct = false
             self.lastReport = -10
             self.observe(p, item)
             self.loadArtwork(args, item: item)
@@ -211,6 +215,13 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
         statusObs = item.observe(\.status, options: [.new]) { [weak self] it, _ in
             if it.status == .failed {
                 DispatchQueue.main.async { self?.failed() }
+            } else if it.status == .readyToPlay {
+                DispatchQueue.main.async {
+                    guard let self = self, let pct = self.current?.startPct, self.current?.startAt == nil, !self.resumedPct else { return }
+                    self.resumedPct = true
+                    let d = it.duration.seconds
+                    if d.isFinite, d > 0 { self.player?.seek(to: CMTime(seconds: d * pct, preferredTimescale: 600)) }
+                }
             }
         }
         controlObs = p.observe(\.timeControlStatus, options: [.new]) { [weak self] _, _ in
@@ -285,6 +296,7 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
         let vc = cls.init(nibName: nil, bundle: nil)
         var cfg: [String: Any] = ["url": a.url, "title": a.title ?? "Lumen", "subtitle": a.subtitle ?? "", "artwork": a.artwork ?? ""]
         if let s = a.startAt { cfg["startAt"] = s }
+        if let p = a.startPct { cfg["startPct"] = p }
         if let h = a.headers, !h.isEmpty { cfg["headers"] = h }
         if let s = a.subLangs { cfg["subLangs"] = s }
         if let l = a.audioLangs { cfg["audioLangs"] = l }
