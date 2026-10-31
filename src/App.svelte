@@ -6,30 +6,19 @@
   import { initGaze } from "./lib/stores/gaze.svelte";
   import { initPlayback, pb, play } from "./lib/stores/playback.svelte";
   import { toast } from "./lib/stores/toast.svelte";
-  import { nav, current, back, go, savedScroll } from "./lib/router.svelte";
-  import { ui, onScroll } from "./lib/ui.svelte";
+  import { back, go } from "./lib/router.svelte";
+  import { ui } from "./lib/ui.svelte";
   import { isTauri } from "./lib/api";
   import TabBar from "./ui/TabBar.svelte";
   import ContextMenu from "./ui/ContextMenu.svelte";
   import Icon from "./components/Icon.svelte";
   import Onboarding from "./views/Onboarding.svelte";
-  import Profile from "./views/Profile.svelte";
   import Handoff from "./ui/Handoff.svelte";
-  import Ambient from "./components/Ambient.svelte";
+  import Stack from "./ui/Stack.svelte";
   import PreviewCard from "./components/PreviewCard.svelte";
   import Toasts from "./components/Toasts.svelte";
-  import Home from "./views/Home.svelte";
-  import Discover from "./views/Discover.svelte";
-  import Library from "./views/Library.svelte";
-  import Search from "./views/Search.svelte";
-  import Detail from "./views/Detail.svelte";
-  import Person from "./views/Person.svelte";
-  import Addons from "./views/Addons.svelte";
-  import Settings from "./views/Settings.svelte";
   import Player from "./views/Player.svelte";
 
-  let scroller: HTMLElement | undefined = $state();
-  const route = $derived(current());
   const winControls = $derived(isTauri && (app.platform === "windows" || app.platform === "linux"));
 
   $effect(() => {
@@ -55,17 +44,6 @@
     listen<{ kind: string; text: string }>("toast", (t) => toast(t.text, (t.kind as any) ?? "info"));
   });
 
-  // Restore scroll when going back; top of page for new pages.
-  $effect(() => {
-    void nav.stack.length;
-    void nav.tab;
-    void route;
-    requestAnimationFrame(() => {
-      if (!scroller) return;
-      scroller.scrollTop = savedScroll();
-      onScroll(scroller.scrollTop);
-    });
-  });
   $effect(() => {
     document.documentElement.classList.toggle("onboarding", ui.onboarding);
     document.documentElement.dataset.platform = app.platform;
@@ -135,37 +113,6 @@
       go({ name: "search" });
     } else if (e.altKey && e.key === "ArrowLeft") back();
   }
-  // iOS: swipe in from the left edge to go back; the page follows the finger.
-  let edge: { x: number; y: number; dx: number; page: HTMLElement } | null = null;
-  function edgeDown(e: PointerEvent) {
-    if (e.pointerType === "mouse" || e.clientX > 24 || nav.stack.length < 2) return;
-    const page = scroller?.querySelector(".page") as HTMLElement | null;
-    if (page) edge = { x: e.clientX, y: e.clientY, dx: 0, page };
-  }
-  function edgeMove(e: PointerEvent) {
-    if (!edge) return;
-    const dx = e.clientX - edge.x;
-    if (edge.dx === 0 && Math.abs(e.clientY - edge.y) > Math.abs(dx)) {
-      edge = null;
-      return;
-    }
-    edge.dx = Math.max(0, dx);
-    edge.page.style.transition = "none";
-    edge.page.style.transform = `translateX(${edge.dx}px)`;
-    edge.page.style.boxShadow = "-20px 0 40px rgb(0 0 0 / .35)";
-  }
-  function edgeUp() {
-    if (!edge) return;
-    const { dx, page } = edge;
-    edge = null;
-    page.style.transition = "transform var(--t-med) var(--spring)";
-    page.style.boxShadow = "";
-    if (dx > Math.min(120, window.innerWidth * 0.3)) {
-      page.style.transform = "translateX(100%)";
-      setTimeout(() => back(), 120);
-    } else page.style.transform = "";
-  }
-
   function startDrag(e: MouseEvent) {
     if (e.button !== 0) return;
     if (e.detail === 2) api.window("maximize");
@@ -191,34 +138,9 @@
 </svg>
 
 {#if app.ready}
-  <Ambient />
   <div class="grain" aria-hidden="true"></div>
 
-  <main class="scroller" bind:this={scroller} data-scroller onscroll={() => onScroll(scroller!.scrollTop)} onpointerdown={edgeDown} onpointermove={edgeMove} onpointerup={edgeUp} onpointercancel={edgeUp} class:behind={pb.open} style:--win-controls={winControls ? "118px" : "0px"}>
-    {#key route}
-      <div class="page">
-        {#if route.name === "home"}
-          <Home scrollY={ui.scrollY} />
-        {:else if route.name === "discover"}
-          <Discover type={route.type} catalog={route.catalog} genre={route.genre} />
-        {:else if route.name === "library"}
-          <Library />
-        {:else if route.name === "search"}
-          <Search q={route.q} />
-        {:else if route.name === "profile"}
-          <Profile />
-        {:else if route.name === "detail"}
-          <Detail type={route.type} id={route.id} hint={route.hint} preview={route.preview} />
-        {:else if route.name === "person"}
-          <Person name={route.person} tmdbId={route.tmdbId} adult={route.adult} />
-        {:else if route.name === "addons"}
-          <Addons install={route.install} />
-        {:else if route.name === "settings"}
-          <Settings section={route.section} />
-        {/if}
-      </div>
-    {/key}
-  </main>
+  <Stack hidden={pb.open} />
 
   {#if ui.phone}<div class="edge-bottom" aria-hidden="true"></div>{/if}
   <TabBar />
@@ -246,19 +168,6 @@
 {/if}
 
 <style>
-  .scroller {
-    position: relative;
-    height: 100%;
-    overflow-y: auto;
-    overflow-x: hidden;
-    scroll-behavior: auto;
-  }
-  .scroller.behind {
-    visibility: hidden;
-  }
-  .page {
-    min-height: 100%;
-  }
   .drag {
     position: fixed;
     top: 0;

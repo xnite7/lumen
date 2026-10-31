@@ -15,37 +15,42 @@ export type Route =
   | { name: "detail"; type: string; id: string; hint?: string; preview?: any }
   | { name: "person"; person: string; tmdbId?: number; adult?: boolean }
   | { name: "addons"; install?: string }
-  | { name: "settings"; section?: string };
+  | { name: "settings"; section?: string }
+  | { name: "vibe"; q?: string };
+
+/** a route on a stack carries a stable key, so its page layer survives */
+export type Entry = Route & { _k?: number };
+let nextKey = 1;
+const keyed = (r: Route): Entry => ({ ...r, _k: nextKey++ });
 
 export const tabs = ["home", "search", "library", "profile"] as const;
 export type Tab = (typeof tabs)[number];
 
-const stacks: Record<Tab, Route[]> = {
-  home: [{ name: "home" }],
-  search: [{ name: "search" }],
-  library: [{ name: "library" }],
-  profile: [{ name: "profile" }],
+const stacks: Record<Tab, Entry[]> = {
+  home: [keyed({ name: "home" })],
+  search: [keyed({ name: "search" })],
+  library: [keyed({ name: "library" })],
+  profile: [keyed({ name: "profile" })],
 };
-const scrolls = new Map<string, number>();
+/** scroll position per page layer, kept across tab switches */
+export const scrolls = new Map<number, number>();
 
 export const nav = $state({
   tab: "home" as Tab,
-  stack: [{ name: "home" }] as Route[],
+  stack: stacks.home as Entry[],
 });
 
-export function current(): Route {
+export function current(): Entry {
   return nav.stack[nav.stack.length - 1];
 }
 
 function scroller() {
   return document.querySelector("[data-scroller]") as HTMLElement | null;
 }
-function key(tab: Tab, depth: number) {
-  return `${tab}:${depth}`;
-}
 function remember() {
   const s = scroller();
-  if (s) scrolls.set(key(nav.tab, nav.stack.length - 1), s.scrollTop);
+  const k = current()._k;
+  if (s && k) scrolls.set(k, s.scrollTop);
 }
 
 function withTransition(update: () => void, kind: "push" | "pop" | "tab") {
@@ -94,26 +99,24 @@ export function go(route: Route, opts: { replace?: boolean } = {}) {
   if (isTab(route.name)) {
     selectTab(route.name);
     // carry parameters (e.g. a search query) into the tab root
-    if (Object.keys(route).length > 1) nav.stack = [route, ...nav.stack.slice(1)];
+    if (Object.keys(route).length > 1) nav.stack = [keyed(route), ...nav.stack.slice(1)];
     return;
   }
   remember();
   withTransition(() => {
-    nav.stack = opts.replace ? [...nav.stack.slice(0, -1), route] : [...nav.stack, route];
+    nav.stack = opts.replace ? [...nav.stack.slice(0, -1), keyed(route)] : [...nav.stack, keyed(route)];
     stacks[nav.tab] = nav.stack;
   }, "push");
 }
 
-export function back() {
+/** `animate: false` when a gesture already animated the pop itself. */
+export function back(opts: { animate?: boolean } = {}) {
   if (nav.stack.length <= 1) return false;
-  scrolls.delete(key(nav.tab, nav.stack.length - 1));
-  withTransition(() => {
+  const pop = () => {
     nav.stack = nav.stack.slice(0, -1);
     stacks[nav.tab] = nav.stack;
-  }, "pop");
+  };
+  if (opts.animate === false) pop();
+  else withTransition(pop, "pop");
   return true;
-}
-
-export function savedScroll(): number {
-  return scrolls.get(key(nav.tab, nav.stack.length - 1)) ?? 0;
 }

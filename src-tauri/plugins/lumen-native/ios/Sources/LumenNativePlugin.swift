@@ -66,6 +66,26 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
     private var resumedPct = false
     private var observing = false
 
+    // MARK: 120 Hz
+    //
+    // WebKit caps page rendering at 60 fps on ProMotion iPhones unless this
+    // (Safari "feature flag") is off. Look it up at runtime and only touch it
+    // if this iOS has it, so nothing breaks when Apple renames it.
+    override func load(webview: WKWebView) {
+        super.load(webview: webview)
+        let prefs = webview.configuration.preferences
+        let featuresSel = NSSelectorFromString("_features")
+        let setSel = NSSelectorFromString("_setEnabled:forFeature:")
+        guard (WKPreferences.self as AnyObject).responds(to: featuresSel), prefs.responds(to: setSel),
+              let list = (WKPreferences.self as AnyObject).perform(featuresSel)?.takeUnretainedValue() as? [NSObject]
+        else { return }
+        typealias SetFn = @convention(c) (AnyObject, Selector, Bool, AnyObject) -> Void
+        let set = unsafeBitCast(prefs.method(for: setSel), to: SetFn.self)
+        for f in list where (f.value(forKey: "key") as? String) == "PreferPageRenderingUpdatesNear60FPSEnabled" {
+            set(prefs, setSel, false, f)
+        }
+    }
+
     // MARK: haptics
 
     @objc public func haptic(_ invoke: Invoke) throws {

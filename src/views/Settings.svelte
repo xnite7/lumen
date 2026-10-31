@@ -308,7 +308,7 @@
           </div>
           <h3 class="group-head">Vibe search</h3>
           <div class="group">
-            <Cell label="Mood search on Home" hint="Ask for a feeling; picks come from your own Simkl ratings."><Controls kind="switch" bind:value={s.integrations.aiEnabled} onchange={changed} /></Cell>
+            <Cell label="Vibe search" hint="A card in Search: ask for a feeling, picks come from your own Simkl ratings."><Controls kind="switch" bind:value={s.integrations.aiEnabled} onchange={changed} /></Cell>
             <Cell label="Anthropic API key" hint="Sent only to Anthropic, straight from this computer."><SecretField name="anthropic" placeholder="sk-ant-…" /></Cell>
             <Cell label="Model"><input class="field small" bind:value={s.integrations.aiModel} onchange={changed} /></Cell>
             <Cell label="Fast mode when available"><Controls kind="switch" bind:value={s.integrations.aiFast} onchange={changed} /></Cell>

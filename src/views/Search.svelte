@@ -11,7 +11,6 @@
   import Poster from "../components/Poster.svelte";
   import Icon from "../components/Icon.svelte";
   import Controls from "../components/Controls.svelte";
-  import VibeBar from "../components/VibeBar.svelte";
 
   let { q: initial = "" }: { q?: string } = $props();
   let q = $state("");
@@ -187,8 +186,6 @@
       </section>
     {/if}
 
-    <div class="vibe-wrap"><VibeBar /></div>
-
     {#if browse.length}
       <section>
         <h2 class="title3 sect-title">Browse</h2>
@@ -200,6 +197,17 @@
             </button>
           {/each}
         </div>
+        {#if app.settings.integrations.aiEnabled}
+          <button class="vibe-card press" onclick={() => go({ name: "vibe" })}>
+            <span class="blobs" aria-hidden="true"></span>
+            <span class="vc-icon"><Icon name="sparkles" size={22} /></span>
+            <span class="vc-txt">
+              <span class="headline">Search by vibe</span>
+              <span class="foot">Describe a feeling. Picks come from your own taste.</span>
+            </span>
+            <Icon name="forward" size={17} />
+          </button>
+        {/if}
       </section>
     {/if}
 
@@ -380,9 +388,6 @@
     flex: none;
     font-weight: 500;
   }
-  .vibe-wrap :global(.vibe) {
-    margin: 0;
-  }
   .sect-title {
     margin-bottom: 12px;
   }
@@ -417,6 +422,66 @@
     font-size: var(--fs-caption);
     font-weight: 500;
     opacity: 0.92;
+  }
+  .vibe-card {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    margin-top: 12px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 18px 16px 16px;
+    border-radius: var(--r-md);
+    text-align: left;
+    color: #fff;
+    background: #17121f;
+  }
+  .vibe-card .blobs {
+    position: absolute;
+    inset: -60%;
+    z-index: -1;
+    background:
+      radial-gradient(30% 50% at 25% 50%, color-mix(in srgb, var(--ambient-1, #a86bff) 75%, #7b4dff), transparent),
+      radial-gradient(30% 55% at 70% 40%, color-mix(in srgb, var(--ambient-2, #ff6bb5) 70%, #ff4f9a), transparent),
+      radial-gradient(25% 50% at 50% 75%, color-mix(in srgb, var(--ambient-3, #4fc3ff) 65%, #3aa0ff), transparent);
+    filter: blur(28px) saturate(1.3);
+    opacity: 0.85;
+    animation: drift 14s ease-in-out infinite alternate;
+  }
+  .vibe-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: linear-gradient(90deg, rgb(0 0 0 / 0.45), rgb(0 0 0 / 0.1));
+  }
+  @keyframes drift {
+    to {
+      transform: translate(10%, -6%) rotate(18deg);
+    }
+  }
+  .vc-icon {
+    flex: none;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: rgb(255 255 255 / 0.18);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .vc-txt {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .vc-txt .foot {
+    opacity: 0.85;
   }
   .genres {
     display: flex;

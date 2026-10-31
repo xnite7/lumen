@@ -2,7 +2,7 @@
   // Per-page navigation bar. Floating glass back button on the left, the
   // page's actions on the right, and the title fading into the middle once
   // the page's large title has scrolled under the bar (iOS large titles).
-  import type { Snippet } from "svelte";
+  import { getContext, type Snippet } from "svelte";
   import Icon from "../components/Icon.svelte";
   import { back, nav } from "../lib/router.svelte";
   import { ui } from "../lib/ui.svelte";
@@ -14,8 +14,9 @@
     actions,
   }: { title?: string; showAfter?: number; transparent?: boolean; actions?: Snippet } = $props();
 
-  const canBack = $derived(nav.stack.length > 1);
-  const shown = $derived(ui.scrollY > showAfter);
+  const page = getContext<{ index: number; y: number } | undefined>("page");
+  const canBack = $derived(page ? page.index > 0 : nav.stack.length > 1);
+  const shown = $derived((page ? page.y : ui.scrollY) > showAfter);
 </script>
 
 <header class="navbar" class:shown class:transparent style:view-transition-name="navbar">

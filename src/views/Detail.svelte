@@ -2,6 +2,8 @@
   import { api, img, type Meta, type Video } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
   import { setAmbient } from "../lib/stores/ambient.svelte";
+  import { pageCtx, isActive } from "../lib/page";
+  const page = pageCtx();
   import { inLibrary, toggleLibrary, setWatched, watchedIds, progressOf, itemOf, lib } from "../lib/stores/library.svelte";
   import { play, orderedVideos } from "../lib/stores/playback.svelte";
   import { toast, errorText } from "../lib/stores/toast.svelte";
@@ -57,7 +59,7 @@
   const backdrop = $derived(extra?.backdrop ?? m?.background ?? m?.poster);
   const logo = $derived(extra?.logo ?? m?.logo);
   $effect(() => {
-    if (backdrop) setAmbient(backdrop);
+    if (backdrop && isActive(page)) setAmbient(backdrop);
   });
 
   const videos = $derived(orderedVideos(meta));

@@ -149,6 +149,8 @@ export async function mock(cmd: string, args: any): Promise<any> {
       return metas.slice(0, 5).map((m) => ({ id: m.id, name: m.name, year: m.releaseInfo, type: m.type, poster: m.poster }));
     case "recents_get":
       return ["dune", "aftersun", "boards of canada"];
+    case "ai_vibe":
+      return new Promise((r) => setTimeout(() => r({ read: "You want to feel it in your chest: quiet grief, gorgeous light, nobody explaining anything.", picks: metas.slice(0, 3).map((m) => ({ ...m, year: m.releaseInfo, why: "Slow, sunlit and devastating in the way your top-rated dramas are." })) }), 700));
     case "vibe_prompts":
     case "ai_prompts":
       return { prompts: [{ label: "cry all night tonight", q: "cry all night tonight" }, { label: "slow, gorgeous, nothing happens", q: "slow, gorgeous" }, { label: "saltburn + ethel cain had a baby", q: "saltburn + ethel cain" }] };

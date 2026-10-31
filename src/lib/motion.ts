@@ -52,3 +52,46 @@ export function springTo(from: number, to: number, onFrame: (v: number) => void,
   raf = requestAnimationFrame(step);
   return () => cancelAnimationFrame(raf);
 }
+
+/**
+ * Drive a value with a physical spring that starts at the gesture's own
+ * velocity (px/ms), so a release continues the finger's motion instead of
+ * restarting it. Critically damped by default: no bounce, fastest settle.
+ */
+export function springGesture(opts: {
+  from: number;
+  to: number;
+  velocity?: number;
+  stiffness?: number;
+  damping?: number;
+  onUpdate: (v: number) => void;
+  onDone?: () => void;
+}) {
+  const k = opts.stiffness ?? 420;
+  const c = opts.damping ?? 2 * Math.sqrt(k);
+  let x = opts.from;
+  let v = (opts.velocity ?? 0) * 1000; // px/s
+  let last = performance.now();
+  let raf = 0;
+  const step = (now: number) => {
+    // fixed sub-steps keep it stable at 60, 120 or a hitching frame rate
+    let dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    while (dt > 0) {
+      const h = Math.min(dt, 1 / 240);
+      const a = -k * (x - opts.to) - c * v;
+      v += a * h;
+      x += v * h;
+      dt -= h;
+    }
+    if (Math.abs(x - opts.to) < 0.4 && Math.abs(v) < 8) {
+      opts.onUpdate(opts.to);
+      opts.onDone?.();
+      return;
+    }
+    opts.onUpdate(x);
+    raf = requestAnimationFrame(step);
+  };
+  raf = requestAnimationFrame(step);
+  return () => cancelAnimationFrame(raf);
+}

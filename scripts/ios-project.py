@@ -20,6 +20,7 @@ bundle_id = app.get("settings", {}).get("base", {}).get("PRODUCT_BUNDLE_IDENTIFI
 info = app.setdefault("info", {}).setdefault("properties", {})
 info.update({
     "NSSupportsLiveActivities": True,
+    "CADisableMinimumFrameDurationOnPhone": True,
     "UIBackgroundModes": ["audio"],
     "NSAppTransportSecurity": {"NSAllowsArbitraryLoads": True, "NSAllowsLocalNetworking": True},
     "NSLocalNetworkUsageDescription": "Lumen finds your Philips Hue bridge on your network to dim the lights while you watch.",

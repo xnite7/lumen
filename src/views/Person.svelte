@@ -5,6 +5,8 @@
   // performers, any adult addon that exposes a performer route.
   import { api, img } from "../lib/api";
   import { setAmbient } from "../lib/stores/ambient.svelte";
+  import { pageCtx, isActive } from "../lib/page";
+  const page = pageCtx();
   import { openDetail } from "../lib/open";
   import { toast, errorText } from "../lib/stores/toast.svelte";
   import Poster from "../components/Poster.svelte";
@@ -21,8 +23,10 @@
     error = "";
     api.person(name, tmdbId, adult).then((r) => {
       p = r;
-      if (r?.profile) setAmbient(r.profile);
     }).catch((e) => (error = errorText(e)));
+  });
+  $effect(() => {
+    if (p?.profile && isActive(page)) setAmbient(p.profile);
   });
 
   const credits = $derived.by(() => {

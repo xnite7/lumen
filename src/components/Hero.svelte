@@ -2,6 +2,8 @@
   import { api, img, type Meta } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
   import { setAmbient } from "../lib/stores/ambient.svelte";
+  import { pageCtx, isActive } from "../lib/page";
+  const page = pageCtx();
   import { inLibrary, toggleLibrary } from "../lib/stores/library.svelte";
   import { openDetail } from "../lib/open";
   import { year, runtime } from "../lib/format";
@@ -44,7 +46,7 @@
   const bg = $derived(cur ? art[cur.id] || cur.background || cur.poster : undefined);
 
   $effect(() => {
-    if (bg && scrollY < 300) setAmbient(bg);
+    if (bg && scrollY < 300 && isActive(page)) setAmbient(bg);
   });
 
   function schedule() {

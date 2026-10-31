@@ -2,7 +2,6 @@
   import { api, listen, type CatalogRef } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
   import Hero from "../components/Hero.svelte";
-  import VibeBar from "../components/VibeBar.svelte";
   import ContinueRow from "../components/ContinueRow.svelte";
   import Row from "../components/Row.svelte";
 
@@ -34,7 +33,6 @@
 
 <div class="home">
   <Hero {scrollY} />
-  <VibeBar />
   <ContinueRow />
   {#each catalogs as c (c.key)}
     <Row catalog={c} />

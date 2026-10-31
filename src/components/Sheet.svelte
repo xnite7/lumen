@@ -6,6 +6,7 @@
   import type { Snippet } from "svelte";
   import Icon from "./Icon.svelte";
   import { haptic } from "../lib/native";
+  import { portal } from "../lib/portal";
 
   let {
     open = $bindable(false),
@@ -91,8 +92,9 @@
 <svelte:window onkeydown={(e) => open && e.key === "Escape" && close()} />
 
 {#if open}
-  <div class="scrim" class:closing onclick={close} role="presentation" style:opacity={dy > 0 ? Math.max(0.2, 1 - dy / 500) : undefined}></div>
+  <div use:portal class="scrim" class:closing onclick={close} role="presentation" style:opacity={dy > 0 ? Math.max(0.2, 1 - dy / 500) : undefined}></div>
   <div
+    use:portal
     class="sheet glass strong"
     class:side
     class:closing
