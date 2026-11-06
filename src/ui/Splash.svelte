@@ -62,10 +62,11 @@
   }
   /* white line drawing on a transparent background */
   .intro {
-    width: min(56vmin, 420px);
+    /* drawn at 2x and shown near its real size so the lines stay crisp */
+    width: min(40vmin, 240px);
     aspect-ratio: 259 / 233;
     object-fit: contain;
     pointer-events: none;
-    filter: drop-shadow(0 0 18px rgb(var(--hi) / 0.18));
+    filter: drop-shadow(0 0 14px rgb(var(--hi) / 0.14));
   }
 </style>
