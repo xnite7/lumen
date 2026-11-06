@@ -68,8 +68,9 @@ impl Hue {
     }
 
     pub fn enabled(&self) -> bool {
-        let h = &self.core.settings.read().hue;
-        h.enabled && !h.bridge_ip.is_empty() && self.core.db.secret("hue_username").is_some()
+        let st = self.core.settings.read();
+        let h = &st.hue;
+        st.general.experimental && h.enabled && !h.bridge_ip.is_empty() && self.core.db.secret("hue_username").is_some()
     }
 
     // ------------------------------------------------------------- setup

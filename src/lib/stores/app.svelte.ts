@@ -39,6 +39,10 @@ export async function boot() {
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** Settings are edited in place; this persists them, debounced. */
+/** Experimental features only run with the master switch on. */
+export const tobiiOn = () => app.settings.general.experimental && app.settings.tobii.enabled;
+export const hueOn = () => app.settings.general.experimental && app.settings.hue.enabled;
+
 export function saveSettings() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {

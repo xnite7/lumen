@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DiscordSignIn from "../ui/DiscordSignIn.svelte";
   // The Profile tab: who you are, then everything else in short groups.
   // A search field finds any setting by name.
   import { api } from "../lib/api";
@@ -23,9 +24,9 @@
     api.addons().then((a) => (addonCount = a.filter((x) => !x.flags.protected).length)).catch(() => {});
   });
 
-  const user = $derived(app.secrets.stremioUser);
-  const signed = $derived(!!app.secrets.stremio_auth);
-  const name = $derived((user?.fullname as string) || (user?.email as string)?.split("@")[0] || "");
+  const user = $derived(app.secrets.discordUser);
+  const signed = $derived(!!user);
+  const name = $derived((user?.name as string) || "");
   const initial = $derived(name.charAt(0).toUpperCase());
 
   const visible = (id: string) => {
@@ -43,8 +44,9 @@
 
   const groups: string[][] = [
     ["appearance", "playback", "subtitles", "streams", "home"],
-    ["accounts", "integrations", "hue", "tobii"],
+    ["accounts", "integrations"],
     ["network", "storage", "about"],
+    ["experimental"],
   ];
 
   async function sync() {
@@ -59,7 +61,7 @@
     syncing = false;
   }
   async function signOut() {
-    await api.stremioLogout();
+    await api.discordLogout();
     await refreshSecrets();
   }
 </script>
@@ -73,25 +75,20 @@
   <section class="account group">
     {#if signed}
       <div class="me">
-        <span class="avatar">{initial || "?"}</span>
+        <span class="avatar">{#if user?.avatar}<img src={user.avatar} alt="" />{:else}{initial || "?"}{/if}</span>
         <div class="who">
-          <span class="title3">{name || "Signed in"}</span>
-          <span class="foot dim">{user?.email ?? "Stremio account"}</span>
+          <span class="title3">{name}</span>
+          <span class="foot dim">on the couch via Discord</span>
         </div>
-        <button class="btn small tinted press" onclick={sync} disabled={syncing}>
-          <span class:spin={syncing}><Icon name="refresh" size={15} /></span>
-          {syncing ? "Syncing" : "Sync"}
-        </button>
       </div>
     {:else}
-      <button class="me press" onclick={() => (signIn = true)}>
-        <span class="avatar empty"><Icon name="personCircle" size={34} /></span>
+      <div class="me col">
         <div class="who">
-          <span class="title3">Sign in to Stremio</span>
-          <span class="foot dim">Bring your addons and library, and keep them in sync</span>
+          <span class="title3">who's on the couch?</span>
+          <span class="foot dim">Sign in so the crew knows it's you</span>
         </div>
-        <Icon name="chevron" size={15} class="chev" />
-      </button>
+        <DiscordSignIn />
+      </div>
     {/if}
   </section>
 
@@ -114,9 +111,6 @@
       <p class="none dim">No settings match “{q}”.</p>
     {/if}
   {:else}
-    <div class="group">
-      <Item label="Addons" value={addonCount === null ? "" : String(addonCount)} icon="addons" tint="var(--green)" chevron onclick={() => go({ name: "addons" })} />
-    </div>
 
     {#each groups as g}
       <div class="group">
@@ -129,7 +123,7 @@
 
     <div class="group">
       <Item label="Run setup again" icon="wand" tint="var(--orange)" chevron onclick={() => (ui.onboarding = true)} />
-      {#if signed}<Item label="Sign out of Stremio" destructive onclick={signOut} />{/if}
+      {#if signed}<Item label="Sign out" destructive onclick={signOut} />{/if}
     </div>
 
     <p class="foot faint ver">midnite™ couch {app.version}</p>
@@ -163,7 +157,18 @@
     padding: 14px 16px;
     text-align: left;
   }
+  .me.col {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+  .avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
   .avatar {
+    overflow: hidden;
     width: 60px;
     height: 60px;
     border-radius: 50%;

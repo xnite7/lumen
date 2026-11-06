@@ -18,6 +18,7 @@ export const SECTIONS: Section[] = [
   { id: "home", label: "Home rows", icon: "rows", tint: "var(--teal)" },
   { id: "accounts", label: "Accounts", icon: "personCircle", tint: "#30b0c7" },
   { id: "integrations", label: "Services & keys", icon: "sparkles", tint: "var(--purple)" },
+  { id: "experimental", label: "Experimental", icon: "flask", tint: "var(--neon)" },
   { id: "hue", label: "Philips Hue", icon: "bulb", tint: "#e5b800" },
   { id: "tobii", label: "Eye tracking", icon: "eye", tint: "var(--green)", only: ["windows", "browser", "linux"] },
   { id: "network", label: "Network", icon: "globe", tint: "var(--blue)" },

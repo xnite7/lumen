@@ -22,8 +22,8 @@
   let pill = $state({ x: 0, w: 0 });
   let drag = $state<null | { x: number; over: number }>(null);
 
-  const user = $derived(app.secrets.stremioUser);
-  const initial = $derived(((user?.fullname || user?.email || "") as string).trim().charAt(0).toUpperCase());
+  const user = $derived(app.secrets.discordUser);
+  const initial = $derived(((user?.name || "") as string).trim().charAt(0).toUpperCase());
 
   function measure(i: number) {
     const el = els[i];
@@ -86,7 +86,7 @@
       onclick={() => selectTab(t)}
     >
       {#if t === "profile" && initial}
-        <span class="avatar">{initial}</span>
+        <span class="avatar">{#if user?.avatar}<img src={user.avatar} alt="" />{:else}{initial}{/if}</span>
       {:else if ui.phone || t === "profile"}
         <Icon name={items[t].icon} size={ui.phone ? 24 : 18} fill={i === active && (t === "home" || t === "library")} />
       {/if}
@@ -155,7 +155,14 @@
     letter-spacing: 0.01em;
     transition: opacity var(--t-fast) ease, height var(--t-med) var(--spring);
   }
+  .avatar img {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+  }
   .avatar {
+    overflow: hidden;
     width: 26px;
     height: 26px;
     border-radius: 50%;

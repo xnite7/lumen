@@ -82,7 +82,7 @@
           <Controls kind="switch" bind:value={s.integrations.crewShare} onchange={saveSettings} />
         </Cell>
         <Cell label="Name on the couch" hint="What your friends see.">
-          <input class="field name" bind:value={s.integrations.crewName} onchange={saveSettings} placeholder={app.secrets.stremioUser?.email?.split("@")[0] ?? "you"} />
+          <input class="field name" bind:value={s.integrations.crewName} onchange={saveSettings} placeholder={app.secrets.discordUser?.name ?? "you"} />
         </Cell>
       </div>
       {#if invite}

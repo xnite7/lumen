@@ -60,9 +60,6 @@
 
 <NavBar title="Library">
   {#snippet actions()}
-    {#if app.secrets.stremio_auth}
-      <button class="orb glass press" onclick={sync} disabled={syncing} aria-label="Sync with Stremio"><span class:spin={syncing}><Icon name="refresh" size={19} /></span></button>
-    {/if}
     <button class="orb glass press" onclick={sortMenu} aria-label="Sort"><Icon name="sliders" size={19} /></button>
   {/snippet}
 </NavBar>
@@ -84,8 +81,8 @@
       <img class="couch-empty" src={boil} alt="" />
       <p class="bump-text">nothing yet. get comfy.</p>
       <p class="sub dim">Press + on anything you want to keep around.</p>
-      {#if !app.secrets.stremio_auth}
-        <button class="btn accent press" onclick={() => go({ name: "profile" })}>Sign in to bring your library</button>
+      {#if !app.secrets.simkl_token}
+        <button class="btn tinted press" onclick={() => go({ name: "settings", section: "accounts" })}>connect Simkl to bring your list</button>
       {/if}
     </div>
   {/if}

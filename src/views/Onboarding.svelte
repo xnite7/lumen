@@ -13,15 +13,15 @@
   import Icon from "../components/Icon.svelte";
   import Item from "../ui/Item.svelte";
   import { untrack } from "svelte";
-  import SignIn from "../ui/SignIn.svelte";
+  import DiscordSignIn from "../ui/DiscordSignIn.svelte";
   import SimklConnect from "../ui/SimklConnect.svelte";
   import SecretField from "../components/SecretField.svelte";
 
   let { start = 0, ondone }: { start?: number; ondone?: () => void } = $props();
 
   const desktop = app.platform === "windows" || app.platform === "browser";
-  type Step = "welcome" | "signin" | "mood" | "addons" | "services" | "room" | "done";
-  const steps: Step[] = ["welcome", "signin", "mood", "addons", "services", "room", "done"];
+  type Step = "welcome" | "signin" | "simkl" | "mood" | "done";
+  const steps: Step[] = ["welcome", "signin", "simkl", "mood", "done"];
 
   let i = $state(untrack(() => start));
   let dir = $state(1);
@@ -87,7 +87,7 @@
     addons = (await api.addons().catch(() => [])).filter((a) => !a.flags.protected);
   }
   $effect(() => {
-    if (step === "addons") loadAddons();
+
   });
   async function addAddon(e: Event) {
     e.preventDefault();
@@ -144,7 +144,7 @@
   }
   let tobii = $state<{ status: string; dll?: string } | null>(null);
   $effect(() => {
-    if (step === "room" && desktop) api.tobiiStatus().then((t) => (tobii = t)).catch(() => {});
+
   });
 
   const signedIn = $derived(!!app.secrets.stremio_auth);
@@ -190,20 +190,32 @@
         <div class="head">
           <span class="badge"><Icon name="personCircle" size={30} /></span>
           <h1 class="large-title">who's on the couch?</h1>
-          <p class="callout dim">Sign in with your Stremio account. Your addons, library and Up Next come with you and stay in sync.</p>
+          <p class="callout dim">Sign in with Discord. Your name and avatar are what the crew sees. couch only learns who you are, nothing else.</p>
         </div>
         <div class="body">
-          {#if signedIn}
+          {#if app.secrets.discordUser}
             <div class="group">
-              <Item label={app.secrets.stremioUser?.email ?? "Signed in"} detail="Stremio account" icon="checkCircle" tint="var(--green)" />
+              <Item label={app.secrets.discordUser.name} detail="Discord" icon="checkCircle" tint="var(--green)" />
             </div>
           {:else}
-            <SignIn ondone={next} />
+            <DiscordSignIn ondone={next} />
           {/if}
         </div>
         <div class="foot-actions">
-          {#if signedIn}<button class="btn lg block primary press" onclick={next}>continue</button>{/if}
+          {#if app.secrets.discordUser}<button class="btn lg block primary press" onclick={next}>continue</button>{/if}
         </div>
+      {:else if step === "simkl"}
+        <div class="head">
+          <span class="badge lamp"><Icon name="sparkles" size={28} /></span>
+          <h1 class="large-title">remember what you watch</h1>
+          <p class="callout dim">Connect Simkl and your Up Next, watched episodes and list follow you between your PC and your phone.</p>
+        </div>
+        <div class="body narrow">
+          <div class="group">
+            <SimklConnect />
+          </div>
+        </div>
+        <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>continue</button></div>
       {:else if step === "mood"}
         <div class="head">
           <span class="badge"><Icon name="sparkles" size={28} /></span>
@@ -227,89 +239,6 @@
             <Item label="Later = cozier" detail="After midnight the room gets warmer and dimmer">
               <button class="mini-switch" class:on={app.settings.general.timeAware} aria-label="Later is cozier" onclick={() => setLook(() => (app.settings.general.timeAware = !app.settings.general.timeAware))}><span></span></button>
             </Item>
-          </div>
-        </div>
-        <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>continue</button></div>
-      {:else if step === "addons"}
-        <div class="head">
-          <span class="badge"><Icon name="addons" size={28} /></span>
-          <h1 class="large-title">bring your addons</h1>
-          <p class="callout dim">
-            {#if addons.length}Here's what came over{signedIn ? " from your account" : ""}. Every Stremio addon works.{:else}Paste an addon link, or install one from any addon website: the install button opens couch.{/if}
-          </p>
-        </div>
-        <div class="body narrow">
-          {#if addons.length}
-            <div class="group list">
-              {#each addons.slice(0, 6) as a (a.transportUrl)}
-                <Item label={a.manifest.name} detail={a.manifest.description ?? ""}>
-                  {#snippet lead()}
-                    <span class="alogo">{#if a.manifest.logo}<img src={img(a.manifest.logo)} alt="" />{:else}<Icon name="addons" size={18} />{/if}</span>
-                  {/snippet}
-                </Item>
-              {/each}
-              {#if addons.length > 6}<Item label="and {addons.length - 6} more" />{/if}
-            </div>
-          {/if}
-          <form class="add glass" onsubmit={addAddon}>
-            <Icon name="link" size={18} />
-            <input bind:value={addonUrl} placeholder="https://…/manifest.json" spellcheck="false" autocapitalize="off" />
-            <button class="btn small accent press" disabled={!addonUrl.trim() || adding}>{adding ? "…" : "Add"}</button>
-          </form>
-          <button class="btn plain" onclick={() => api.openExternal("https://stremio-addons.net")}>Browse community addons</button>
-        </div>
-        <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>continue</button></div>
-      {:else if step === "services"}
-        <div class="head">
-          <span class="badge"><Icon name="key" size={28} /></span>
-          <h1 class="large-title">plug things in</h1>
-          <p class="callout dim">All optional. Each one makes the couch a little smarter.</p>
-        </div>
-        <div class="body narrow">
-          {#if app.platform === "windows"}
-            <div class="group">
-              <Item label="Bring over Stremio Enhanced" detail={imported ? `${Object.keys(imported).length} settings brought over` : "Simkl sign-in, TMDB and TheIntroDB keys, worker URL"} icon="download" tint="var(--indigo)">
-                {#if imported}<Icon name="checkCircle" size={22} class="ok" />{:else}<button class="btn small tinted press" onclick={importOld}>Import</button>{/if}
-              </Item>
-            </div>
-          {/if}
-          <div class="group">
-            <SimklConnect />
-            <Item label="More keys" detail="TMDB, vibe search, skip intros" icon="key" tint="var(--gray)" chevron onclick={() => (moreKeys = !moreKeys)} />
-            {#if moreKeys}
-              <div class="keyrow"><span class="foot dim">TMDB (a shared key works until you add yours)</span><SecretField name="tmdb" placeholder="TMDB v3 key" /></div>
-              <div class="keyrow"><span class="foot dim">Anthropic, for mood search</span><SecretField name="anthropic" placeholder="sk-ant-…" /></div>
-              <div class="keyrow"><span class="foot dim">TheIntroDB, for skip buttons</span><SecretField name="tidb" placeholder="theintrodb:…" /></div>
-            {/if}
-          </div>
-        </div>
-        <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>continue</button></div>
-      {:else if step === "room"}
-        <div class="head">
-          <span class="badge lamp"><Icon name="bulb" size={28} /></span>
-          <h1 class="large-title">dim the lights</h1>
-          <p class="callout dim">Couch mode fades your Hue lights to a warm lamp when you press play, and brings them back after.</p>
-        </div>
-        <div class="body narrow">
-          <div class="group">
-            {#if app.secrets.hue_username}
-              <Item label="Philips Hue" detail="Bridge paired. Pick a room in Profile → Philips Hue." icon="bulb" tint="var(--lamp)"><Icon name="checkCircle" size={22} class="ok" /></Item>
-            {:else}
-              <Item label="Philips Hue" detail={bridges === null ? "Press the button on your bridge, then search" : bridges.length ? "Choose your bridge" : "No bridge found. Add it later by IP address."} icon="bulb" tint="var(--lamp)">
-                <button class="btn small tinted press" disabled={hueBusy} onclick={findHue}>{hueBusy ? "Searching…" : "Search"}</button>
-              </Item>
-              {#each bridges ?? [] as b}
-                <Item label={b.name ?? "Hue Bridge"} detail={b.ip}><button class="btn small accent press" disabled={hueBusy} onclick={() => pairHue(b.ip)}>Pair</button></Item>
-              {/each}
-            {/if}
-            {#if desktop}
-              <Item
-                label="Tobii eye tracker"
-                detail={tobii?.dll ? "Found. Turn it on in Settings → Eye tracking." : "Not found. Skip this if you don't have one."}
-                icon="eye"
-                tint="var(--neon-soft)"
-              />
-            {/if}
           </div>
         </div>
         <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>continue</button></div>

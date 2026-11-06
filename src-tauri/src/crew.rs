@@ -44,6 +44,9 @@ fn name(core: &Core) -> String {
     if !n.is_empty() {
         return n;
     }
+    if let Some(n) = core.db.get::<Value>("discord_user").and_then(|u| u.get("name").and_then(|v| v.as_str()).map(|s| s.to_string())) {
+        return n;
+    }
     core.db
         .get::<Value>("stremio_user")
         .and_then(|u| u.get("fullname").or_else(|| u.get("email")).and_then(|v| v.as_str()).map(|s| s.split('@').next().unwrap_or(s).to_string()))

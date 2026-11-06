@@ -21,7 +21,7 @@
   // looking near them. A fresh panel ignores your gaze for a moment, so
   // reading the labels never presses anything.
   import { gaze } from "../lib/stores/gaze.svelte";
-  import { app } from "../lib/stores/app.svelte";
+  import { app, tobiiOn } from "../lib/stores/app.svelte";
   import Icon from "./Icon.svelte";
 
   let { items, onopen, timeLeft = "", endsAt = "" }: { items: Bubble[]; onopen?: () => void; timeLeft?: string; endsAt?: string } = $props();
@@ -41,7 +41,7 @@
   let vw = $state(innerWidth);
   let vh = $state(innerHeight);
 
-  const enabled = $derived(app.settings.tobii.enabled && app.settings.tobii.gazeControls);
+  const enabled = $derived(tobiiOn() && app.settings.tobii.gazeControls);
   const dwellMs = $derived(Math.max(MIN_DWELL, app.settings.tobii.dwellMs));
 
   // "(" layout: points on a circle whose centre sits far to the right, so

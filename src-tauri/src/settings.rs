@@ -66,6 +66,8 @@ pub struct General {
     pub sound: bool,
     /// After midnight the room gets warmer and dimmer.
     pub time_aware: bool,
+    /// Experimental features (eye tracking, Philips Hue) switched on.
+    pub experimental: bool,
 }
 
 impl Default for General {
@@ -91,6 +93,7 @@ impl Default for General {
             neon: "lit".into(),
             sound: false,
             time_aware: true,
+            experimental: false,
         }
     }
 }
@@ -232,7 +235,7 @@ impl Default for Streams {
             max_size_gb: 0.0,
             prefer_hdr: true,
             prefer_cached: true,
-            autoplay_best: false,
+            autoplay_best: true,
             group_by_quality: true,
         }
     }

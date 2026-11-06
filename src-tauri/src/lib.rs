@@ -106,6 +106,11 @@ pub fn run() {
                 settings.streams.hide_3d = false;
                 let _ = db.set("seen_3d_v1", &true);
             }
+            // couch picks the stream by default now (by connection speed)
+            if db.get::<bool>("autopick_v1").is_none() {
+                settings.streams.autoplay_best = true;
+                let _ = db.set("autopick_v1", &true);
+            }
             if settings.playback.ios_player == "lumen" {
                 settings.playback.ios_player = "couch".into();
             }
@@ -126,7 +131,7 @@ pub fn run() {
             #[cfg(desktop)]
             let tobii = tobii::Tobii::new(core.clone());
             #[cfg(desktop)]
-            if settings.tobii.enabled {
+            if settings.tobii.enabled && settings.general.experimental {
                 let _ = tobii.start();
             }
 
@@ -246,6 +251,10 @@ pub fn run() {
             commands::simkl_logout,
             commands::simkl_sync,
             commands::crew_list,
+            commands::net_speed,
+            commands::discord_start,
+            commands::discord_finish,
+            commands::discord_logout,
             commands::crew_join,
             commands::crew_invite,
             commands::simkl_oauth_start,

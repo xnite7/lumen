@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS = {
     neon: "lit" as "soft" | "lit" | "loud",
     sound: false,
     timeAware: true,
+    experimental: false,
   },
   playback: {
     autoplayNext: true,
@@ -74,7 +75,7 @@ export const DEFAULT_SETTINGS = {
     maxSizeGb: 0,
     preferHdr: true,
     preferCached: true,
-    autoplayBest: false,
+    autoplayBest: true,
     groupByQuality: true,
   },
   network: {

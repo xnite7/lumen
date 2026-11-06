@@ -76,6 +76,16 @@
         .catch((e) => toast(String(e), "warn"));
       return;
     }
+    if (u.startsWith("couch://auth/discord")) {
+      api
+        .discordFinish(u)
+        .then(async () => {
+          await refreshSecrets();
+          toast("you're on the couch.", "ok");
+        })
+        .catch((e) => toast(String(e), "warn"));
+      return;
+    }
     if (u.startsWith("couch://crew")) {
       joinCrew(u)
         .then(() => {
@@ -85,12 +95,8 @@
         .catch((e) => toast(String(e), "warn"));
       return;
     }
-    if (u.startsWith("stremio://") && u.includes("manifest.json")) {
-      go({ name: "addons", install: u });
-      return;
-    }
-    if (/^https?:\/\/.+\/manifest\.json(\?.*)?$/.test(u)) {
-      go({ name: "addons", install: u });
+    if ((u.startsWith("stremio://") || /^https?:\/\/.+\/manifest\.json(\?.*)?$/.test(u)) && u.includes("manifest.json")) {
+      toast("couch comes with everything built in. no addons needed.", "info");
       return;
     }
     if (u.startsWith("magnet:")) {

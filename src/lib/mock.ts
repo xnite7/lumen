@@ -86,13 +86,16 @@ export async function mock(cmd: string, args: any): Promise<any> {
       const st = structuredClone(DEFAULT_SETTINGS);
       st.general.onboarded = q.has("onboarded");
       if (q.get("theme")) st.general.theme = q.get("theme")!;
-      if (q.has("tobii")) st.tobii.enabled = true;
+      if (q.has("tobii")) {
+        st.tobii.enabled = true;
+        st.general.experimental = true;
+      }
       return st;
     }
     case "secrets_status":
       return {
         tmdb: false, simkl_client_id: true, simkl_token: true, anthropic: true, simklUser: { user: { name: "xnite" } },
-        ...(q.has("signed") ? { stremio_auth: true, stremioUser: { email: "xnite7@icloud.com", fullname: "Sultan" } } : {}),
+        ...(q.has("signed") ? { discordUser: { id: "1", name: "xnite", avatar: "" } } : {}),
       };
     case "stremio_link_start":
       return { code: "U1DA", link: "https://link.stremio.com/U1DA", qrcode: "https://link.stremio.com/qr?data=https%3A%2F%2Flink.stremio.com%2FU1DA" };

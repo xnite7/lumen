@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { connectionMbps, rank } from "../lib/autopick";
   // Flags render as bare letters on Windows ("GB"), which read like file
   // sizes; show them as language codes instead.
   const FLAG_LANG: Record<string, string> = { GB: "EN", US: "EN", AU: "EN", CA: "EN", JP: "JA", KR: "KO", CN: "ZH", TW: "ZH", HK: "ZH", UA: "UK", DK: "DA", SE: "SV", GR: "EL", CZ: "CS", IL: "HE", IR: "FA", IN: "HI", BR: "PT", MX: "ES", AR: "ES", SA: "AR", AE: "AR", EG: "AR", VN: "VI", RS: "SR", NO: "NO" };
@@ -88,16 +89,25 @@
 
   const best = (res: string) => visible.filter((x) => x._couch?.res === res).sort((a, b) => b._couch.score - a._couch.score)[0];
 
-  function choose(st: Stream) {
+  function choose(st: Stream, queue: Stream[] = []) {
     haptic("medium");
     open = false;
     const title = video ? video.title || video.name || `Episode ${video.episode ?? video.number}` : undefined;
-    play(meta, st, videoId, { episodeTitle: title });
+    // picked by hand: the rest of the list (best first) is the fallback
+    const rest = queue.length ? queue : visible.filter((x) => x !== st && x._couch?.kind !== "external");
+    play(meta, st, videoId, { episodeTitle: title, queue: rest });
   }
 
-  function maybeAutoplay() {
-    if (!s.autoplayBest || !visible.length) return;
-    choose(visible[0]);
+  // couch picks for you: the best stream your connection can keep up with
+  let picking = $state(false);
+  async function maybeAutoplay() {
+    if (!s.autoplayBest || !visible.length || picking) return;
+    picking = true;
+    const mbps = await connectionMbps();
+    const order = rank(visible, mbps, (video as any)?.runtime ?? meta.runtime, app.platform === "ios");
+    picking = false;
+    if (!open || !order.length) return;
+    choose(order[0], order.slice(1));
   }
 
   function seedColor(n?: number) {
@@ -112,7 +122,7 @@
       <div>
         <h2 class="title2">{video ? (video.title || video.name || `Episode ${video.episode}`) : meta.name}</h2>
         <p class="foot dim">
-          {#if !finished}Asking {Object.keys(addons).length ? "more addons" : "your addons"}…{:else}{visible.length} streams from {Object.keys(addons).length} addons{/if}
+          {#if s.autoplayBest && open}{picking ? "checking your connection…" : !finished ? "finding the remote…" : `${visible.length} streams`}{:else if !finished}finding streams…{:else}{visible.length} streams{/if}
         </p>
       </div>
       <div class="best">

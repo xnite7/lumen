@@ -65,7 +65,7 @@ export async function setAmbient(url?: string | null) {
   applyColors(p.colors);
   // The room follows slowly; don't hammer the bridge while scrubbing a carousel.
   clearTimeout(moodTimer);
-  if (app.settings.hue.enabled && app.settings.hue.artworkMood && !app.playing) {
+  if (app.settings.general.experimental && app.settings.hue.enabled && app.settings.hue.artworkMood && !app.playing) {
     moodTimer = setTimeout(() => api.hueMood(url).catch(() => {}), 2200);
   }
 }

@@ -7,10 +7,12 @@
   import { bytes, lang } from "../lib/format";
   import Controls from "../components/Controls.svelte";
   import Cell from "../components/Cell.svelte";
+  import Item from "../ui/Item.svelte";
+  import { go } from "../lib/router.svelte";
   import SecretField from "../components/SecretField.svelte";
   import Icon from "../components/Icon.svelte";
   import NavBar from "../ui/NavBar.svelte";
-  import SignIn from "../ui/SignIn.svelte";
+  import DiscordSignIn from "../ui/DiscordSignIn.svelte";
   import SimklConnect from "../ui/SimklConnect.svelte";
   import { SECTIONS, sectionById } from "../lib/sections";
 
@@ -251,7 +253,7 @@
             <Cell label="Largest file" hint={s.streams.maxSizeGb ? `${s.streams.maxSizeGb} GB` : "No limit"}>
               <div style="width:200px"><Controls kind="slider" bind:value={s.streams.maxSizeGb} min={0} max={100} step={1} onchange={changed} label="Max size" /></div>
             </Cell>
-            <Cell label="Play the best stream immediately" hint="Skips the list. You can still pick manually from the player."><Controls kind="switch" bind:value={s.streams.autoplayBest} onchange={changed} /></Cell>
+            <Cell label="Pick the stream for me" hint="couch checks how fast your connection is and plays the best stream it can keep up with. If one won't start, the next plays by itself."><Controls kind="switch" bind:value={s.streams.autoplayBest} onchange={changed} /></Cell>
           </div>
         {:else if section === "accounts"}
           {#if app.platform === "windows"}
@@ -261,16 +263,14 @@
               </Cell>
             </div>
           {/if}
-          <h3 class="group-head">Stremio</h3>
+          <h3 class="group-head">Discord</h3>
           <div class="group">
-            {#if app.secrets.stremio_auth}
-              <Cell label={app.secrets.stremioUser?.email ?? "Signed in"} hint="Addons and Continue Watching stay in sync with Stremio on your phone.">
-                <button class="btn tinted small press" onclick={async () => { await api.stremioSync(true); toast("Synced", "ok"); }}>Sync now</button>
-                <button class="btn tinted small press" onclick={async () => { await api.stremioLogout(); await refreshSecrets(); }}>Sign out</button>
+            {#if app.secrets.discordUser}
+              <Cell label={app.secrets.discordUser.name} hint="Your name and avatar on the couch.">
+                <button class="btn tinted small press" onclick={async () => { await api.discordLogout(); await refreshSecrets(); }}>Sign out</button>
               </Cell>
-              <Cell label="Sync automatically"><Controls kind="switch" bind:value={s.integrations.stremioSync} onchange={changed} /></Cell>
             {:else}
-              <div class="signin"><SignIn /></div>
+              <div class="signin"><DiscordSignIn /></div>
             {/if}
           </div>
           <h3 class="group-head">Simkl</h3>
@@ -411,6 +411,25 @@
             </Cell>
             <Cell label="Torrent cache" hint="Deleted automatically when playback stops." />
           </div>
+        {:else if section === "experimental"}
+          <div class="exp-warn">
+            <Icon name="flask" size={22} />
+            <div>
+              <p class="headline">here be dragons.</p>
+              <p class="foot dim">These are half-finished toys: they can misbehave, drain your laptop, flicker your lights or stop working after an update. Nothing here is needed to watch anything.</p>
+            </div>
+          </div>
+          <div class="group">
+            <Cell label="Experimental features" hint="Turn on to see and use the features below."><Controls kind="switch" bind:value={s.general.experimental} onchange={changed} /></Cell>
+          </div>
+          {#if s.general.experimental}
+            <div class="group">
+              {#if app.platform !== "ios"}
+                <Item label="Eye tracking" detail="Tobii: eye controls, the window effect, head-tracked 3D films" icon="eye" tint="var(--green)" chevron onclick={() => go({ name: "settings", section: "tobii" })} />
+              {/if}
+              <Item label="Philips Hue" detail="Couch mode lamp and lights that follow the picture" icon="bulb" tint="var(--lamp)" chevron onclick={() => go({ name: "settings", section: "hue" })} />
+            </div>
+          {/if}
         {:else if section === "about"}
           <p class="dim lead">Version {app.version}. Built for one person.</p>
           <div class="group">
@@ -423,6 +442,24 @@
 </div>
 
 <style>
+  .exp-warn {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 16px 18px;
+    margin-bottom: 18px;
+    border-radius: var(--r-lg);
+    color: var(--lamp);
+    background: rgb(var(--lamp-rgb) / 0.08);
+    box-shadow: inset 0 0 0 1px rgb(var(--lamp-rgb) / 0.3);
+  }
+  .exp-warn p {
+    margin: 0;
+  }
+  .exp-warn .headline {
+    color: var(--text);
+    margin-bottom: 4px;
+  }
   .settings {
     max-width: 760px;
     margin: 0 auto;

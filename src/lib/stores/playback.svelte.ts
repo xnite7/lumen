@@ -63,16 +63,20 @@ export function initPlayback() {
   });
   listen<any[]>("player://subtitles", (s) => (pb.addonSubs = s));
   listen("player://loaded", async () => {
+    clearTimeout(startTimer);
     pb.loading = false;
     loadSegments();
   });
   listen<{ reason: string }>("player://end", ({ reason }) => {
     if (/error/i.test(reason)) {
-      pb.error = "Playback stopped: the stream failed. Try another source.";
+      if (pb.state.pos < 5 && tryNext()) return;
+      pb.error = "the tv got scared. that stream stopped.";
     }
   });
   listen<{ message: string }>("player://error", ({ message }) => {
-    if (pb.open) pb.error = message;
+    if (!pb.open) return;
+    if (pb.state.pos < 5 && tryNext()) return;
+    pb.error = message;
   });
 
   // iPhone: the native player reports back here.
@@ -88,6 +92,7 @@ export function initPlayback() {
   });
   onNative<{ url: string }>("failed", ({ url }) => {
     pb.ios = false;
+    if (tryNext()) return;
     pb.handoff = url || pb.url;
   });
 }
@@ -130,7 +135,30 @@ export function previewOf(m: Meta): Partial<Meta> {
   return { id: m.id, type: m.type, name: m.name, poster: m.poster, background: m.background, logo: m.logo, posterShape: m.posterShape };
 }
 
-export async function play(meta: Meta, stream: Stream, videoId: string, opts: { startAt?: number; episodeTitle?: string } = {}) {
+// ------------------------------------------------------------ fallback
+// When a stream won't start, the next one in line plays by itself.
+let queue: Stream[] = [];
+let lastPlay: { meta: Meta; videoId: string; opts: { startAt?: number; episodeTitle?: string } } | null = null;
+let startTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Try the next stream in line. Returns false when there's none left. */
+export function tryNext(why = ""): boolean {
+  const next = queue.shift();
+  if (!next || !lastPlay) return false;
+  toast(why ? `${why} trying another stream…` : "that one didn't start. trying another…", "info");
+  const { meta, videoId, opts } = lastPlay;
+  play(meta, next, videoId, { ...opts, queue: [...queue] });
+  return true;
+}
+
+export async function play(meta: Meta, stream: Stream, videoId: string, opts: { startAt?: number; episodeTitle?: string; queue?: Stream[] } = {}) {
+  queue = opts.queue ? [...opts.queue] : [];
+  lastPlay = { meta, videoId, opts: { startAt: opts.startAt, episodeTitle: opts.episodeTitle } };
+  clearTimeout(startTimer);
+  // nothing playing after 25 s counts as a failure
+  startTimer = setTimeout(() => {
+    if (pb.open && pb.loading && pb.state.pos < 1 && queue.length) tryNext("this one is taking forever.");
+  }, 25_000);
   pb.open = true;
   pb.loading = true;
   pb.error = "";
@@ -165,6 +193,7 @@ export async function play(meta: Meta, stream: Stream, videoId: string, opts: { 
       document.documentElement.classList.add("playing");
     }
   } catch (e) {
+    if (tryNext()) return;
     pb.loading = false;
     pb.error = errorText(e);
   }

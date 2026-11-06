@@ -40,9 +40,11 @@ pub fn settings_set(s: S<'_>, settings: Settings) -> AppResult<()> {
     *s.core.settings.write() = settings.clone();
     #[cfg(desktop)]
     {
-        if settings.tobii.enabled && !prev.tobii.enabled {
+        let on = settings.tobii.enabled && settings.general.experimental;
+        let was = prev.tobii.enabled && prev.general.experimental;
+        if on && !was {
             let _ = s.tobii.start();
-        } else if !settings.tobii.enabled && prev.tobii.enabled {
+        } else if !on && was {
             s.tobii.stop();
         }
     }
@@ -73,6 +75,7 @@ pub fn secrets_status(s: S<'_>) -> Value {
     m.insert("simkl_client_id".into(), json!(true));
     m.insert("simklUser".into(), s.core.db.get::<Value>("simkl_user").unwrap_or(Value::Null));
     m.insert("stremioUser".into(), s.core.db.get::<Value>("stremio_user").unwrap_or(Value::Null));
+    m.insert("discordUser".into(), crate::integrations::discord_auth::user(&s.core).unwrap_or(Value::Null));
     Value::Object(m)
 }
 
@@ -795,4 +798,112 @@ pub fn crew_invite(s: S<'_>) -> Option<String> {
     // an https link, because Discord only makes those clickable; the page
     // hands it to couch:// and couch joins
     (!url.is_empty()).then(|| format!("{}/join?c={}", url.trim_end_matches('/'), urlencoding::encode(&code)))
+}
+
+
+// --------------------------------------------------------------- discord
+
+/// Sign in with Discord. Computer: the browser returns to a tiny server on
+/// port 53682 here. iPhone: it returns through couch://auth/discord, which
+/// the page hands to `discord_finish`.
+#[tauri::command]
+pub async fn discord_start(app: AppHandle, s: S<'_>) -> AppResult<()> {
+    use crate::integrations::discord_auth as d;
+    use tauri_plugin_opener::OpenerExt;
+    #[cfg(desktop)]
+    {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", d::DESKTOP_PORT))
+            .await
+            .map_err(|e| AppError::msg(format!("port {} is busy ({e}); close other sign-ins and try again", d::DESKTOP_PORT)))?;
+        let url = d::start(d::DESKTOP_REDIRECT);
+        let core = s.core.clone();
+        let h = app.clone();
+        tauri::async_runtime::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            // skip stray requests (favicon) until the real callback arrives
+            for _ in 0..4 {
+                let accept = tokio::time::timeout(std::time::Duration::from_secs(600), listener.accept()).await;
+                let Ok(Ok((mut sock, _))) = accept else { return };
+                let mut buf = vec![0u8; 8192];
+                let n = sock.read(&mut buf).await.unwrap_or(0);
+                let head = String::from_utf8_lossy(&buf[..n]).to_string();
+                let path = head.split_whitespace().nth(1).unwrap_or("/").to_string();
+                if !path.starts_with("/discord") {
+                    let _ = sock.write_all(b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n").await;
+                    continue;
+                }
+                let result = d::finish(&core, &path).await;
+                let (title, line) = match &result {
+                    Ok(_) => ("you're on the couch.", "you can close this tab."),
+                    Err(_) => ("the tv got scared.", "go back to couch and try again."),
+                };
+                let page = format!(
+                    "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>midnite\u{2122} couch</title><body style=\"margin:0;height:100vh;display:grid;place-items:center;background:#0C070B;color:#F4EAF0;font:16px ui-monospace,Consolas,monospace;text-align:center\"><div><h1 style=\"font:800 28px system-ui,sans-serif;letter-spacing:-.03em;margin:0 0 10px\">{title}</h1><p style=\"color:#9C8A96;margin:0\">{line}</p></div><script>setTimeout(()=>window.close(),1500)</script>"
+                );
+                let _ = sock.write_all(format!("HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{page}", page.len()).as_bytes()).await;
+                let _ = h.emit("discord-auth", json!({ "ok": result.is_ok(), "error": result.err().map(|e| e.to_string()) }));
+                return;
+            }
+        });
+        app.opener().open_url(url, None::<&str>).map_err(|e| AppError::msg(e.to_string()))?;
+    }
+    #[cfg(mobile)]
+    {
+        let _ = &s;
+        let url = d::start(d::MOBILE_REDIRECT);
+        app.opener().open_url(url, None::<&str>).map_err(|e| AppError::msg(e.to_string()))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn discord_finish(s: S<'_>, url: String) -> AppResult<Value> {
+    crate::integrations::discord_auth::finish(&s.core, &url).await
+}
+
+#[tauri::command]
+pub fn discord_logout(s: S<'_>) -> AppResult<()> {
+    crate::integrations::discord_auth::logout(&s.core)
+}
+
+// ------------------------------------------------------------ speed test
+
+static SPEED: parking_lot::Mutex<Option<(std::time::Instant, f64)>> = parking_lot::Mutex::new(None);
+
+/// How fast this connection is right now, in megabits per second: a few
+/// seconds of download from Cloudflare's speed test (cached for 10 min).
+/// Used to pick a stream your Wi-Fi can actually keep up with.
+#[tauri::command]
+pub async fn net_speed(s: S<'_>, fresh: Option<bool>) -> AppResult<f64> {
+    if !fresh.unwrap_or(false) {
+        if let Some((at, mbps)) = *SPEED.lock() {
+            if at.elapsed() < std::time::Duration::from_secs(600) {
+                return Ok(mbps);
+            }
+        }
+    }
+    use futures::StreamExt;
+    let client = s.core.http.client();
+    let t0 = std::time::Instant::now();
+    let r = client
+        .get("https://speed.cloudflare.com/__down?bytes=25000000")
+        .timeout(std::time::Duration::from_secs(8))
+        .send()
+        .await
+        .map_err(|e| AppError::msg(format!("speed test: {e}")))?;
+    let mut body = r.bytes_stream();
+    let mut got: u64 = 0;
+    let mut first: Option<std::time::Instant> = None;
+    while let Ok(Some(chunk)) = tokio::time::timeout(std::time::Duration::from_secs(4), body.next()).await {
+        let Ok(c) = chunk else { break };
+        first.get_or_insert_with(std::time::Instant::now);
+        got += c.len() as u64;
+        if t0.elapsed() > std::time::Duration::from_millis(3500) {
+            break;
+        }
+    }
+    let secs = first.map(|f| f.elapsed().as_secs_f64()).unwrap_or(0.0).max(0.05);
+    let mbps = (got as f64 * 8.0 / 1_000_000.0) / secs;
+    *SPEED.lock() = Some((std::time::Instant::now(), mbps));
+    Ok(mbps)
 }

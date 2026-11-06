@@ -22,10 +22,8 @@ pub use types::*;
 
 pub const BUILTIN_TRANSPORT: &str = "couch://builtin/manifest.json";
 
-const DEFAULT_ADDONS: &[&str] = &[
-    "https://v3-cinemeta.strem.io/manifest.json",
-    "https://opensubtitles-v3.strem.io/manifest.json",
-];
+pub mod locked;
+use locked::LOCKED_ADDONS;
 
 pub struct Addons {
     core: CoreRef,
@@ -60,17 +58,29 @@ impl Addons {
         Arc::new(Self { core, list: RwLock::new(saved) })
     }
 
-    /// First launch: install the defaults so Home isn't empty.
+    /// The addon list is fixed (see locked.rs): on every launch it's reset
+    /// to exactly those, in that order. A manifest that can't be fetched
+    /// right now keeps its last known copy.
     pub async fn ensure_defaults(&self) {
-        if !self.list.read().is_empty() {
-            return;
-        }
-        for url in DEFAULT_ADDONS {
-            if let Ok(d) = self.fetch_descriptor(url).await {
-                self.list.write().push(d);
+        let prev = self.list();
+        let mut out = Vec::new();
+        for url in LOCKED_ADDONS {
+            let t = normalize_transport(url);
+            match self.fetch_descriptor(url).await {
+                Ok(d) => out.push(d),
+                Err(_) => {
+                    if let Some(old) = prev.iter().find(|a| a.transport_url == t) {
+                        out.push(old.clone());
+                    }
+                }
             }
         }
+        for d in out.iter_mut() {
+            d.flags.protected = true;
+        }
+        *self.list.write() = out;
         self.persist();
+        self.core.emit("addons-changed", ());
     }
 
     fn persist(&self) {
@@ -85,10 +95,9 @@ impl Addons {
     /// for tt ids -- the same reason the worker asked to be dragged above
     /// Cinemeta).
     pub fn effective(&self) -> Vec<AddonDescriptor> {
-        let mut v = Vec::new();
-        if self.core.settings.read().integrations.builtin_catalogs {
-            v.push(builtin::descriptor());
-        }
+        // the built-in TMDB catalogs are always on: they're Home, Search
+        // and every title page now that Cinemeta is gone
+        let mut v = vec![builtin::descriptor()];
         v.extend(self.list.read().iter().cloned());
         v
     }
@@ -110,26 +119,12 @@ impl Addons {
         })
     }
 
-    pub async fn install(&self, url: &str) -> AppResult<AddonDescriptor> {
-        let d = self.fetch_descriptor(url).await?;
-        {
-            let mut l = self.list.write();
-            // Reinstalling (e.g. after reconfiguring) replaces in place, so the
-            // addon keeps its position.
-            if let Some(pos) = l.iter().position(|x| x.manifest.id == d.manifest.id) {
-                l[pos] = d.clone();
-            } else {
-                l.push(d.clone());
-            }
-        }
-        self.persist();
-        Ok(d)
+    /// The list is fixed (locked.rs): installing and removing do nothing.
+    pub async fn install(&self, _url: &str) -> AppResult<AddonDescriptor> {
+        Err(AppError::msg("couch's addons are built in"))
     }
 
-    pub fn uninstall(&self, transport_url: &str) {
-        self.list.write().retain(|a| a.transport_url != transport_url);
-        self.persist();
-    }
+    pub fn uninstall(&self, _transport_url: &str) {}
 
     pub fn reorder(&self, transport_urls: &[String]) {
         let mut l = self.list.write();
@@ -145,10 +140,8 @@ impl Addons {
         self.persist();
     }
 
-    pub fn replace_all(&self, list: Vec<AddonDescriptor>) {
-        *self.list.write() = list;
-        self.persist();
-    }
+    /// Account sync never changes the fixed list.
+    pub fn replace_all(&self, _list: Vec<AddonDescriptor>) {}
 
     /// Re-fetch every manifest. Addons change their catalogs over time
     /// (configured addons especially), and Stremio never refreshes them.

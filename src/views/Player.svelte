@@ -8,7 +8,7 @@
   import YouTube from "../components/YouTube.svelte";
   import Icon from "../components/Icon.svelte";
   import EyeBubbles, { type Bubble } from "../components/EyeBubbles.svelte";
-  import { saveSettings } from "../lib/stores/app.svelte";
+  import { saveSettings, tobiiOn, hueOn } from "../lib/stores/app.svelte";
   import wobble from "../assets/brand/couch-wobble.webp";
   import { gaze } from "../lib/stores/gaze.svelte";
 
@@ -169,7 +169,7 @@
   });
   // follow the head: self-centring, smoothed, sent ~30 times a second
   $effect(() => {
-    if (!layout3d || !app.settings.tobii.enabled || !app.settings.tobii.depth3d) return;
+    if (!layout3d || !tobiiOn() || !app.settings.tobii.depth3d) return;
     let raf = 0;
     let centre: number | null = null;
     let cur = 0;
@@ -208,7 +208,7 @@
   const HINT_KEY = "couch.eyeHint.v1";
   let eyeHint = $state(false);
   $effect(() => {
-    if (!app.settings.tobii.enabled || !app.settings.tobii.gazeControls || pb.meta?.type !== "series") return;
+    if (!tobiiOn() || !app.settings.tobii.gazeControls || pb.meta?.type !== "series") return;
     let seen = false;
     try {
       seen = !!localStorage.getItem(HINT_KEY);
@@ -319,7 +319,7 @@
   const bg = $derived(pb.meta?.background ?? pb.meta?.poster);
 
   // couch mode: one switch for the Hue lamp (dim + warm while playing)
-  const hueReady = $derived(!!app.settings.hue.enabled && !!app.secrets.hue_username);
+  const hueReady = $derived(hueOn() && !!app.secrets.hue_username);
   const couchMode = $derived(app.settings.hue.playbackMode === "dim");
   async function toggleCouch() {
     const on = !couchMode;
@@ -453,7 +453,7 @@
     </div>
     <div class="badges">
       {#each quality as q}<span class="chip">{q}</span>{/each}
-      {#if layout3d}<span class="chip">3D{app.settings.tobii.enabled && app.settings.tobii.depth3d ? " · look around" : ""}</span>{/if}
+      {#if layout3d}<span class="chip">3D{tobiiOn() && app.settings.tobii.depth3d ? " · look around" : ""}</span>{/if}
       {#if pb.mode === "web" && pb.url}
         <!-- the system player can't do MKV/HEVC: hand off to a real player -->
         <button class="chip press" onclick={() => api.openExternal(`vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(pb.url)}`)}>Open in VLC</button>

@@ -1,7 +1,7 @@
 // Tobii events from Rust, plus the head-tracked "window" parallax.
 
 import { listen } from "../api";
-import { app } from "./app.svelte";
+import { app, tobiiOn } from "./app.svelte";
 
 export const gaze = $state({
   x: -1,
@@ -50,7 +50,7 @@ let centre: { x: number; y: number; z: number } | null = null;
 const cur = { x: 0, y: 0, z: 0 };
 
 function on() {
-  return app.settings.tobii.enabled && app.settings.tobii.headParallax;
+  return tobiiOn() && app.settings.tobii.headParallax;
 }
 
 function wake() {
