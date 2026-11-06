@@ -130,7 +130,7 @@ export const DEFAULT_SETTINGS = {
     presencePause: true,
     presenceGraceMs: 2500,
     gazeControls: true,
-    dwellMs: 800,
+    dwellMs: 1500,
     headParallax: true,
     parallaxStrength: 1,
     awayDimsLights: false,

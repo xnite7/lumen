@@ -378,7 +378,7 @@
             <Cell label="Pause when I look away" hint="Resumes when you look back."><Controls kind="switch" bind:value={s.tobii.presencePause} onchange={changed} /></Cell>
             <Cell label="Grace period" hint="{(s.tobii.presenceGraceMs / 1000).toFixed(1)} s"><div style="width:200px"><Controls kind="slider" bind:value={s.tobii.presenceGraceMs} min={800} max={8000} step={100} onchange={changed} label="Grace" /></div></Cell>
             <Cell label="Eye controls" hint="Look at the bottom-left corner while watching: bubbles appear, rest your eyes on one to use it."><Controls kind="switch" bind:value={s.tobii.gazeControls} onchange={changed} /></Cell>
-            <Cell label="Bubble dwell time" hint="{s.tobii.dwellMs} ms"><div style="width:200px"><Controls kind="slider" bind:value={s.tobii.dwellMs} min={300} max={2000} step={50} onchange={changed} label="Dwell" /></div></Cell>
+            <Cell label="Bubble dwell time" hint="{(s.tobii.dwellMs / 1000).toFixed(1)} s of looking"><div style="width:200px"><Controls kind="slider" bind:value={s.tobii.dwellMs} min={1300} max={3000} step={50} onchange={changed} label="Dwell" /></div></Cell>
             <Cell label="Window effect" hint="Artwork shifts with your head, like looking through glass."><Controls kind="switch" bind:value={s.tobii.headParallax} onchange={changed} /></Cell>
             {#if s.tobii.headParallax}
               <Cell label="Window depth" hint="{Math.round(s.tobii.parallaxStrength * 100)}%"><div style="width:200px"><Controls kind="slider" bind:value={s.tobii.parallaxStrength} min={0.3} max={2} step={0.1} onchange={changed} label="Depth" /></div></Cell>

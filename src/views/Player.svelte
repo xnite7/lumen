@@ -134,13 +134,24 @@
     const n = pbs.seekSmall;
     const list: Bubble[] = [];
     if (next) list.push({ id: "next", icon: "next", label: "Next episode", run: playNext });
-    list.push({ id: "fwd", icon: "skipF", label: `Forward ${n}s`, run: () => seekBy(n), repeat: true });
+    list.push({ id: "fwd", icon: "skipF", badge: String(n), label: `Forward ${n} seconds`, run: () => seekBy(n), repeat: true });
     list.push({ id: "toggle", icon: st.paused ? "play" : "pause", label: st.paused ? "Play" : "Pause", run: toggle });
-    list.push({ id: "back", icon: "skipB", label: `Back ${n}s`, run: () => seekBy(-n), repeat: true });
-    if (activeSegment) list.push({ id: "skip", icon: "forward", label: segLabel[activeSegment.kind] ?? "Skip", run: () => seekTo(activeSegment!.end) });
-    else list.push({ id: "mute", icon: st.muted ? "volume" : "mute", label: st.muted ? "Unmute" : "Mute", run: mute });
+    list.push({ id: "back", icon: "skipB", badge: String(n), label: `Back ${n} seconds`, run: () => seekBy(-n), repeat: true });
+    if (activeSegment) list.push({ id: "skip", icon: "skipAhead", label: segLabel[activeSegment.kind] ?? "Skip", run: () => seekTo(activeSegment!.end) });
+    // the icon shows what looking at it will do
+    else list.push({ id: "mute", icon: st.muted ? "volume" : "mute", label: st.muted ? "Turn sound on" : "Mute", run: mute });
     return list;
   });
+  // shown in the middle while the eye controls are up
+  const leftSecs = $derived(Math.max(0, (st.duration || 0) - (st.pos || 0)));
+  const timeLeft = $derived.by(() => {
+    if (!st.duration) return "";
+    const m = Math.round(leftSecs / 60);
+    if (m < 1) return "under a minute left";
+    const h = Math.floor(m / 60);
+    return h ? `${h}h ${m % 60}m left` : `${m} min left`;
+  });
+  const endsAt = $derived(st.duration ? new Date(Date.now() + leftSecs * 1000 / (st.speed || 1)).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toLowerCase() : "");
   const HINT_KEY = "couch.eyeHint.v1";
   let eyeHint = $state(false);
   $effect(() => {
@@ -364,7 +375,7 @@
     </div>
   {/if}
 
-  <EyeBubbles items={eyeItems} onopen={() => eyeHint && hintDone()} />
+  <EyeBubbles items={eyeItems} {timeLeft} {endsAt} onopen={() => eyeHint && hintDone()} />
   {#if eyeHint}
     <div class="eye-hint">
       <div class="demo" aria-hidden="true">

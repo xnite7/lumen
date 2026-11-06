@@ -181,7 +181,7 @@
               <span class="act-ic glass"><Icon name={owned ? "check" : "plus"} size={20} /></span><span class="act-l">My List</span>
             </button>
             <button class="act press" onclick={() => { haptic("light"); setWatched(m, null, !(item?.state?.flaggedWatched)); }} aria-label="Mark watched">
-              <span class="act-ic glass" class:lit={item?.state?.flaggedWatched}><Icon name="checkCircle" size={20} /></span><span class="act-l">{item?.state?.flaggedWatched ? "Watched" : "Mark watched"}</span>
+              <span class="act-ic glass" class:lit={item?.state?.flaggedWatched}><Icon name={item?.state?.flaggedWatched ? "checkCircle" : "eye"} size={20} /></span><span class="act-l">{item?.state?.flaggedWatched ? "Watched" : "Mark watched"}</span>
             </button>
             {#if trailerKey()}
               <button class="act press" onclick={() => playTrailer()}>

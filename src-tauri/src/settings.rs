@@ -400,7 +400,7 @@ impl Default for Tobii {
             presence_pause: true,
             presence_grace_ms: 2500,
             gaze_controls: true,
-            dwell_ms: 800,
+            dwell_ms: 1500,
             head_parallax: true,
             parallax_strength: 1.0,
             away_dims_lights: false,
