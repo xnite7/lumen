@@ -11,6 +11,7 @@
 
 #[cfg(desktop)]
 pub mod depth3d;
+#[cfg(desktop)]
 mod mpv;
 mod session;
 
