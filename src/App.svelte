@@ -19,7 +19,6 @@
   import Toasts from "./components/Toasts.svelte";
   import Player from "./views/Player.svelte";
   import Splash from "./ui/Splash.svelte";
-  import IdleBump from "./ui/IdleBump.svelte";
   import { installTvNav } from "./lib/tvfocus";
   import { startCrew, joinCrew } from "./lib/stores/crew.svelte";
 
@@ -188,7 +187,6 @@
     <Onboarding ondone={() => (ui.onboarding = false)} />
   {/if}
   <Toasts />
-  <IdleBump />
 {/if}
 {#if splashing}<Splash ondone={() => (splashing = false)} />{/if}
 

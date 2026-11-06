@@ -1,35 +1,26 @@
 <script lang="ts">
-  // Launch: the room goes dark, the glass midnite sign melts into the couch,
-  // a bump says something deadpan, and you're home. Any tap, click or key
-  // skips straight through.
+  // Launch: the room goes dark, the glass midnite sign sits still for a
+  // beat, then melts into the couch (at 2x) and you're home. Any tap, click
+  // or key skips straight through.
   import { fade } from "svelte/transition";
   import { app } from "../lib/stores/app.svelte";
-  import { bumpLine } from "../lib/bumps";
   import { hum } from "../lib/sound";
   import Logo from "../components/Logo.svelte";
   import splash from "../assets/brand/splash.mp4";
 
   let { ondone }: { ondone: () => void } = $props();
 
+  const HOLD_MS = 2000; // first frame, still
+  const SPEED = 2;
+
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let phase = $state<"video" | "logo" | "bump">(reduced ? "logo" : "video");
-  let line = $state("");
+  let phase = $state<"video" | "logo">(reduced ? "logo" : "video");
   let finished = false;
   let video: HTMLVideoElement | undefined = $state();
 
-  function toBump() {
-    if (finished) return;
-    // the bump needs settings; if they're not in yet, the couch waits a beat
-    if (!app.ready) return void setTimeout(toBump, 120);
-    if (!app.settings.general.bumps) return done();
-    line = bumpLine("launch");
-    phase = "bump";
-    if (app.settings.general.sound) hum();
-    setTimeout(done, 1900);
-  }
-
   function done() {
     if (finished) return;
+    // the home screen needs settings; if they're not in yet, wait a beat
     if (!app.ready) return void setTimeout(done, 120);
     finished = true;
     ondone();
@@ -37,15 +28,22 @@
 
   $effect(() => {
     if (phase === "logo") {
-      const t = setTimeout(toBump, 1500);
+      const t = setTimeout(done, 1500);
       return () => clearTimeout(t);
     }
   });
 
   $effect(() => {
-    if (!video) return;
-    video.playbackRate = 1.3;
-    video.play().catch(() => (phase = "logo"));
+    const v = video;
+    if (!v) return;
+    v.pause();
+    v.currentTime = 0;
+    const t = setTimeout(() => {
+      v.playbackRate = SPEED;
+      if (app.ready && app.settings.general.sound) hum();
+      v.play().catch(() => (phase = "logo"));
+    }, HOLD_MS);
+    return () => clearTimeout(t);
   });
 </script>
 
@@ -59,16 +57,12 @@
       src={splash}
       muted
       playsinline
-      autoplay
       preload="auto"
-      onended={toBump}
+      onended={done}
       onerror={() => (phase = "logo")}
-      out:fade={{ duration: 380 }}
     ></video>
-  {:else if phase === "logo"}
-    <div class="mark" out:fade={{ duration: 300 }}><Logo size={150} lit flicker /></div>
   {:else}
-    <p class="bump-text line" in:fade={{ duration: 420, delay: 160 }}>{line}</p>
+    <div class="mark"><Logo size={180} lit flicker /></div>
   {/if}
 </div>
 
@@ -95,9 +89,5 @@
   .mark {
     display: grid;
     place-items: center;
-  }
-  .line {
-    max-width: 30ch;
-    padding: 0 24px;
   }
 </style>

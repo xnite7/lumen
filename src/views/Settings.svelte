@@ -133,7 +133,6 @@
               <Controls kind="segmented" bind:value={s.general.neon} options={[{ value: "soft", label: "soft" }, { value: "lit", label: "lit" }, { value: "loud", label: "loud" }]} onchange={changed} />
             </Cell>
             <Cell label="Later = cozier" hint="After midnight the room gets warmer and dimmer, and the couch notices you're still up."><Controls kind="switch" bind:value={s.general.timeAware} onchange={changed} /></Cell>
-            <Cell label="Bumps" hint="Deadpan little lines on launch and when Home sits idle. Tap to skip."><Controls kind="switch" bind:value={s.general.bumps} onchange={changed} /></Cell>
             <Cell label="Sounds" hint="A soft CRT hum on launch and tiny clicks."><Controls kind="switch" bind:value={s.general.sound} onchange={changed} /></Cell>
           </div>
           <div class="group">

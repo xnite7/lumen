@@ -92,7 +92,3 @@ they're in.
 
 Only Simkl-verified titles are ever shared (same rule as Discord), and sharing
 is off until each person turns it on.
-
-## ✏️ Bumps
-
-Edit `src/assets/bumps.json`. Lines starting with `TODO` are skipped.

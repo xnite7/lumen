@@ -21,7 +21,6 @@ export const DEFAULT_SETTINGS = {
     topTenRanks: true,
     onboarded: false,
     neon: "lit" as "soft" | "lit" | "loud",
-    bumps: true,
     sound: false,
     timeAware: true,
   },

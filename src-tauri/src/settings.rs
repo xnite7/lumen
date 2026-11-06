@@ -62,8 +62,6 @@ pub struct General {
     pub onboarded: bool,
     /// How hard the neon glows: "soft" | "lit" | "loud".
     pub neon: String,
-    /// Adult Swim-style bumps on launch and when idle on Home.
-    pub bumps: bool,
     /// Tiny clicks and a CRT hum on launch.
     pub sound: bool,
     /// After midnight the room gets warmer and dimmer.
@@ -91,7 +89,6 @@ impl Default for General {
             top_ten_ranks: true,
             onboarded: false,
             neon: "lit".into(),
-            bumps: true,
             sound: false,
             time_aware: true,
         }
