@@ -26,11 +26,14 @@ pub struct Session {
     pub scrobbled: bool,
     /// a raw link/magnet identified by file name, for scrobbling
     pub ident: Option<serde_json::Value>,
+    /// what Discord may show (Simkl's data); None = unknown, keep hidden
+    pub known: Option<crate::discord::Known>,
+    pub looked_up: bool,
 }
 
 impl Session {
     pub fn new(req: PlayRequest, url: String) -> Self {
-        Self { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), req, url, pos: 0.0, duration: 0.0, paused: true, user_paused: false, ended: false, scrobbled: false, ident: None }
+        Self { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), req, url, pos: 0.0, duration: 0.0, paused: true, user_paused: false, ended: false, scrobbled: false, ident: None, known: None, looked_up: false }
     }
 
     pub fn update(&mut self, pos: f64, duration: f64, paused: bool) {
@@ -77,6 +80,7 @@ impl Session {
                 }
             });
         }
+        crate::discord::update(core, crate::discord::Msg::Clear);
         crate::state::hue(&core.app).on_playback(false).await;
     }
 }
@@ -87,6 +91,8 @@ pub fn spawn_tracker(player: Arc<Player>) {
         let mut last_save = Instant::now();
         let mut was_paused: Option<bool> = None;
         let mut was_hue: Option<bool> = None;
+        // Discord: (paused, projected end in ms) last sent
+        let mut sent: Option<(bool, i64)> = None;
         loop {
             tokio::time::sleep(Duration::from_millis(1000)).await;
             // Pull fresh numbers from mpv (desktop) or use what the web
@@ -129,6 +135,41 @@ pub fn spawn_tracker(player: Arc<Player>) {
                     }
                 }
                 was_paused = Some(s.user_paused);
+            }
+            // Discord presence: look the title up on Simkl once, then speak
+            // only on play/pause or a seek (projected end moved > 3 s).
+            if s.duration > 0.0 && !s.looked_up {
+                let raw = s.req.video_id.starts_with("magnet:") || s.req.video_id.starts_with("url:");
+                let mut ident = s.ident.clone();
+                if raw && ident.is_none() {
+                    let file = s.req.stream.pointer("/behaviorHints/filename").and_then(|f| f.as_str()).map(|f| f.to_string()).unwrap_or_else(|| s.req.meta.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string());
+                    ident = simkl::identify_file(core, &file).await;
+                }
+                let known = if raw && ident.is_none() {
+                    None
+                } else {
+                    crate::discord::identify(core, &s.req.meta, &s.req.video_id, s.req.episode_title.as_deref(), ident.as_ref()).await
+                };
+                if let Some(x) = player.session.lock().as_mut().filter(|x| x.id == sid) {
+                    x.looked_up = true;
+                    x.known = known;
+                    if x.ident.is_none() {
+                        x.ident = ident;
+                    }
+                }
+                continue;
+            }
+            if let Some(known) = s.known.clone() {
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+                let end = now + ((s.duration - s.pos) * 1000.0) as i64;
+                let changed = match sent {
+                    None => true,
+                    Some((p, e)) => p != s.user_paused || (!s.user_paused && (e - end).abs() > 3000),
+                };
+                if changed {
+                    crate::discord::update(core, crate::discord::Msg::Show { known, pos: s.pos, duration: s.duration, paused: s.user_paused });
+                    sent = Some((s.user_paused, end));
+                }
             }
             if was_hue != Some(s.paused) {
                 crate::state::hue(&core.app).on_playback(!s.paused).await;

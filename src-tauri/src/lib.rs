@@ -2,6 +2,7 @@ mod addons;
 mod commands;
 mod core;
 mod db;
+mod discord;
 mod error;
 mod http;
 mod hue;

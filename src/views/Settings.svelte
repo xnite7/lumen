@@ -306,6 +306,13 @@
             <Cell label="TMDB key" hint="Cast, collections, recommendations and trailers. A shared key is used until you add your own."><SecretField name="tmdb" placeholder="TMDB v3 key" /></Cell>
             <Cell label="Official trailers from KinoCheck"><Controls kind="switch" bind:value={s.integrations.kinocheckTrailers} onchange={changed} /></Cell>
           </div>
+          {#if app.platform !== "ios"}
+            <h3 class="group-head">Discord</h3>
+            <div class="group">
+              <Cell label="Show what you're watching" hint="Only titles Simkl knows, with Simkl's own name and poster. Anything else never appears."><Controls kind="switch" bind:value={s.integrations.discordPresence} onchange={changed} /></Cell>
+              <Cell label="Application ID" hint="From discord.com/developers. The app's name is what friends see."><input class="field small" bind:value={s.integrations.discordAppId} onchange={changed} inputmode="numeric" placeholder="1234…" /></Cell>
+            </div>
+          {/if}
           <h3 class="group-head">Vibe search</h3>
           <div class="group">
             <Cell label="Vibe search" hint="A card in Search: ask for a feeling, picks come from your own Simkl ratings."><Controls kind="switch" bind:value={s.integrations.aiEnabled} onchange={changed} /></Cell>

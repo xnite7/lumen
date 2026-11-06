@@ -99,6 +99,8 @@ export const DEFAULT_SETTINGS = {
     builtinCatalogs: true,
     stremioSync: true,
     kinocheckTrailers: true,
+    discordPresence: true,
+    discordAppId: "",
   },
   hue: {
     enabled: false,

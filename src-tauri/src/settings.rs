@@ -280,6 +280,10 @@ pub struct Integrations {
     pub builtin_catalogs: bool,
     pub stremio_sync: bool,
     pub kinocheck_trailers: bool,
+    /// Discord "Watching ..." -- only for titles Simkl knows.
+    pub discord_presence: bool,
+    /// Application ID from discord.com/developers (its name is what Discord shows).
+    pub discord_app_id: String,
 }
 
 impl Default for Integrations {
@@ -299,6 +303,8 @@ impl Default for Integrations {
             builtin_catalogs: true,
             stremio_sync: true,
             kinocheck_trailers: true,
+            discord_presence: true,
+            discord_app_id: String::new(),
         }
     }
 }
