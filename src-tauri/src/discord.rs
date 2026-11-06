@@ -1,5 +1,5 @@
-//! Discord Rich Presence (desktop): "Watching <title>" with the Simkl poster
-//! and a live progress bar.
+//! Discord Rich Presence (desktop): "on the couch · watching <title>" with
+//! the Simkl poster, the midnite mark in the corner and a live progress bar.
 //!
 //! The rule: only titles Simkl knows ever show up. Every session is looked up
 //! on Simkl first (by IMDb/TMDB id, or Simkl's own file-name match for raw
@@ -9,12 +9,12 @@
 //! invisible.
 //!
 //! The IPC client lives on its own thread (it blocks), fed by a channel, and
-//! reconnects by itself when Discord starts after Lumen.
+//! reconnects by itself when Discord starts after couch.
 
 use crate::core::Core;
 use serde_json::Value;
 
-/// Lumen's Discord application (its name is what friends see).
+/// couch's Discord application (its name is what friends see).
 const DEFAULT_APP_ID: &str = "1568062298721886290";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -104,6 +104,10 @@ mod imp {
     use std::time::Duration;
 
     static TX: OnceCell<parking_lot::Mutex<Sender<(String, Msg)>>> = OnceCell::new();
+    /// The midnite mark for the small corner image: the crew server's
+    /// /logo.png when there is one, else an art asset named "midnite"
+    /// uploaded to the Discord app.
+    pub static LOGO: parking_lot::Mutex<String> = parking_lot::Mutex::new(String::new());
 
     pub fn send(app_id: &str, m: Msg) {
         let tx = TX.get_or_init(|| {
@@ -164,22 +168,22 @@ mod imp {
 
     fn activity(k: &Known, pos: f64, duration: f64, paused: bool) -> Activity<'_> {
         let year = k.year.map(|y| y.to_string());
-        let state = match (&k.episode, paused) {
-            (Some(e), true) => format!("{e} · Paused"),
-            (Some(e), false) => e.clone(),
-            (None, true) => year.clone().map(|y| format!("{y} · Paused")).unwrap_or_else(|| "Paused".into()),
-            (None, false) => year.clone().unwrap_or_else(|| "Film".into()),
-        };
+        let what = k.episode.clone().or(year).unwrap_or_else(|| "a film".into());
+        let state = if paused { format!("on the couch · paused · {what}") } else { format!("on the couch · {what}") };
         let mut a = Activity::new()
             .activity_type(ActivityType::Watching)
             .status_display_type(StatusDisplayType::Details)
-            .name("Lumen")
+            .name("couch")
             .details(k.title.clone())
             .state(state);
         if let Some(l) = &k.link {
             a = a.details_url(l.clone()).buttons(vec![Button::new("View on Simkl", l.clone())]);
         }
-        let mut assets = Assets::new().large_text(k.title.clone());
+        let logo = LOGO.lock().clone();
+        let mut assets = Assets::new()
+            .large_text(k.title.clone())
+            .small_image(if logo.is_empty() { "midnite".to_string() } else { logo })
+            .small_text("midnite™ couch");
         if let Some(p) = &k.poster {
             assets = assets.large_image(p.clone());
             if let Some(l) = &k.link {
@@ -204,6 +208,8 @@ pub fn update(core: &Core, m: Msg) {
             (s.integrations.discord_presence, s.integrations.discord_app_id.trim().to_string())
         };
         let id = if id.is_empty() { DEFAULT_APP_ID.to_string() } else { id };
+        let crew = core.settings.read().integrations.crew_url.trim().trim_end_matches('/').to_string();
+        *imp::LOGO.lock() = if crew.is_empty() { String::new() } else { format!("{crew}/logo.png") };
         let m = if on { m } else { Msg::Clear };
         imp::send(&id, m);
     }

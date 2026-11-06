@@ -1,4 +1,4 @@
-name: Build Lumen
+name: Build couch
 
 on:
   push:
@@ -34,7 +34,7 @@ jobs:
         run: npx tauri build
       - uses: actions/upload-artifact@v4
         with:
-          name: Lumen-Windows
+          name: couch-Windows
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
@@ -80,8 +80,8 @@ jobs:
         run: |
           cargo build --release --lib --target aarch64-apple-ios --features tauri/custom-protocol
           mkdir -p gen/apple/Externals/arm64/release gen/apple/Externals/arm64/Release
-          cp target/aarch64-apple-ios/release/liblumen_lib.a gen/apple/Externals/arm64/release/libapp.a
-          cp target/aarch64-apple-ios/release/liblumen_lib.a gen/apple/Externals/arm64/Release/libapp.a
+          cp target/aarch64-apple-ios/release/libcouch_lib.a gen/apple/Externals/arm64/release/libapp.a
+          cp target/aarch64-apple-ios/release/libcouch_lib.a gen/apple/Externals/arm64/Release/libapp.a
       - name: Add widget extension and iPhone permissions
         working-directory: src-tauri/gen/apple
         run: |
@@ -101,22 +101,25 @@ jobs:
           assert n, "Rust build phase not found"
           open(p, 'w').write(s)
           PY
-          xcodebuild -list -project lumen.xcodeproj
+          PROJ=$(ls -d *.xcodeproj | head -1); echo "project: $PROJ"; xcodebuild -list -project "$PROJ"
       - name: Build app (unsigned)
         working-directory: src-tauri/gen/apple
         run: |
-          CONF=$(xcodebuild -list -project lumen.xcodeproj | awk '/Build Configurations:/{f=1;next} f&&NF{print $1; exit}' )
-          for c in release Release; do xcodebuild -list -project lumen.xcodeproj | grep -qx "        $c" && CONF=$c; done
+          PROJ=$(ls -d *.xcodeproj | head -1)
+          SCHEME=$(xcodebuild -list -project "$PROJ" | grep -o "[A-Za-z0-9_-]*_iOS" | head -1)
+          echo "project: $PROJ scheme: $SCHEME"
+          CONF=$(xcodebuild -list -project "$PROJ" | awk '/Build Configurations:/{f=1;next} f&&NF{print $1; exit}' )
+          for c in release Release; do xcodebuild -list -project "$PROJ" | grep -qx "        $c" && CONF=$c; done
           echo "configuration: $CONF"
-          xcodebuild -project lumen.xcodeproj -scheme lumen_iOS -configuration "$CONF" -sdk iphoneos \
+          xcodebuild -project "$PROJ" -scheme "$SCHEME" -configuration "$CONF" -sdk iphoneos \
             -destination 'generic/platform=iOS' -derivedDataPath build ARCHS=arm64 \
             -skipPackagePluginValidation -skipMacroValidation \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
           APP=$(find build/Build/Products -name "*.app" -maxdepth 3 | head -1)
           echo "app: $APP"
           mkdir -p Payload && cp -R "$APP" Payload/
-          zip -qr ../../../Lumen-unsigned.ipa Payload
+          zip -qr ../../../couch-unsigned.ipa Payload
       - uses: actions/upload-artifact@v4
         with:
-          name: Lumen-iOS-unsigned
-          path: Lumen-unsigned.ipa
+          name: couch-iOS-unsigned
+          path: couch-unsigned.ipa

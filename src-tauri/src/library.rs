@@ -155,7 +155,7 @@ pub fn progress(core: &Core, meta: &Value, video_id: &str, time_ms: i64, duratio
     Ok(item)
 }
 
-/// Per-episode watched set. Lumen keeps a plain list in `state.watchedIds`
+/// Per-episode watched set. couch keeps a plain list in `state.watchedIds`
 /// (Stremio's own field is a bitfield over the video list that needs the
 /// full meta to decode, so it is left untouched for Stremio to manage).
 pub fn mark_video_watched(item: &mut Value, video_id: &str, watched: bool) {

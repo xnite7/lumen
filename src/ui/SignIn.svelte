@@ -61,7 +61,7 @@
   }
 
   // Stremio's page runs Sign in with Apple in a pop-up, which in-app
-  // browser sheets block, so it opens in Safari itself. Lumen keeps polling
+  // browser sheets block, so it opens in Safari itself. couch keeps polling
   // and checks again the moment you switch back.
   async function apple() {
     const l = await startLink();
@@ -113,7 +113,7 @@
     <div class="waiting">
       <span class="spinner"></span>
       <p class="headline">Finish in Safari</p>
-      <p class="foot dim">Tap Apple on the Stremio page, sign in, then come back here. Lumen signs in by itself.</p>
+      <p class="foot dim">Tap Apple on the Stremio page, sign in, then come back here. couch signs in by itself.</p>
       {#if link}<p class="code-hint foot dim">Code <b>{link.code}</b></p>{/if}
       <button class="btn plain" onclick={() => link && api.openExternal(link.link)}>Open Safari again</button>
       <button class="btn plain dim" onclick={() => { stop(); mode = "choose"; }}>Back</button>
@@ -132,7 +132,7 @@
         <ol class="foot dim">
           <li>Point the camera at the code</li>
           <li>Sign in with the account you use in Stremio (Apple works)</li>
-          <li>Lumen signs in by itself</li>
+          <li>couch signs in by itself</li>
         </ol>
         {#if link}
           <p class="manual foot">
@@ -193,7 +193,7 @@
     height: 148px;
     flex: none;
     border-radius: 20px;
-    background: #fff;
+    background: var(--white);
     padding: 10px;
     display: grid;
   }
@@ -281,7 +281,7 @@
     display: grid;
     place-items: center;
     background: var(--green);
-    color: #fff;
+    color: var(--white);
     margin-bottom: 8px;
     animation: pop var(--t-slow) var(--spring) both;
   }

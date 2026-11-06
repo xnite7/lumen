@@ -1,4 +1,4 @@
-# Lumen
+# midnite™ couch
 
 Your Stremio, rebuilt as its own app. Every Stremio addon works; everything
 your 20 plugins did is now built in, natively, with nothing patched on top.
@@ -11,7 +11,7 @@ your 20 plugins did is now built in, natively, with nothing patched on top.
 
 ## Where each plugin went
 
-| Old plugin / worker | In Lumen |
+| Old plugin / worker | In couch |
 |---|---|
 | Addon Manager | Addons page: drag to reorder, configure, export/import, undo remove |
 | Addon Health | "Check health" on the Addons page (ok / slow / not answering) |
@@ -32,7 +32,7 @@ your 20 plugins did is now built in, natively, with nothing patched on top.
 | Simkl Sync | Scrobbling, ratings (stars on detail), watched sync, library ↔ Plan to Watch |
 | Stream Quality Picker | Streams sheet: grouped by resolution, Instant/HDR/codec badges, Best 4K/1080p |
 | TheIntroDB | Skip intro/recap/credits buttons + optional auto-skip, segments on the seek bar |
-| Simkl worker rows | Built-in "Lumen" addon: Simkl lists, Because You Watched, Surprise Me, Top 10, TMDB rows |
+| Simkl worker rows | Built-in "couch" addon: Simkl lists, Because You Watched, Surprise Me, Top 10, TMDB rows |
 | Image proxy worker | Still used as the fallback for blocked images — after encrypted DNS, which fixes most blocks on its own |
 
 ## New
@@ -65,10 +65,34 @@ Dev mode with hot reload: `npx tauri dev`.
 
 ## Notes
 
-- Lumen registers `stremio://`, so Install buttons on addon sites open here.
+- couch registers `stremio://`, so Install buttons on addon sites open here.
 - If video ever doesn't show (unusual GPU drivers), turn off
-  Settings → Playback → *Video inside Lumen* and it opens in its own window.
+  Settings → Playback → *Video inside couch* and it opens in its own window.
 - Eye tracking loads `tobii_stream_engine.dll` from your Tobii software at
   runtime. If it isn't found, point Settings → Eye tracking at it.
 - iPhone: the workflow also produces an unsigned `.ipa` for AltStore /
   Sideloadly (experimental; MKV/HEVC hands off to VLC or Infuse).
+
+## 🛋️ The midnite crew server ("on the couch")
+
+A tiny Cloudflare Worker in `worker/` keeps who's watching what, in memory only
+(forgotten 2 minutes after the last heartbeat). It deploys itself from
+`.github/workflows/worker.yml` once two repo secrets exist:
+
+| Secret | What |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | Cloudflare → My Profile → API Tokens → template **Edit Cloudflare Workers** |
+| `CREW_CODE` | any long random string; it's the key to the couch |
+
+Then run the **Deploy crew server** workflow. Its summary shows the URL
+(`https://midnite-couch.<you>.workers.dev`). In couch → Couch tab, paste
+`https://midnite-couch.<you>.workers.dev/join?c=<CREW_CODE>` once; after that
+**Copy invite** gives the same link to drop in the server. Friends tap it and
+they're in.
+
+Only Simkl-verified titles are ever shared (same rule as Discord), and sharing
+is off until each person turns it on.
+
+## ✏️ Bumps
+
+Edit `src/assets/bumps.json`. Lines starting with `TODO` are skipped.

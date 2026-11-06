@@ -7,6 +7,7 @@
   import { go } from "../lib/router.svelte";
   import Poster from "./Poster.svelte";
   import Icon from "./Icon.svelte";
+  import { ui } from "../lib/ui.svelte";
 
   let { catalog, title = "", ranked = false }: { catalog: CatalogRef; title?: string; ranked?: boolean } = $props();
 
@@ -20,6 +21,9 @@
   let canRight = $state(false);
 
   const isTop10 = $derived(ranked || (app.settings.general.topTenRanks && /\btop\s*10\b/i.test(catalog.name)));
+  // Apple TV shelves are landscape; fall back to posters when the addon
+  // doesn't give backdrops (or for ranked Top 10s, which want the tall art).
+  const wide = $derived(!isTop10 && items.length > 0 && items.filter((m) => m.background).length >= items.length * 0.7);
   const hideAdult = $derived(catalog.adult && app.settings.general.hideAdult && !app.adultRevealed);
 
   async function load() {
@@ -102,7 +106,7 @@
           {/each}
         {:else}
           {#each items as m, i (m.id)}
-            <Poster meta={m} rank={isTop10 ? i + 1 : 0} hidden={hideAdult} showTitle={app.settings.general.showTitlesUnderPosters} />
+            <Poster meta={m} rank={isTop10 ? i + 1 : 0} hidden={hideAdult} landscape={wide && !ui.phone} showTitle={app.settings.general.showTitlesUnderPosters} />
           {/each}
         {/if}
       </div>
@@ -119,7 +123,7 @@
 <style>
   .row {
     position: relative;
-    margin-top: 26px;
+    margin-top: var(--shelf-gap);
     content-visibility: auto;
     contain-intrinsic-size: auto 320px;
   }
@@ -154,8 +158,8 @@
   }
   .rail {
     display: flex;
-    gap: 14px;
-    padding: 6px var(--gutter) 18px;
+    gap: 18px;
+    padding: 10px var(--gutter) 22px;
     scroll-snap-type: x proximity;
     scroll-padding: 0 var(--gutter);
   }

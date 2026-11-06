@@ -1,8 +1,7 @@
 <script lang="ts">
   import { api } from "../lib/api";
   import { app, saveSettings, refreshSecrets } from "../lib/stores/app.svelte";
-  import { themes, loadThemes, applyCurrent } from "../lib/stores/theme.svelte";
-  import { themeTemplate, BUILTIN_THEMES } from "../lib/themes";
+  import { applyCurrent } from "../lib/stores/theme.svelte";
   import { toast, errorText } from "../lib/stores/toast.svelte";
   import { gaze } from "../lib/stores/gaze.svelte";
   import { bytes, lang } from "../lib/format";
@@ -12,7 +11,6 @@
   import Icon from "../components/Icon.svelte";
   import NavBar from "../ui/NavBar.svelte";
   import SignIn from "../ui/SignIn.svelte";
-  import ThemeCard from "../ui/ThemeCard.svelte";
   import SimklConnect from "../ui/SimklConnect.svelte";
   import { SECTIONS, sectionById } from "../lib/sections";
 
@@ -24,10 +22,6 @@
     saveSettings();
     applyCurrent();
   }
-
-  $effect(() => {
-    loadThemes();
-  });
 
   // ------------------------------------------------------------ accounts
   async function importOld() {
@@ -120,15 +114,6 @@
     return rows.map((r, i) => ({ r, i })).sort((a, b) => (order.get(a.r.key) ?? 1000 + a.i) - (order.get(b.r.key) ?? 1000 + b.i)).map((x) => x.r);
   });
 
-  async function newTheme() {
-    const base = themes.list.find((t) => t.id === s.general.theme) ?? BUILTIN_THEMES[0];
-    const t = themeTemplate(base);
-    t.id = `my-theme-${Date.now().toString(36)}`;
-    await api.themeSave(t);
-    await api.themesOpenDir();
-    await loadThemes();
-    toast("Theme file created in your themes folder. Edit it and press Reload.", "ok");
-  }
 
   const langOptions = ["eng", "ara", "jpn", "spa", "fre", "ger", "ita", "por", "kor", "chi", "hin", "tur", "rus"];
   function toggleLang(list: string[], l: string) {
@@ -143,18 +128,14 @@
   {#key section}
       <div class="inner">
         {#if section === "appearance"}
-          <div class="themes scroll-x">
-            {#each themes.list as t (t.id)}
-              <ThemeCard theme={t} on={s.general.theme === t.id} onclick={() => { s.general.theme = t.id; changed(); }} />
-            {/each}
-          </div>
-          {#if app.platform !== "ios"}<div class="group">
-            <Cell label="Create a theme" hint="Copies the current theme into a file you can edit. Themes are plain JSON plus optional CSS.">
-              <button class="btn tinted small press" onclick={newTheme}>New theme</button>
-              <button class="btn tinted small press" onclick={() => api.themesOpenDir()}>Open folder</button>
-              <button class="btn tinted small icon press" onclick={async () => { await loadThemes(); applyCurrent(); }} aria-label="Reload themes"><Icon name="refresh" size={15} /></button>
+          <div class="group">
+            <Cell label="Neon" hint={s.general.neon === "soft" ? "A lamp in the corner" : s.general.neon === "loud" ? "Full neon" : "The sign is on"}>
+              <Controls kind="segmented" bind:value={s.general.neon} options={[{ value: "soft", label: "soft" }, { value: "lit", label: "lit" }, { value: "loud", label: "loud" }]} onchange={changed} />
             </Cell>
-          </div>{/if}
+            <Cell label="Later = cozier" hint="After midnight the room gets warmer and dimmer, and the couch notices you're still up."><Controls kind="switch" bind:value={s.general.timeAware} onchange={changed} /></Cell>
+            <Cell label="Bumps" hint="Deadpan little lines on launch and when Home sits idle. Tap to skip."><Controls kind="switch" bind:value={s.general.bumps} onchange={changed} /></Cell>
+            <Cell label="Sounds" hint="A soft CRT hum on launch and tiny clicks."><Controls kind="switch" bind:value={s.general.sound} onchange={changed} /></Cell>
+          </div>
           <div class="group">
             <Cell label="Colour from artwork" hint="The accent and the glow take their colour from what you're looking at."><Controls kind="switch" bind:value={s.general.accentFromArtwork} onchange={changed} /></Cell>
             <Cell label="Ambient glow"><Controls kind="switch" bind:value={s.general.ambientGlow} onchange={changed} /></Cell>
@@ -208,15 +189,15 @@
           {#if app.platform === "ios"}
             <h3 class="group-head">iPhone player</h3>
             <div class="group">
-              <Cell label="Player" hint={s.playback.iosPlayer === "lumen" ? "Lumen's player for everything: every format, styled subtitles, all audio tracks." : "Apple's player for MP4 and streams (picture-in-picture, AirPlay); Lumen's player for MKV and anything Apple's can't open."}>
-                <Controls kind="segmented" bind:value={s.playback.iosPlayer} options={[{ value: "auto", label: "Auto" }, { value: "lumen", label: "Always Lumen" }]} onchange={changed} />
+              <Cell label="Player" hint={s.playback.iosPlayer === "couch" ? "couch's player for everything: every format, styled subtitles, all audio tracks." : "Apple's player for MP4 and streams (picture-in-picture, AirPlay); couch's player for MKV and anything Apple's can't open."}>
+                <Controls kind="segmented" bind:value={s.playback.iosPlayer} options={[{ value: "auto", label: "Auto" }, { value: "couch", label: "Always couch" }]} onchange={changed} />
               </Cell>
             </div>
           {/if}
           {#if app.platform !== "ios"}
           <h3 class="group-head">Video engine</h3>
           <div class="group">
-            <Cell label="Video inside Lumen" hint="Turn off if video doesn't appear: it will open in its own window instead. Restart Lumen after changing."><Controls kind="switch" bind:value={s.playback.embedVideo} onchange={changed} /></Cell>
+            <Cell label="Video inside couch" hint="Turn off if video doesn't appear: it will open in its own window instead. Restart couch after changing."><Controls kind="switch" bind:value={s.playback.embedVideo} onchange={changed} /></Cell>
             <Cell label="Hardware decoding"><Controls kind="segmented" bind:value={s.playback.hwdec} options={[{ value: "auto-safe", label: "Auto" }, { value: "nvdec", label: "NVDEC" }, { value: "d3d11va", label: "D3D11" }, { value: "no", label: "Off" }]} onchange={changed} /></Cell>
             <Cell label="Renderer"><Controls kind="segmented" bind:value={s.playback.vo} options={[{ value: "gpu-next", label: "gpu-next" }, { value: "gpu", label: "gpu" }]} onchange={changed} /></Cell>
             <Cell label="HDR passthrough" hint="Sends HDR to an HDR display instead of tone-mapping it."><Controls kind="switch" bind:value={s.playback.hdrPassthrough} onchange={changed} /></Cell>
@@ -350,7 +331,7 @@
           {#if app.secrets.hue_username}
             <div class="group">
               <Cell label="During playback">
-                <Controls kind="segmented" bind:value={s.hue.playbackMode} options={[{ value: "off", label: "Nothing" }, { value: "dim", label: "Dim" }, { value: "ambilight", label: "Match the picture" }]} onchange={changed} />
+                <Controls kind="segmented" bind:value={s.hue.playbackMode} options={[{ value: "off", label: "Nothing" }, { value: "dim", label: "Couch mode" }, { value: "ambilight", label: "Match the picture" }]} onchange={changed} />
               </Cell>
               <Cell label="Room" hint="Dimmed, restored and tinted by artwork.">
                 <select class="field small" bind:value={s.hue.roomId} onchange={changed}>
@@ -475,13 +456,6 @@
   .signin {
     padding: 16px;
   }
-  .themes {
-    display: flex;
-    gap: 14px;
-    margin: 0 calc(-1 * var(--gutter)) 22px;
-    padding: 4px var(--gutter) 10px;
-    scroll-snap-type: x proximity;
-  }
   .langs {
     display: flex;
     flex-wrap: wrap;
@@ -499,7 +473,7 @@
     width: 26px;
     height: 26px;
     border-radius: 50%;
-    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.2);
+    box-shadow: inset 0 0 0 1px rgb(var(--lo) / 0.2);
   }
   .swatch.on {
     outline: 2px solid var(--accent);
@@ -550,17 +524,17 @@
     font-style: italic;
   }
   .cue[data-bg="glass"] {
-    background: rgb(0 0 0 / var(--bg-o));
+    background: rgb(var(--lo) / var(--bg-o));
     backdrop-filter: blur(var(--blur));
   }
   .cue[data-bg="box"] {
-    background: rgb(0 0 0 / var(--bg-o));
+    background: rgb(var(--lo) / var(--bg-o));
   }
   .cue[data-bg="shadow"] {
-    text-shadow: 0 2px 6px rgb(0 0 0 / 0.9), 0 0 2px rgb(0 0 0 / 0.9);
+    text-shadow: 0 2px 6px rgb(var(--lo) / 0.9), 0 0 2px rgb(var(--lo) / 0.9);
   }
   .cue[data-bg="outline"] {
-    -webkit-text-stroke: 3px rgb(0 0 0 / 0.85);
+    -webkit-text-stroke: 3px rgb(var(--lo) / 0.85);
     paint-order: stroke fill;
   }
   @media (max-width: 759px) {

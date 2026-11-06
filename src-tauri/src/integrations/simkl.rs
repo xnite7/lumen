@@ -11,9 +11,9 @@ use serde_json::{json, Value};
 use std::time::Duration;
 
 pub const API: &str = "https://api.simkl.com";
-const APP: &str = "lumen";
+const APP: &str = "couch";
 
-/// Lumen's AUTH V2 app ("Mobile, desktop & browser apps"). Client ids are
+/// couch's AUTH V2 app ("Mobile, desktop & browser apps"). Client ids are
 /// public by design; PKCE protects the sign-in. Overridable in secrets.
 pub const V2_CLIENT_ID: &str = "9c325049149440f9e66dc4499c37fc140ba6962583a3fa7927d8e27e3bd68cfc";
 const SCOPE: &str = "media:read media:write";
@@ -56,7 +56,7 @@ fn req(core: &Core, method: reqwest::Method, path: &str) -> AppResult<reqwest::R
         .client()
         .request(method, url(core, path)?)
         .header("simkl-api-key", cid)
-        .header("User-Agent", "Lumen/1.0")
+        .header("User-Agent", "couch/1.0")
         .header("Content-Type", "application/json")
         .timeout(Duration::from_secs(12));
     if let Some(t) = token(core) {
@@ -195,7 +195,7 @@ pub async fn device_start(core: &Core) -> AppResult<Value> {
         .http
         .client()
         .post(format!("{API}/oauth2/device"))
-        .header("User-Agent", "Lumen/1.0")
+        .header("User-Agent", "couch/1.0")
         .form(&[("client_id", v2_id(core).as_str()), ("scope", SCOPE)])
         .timeout(Duration::from_secs(12))
         .send()
@@ -238,7 +238,7 @@ async fn token_request(core: &Core, form: &[(&str, &str)]) -> AppResult<Value> {
         .http
         .client()
         .post(format!("{API}/oauth2/token"))
-        .header("User-Agent", "Lumen/1.0")
+        .header("User-Agent", "couch/1.0")
         .form(form)
         .timeout(Duration::from_secs(15))
         .send()
@@ -301,7 +301,7 @@ pub async fn logout(core: &Core) -> AppResult<()> {
             .http
             .client()
             .post(format!("{API}/oauth2/revoke"))
-            .header("User-Agent", "Lumen/1.0")
+            .header("User-Agent", "couch/1.0")
             .form(&[("client_id", v2_id(core).as_str()), ("token", rt.as_str())])
             .timeout(Duration::from_secs(8))
             .send()
@@ -399,7 +399,7 @@ fn wrap_list(kind: &str, id: &str, extra: Value) -> Value {
 /// Scrobble one player event (start / pause / stop), the way Simkl's guide
 /// wants it: every identifier we have plus title and year, `min_progress` set
 /// to the user's own "count as watched" threshold on every call so all of
-/// Simkl's checks agree with Lumen's, and `allow_rewatch` only when the user
+/// Simkl's checks agree with couch's, and `allow_rewatch` only when the user
 /// turned rewatch logging on and the title is already completed.
 pub async fn scrobble(core: &Core, action: &str, meta: &Value, video_id: &str, progress: f64, ident: Option<&Value>) -> AppResult<Value> {
     let (s, th) = {
@@ -493,7 +493,7 @@ pub async fn watchlist(core: &Core, kind: &str, id: &str, add: bool) -> AppResul
     } else {
         // `/sync/history/remove` un-tracks the title completely, history and
         // all -- so only do it when it's sitting in Plan to Watch. Removing
-        // something you've watched from Lumen's library must not erase it on
+        // something you've watched from couch's library must not erase it on
         // Simkl.
         let imdb = id.split(':').next().unwrap_or(id);
         match super::simkl_sync::entry(core, imdb) {

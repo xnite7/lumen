@@ -1,6 +1,6 @@
 //! Reads what an addon's stream title is trying to say -- resolution, HDR,
 //! codec, size, seeders, debrid cache -- and attaches it as structured data.
-//! The UI groups and badges from `_lumen`; ranking here means "best pick" is
+//! The UI groups and badges from `_couch`; ranking here means "best pick" is
 //! the same decision everywhere (picker, autoplay, binge).
 
 use once_cell::sync::Lazy;
@@ -263,7 +263,7 @@ fn score(p: &Parsed) -> i64 {
 
 pub fn annotate(mut s: Value, addon_id: &str, addon_name: &str) -> Value {
     let p = parse(&s);
-    s["_lumen"] = json!(p);
+    s["_couch"] = json!(p);
     s["_addonId"] = json!(addon_id);
     s["_addonName"] = json!(addon_name);
     s
@@ -281,27 +281,27 @@ pub fn pick_same_source<'a>(candidates: &'a [Value], previous: &Value) -> Option
         }
     }
     let prev_addon = previous.get("_addonId").and_then(|v| v.as_str());
-    let prev_res = previous.pointer("/_lumen/res").and_then(|v| v.as_str());
-    let prev_rel = previous.pointer("/_lumen/group").and_then(|v| v.as_str());
+    let prev_res = previous.pointer("/_couch/res").and_then(|v| v.as_str());
+    let prev_rel = previous.pointer("/_couch/group").and_then(|v| v.as_str());
     let mut same: Vec<&Value> = candidates
         .iter()
         .filter(|c| c.get("_addonId").and_then(|v| v.as_str()) == prev_addon)
-        .filter(|c| c.pointer("/_lumen/res").and_then(|v| v.as_str()) == prev_res)
+        .filter(|c| c.pointer("/_couch/res").and_then(|v| v.as_str()) == prev_res)
         .collect();
     if let Some(rel) = prev_rel {
-        if let Some(hit) = same.iter().find(|c| c.pointer("/_lumen/group").and_then(|v| v.as_str()) == Some(rel)) {
+        if let Some(hit) = same.iter().find(|c| c.pointer("/_couch/group").and_then(|v| v.as_str()) == Some(rel)) {
             return Some(hit);
         }
     }
-    same.sort_by_key(|c| -c.pointer("/_lumen/score").and_then(|v| v.as_i64()).unwrap_or(0));
+    same.sort_by_key(|c| -c.pointer("/_couch/score").and_then(|v| v.as_i64()).unwrap_or(0));
     same.first().copied().or_else(|| best(candidates))
 }
 
 pub fn best(candidates: &[Value]) -> Option<&Value> {
     candidates
         .iter()
-        .filter(|c| c.pointer("/_lumen/kind").and_then(|v| v.as_str()) != Some("external"))
-        .max_by_key(|c| c.pointer("/_lumen/score").and_then(|v| v.as_i64()).unwrap_or(i64::MIN))
+        .filter(|c| c.pointer("/_couch/kind").and_then(|v| v.as_str()) != Some("external"))
+        .max_by_key(|c| c.pointer("/_couch/score").and_then(|v| v.as_i64()).unwrap_or(i64::MIN))
 }
 
 #[cfg(test)]

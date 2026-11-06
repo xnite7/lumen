@@ -35,7 +35,7 @@ pub fn clear(core: &Core) {
     let _ = core.db.del(KEY);
 }
 
-/// "shows" / "movies" / "anime" bucket -> Lumen kind.
+/// "shows" / "movies" / "anime" bucket -> couch kind.
 fn kind_of(bucket: &str, e: &Value) -> &'static str {
     match bucket {
         "movies" => "movie",
@@ -167,7 +167,7 @@ pub fn has_data(core: &Core) -> bool {
     !load(core).get("snapshot").map_or(true, |s| s.is_null())
 }
 
-/// Items in one status for one Lumen kind, most recently touched first.
+/// Items in one status for one couch kind, most recently touched first.
 pub fn list(core: &Core, status: &str, kind: &str) -> Vec<Value> {
     let m = load(core);
     let mut rows: Vec<Value> = m
@@ -216,7 +216,7 @@ pub fn resume_fraction(core: &Core, imdb: &str, season: Option<u32>, episode: Op
 }
 
 /// Continue Watching entries (Stremio LibraryItem shape) for Simkl pauses
-/// that Lumen's own library doesn't already have.
+/// that couch's own library doesn't already have.
 pub fn continue_items(core: &Core, have: &std::collections::HashSet<String>) -> Vec<Value> {
     let mut out = vec![];
     for p in playbacks(core) {

@@ -1,4 +1,4 @@
-//! The Stremio addon protocol, typed only as far as Lumen needs to make
+//! The Stremio addon protocol, typed only as far as couch needs to make
 //! decisions. Everything else is kept verbatim in `rest` so nothing an addon
 //! sends is ever dropped on the way to the UI.
 

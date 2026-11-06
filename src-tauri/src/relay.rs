@@ -1,10 +1,10 @@
 //! A tiny local HTTP relay for video streams.
 //!
 //! mpv and AVPlayer look hosts up with the system DNS, so a stream whose host
-//! is DNS-blocked fails to open ("loading failed") even though Lumen itself
+//! is DNS-blocked fails to open ("loading failed") even though couch itself
 //! reaches it fine over encrypted DNS. Streams are handed to the player as
 //! `http://127.0.0.1:<port>/s/<token>` instead; each request (including
-//! the Range requests a seek makes) is forwarded through Lumen's own HTTP
+//! the Range requests a seek makes) is forwarded through couch's own HTTP
 //! client and the bytes streamed straight back.
 
 use futures::StreamExt;
@@ -25,7 +25,7 @@ pub struct Relay {
 }
 
 impl Relay {
-    /// `client` hands out the HTTP client to use (Lumen's, with encrypted DNS).
+    /// `client` hands out the HTTP client to use (couch's, with encrypted DNS).
     pub async fn start<F>(client: F) -> std::io::Result<Arc<Self>>
     where
         F: Fn() -> reqwest::Client + Send + Sync + 'static,

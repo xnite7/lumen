@@ -1,8 +1,7 @@
 <script lang="ts">
-  // iOS 27 tab bar: a floating Liquid Glass capsule with a lighter glass
-  // pill on the selected tab. The pill can be dragged across tabs. On phones
-  // it sits at the bottom and shrinks while you scroll down; on wide screens
-  // it floats at the top centre, like iPadOS.
+  // Tabs, Apple TV style. Phone: a floating plum-glass capsule at the bottom
+  // with a draggable pill. Wide screens: tvOS's top row of quiet text tabs;
+  // the selected one sits on a warm-white pill.
   import Icon from "../components/Icon.svelte";
   import { nav, selectTab, tabs, type Tab } from "../lib/router.svelte";
   import { ui } from "../lib/ui.svelte";
@@ -13,6 +12,7 @@
     home: { label: "Home", icon: "home" },
     search: { label: "Search", icon: "search" },
     library: { label: "Library", icon: "library" },
+    couch: { label: "Couch", icon: "couch" },
     profile: { label: "Profile", icon: "personCircle" },
   };
 
@@ -87,10 +87,10 @@
     >
       {#if t === "profile" && initial}
         <span class="avatar">{initial}</span>
-      {:else}
+      {:else if ui.phone || t === "profile"}
         <Icon name={items[t].icon} size={ui.phone ? 24 : 18} fill={i === active && (t === "home" || t === "library")} />
       {/if}
-      <span class="label">{items[t].label}</span>
+      {#if ui.phone || t !== "profile"}<span class="label">{items[t].label}</span>{/if}
     </button>
   {/each}
 </nav>
@@ -122,10 +122,10 @@
     bottom: 4px;
     left: 0;
     border-radius: var(--r-pill);
-    background: color-mix(in srgb, var(--label) 13%, transparent);
+    background: color-mix(in srgb, var(--label) 12%, transparent);
     box-shadow:
-      inset 1px 1px 0 -0.5px rgb(255 255 255 / 0.35),
-      inset 0 0 0 0.5px rgb(255 255 255 / 0.08);
+      inset 1px 1px 0 -0.5px rgb(var(--hi) / 0.35),
+      inset 0 0 0 0.5px rgb(var(--hi) / 0.08);
     transition:
       transform var(--t-slow) var(--spring),
       width var(--t-slow) var(--spring);
@@ -147,7 +147,7 @@
     transition: color var(--t-fast) ease;
   }
   .tab.on {
-    color: var(--accent-text);
+    color: var(--lamp);
   }
   .label {
     font-size: 10px;
@@ -163,8 +163,8 @@
     place-items: center;
     font-size: 13px;
     font-weight: 700;
-    color: var(--accent-ink);
-    background: linear-gradient(140deg, var(--ambient-1), var(--ambient-3));
+    color: var(--text);
+    background: linear-gradient(140deg, var(--neon), #6b1d4c);
   }
 
   /* phone: bottom, label under icon */
@@ -215,8 +215,22 @@
       height: 20px;
       font-size: 11px;
     }
+    /* tvOS: the selected tab is a solid warm-white pill, dark text */
+    .pill {
+      background: var(--text);
+      box-shadow: 0 6px 18px -6px rgb(var(--lo) / 0.7);
+    }
+    .tab.on {
+      color: var(--bg);
+    }
+    .tab:not(.on) {
+      color: var(--label-2);
+    }
     .tab:not(.on):hover {
-      color: var(--accent-text);
+      color: var(--text);
+    }
+    .tab.on .avatar {
+      box-shadow: 0 0 0 2px var(--bg);
     }
   }
 </style>

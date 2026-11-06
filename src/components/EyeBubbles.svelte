@@ -177,7 +177,7 @@
     height: 320px;
     border-radius: 50%;
     pointer-events: none;
-    background: radial-gradient(circle, rgb(255 255 255 / calc(var(--c) * 0.32)), transparent 62%);
+    background: radial-gradient(circle, rgb(var(--hi) / calc(var(--c) * 0.32)), transparent 62%);
     transform: scale(calc(0.6 + var(--c) * 0.6));
     opacity: calc(var(--c) * 1.4);
     transition: opacity 200ms ease;
@@ -225,20 +225,20 @@
     height: var(--size);
     display: grid;
     place-items: center;
-    color: #fff;
+    color: var(--white);
     border-radius: 50%;
     /* liquid glass: clear body, tinted depth, bright rim, soft caustic */
     background:
-      radial-gradient(circle at 32% 26%, rgb(255 255 255 / 0.5), rgb(255 255 255 / 0.1) 26%, transparent 44%),
+      radial-gradient(circle at 32% 26%, rgb(var(--hi) / 0.5), rgb(var(--hi) / 0.1) 26%, transparent 44%),
       radial-gradient(circle at 70% 82%, rgb(160 210 255 / 0.28), transparent 46%),
-      radial-gradient(circle at 50% 50%, rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.16) 78%, rgb(255 255 255 / 0.32) 100%);
+      radial-gradient(circle at 50% 50%, rgb(var(--hi) / 0.06), rgb(var(--hi) / 0.16) 78%, rgb(var(--hi) / 0.32) 100%);
     backdrop-filter: blur(14px) saturate(190%) brightness(1.08);
     -webkit-backdrop-filter: blur(14px) saturate(190%) brightness(1.08);
     box-shadow:
-      inset 0 0 0 1.5px rgb(255 255 255 / 0.38),
-      inset 10px 12px 26px rgb(255 255 255 / 0.22),
-      inset -12px -16px 30px rgb(0 0 0 / 0.28),
-      0 22px 44px -10px rgb(0 0 0 / 0.55);
+      inset 0 0 0 1.5px rgb(var(--hi) / 0.38),
+      inset 10px 12px 26px rgb(var(--hi) / 0.22),
+      inset -12px -16px 30px rgb(var(--lo) / 0.28),
+      0 22px 44px -10px rgb(var(--lo) / 0.55);
     animation: wobble 5.5s ease-in-out infinite;
     animation-delay: calc(var(--i) * -1.1s);
     transition:
@@ -268,11 +268,11 @@
   .bubble.on {
     scale: 1.14;
     box-shadow:
-      inset 0 0 0 2px rgb(255 255 255 / 0.6),
-      inset 10px 12px 26px rgb(255 255 255 / 0.3),
-      inset -12px -16px 30px rgb(0 0 0 / 0.24),
-      0 0 0 10px rgb(255 255 255 / 0.06),
-      0 26px 50px -10px rgb(0 0 0 / 0.6);
+      inset 0 0 0 2px rgb(var(--hi) / 0.6),
+      inset 10px 12px 26px rgb(var(--hi) / 0.3),
+      inset -12px -16px 30px rgb(var(--lo) / 0.24),
+      0 0 0 10px rgb(var(--hi) / 0.06),
+      0 26px 50px -10px rgb(var(--lo) / 0.6);
   }
   /* boing: squash, stretch, settle */
   .bubble.pop {
@@ -303,7 +303,7 @@
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    border: 2px solid rgb(255 255 255 / 0.7);
+    border: 2px solid rgb(var(--hi) / 0.7);
     animation: ripple 520ms ease-out forwards;
   }
   @keyframes ripple {
@@ -319,7 +319,7 @@
     width: 42%;
     height: 24%;
     border-radius: 50%;
-    background: linear-gradient(180deg, rgb(255 255 255 / 0.75), rgb(255 255 255 / 0));
+    background: linear-gradient(180deg, rgb(var(--hi) / 0.75), rgb(var(--hi) / 0));
     filter: blur(1.5px);
     transform: rotate(-24deg);
   }
@@ -330,21 +330,21 @@
   }
   .ring circle {
     fill: none;
-    stroke: #fff;
+    stroke: var(--white);
     stroke-width: 5;
     stroke-linecap: round;
-    filter: drop-shadow(0 0 6px rgb(255 255 255 / 0.8));
+    filter: drop-shadow(0 0 6px rgb(var(--hi) / 0.8));
   }
   .ic {
     position: relative;
     display: grid;
-    filter: drop-shadow(0 2px 6px rgb(0 0 0 / 0.45));
+    filter: drop-shadow(0 2px 6px rgb(var(--lo) / 0.45));
   }
   .label {
     padding: 7px 14px;
     border-radius: 999px;
-    background: rgb(0 0 0 / 0.55);
-    color: rgb(255 255 255 / 0.85);
+    background: rgb(var(--lo) / 0.55);
+    color: rgb(var(--hi) / 0.85);
     font-size: 15px;
     font-weight: 600;
     white-space: nowrap;
@@ -357,6 +357,6 @@
   .label.on {
     opacity: 1;
     transform: none;
-    color: #fff;
+    color: var(--white);
   }
 </style>

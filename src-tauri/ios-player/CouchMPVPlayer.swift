@@ -1,15 +1,15 @@
-// Lumen's own video player on iPhone: mpv (via MPVKit) rendering through
-// Metal, with Lumen's controls in Liquid Glass. Plays what Apple's player
+// couch's own video player on iPhone: mpv (via MPVKit) rendering through
+// Metal, with couch's controls in Liquid Glass. Plays what Apple's player
 // can't: MKV, HEVC/AV1 in any container, Dolby Vision, styled (ASS)
 // subtitles, multiple audio tracks.
 //
 // It lives in the app target (not the Tauri plugin) because MPVKit ships as
 // Swift-package binaries Xcode links. The plugin finds it by its Objective-C
 // name, hands it a config dictionary, and listens for these notifications:
-//   lumen.player.progress  { pos, duration, paused }
-//   lumen.player.ended     {}
-//   lumen.player.closed    { pos, duration }
-//   lumen.player.failed    { message }
+//   couch.player.progress  { pos, duration, paused }
+//   couch.player.ended     {}
+//   couch.player.closed    { pos, duration }
+//   couch.player.failed    { message }
 
 import AVFoundation
 import Libmpv
@@ -17,10 +17,10 @@ import MediaPlayer
 import UIKit
 
 private enum Note {
-    static let progress = Notification.Name("lumen.player.progress")
-    static let ended = Notification.Name("lumen.player.ended")
-    static let closed = Notification.Name("lumen.player.closed")
-    static let failed = Notification.Name("lumen.player.failed")
+    static let progress = Notification.Name("couch.player.progress")
+    static let ended = Notification.Name("couch.player.ended")
+    static let closed = Notification.Name("couch.player.closed")
+    static let failed = Notification.Name("couch.player.failed")
 }
 
 /// CAMetalLayer with MoltenVK's 1x1 drawable workaround (mpv PR 13651) and
@@ -52,14 +52,14 @@ private struct Track {
     let selected: Bool
 }
 
-@objc(LumenMPVPlayer)
-final class LumenMPVPlayer: UIViewController {
+@objc(CouchMPVPlayer)
+final class CouchMPVPlayer: UIViewController {
     /// url, title, subtitle, artwork, startAt, headers, subLangs, audioLangs
     @objc var config: NSDictionary = [:]
 
     private var metalLayer = MPVMetalLayer()
     private var mpv: OpaquePointer?
-    private let queue = DispatchQueue(label: "lumen.mpv", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "couch.mpv", qos: .userInitiated)
 
     // state (main thread)
     private var pos: Double = 0
@@ -173,7 +173,7 @@ final class LumenMPVPlayer: UIViewController {
         set("sub-border-size", "2.4")
         set("sub-shadow-offset", "1")
         set("sub-margin-y", "40")
-        set("user-agent", "Lumen/1.0")
+        set("user-agent", "couch/1.0")
         if let s = config["subLangs"] as? [String], !s.isEmpty { set("slang", s.joined(separator: ",")) }
         if let a = config["audioLangs"] as? [String], !a.isEmpty { set("alang", a.joined(separator: ",")) }
         if let h = config["headers"] as? [String: String], !h.isEmpty {
@@ -191,7 +191,7 @@ final class LumenMPVPlayer: UIViewController {
         mpv_observe_property(ctx, 6, "core-idle", MPV_FORMAT_FLAG)
         mpv_set_wakeup_callback(ctx, { raw in
             guard let raw = raw else { return }
-            let me = Unmanaged<LumenMPVPlayer>.fromOpaque(raw).takeUnretainedValue()
+            let me = Unmanaged<CouchMPVPlayer>.fromOpaque(raw).takeUnretainedValue()
             me.drain()
         }, Unmanaged.passUnretained(self).toOpaque())
     }
@@ -517,7 +517,7 @@ final class LumenMPVPlayer: UIViewController {
 
     private func updateNowPlaying() {
         var info: [String: Any] = [
-            MPMediaItemPropertyTitle: config["title"] as? String ?? "Lumen",
+            MPMediaItemPropertyTitle: config["title"] as? String ?? "couch",
             MPNowPlayingInfoPropertyElapsedPlaybackTime: pos,
             MPNowPlayingInfoPropertyPlaybackRate: paused ? 0.0 : 1.0,
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.video.rawValue,
@@ -575,7 +575,7 @@ final class LumenMPVPlayer: UIViewController {
         chrome.addSubview(shadeView)
 
         // top: close + titles
-        let closeView = roundButton(closeButton, "xmark", size: 44, point: 16, action: #selector(LumenMPVPlayer.close))
+        let closeView = roundButton(closeButton, "xmark", size: 44, point: 16, action: #selector(CouchMPVPlayer.close))
         titleLabel.text = config["title"] as? String
         titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
         titleLabel.textColor = .white
@@ -684,7 +684,7 @@ final class LumenMPVPlayer: UIViewController {
         dbl.numberOfTapsRequired = 2
         tap.require(toFail: dbl)
         let pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:)))
-        let swipe = UISwipeGestureRecognizer(target: self, action: #selector(LumenMPVPlayer.swipedDown))
+        let swipe = UISwipeGestureRecognizer(target: self, action: #selector(CouchMPVPlayer.swipedDown))
         swipe.direction = .down
         [tap, dbl, pinch, swipe].forEach { view.addGestureRecognizer($0) }
         for g in [tap, dbl] { g.cancelsTouchesInView = false; g.delegate = self }
@@ -750,7 +750,7 @@ final class LumenMPVPlayer: UIViewController {
     }
 }
 
-extension LumenMPVPlayer: UIGestureRecognizerDelegate {
+extension CouchMPVPlayer: UIGestureRecognizerDelegate {
     // taps on buttons and the scrubber belong to them, not to show/hide
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         var v = touch.view

@@ -1,6 +1,6 @@
 //! Addon management and the protocol client.
 //!
-//! Every request is made directly by Lumen, concurrently, with its own
+//! Every request is made directly by couch, concurrently, with its own
 //! timeout -- there is no windowing and no "visible range" bookkeeping, so
 //! the bug Search Load All existed for (late addons never being asked)
 //! cannot happen here. Results stream to the UI as each addon answers.
@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 pub use types::*;
 
-pub const BUILTIN_TRANSPORT: &str = "lumen://builtin/manifest.json";
+pub const BUILTIN_TRANSPORT: &str = "couch://builtin/manifest.json";
 
 const DEFAULT_ADDONS: &[&str] = &[
     "https://v3-cinemeta.strem.io/manifest.json",

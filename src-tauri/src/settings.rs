@@ -60,6 +60,14 @@ pub struct General {
     pub top_ten_ranks: bool,
     /// First-run setup finished.
     pub onboarded: bool,
+    /// How hard the neon glows: "soft" | "lit" | "loud".
+    pub neon: String,
+    /// Adult Swim-style bumps on launch and when idle on Home.
+    pub bumps: bool,
+    /// Tiny clicks and a CRT hum on launch.
+    pub sound: bool,
+    /// After midnight the room gets warmer and dimmer.
+    pub time_aware: bool,
 }
 
 impl Default for General {
@@ -82,6 +90,10 @@ impl Default for General {
             show_titles_under_posters: false,
             top_ten_ranks: true,
             onboarded: false,
+            neon: "lit".into(),
+            bumps: true,
+            sound: false,
+            time_aware: true,
         }
     }
 }
@@ -118,11 +130,11 @@ pub struct Playback {
     /// Native mpv render for subtitles with heavy ASS typesetting.
     pub native_ass: bool,
     pub watched_threshold: u32,
-    /// Draw video inside Lumen's window (under the UI). Off = mpv opens its
+    /// Draw video inside couch's window (under the UI). Off = mpv opens its
     /// own window, as a fallback for unusual GPU/driver setups.
     pub embed_video: bool,
-    /// iPhone: "auto" (Apple's player for MP4/HLS, Lumen's for the rest) |
-    /// "lumen" (always Lumen's own mpv player).
+    /// iPhone: "auto" (Apple's player for MP4/HLS, couch's for the rest) |
+    /// "couch" (always couch's own mpv player).
     pub ios_player: String,
 }
 
@@ -276,7 +288,7 @@ pub struct Integrations {
     pub ai_fast: bool,
     pub motn_country: String,
     pub motn_service: String,
-    /// Built-in Lumen catalogs (Simkl lists, TMDB rows, Top 10).
+    /// Built-in couch catalogs (Simkl lists, TMDB rows, Top 10).
     pub builtin_catalogs: bool,
     pub stremio_sync: bool,
     pub kinocheck_trailers: bool,
@@ -284,6 +296,12 @@ pub struct Integrations {
     pub discord_presence: bool,
     /// Application ID from discord.com/developers (its name is what Discord shows).
     pub discord_app_id: String,
+    /// The midnite crew server (a tiny Cloudflare Worker). Empty = off.
+    pub crew_url: String,
+    /// Name friends see on the "On the couch" row.
+    pub crew_name: String,
+    /// Share what you're watching with the crew (Simkl-known titles only).
+    pub crew_share: bool,
 }
 
 impl Default for Integrations {
@@ -305,6 +323,9 @@ impl Default for Integrations {
             kinocheck_trailers: true,
             discord_presence: true,
             discord_app_id: "1568062298721886290".into(),
+            crew_url: String::new(),
+            crew_name: String::new(),
+            crew_share: false,
         }
     }
 }

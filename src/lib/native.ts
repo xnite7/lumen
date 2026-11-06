@@ -1,4 +1,4 @@
-// Native iPhone features (Swift plugin "lumen-native"). Every call is a
+// Native iPhone features (Swift plugin "couch-native"). Every call is a
 // no-op elsewhere, so callers never branch on platform.
 
 import { invoke, isTauri } from "./api";
@@ -12,7 +12,7 @@ const iosUI = () => app.platform === "ios";
 async function call<T = void>(cmd: string, args: Record<string, unknown> = {}): Promise<T | undefined> {
   if (!ios()) return undefined;
   try {
-    return await invoke<T>(`plugin:lumen-native|${cmd}`, args);
+    return await invoke<T>(`plugin:couch-native|${cmd}`, args);
   } catch (e) {
     console.warn("native", cmd, e);
     return undefined;
@@ -64,7 +64,7 @@ export const nativeStop = () => call("stop");
 
 export function onNative<T = any>(event: string, cb: (p: T) => void) {
   if (!ios()) return Promise.resolve(() => {});
-  return addPluginListener<T>("lumen-native", event, cb).then((l) => () => l.unregister());
+  return addPluginListener<T>("couch-native", event, cb).then((l) => () => l.unregister());
 }
 
 export const isIOS = iosUI;

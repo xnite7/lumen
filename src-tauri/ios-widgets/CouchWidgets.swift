@@ -1,4 +1,4 @@
-// Lumen's Live Activity: what's playing, in the Dynamic Island and on the
+// couch's Live Activity: what's playing, in the Dynamic Island and on the
 // Lock Screen. The clock runs on its own from the last sample (no updates
 // needed while playing); the app only updates on pause, play and seek.
 
@@ -6,7 +6,7 @@ import ActivityKit
 import SwiftUI
 import WidgetKit
 
-struct LumenActivityAttributes: ActivityAttributes {
+struct CouchActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
         var paused: Bool
         var position: Double
@@ -20,7 +20,7 @@ struct LumenActivityAttributes: ActivityAttributes {
 }
 
 @main
-struct LumenWidgetBundle: WidgetBundle {
+struct CouchWidgetBundle: WidgetBundle {
     var body: some Widget {
         NowPlayingActivity()
     }
@@ -45,7 +45,7 @@ extension Color {
     }
 }
 
-private extension LumenActivityAttributes.ContentState {
+private extension CouchActivityAttributes.ContentState {
     /// when the video "started", given the sampled position
     var startDate: Date { sampledAt.addingTimeInterval(-position) }
     var endDate: Date { startDate.addingTimeInterval(max(duration, position + 1)) }
@@ -53,7 +53,7 @@ private extension LumenActivityAttributes.ContentState {
 }
 
 struct ProgressLine: View {
-    let state: LumenActivityAttributes.ContentState
+    let state: CouchActivityAttributes.ContentState
     let tint: Color
 
     var body: some View {
@@ -74,7 +74,7 @@ struct ProgressLine: View {
 }
 
 struct TimeLeft: View {
-    let state: LumenActivityAttributes.ContentState
+    let state: CouchActivityAttributes.ContentState
 
     var body: some View {
         if !state.hasLength {
@@ -96,7 +96,7 @@ struct TimeLeft: View {
 
 struct NowPlayingActivity: Widget {
     var body: some WidgetConfiguration {
-        ActivityConfiguration(for: LumenActivityAttributes.self) { context in
+        ActivityConfiguration(for: CouchActivityAttributes.self) { context in
             let tint = Color(hex: context.attributes.tint)
             // Lock Screen / banner
             HStack(spacing: 14) {
@@ -119,7 +119,7 @@ struct NowPlayingActivity: Widget {
                             .lineLimit(1)
                     }
                     HStack(spacing: 8) {
-                        ProgressLine(state: context.state, tint: tint)
+                        ProgressLine(state: context.state, tint: Color(hex: "FFB25C"))
                         TimeLeft(state: context.state)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
@@ -128,7 +128,7 @@ struct NowPlayingActivity: Widget {
                 }
             }
             .padding(16)
-            .activityBackgroundTint(Color.black.opacity(0.6))
+            .activityBackgroundTint(Color(hex: "0C070B").opacity(0.78))
             .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             let tint = Color(hex: context.attributes.tint)
@@ -166,7 +166,7 @@ struct NowPlayingActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     HStack(spacing: 10) {
-                        ProgressLine(state: context.state, tint: tint)
+                        ProgressLine(state: context.state, tint: Color(hex: "FFB25C"))
                         TimeLeft(state: context.state)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
@@ -186,7 +186,7 @@ struct NowPlayingActivity: Widget {
                 Image(systemName: context.state.paused ? "pause.fill" : "play.fill")
                     .foregroundStyle(tint)
             }
-            .keylineTint(tint)
+            .keylineTint(Color(hex: "E0309A"))
         }
     }
 }

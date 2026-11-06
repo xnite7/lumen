@@ -16,7 +16,7 @@
 
   type Result = { read?: string; picks: any[] };
   type Past = { q: string; at: number; result: Result };
-  const KEY = "lumen.vibe.history";
+  const KEY = "couch.vibe.history";
 
   const placeholders = [
     "what's the vibe today?",
@@ -124,7 +124,7 @@
 
 <div class="vibe">
   <h1 class="large-title">Vibe</h1>
-  <p class="lede sub dim">Describe a feeling. Lumen picks from what you've loved.</p>
+  <p class="lede sub dim">Describe a feeling. couch picks from what you've loved.</p>
 
   <form
     class="field glass"
@@ -458,7 +458,7 @@
     height: 51px;
     object-fit: cover;
     border-radius: 6px;
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+    box-shadow: 0 2px 8px rgb(var(--lo) / 0.35);
     z-index: calc(3 - var(--i));
   }
   .past-txt {

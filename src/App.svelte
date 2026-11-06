@@ -1,12 +1,12 @@
 <script lang="ts">
   import { api, listen, type Meta, type Stream } from "./lib/api";
   import { app, boot, refreshSecrets } from "./lib/stores/app.svelte";
-  import { loadThemes, applyCurrent } from "./lib/stores/theme.svelte";
+  import { applyCurrent } from "./lib/stores/theme.svelte";
   import { loadLibrary } from "./lib/stores/library.svelte";
   import { initGaze } from "./lib/stores/gaze.svelte";
   import { initPlayback, pb, play } from "./lib/stores/playback.svelte";
   import { toast } from "./lib/stores/toast.svelte";
-  import { back, go } from "./lib/router.svelte";
+  import { back, go, selectTab } from "./lib/router.svelte";
   import { ui } from "./lib/ui.svelte";
   import { isTauri } from "./lib/api";
   import TabBar from "./ui/TabBar.svelte";
@@ -18,22 +18,28 @@
   import PreviewCard from "./components/PreviewCard.svelte";
   import Toasts from "./components/Toasts.svelte";
   import Player from "./views/Player.svelte";
+  import Splash from "./ui/Splash.svelte";
+  import IdleBump from "./ui/IdleBump.svelte";
+  import { installTvNav } from "./lib/tvfocus";
+  import { startCrew, joinCrew } from "./lib/stores/crew.svelte";
+
+  let splashing = $state(!(import.meta.env.DEV && new URLSearchParams(location.search).has("nosplash")));
 
   const winControls = $derived(isTauri && (app.platform === "windows" || app.platform === "linux"));
 
   $effect(() => {
     (async () => {
       await boot();
-      await loadThemes();
       applyCurrent();
       initGaze();
       initPlayback();
       loadLibrary();
+      startCrew();
       if (!app.settings.general.onboarded) ui.onboarding = true;
     })();
     listen<string>("deeplink", handleLink);
     listen("library-changed", () => loadLibrary());
-    // Coming back to Lumen: ask Simkl what changed (one tiny request; the
+    // Coming back to couch: ask Simkl what changed (one tiny request; the
     // real fetch only happens when something did).
     let lastSync = 0;
     document.addEventListener("visibilitychange", () => {
@@ -42,6 +48,15 @@
       api.simklSync().catch(() => {});
     });
     listen<{ kind: string; text: string }>("toast", (t) => toast(t.text, (t.kind as any) ?? "info"));
+  });
+
+  // TV-style arrow-key / controller focus on desktop
+  $effect(() => {
+    if (!app.ready || ui.phone || app.platform === "ios") return;
+    return installTvNav({
+      blocked: () => pb.open || ui.onboarding || splashing || !!document.querySelector(".sheet, .menu"),
+      back: () => back(),
+    });
   });
 
   $effect(() => {
@@ -58,6 +73,15 @@
         .then(async () => {
           await refreshSecrets();
           toast("Simkl connected", "ok");
+        })
+        .catch((e) => toast(String(e), "warn"));
+      return;
+    }
+    if (u.startsWith("couch://crew")) {
+      joinCrew(u)
+        .then(() => {
+          toast("you're in the crew.", "ok");
+          selectTab("couch");
         })
         .catch((e) => toast(String(e), "warn"));
       return;
@@ -138,6 +162,7 @@
 </svg>
 
 {#if app.ready}
+  <div class="night" aria-hidden="true"></div>
   <div class="grain" aria-hidden="true"></div>
 
   <Stack hidden={pb.open} />
@@ -163,9 +188,9 @@
     <Onboarding ondone={() => (ui.onboarding = false)} />
   {/if}
   <Toasts />
-{:else}
-  <div class="splash"><span class="sun"></span></div>
+  <IdleBump />
 {/if}
+{#if splashing}<Splash ondone={() => (splashing = false)} />{/if}
 
 <style>
   .drag {
@@ -203,26 +228,7 @@
     color: var(--label);
   }
   .win .x:hover {
-    background: #e5484d;
-    color: white;
-  }
-  .splash {
-    height: 100%;
-    display: grid;
-    place-items: center;
-  }
-  .sun {
-    width: 54px;
-    height: 54px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 50% 40%, #fff4cc, #ffc22e 55%, #e4736a);
-    box-shadow: 0 0 60px 10px rgb(255 194 46 / 0.35);
-    animation: rise 1.4s var(--ease-out) both;
-  }
-  @keyframes rise {
-    from {
-      transform: translateY(30px);
-      opacity: 0;
-    }
+    background: var(--danger);
+    color: var(--text);
   }
 </style>

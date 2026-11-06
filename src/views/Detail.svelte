@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tvFocus } from "../lib/tvfocus";
   import { api, img, type Meta, type Video } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
   import { setAmbient } from "../lib/stores/ambient.svelte";
@@ -88,11 +89,11 @@
     const vid = item?.state?.video_id;
     if (vid && progressOf(id, vid) > 0.02) {
       const v = videos.find((x) => x.id === vid);
-      if (v) return { label: "Resume", video: v, sub: episodeLabel(v.id) };
+      if (v) return { label: "Resume", video: v, sub: episodeLabel(v.id).replace(/\s*·\s*/, " ") };
     }
     const next = videos.find((v) => (v.season ?? 0) > 0 && !watched.has(v.id) && (!v.released || new Date(v.released).getTime() < Date.now()));
     const v = next ?? videos[0];
-    return { label: next && next !== videos.find((x) => (x.season ?? 0) > 0) ? "Continue" : "Play", video: v, sub: episodeLabel(v.id) };
+    return { label: next && next !== videos.find((x) => (x.season ?? 0) > 0) ? "Continue" : "Play", video: v, sub: episodeLabel(v.id).replace(/\s*·\s*/, " ") };
   });
 
   function openStreams(v: Video | null) {
@@ -107,7 +108,7 @@
   function playTrailer(key?: string, name = "Trailer") {
     const k = key ?? trailerKey();
     if (!k || !m) return;
-    play(m, { ytId: k, title: name, _lumen: { kind: "youtube" } as any, _addonId: "", _addonName: "" } as any, m.id);
+    play(m, { ytId: k, title: name, _couch: { kind: "youtube" } as any, _addonId: "", _addonName: "" } as any, m.id);
   }
 
   async function rate(n: number | null) {
@@ -154,6 +155,8 @@
         <img class="bg" src={img(backdrop, "original")} alt="" style:view-transition-name="hero-art" use:parallax={1} />
       {/if}
       <div class="hero-shade"></div>
+      <div class="hero-vignette"></div>
+      <div class="lamp-glow" aria-hidden="true"></div>
       <div class="info" use:parallax={-0.3}>
         {#if logo}
           <img class="logo" src={img(logo)} alt={m.name} />
@@ -216,20 +219,20 @@
     {#if videos.length}
       <section class="block episodes">
         <header class="block-h">
-          <h2 class="title2">Episodes</h2>
+          <h2 class="title2">episodes</h2>
           <div class="seasons scroll-x">
             {#each seasons as s}
-              <button class="chip press" class:sel={s === season} onclick={() => (season = s)}>{s === 0 ? "Specials" : `Season ${s}`}</button>
+              <button class="chip press" class:sel={s === season} use:tvFocus={{ tilt: false }} onclick={() => (season = s)}>{s === 0 ? "Specials" : `Season ${s}`}</button>
             {/each}
           </div>
         </header>
-        <div class="eps">
+        <div class="eps scroll-x">
           {#each episodes as v (v.id)}
             {@const p = progressOf(id, v.id)}
             {@const seen = watched.has(v.id)}
             {@const future = v.released && new Date(v.released).getTime() > Date.now()}
             <div class="ep" class:future>
-              <button class="thumb press" onclick={() => !future && openStreams(v)} aria-label="Play {v.title ?? v.name}">
+              <button class="thumb press" use:tvFocus={{ max: 5 }} onclick={() => !future && openStreams(v)} aria-label="Play {v.title ?? v.name}">
                 {#if v.thumbnail}<img src={img(v.thumbnail)} alt="" loading="lazy" />{/if}
                 <span class="num">{v.episode ?? v.number}</span>
                 {#if !future}<span class="play glass clear"><Icon name="play" size={16} /></span>{/if}
@@ -242,7 +245,7 @@
                     <Icon name="check" size={15} />
                   </button>
                 </div>
-                <span class="foot faint">{future ? "Airs " : ""}{v.released ? new Date(v.released).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : ""}</span>
+                <span class="foot faint">{future ? "Airs " : ""}{v.released ? new Date(v.released).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : ""}{(v as any).runtime ? ` · ${runtime((v as any).runtime)}` : ""}</span>
                 {#if v.overview || v.description}<p class="foot dim clamp-3">{v.overview ?? v.description}</p>{/if}
               </div>
             </div>
@@ -339,9 +342,10 @@
     align-items: flex-end;
   }
   .bg {
+    filter: saturate(0.92) brightness(0.9);
     /* fade the art itself into the page so there's no seam where it ends */
-    -webkit-mask-image: linear-gradient(180deg, #000 50%, rgb(0 0 0 / 0.6) 72%, transparent 100%);
-    mask-image: linear-gradient(180deg, #000 50%, rgb(0 0 0 / 0.6) 72%, transparent 100%);
+    -webkit-mask-image: linear-gradient(180deg, var(--black) 50%, rgb(var(--lo) / 0.6) 72%, transparent 100%);
+    mask-image: linear-gradient(180deg, var(--black) 50%, rgb(var(--lo) / 0.6) 72%, transparent 100%);
     position: absolute;
     inset: 0;
     width: 100%;
@@ -349,14 +353,31 @@
     object-fit: cover;
     object-position: center 20%;
   }
+  /* Apple TV's dark rising from the bottom, in plum */
   .hero-shade {
     position: absolute;
     inset: 0;
-    -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
-    mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
     background:
-      linear-gradient(0deg, color-mix(in srgb, var(--bg) 70%, transparent) 0%, transparent 50%),
-      linear-gradient(90deg, color-mix(in srgb, var(--bg) 92%, transparent) 0%, color-mix(in srgb, var(--bg) 60%, transparent) 38%, transparent 66%);
+      linear-gradient(0deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 88%, transparent) 18%, color-mix(in srgb, var(--bg) 40%, transparent) 50%, transparent 74%),
+      linear-gradient(90deg, color-mix(in srgb, var(--bg) 80%, transparent) 0%, color-mix(in srgb, var(--bg) 45%, transparent) 36%, transparent 64%),
+      linear-gradient(180deg, color-mix(in srgb, var(--bg) 50%, transparent) 0%, transparent 20%);
+  }
+  .hero-vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(120% 95% at 60% 35%, transparent 50%, rgb(var(--lo) / 0.6) 100%);
+  }
+  /* a warm lamp somewhere behind the title */
+  .lamp-glow {
+    position: absolute;
+    left: -10%;
+    bottom: -10%;
+    width: 60%;
+    height: 70%;
+    pointer-events: none;
+    background: radial-gradient(closest-side, rgb(var(--lamp-rgb) / calc(0.09 + var(--night) * 0.06)), transparent);
+    filter: blur(20px);
   }
   .info {
     position: relative;
@@ -371,7 +392,7 @@
     max-height: 170px;
     object-fit: contain;
     object-position: left bottom;
-    filter: drop-shadow(0 4px 24px rgb(0 0 0 / 0.45));
+    filter: drop-shadow(0 4px 24px rgb(var(--lo) / 0.45));
     animation: rise 600ms var(--ease-out) both 120ms;
   }
   @keyframes rise {
@@ -395,7 +416,7 @@
     color: var(--rating);
   }
   :global(:root:not([data-appearance="light"])) .info {
-    text-shadow: 0 1px 14px rgb(0 0 0 / 0.5);
+    text-shadow: 0 1px 14px rgb(var(--lo) / 0.5);
   }
   .tagline {
     margin: 0;
@@ -488,28 +509,34 @@
     font-size: 13px;
   }
 
+  /* Apple TV episode shelf: landscape stills, text underneath */
   .eps {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
-    gap: 14px 22px;
-    padding: 0 var(--gutter);
+    display: flex;
+    gap: 20px;
+    padding: 8px var(--gutter) 18px;
+    scroll-snap-type: x proximity;
+    scroll-padding: 0 var(--gutter);
   }
   .ep {
+    flex: 0 0 auto;
+    width: var(--land-w);
     display: flex;
-    gap: 14px;
-    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+    scroll-snap-align: start;
   }
   .ep.future {
     opacity: 0.55;
   }
   .thumb {
     position: relative;
-    width: 200px;
+    width: 100%;
     flex: none;
     aspect-ratio: 16 / 9;
-    border-radius: var(--r-sm);
+    border-radius: var(--card-r);
     overflow: hidden;
-    background: rgb(255 255 255 / 0.06);
+    background: var(--surface);
+    box-shadow: 0 12px 30px -16px rgb(var(--lo) / 0.8), inset 0 0 0 1px rgb(var(--hi) / 0.06);
   }
   .thumb img {
     width: 100%;
@@ -524,8 +551,8 @@
     font-weight: 800;
     font-size: 26px;
     line-height: 1;
-    color: #fff;
-    text-shadow: 0 2px 10px rgb(0 0 0 / 0.6);
+    color: var(--white);
+    text-shadow: 0 2px 10px rgb(var(--lo) / 0.6);
   }
   .play {
     position: absolute;
@@ -536,7 +563,7 @@
     border-radius: 50%;
     display: grid;
     place-items: center;
-    color: #fff;
+    color: var(--white);
     opacity: 0;
     transition: opacity var(--t-fast);
   }
@@ -546,16 +573,19 @@
   }
   .bar {
     position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 3px;
-    background: rgb(255 255 255 / 0.25);
+    left: 10px;
+    right: 10px;
+    bottom: 9px;
+    height: 4px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgb(var(--hi) / 0.25);
   }
   .bar span {
     display: block;
     height: 100%;
-    background: var(--accent);
+    border-radius: inherit;
+    background: var(--progress);
   }
   .ep-txt {
     display: flex;
@@ -613,13 +643,13 @@
     height: 96px;
     border-radius: 50%;
     overflow: hidden;
-    background: rgb(255 255 255 / 0.08);
+    background: rgb(var(--hi) / 0.08);
     display: grid;
     place-items: center;
     font-weight: 700;
     color: var(--text-dim);
     margin-bottom: 8px;
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+    box-shadow: inset 0 0 0 1px rgb(var(--hi) / 0.1);
     transition: transform var(--t-med) var(--spring);
   }
   .person:hover .face {
@@ -697,8 +727,8 @@
       height: 72vw;
       max-height: 480px;
       inset: 0 0 auto 0;
-      -webkit-mask-image: linear-gradient(180deg, #000 60%, transparent 100%);
-      mask-image: linear-gradient(180deg, #000 60%, transparent 100%);
+      -webkit-mask-image: linear-gradient(180deg, var(--black) 60%, transparent 100%);
+      mask-image: linear-gradient(180deg, var(--black) 60%, transparent 100%);
     }
     .hero-shade {
       display: none;
@@ -777,11 +807,8 @@
     .seasons .chip {
       flex: none;
     }
-    .eps {
-      grid-template-columns: 1fr;
-    }
-    .thumb {
-      width: 140px;
+    .ep {
+      width: 78vw;
     }
     .about dl {
       grid-template-columns: 1fr;

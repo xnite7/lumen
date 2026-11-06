@@ -51,20 +51,20 @@
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: rgb(255 255 255 / 0.14);
+    background: rgb(var(--hi) / 0.14);
     flex: none;
   }
   .ok .ic {
-    background: #34c759;
-    color: #fff;
+    background: rgb(127 214 160 / 0.22);
+    color: var(--green);
   }
   .warn .ic {
-    background: #ff9f0a;
-    color: #1a1305;
+    background: rgb(var(--lamp-rgb) / 0.2);
+    color: var(--lamp);
   }
   .error .ic {
-    background: #ff453a;
-    color: #fff;
+    background: rgb(255 90 90 / 0.22);
+    color: var(--danger);
   }
   .txt {
     font-size: 14px;

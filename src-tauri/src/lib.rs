@@ -2,6 +2,7 @@ mod addons;
 mod commands;
 mod core;
 mod db;
+mod crew;
 mod discord;
 mod error;
 mod http;
@@ -52,7 +53,7 @@ pub fn run() {
                 let _ = w.set_focus();
             }
             for a in argv.iter().skip(1) {
-                if a.starts_with("stremio://") || a.starts_with("lumen://") || a.starts_with("magnet:") {
+                if a.starts_with("stremio://") || a.starts_with("couch://") || a.starts_with("lumen://") || a.starts_with("magnet:") {
                     let _ = app.emit("deeplink", a.clone());
                 }
             }
@@ -66,7 +67,7 @@ pub fn run() {
 
     builder
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_lumen_native::init())
+        .plugin(tauri_plugin_couch_native::init())
         .plugin(tauri_plugin_deep_link::init())
         .register_asynchronous_uri_scheme_protocol("img", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
@@ -92,9 +93,13 @@ pub fn run() {
             std::fs::create_dir_all(&data_dir)?;
             std::fs::create_dir_all(&cache_dir)?;
 
-            let db = Arc::new(db::Db::open(&data_dir.join("lumen.db"))?);
+            migrate_from_lumen(&data_dir);
+            let db = Arc::new(db::Db::open(&data_dir.join("couch.db"))?);
             db.cache_prune();
-            let settings: settings::Settings = db.get("settings").unwrap_or_default();
+            let mut settings: settings::Settings = db.get("settings").unwrap_or_default();
+            if settings.playback.ios_player == "lumen" {
+                settings.playback.ios_player = "couch".into();
+            }
             let http = Arc::new(http::Http::new(db.clone(), settings.network.doh.then_some(settings.network.doh_provider.as_str())));
             let core = Arc::new(Core {
                 app: handle.clone(),
@@ -152,7 +157,7 @@ pub fn run() {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 #[cfg(desktop)]
                 let _ = app.deep_link().register_all();
-                // iPhone too: lumen:// links (Simkl sign-in coming back,
+                // iPhone too: couch:// links (Simkl sign-in coming back,
                 // addon installs) arrive here.
                 let h = handle.clone();
                 app.deep_link().on_open_url(move |ev| {
@@ -231,6 +236,9 @@ pub fn run() {
             commands::simkl_pin_poll,
             commands::simkl_logout,
             commands::simkl_sync,
+            commands::crew_list,
+            commands::crew_join,
+            commands::crew_invite,
             commands::simkl_oauth_start,
             commands::simkl_oauth_finish,
             commands::simkl_device_start,
@@ -250,13 +258,33 @@ pub fn run() {
             commands::tobii_stop,
             commands::window_action,
             commands::window_pip,
-            commands::themes_user,
-            commands::theme_save,
-            commands::themes_open_dir,
             commands::cache_info,
             commands::cache_clear,
             commands::import_stremio_enhanced,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Lumen");
+        .expect("error while running couch");
+}
+
+/// The app used to be called Lumen (`app.lumen.player`). On first launch as
+/// couch, copy the old database over so addons, library, settings and keys
+/// come along. Only ever copies; the old folder is left as it was.
+fn migrate_from_lumen(data_dir: &std::path::Path) {
+    let new_db = data_dir.join("couch.db");
+    if new_db.exists() {
+        return;
+    }
+    let Some(parent) = data_dir.parent() else { return };
+    let old_dir = parent.join("app.lumen.player");
+    let old_db = old_dir.join("lumen.db");
+    if !old_db.exists() {
+        return;
+    }
+    for ext in ["", "-wal", "-shm"] {
+        let from = old_dir.join(format!("lumen.db{ext}"));
+        if from.exists() {
+            let _ = std::fs::copy(&from, data_dir.join(format!("couch.db{ext}")));
+        }
+    }
+    log::info!("migrated data from Lumen");
 }

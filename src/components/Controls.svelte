@@ -89,10 +89,10 @@
     width: 27px;
     height: 27px;
     border-radius: 27px;
-    background: #fff;
+    background: var(--white);
     box-shadow:
-      0 3px 8px rgb(0 0 0 / 0.15),
-      0 3px 1px rgb(0 0 0 / 0.06);
+      0 3px 8px rgb(var(--lo) / 0.15),
+      0 3px 1px rgb(var(--lo) / 0.06);
     transition:
       transform var(--t-med) var(--spring),
       width var(--t-med) var(--spring);
@@ -125,14 +125,14 @@
     border-radius: var(--r-pill);
     background: color-mix(in srgb, var(--label) 18%, transparent);
     box-shadow:
-      inset 1px 1px 0 -0.5px rgb(255 255 255 / 0.3),
-      0 3px 8px rgb(0 0 0 / 0.12);
+      inset 1px 1px 0 -0.5px rgb(var(--hi) / 0.3),
+      0 3px 8px rgb(var(--lo) / 0.12);
     transition:
       transform var(--t-med) var(--spring),
       width var(--t-med) var(--spring);
   }
   :global([data-appearance="light"]) .seg .thumb {
-    background: #fff;
+    background: var(--white);
   }
   .seg button {
     position: relative;
@@ -169,8 +169,8 @@
     height: 24px;
     margin-top: -9px;
     border-radius: 24px;
-    background: #fff;
-    box-shadow: 0 0.5px 4px rgb(0 0 0 / 0.12), 0 6px 13px rgb(0 0 0 / 0.12);
+    background: var(--white);
+    box-shadow: 0 0.5px 4px rgb(var(--lo) / 0.12), 0 6px 13px rgb(var(--lo) / 0.12);
     transition: transform var(--t-fast) var(--spring);
   }
   .slider:active::-webkit-slider-thumb {

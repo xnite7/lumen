@@ -101,7 +101,7 @@ impl Hue {
         let res: Value = self
             .lan
             .post(format!("https://{ip}/api"))
-            .json(&json!({ "devicetype": "lumen#pc", "generateclientkey": true }))
+            .json(&json!({ "devicetype": "couch#pc", "generateclientkey": true }))
             .send()
             .await?
             .json()
@@ -237,13 +237,10 @@ impl Hue {
         }
         let h = self.core.settings.read().hue.clone();
         match (h.playback_mode.as_str(), playing) {
+            // couch mode: the room fades to a dim, warm lamp over ~3 s
             ("dim", true) => {
                 self.save_room().await;
-                if let Ok(ov) = self.overview().await {
-                    if let Some(gl) = self.room_grouped_light(&ov) {
-                        let _ = self.v2_put(&format!("grouped_light/{gl}"), json!({ "dimming": { "brightness": h.dim_brightness }, "dynamics": { "duration": 1500 } })).await;
-                    }
-                }
+                self.lamp(h.dim_brightness, 3000).await;
             }
             ("ambilight", true) => {
                 self.save_room().await;
@@ -259,6 +256,33 @@ impl Hue {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Couch mode while a session is open: pausing brings the lamp up a
+    /// little so you can find your drink; playing sinks it back down.
+    pub async fn on_pause(&self, paused: bool) {
+        if !self.enabled() || !self.playing.load(Ordering::SeqCst) {
+            return;
+        }
+        let h = self.core.settings.read().hue.clone();
+        if h.playback_mode == "dim" {
+            let b = if paused { (h.dim_brightness * 2.5 + 12.0).min(60.0) } else { h.dim_brightness };
+            self.lamp(b, if paused { 1500 } else { 2200 }).await;
+        }
+    }
+
+    /// The whole room as one warm lamp (2200 K) at `brightness` %.
+    async fn lamp(&self, brightness: f32, ms: u32) {
+        if let Ok(ov) = self.overview().await {
+            if let Some(gl) = self.room_grouped_light(&ov) {
+                let _ = self
+                    .v2_put(
+                        &format!("grouped_light/{gl}"),
+                        json!({ "on": { "on": true }, "dimming": { "brightness": brightness.max(1.0) }, "color_temperature": { "mirek": 454 }, "dynamics": { "duration": ms } }),
+                    )
+                    .await;
+            }
         }
     }
 

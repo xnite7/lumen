@@ -12,6 +12,7 @@
   import { pressMenu } from "../lib/menu.svelte";
   import { posterMenu } from "../lib/actions";
   import { loadLibrary } from "../lib/stores/library.svelte";
+  import { tvFocus } from "../lib/tvfocus";
 
   function cwMenu(it: LibraryItem) {
     return posterMenu({ ...asMeta(it), background: it.background ?? it.poster, posterShape: "landscape" }, [
@@ -19,7 +20,7 @@
     ]);
   }
 
-  const ART_KEY = "lumen.cwArt";
+  const ART_KEY = "couch.cwArt";
   let art = $state<Record<string, string | null>>(load());
   function load() {
     try {
@@ -64,9 +65,14 @@
   }
 </script>
 
-{#if lib.cw.length}
+{#if !lib.cw.length}
   <section class="row">
-    <header><h2 class="title3">Continue watching</h2></header>
+    <header><h2 class="title3">up next</h2></header>
+    <p class="bump-text empty">nothing yet. get comfy.</p>
+  </section>
+{:else}
+  <section class="row">
+    <header><h2 class="title3">up next</h2></header>
     <div class="rail scroll-x">
       {#each lib.cw as it (it._id)}
         {@const wide = art[it._id]}
@@ -79,7 +85,7 @@
           onmouseleave={() => disarm(it)}
           use:pressMenu={() => cwMenu(it)}
         >
-          <div class="art">
+          <div class="art" use:tvFocus={{ max: 5 }}>
             {#if wide}
               <img src={img(wide)} alt="" loading="lazy" />
             {:else}
@@ -88,7 +94,7 @@
               {#if it.logo}<img class="logo" src={img(it.logo)} alt={it.name} loading="lazy" />{:else}<span class="nm">{it.name}</span>{/if}
             {/if}
             <span class="play glass clear"><Icon name="play" size={18} /></span>
-            <div class="bar"><span style:width="{Math.max(3, p * 100)}%"></span></div>
+            <div class="bar"><span style:width="{Math.max(4, p * 100)}%"></span></div>
           </div>
           <div class="meta">
             <span class="t">{it.name}</span>
@@ -121,16 +127,16 @@
   .art {
     position: relative;
     aspect-ratio: 16 / 9;
-    border-radius: var(--r-md);
+    border-radius: var(--card-r);
     overflow: hidden;
-    background: rgb(255 255 255 / 0.05);
-    box-shadow: 0 12px 30px -16px rgb(0 0 0 / 0.7), inset 0 0 0 1px rgb(255 255 255 / 0.08);
-    transition: transform var(--t-med) var(--spring);
+    background: var(--surface);
+    box-shadow: 0 12px 30px -16px rgb(var(--lo) / 0.8), inset 0 0 0 1px rgb(var(--hi) / 0.06);
   }
-  @media (hover: hover) {
-    .card:hover .art {
-      transform: translateY(-4px) scale(1.015);
-    }
+  .empty {
+    margin: 4px var(--gutter) 10px;
+    text-align: left;
+    font-size: 15px;
+    color: var(--text-dim);
   }
   :global(.card.pressing) .art {
     transform: scale(0.96);
@@ -144,7 +150,7 @@
   .shade {
     position: absolute;
     inset: 0;
-    background: linear-gradient(0deg, rgb(0 0 0 / 0.6), transparent 60%);
+    background: linear-gradient(0deg, rgb(var(--lo) / 0.6), transparent 60%);
   }
   .logo {
     position: absolute;
@@ -161,38 +167,45 @@
     bottom: 18px;
     font-weight: 700;
     font-size: 18px;
-    color: #fff;
+    color: var(--white);
   }
   .play {
     position: absolute;
     right: 12px;
-    bottom: 18px;
+    bottom: 24px;
     width: 40px;
     height: 40px;
     border-radius: 50%;
     display: grid;
     place-items: center;
-    color: #fff;
+    color: var(--white);
     opacity: 0;
     transform: scale(0.8);
     transition: opacity var(--t-fast), transform var(--t-med) var(--spring);
   }
-  .card:hover .play {
+  .card:hover .play,
+  .art:global(.focus) .play {
     opacity: 1;
     transform: none;
   }
+  /* Apple TV's thin inset progress, lit like a lamp */
   .bar {
     position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    left: 12px;
+    right: 12px;
+    bottom: 10px;
     height: 4px;
-    background: rgb(255 255 255 / 0.22);
+    border-radius: 4px;
+    overflow: hidden;
+    background: rgb(var(--hi) / 0.24);
+    backdrop-filter: blur(6px);
   }
   .bar span {
     display: block;
     height: 100%;
-    background: var(--accent);
+    border-radius: inherit;
+    background: var(--progress);
+    box-shadow: 0 0 10px rgb(var(--lamp-rgb) / 0.7);
   }
   .meta {
     display: flex;

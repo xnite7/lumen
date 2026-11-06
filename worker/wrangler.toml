@@ -1,0 +1,18 @@
+# midnite™ couch crew server: who's on the couch right now.
+# Deployed by .github/workflows/worker.yml (needs repo secrets
+# CLOUDFLARE_API_TOKEN and CREW_CODE).
+name = "midnite-couch"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+
+[[rules]]
+type = "Data"
+globs = ["**/*.png"]
+
+[[durable_objects.bindings]]
+name = "CREW"
+class_name = "Crew"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Crew"]

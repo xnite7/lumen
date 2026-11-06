@@ -62,14 +62,14 @@ const metas = titles.map(([name, type, c], i) => ({
 const catalogs = [
   { key: "a/movie/top", addonId: "a", addonName: "Cinemeta", transportUrl: "x", type: "movie", id: "top", name: "Popular", extra: [], adult: false, builtin: false },
   { key: "b/series/top", addonId: "b", addonName: "Cinemeta", transportUrl: "x", type: "series", id: "top", name: "Popular", extra: [], adult: false, builtin: false },
-  { key: "c/movie/motn-top", addonId: "c", addonName: "Lumen", transportUrl: "x", type: "movie", id: "motn-top", name: "Top 10 Today", extra: [], adult: false, builtin: true },
-  { key: "d/movie/simkl-recs", addonId: "d", addonName: "Lumen", transportUrl: "x", type: "movie", id: "simkl-recs", name: "Because You Watched", extra: [], adult: false, builtin: true },
+  { key: "c/movie/motn-top", addonId: "c", addonName: "couch", transportUrl: "x", type: "movie", id: "motn-top", name: "Top 10 Today", extra: [], adult: false, builtin: true },
+  { key: "d/movie/simkl-recs", addonId: "d", addonName: "couch", transportUrl: "x", type: "movie", id: "simkl-recs", name: "Because You Watched", extra: [], adult: false, builtin: true },
 ];
 
 const streams = [
-  { name: "[RD+] Torrentio\n4K DV", title: "The.Long.Summer.2024.2160p.BluRay.REMUX.DV.HDR10.HEVC.TrueHD.Atmos.7.1-FGT\n👤 512 💾 61.2 GB", _lumen: { res: "4K", resRank: 4, hdr: ["DV", "HDR10"], codec: "HEVC", audio: ["Atmos", "TrueHD", "7.1"], source: "REMUX", sizeBytes: 61.2e9, seeders: 512, cached: true, debrid: "RD", kind: "debrid", cam: false, threeD: false, languages: [], group: "FGT", label: "The.Long.Summer.2024.2160p.BluRay.REMUX.DV.HDR10", score: 99000 } },
-  { name: "[RD+] Torrentio\n1080p", title: "The.Long.Summer.2024.1080p.WEB-DL.DDP5.1.H.264-NTb\n👤 1203 💾 6.1 GB", _lumen: { res: "1080p", resRank: 3, hdr: [], codec: "AVC", audio: ["DD+", "5.1"], source: "WEB-DL", sizeBytes: 6.1e9, seeders: 1203, cached: true, debrid: "RD", kind: "debrid", cam: false, threeD: false, languages: [], group: "NTb", label: "The.Long.Summer.2024.1080p.WEB-DL.DDP5.1", score: 88000 } },
-  { name: "Torrentio\n720p", title: "The.Long.Summer.2024.720p.WEBRip.x265\n👤 88 💾 1.4 GB", _lumen: { res: "720p", resRank: 2, hdr: [], codec: "HEVC", audio: [], source: "WEBRip", sizeBytes: 1.4e9, seeders: 88, kind: "torrent", cam: false, threeD: false, languages: [], label: "The.Long.Summer.2024.720p.WEBRip.x265", score: 21000 } },
+  { name: "[RD+] Torrentio\n4K DV", title: "The.Long.Summer.2024.2160p.BluRay.REMUX.DV.HDR10.HEVC.TrueHD.Atmos.7.1-FGT\n👤 512 💾 61.2 GB", _couch: { res: "4K", resRank: 4, hdr: ["DV", "HDR10"], codec: "HEVC", audio: ["Atmos", "TrueHD", "7.1"], source: "REMUX", sizeBytes: 61.2e9, seeders: 512, cached: true, debrid: "RD", kind: "debrid", cam: false, threeD: false, languages: [], group: "FGT", label: "The.Long.Summer.2024.2160p.BluRay.REMUX.DV.HDR10", score: 99000 } },
+  { name: "[RD+] Torrentio\n1080p", title: "The.Long.Summer.2024.1080p.WEB-DL.DDP5.1.H.264-NTb\n👤 1203 💾 6.1 GB", _couch: { res: "1080p", resRank: 3, hdr: [], codec: "AVC", audio: ["DD+", "5.1"], source: "WEB-DL", sizeBytes: 6.1e9, seeders: 1203, cached: true, debrid: "RD", kind: "debrid", cam: false, threeD: false, languages: [], group: "NTb", label: "The.Long.Summer.2024.1080p.WEB-DL.DDP5.1", score: 88000 } },
+  { name: "Torrentio\n720p", title: "The.Long.Summer.2024.720p.WEBRip.x265\n👤 88 💾 1.4 GB", _couch: { res: "720p", resRank: 2, hdr: [], codec: "HEVC", audio: [], source: "WEBRip", sizeBytes: 1.4e9, seeders: 88, kind: "torrent", cam: false, threeD: false, languages: [], label: "The.Long.Summer.2024.720p.WEBRip.x265", score: 21000 } },
 ];
 
 let emit: ((e: string, p: unknown) => void) | null = null;
@@ -133,7 +133,7 @@ export async function mock(cmd: string, args: any): Promise<any> {
       };
     case "addons_list":
       return [
-        { transportUrl: "lumen://builtin/manifest.json", transportName: "builtin", manifest: { id: "app.lumen.builtin", name: "Lumen", version: "0.1.0", description: "Simkl lists, TMDB browse rows, Top 10 and richer artwork — built in.", types: ["movie", "series"], catalogs: [{}, {}, {}], resources: ["catalog", "meta"] }, flags: { official: true, protected: true } },
+        { transportUrl: "couch://builtin/manifest.json", transportName: "builtin", manifest: { id: "com.midnite.couch.builtin", name: "couch", version: "0.1.0", description: "Simkl lists, TMDB browse rows, Top 10 and richer artwork — built in.", types: ["movie", "series"], catalogs: [{}, {}, {}], resources: ["catalog", "meta"] }, flags: { official: true, protected: true } },
         { transportUrl: "https://v3-cinemeta.strem.io/manifest.json", transportName: "http", manifest: { id: "com.linvo.cinemeta", name: "Cinemeta", version: "3.0.13", description: "The official addon for movie and series catalogs", types: ["movie", "series"], catalogs: [{}, {}], resources: ["catalog", "meta"] }, flags: { official: true, protected: false } },
         { transportUrl: "https://torrentio.strem.fun/manifest.json", transportName: "http", manifest: { id: "com.stremio.torrentio.addon", name: "Torrentio RD", version: "0.0.15", description: "Provides torrent streams from scraped torrent providers.", types: ["movie", "series"], catalogs: [], resources: ["stream"], behaviorHints: { configurable: true } }, flags: { official: false, protected: false } },
         { transportUrl: "https://opensubtitles-v3.strem.io/manifest.json", transportName: "http", manifest: { id: "org.stremio.opensubtitlesv3", name: "OpenSubtitles v3", version: "1.0.0", description: "OpenSubtitles v3 Addon for Stremio", types: ["movie", "series"], catalogs: [], resources: ["subtitles"] }, flags: { official: true, protected: false } },
@@ -169,8 +169,19 @@ export async function mock(cmd: string, args: any): Promise<any> {
       return { intro: [{ start: 1200, end: 1290 }], credits: [{ start: 5200, end: null }] };
     case "tobii_status":
       return { status: "off" };
-    case "themes_user":
-      return [];
+    case "crew_list":
+    case "crew_join":
+      return q.has("crew")
+        ? {
+            setup: true,
+            members: [
+              { id: "a", name: "mari", watching: { title: "Night Swim", episode: "S1 · E4 · The Deep End", metaId: metas[3].id, type: "series", background: metas[3].background }, paused: false, pos: 900, duration: 2700, at: Date.now() },
+              { id: "b", name: "hazza", watching: { title: "The Long Summer", year: 2018, metaId: metas[0].id, type: "movie", background: metas[0].background }, paused: true, pos: 3000, duration: 5760, at: Date.now() },
+            ],
+          }
+        : { setup: false, members: [] };
+    case "crew_invite":
+      return q.has("crew") ? "https://midnite-couch.example.workers.dev/join?c=xxxx" : null;
     case "health":
     case "addons_health":
       return [];

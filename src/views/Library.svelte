@@ -80,9 +80,8 @@
     </div>
   {:else if lib.loaded}
     <div class="empty rise">
-      <Icon name="bookmark" size={46} />
-      <p class="title3">Nothing here yet</p>
-      <p class="sub dim">Long-press any poster and choose Add to My List.</p>
+      <p class="bump-text">nothing yet. get comfy.</p>
+      <p class="sub dim">Press + on anything you want to keep around.</p>
       {#if !app.secrets.stremio_auth}
         <button class="btn accent press" onclick={() => go({ name: "profile" })}>Sign in to bring your library</button>
       {/if}

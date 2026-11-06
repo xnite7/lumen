@@ -1,0 +1,30 @@
+name: Deploy crew server
+# The tiny Cloudflare Worker behind "on the couch". Runs when worker/ changes
+# on main, or by hand. Needs two repo secrets:
+#   CLOUDFLARE_API_TOKEN  (template "Edit Cloudflare Workers")
+#   CREW_CODE             (the code friends need to join; make one up)
+on:
+  push:
+    branches: [main]
+    paths: ["worker/**", ".github/workflows/worker.yml"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Deploy
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "::warning::CLOUDFLARE_API_TOKEN not set; skipping"; exit 0; fi
+          npm install --no-audit --no-fund
+          echo "${{ secrets.CREW_CODE }}" | npx wrangler secret put CREW_CODE || true
+          npx wrangler deploy 2>&1 | tee deploy.log
+          echo "### crew server" >> $GITHUB_STEP_SUMMARY
+          grep -o 'https://[a-z0-9.-]*workers.dev' deploy.log | head -1 >> $GITHUB_STEP_SUMMARY

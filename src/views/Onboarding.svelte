@@ -1,9 +1,11 @@
 <script lang="ts">
-  // First launch. One decision per screen, over a slowly drifting wall of
-  // posters. Every step can be skipped and rerun later from Profile.
+  // First launch: sign in, set the mood of the room, bring your addons, light
+  // the room, and you're on the couch. One decision per screen over a slow,
+  // dim wall of posters. Every step can be skipped and rerun from Profile.
   import { api, img, type AddonDescriptor, type Meta } from "../lib/api";
   import { app, saveSettings, refreshSecrets } from "../lib/stores/app.svelte";
-  import { themes, applyCurrent, loadThemes } from "../lib/stores/theme.svelte";
+  import { applyCurrent } from "../lib/stores/theme.svelte";
+  import Logo from "../components/Logo.svelte";
   import { toast, errorText } from "../lib/stores/toast.svelte";
   import { haptic, isIOS } from "../lib/native";
   import { ui } from "../lib/ui.svelte";
@@ -11,15 +13,14 @@
   import Item from "../ui/Item.svelte";
   import { untrack } from "svelte";
   import SignIn from "../ui/SignIn.svelte";
-  import ThemeCard from "../ui/ThemeCard.svelte";
   import SimklConnect from "../ui/SimklConnect.svelte";
   import SecretField from "../components/SecretField.svelte";
 
   let { start = 0, ondone }: { start?: number; ondone?: () => void } = $props();
 
   const desktop = app.platform === "windows" || app.platform === "browser";
-  type Step = "welcome" | "signin" | "theme" | "addons" | "services" | "extras" | "done";
-  const steps: Step[] = ["welcome", "signin", "theme", "addons", "services", ...(desktop ? (["extras"] as Step[]) : []), "done"];
+  type Step = "welcome" | "signin" | "mood" | "addons" | "services" | "room" | "done";
+  const steps: Step[] = ["welcome", "signin", "mood", "addons", "services", "room", "done"];
 
   let i = $state(untrack(() => start));
   let dir = $state(1);
@@ -64,13 +65,15 @@
     return out;
   });
 
-  // ---------------------------------------------------------------- theme
-  $effect(() => {
-    loadThemes();
-  });
-  function pickTheme(id: string) {
+  // ----------------------------------------------------------------- mood
+  const NEON = [
+    { v: "soft", label: "soft", hint: "a lamp in the corner" },
+    { v: "lit", label: "lit", hint: "the sign is on" },
+    { v: "loud", label: "loud", hint: "full neon" },
+  ] as const;
+  function setLook(fn: () => void) {
     haptic("selection");
-    app.settings.general.theme = id;
+    fn();
     applyCurrent();
     saveSettings();
   }
@@ -140,7 +143,7 @@
   }
   let tobii = $state<{ status: string; dll?: string } | null>(null);
   $effect(() => {
-    if (step === "extras") api.tobiiStatus().then((t) => (tobii = t)).catch(() => {});
+    if (step === "room" && desktop) api.tobiiStatus().then((t) => (tobii = t)).catch(() => {});
   });
 
   const signedIn = $derived(!!app.secrets.stremio_auth);
@@ -167,7 +170,7 @@
       {#each steps as _, k}<span class:on={k === i} class:past={k < i}></span>{/each}
     </div>
     {#if step !== "welcome" && step !== "done"}
-      <button class="btn plain skip" onclick={next}>Skip</button>
+      <button class="btn plain skip" onclick={next}>skip</button>
     {:else}<span></span>{/if}
   </header>
 
@@ -175,18 +178,18 @@
     <section class="step" style:--dir={dir}>
       {#if step === "welcome"}
         <div class="welcome">
-          <span class="sun"></span>
-          <h1 class="xl-title">Lumen</h1>
-          <p class="title3 dim tagline">Everything you watch,<br />beautifully lit.</p>
+          <div class="sign"><Logo size={132} lit flicker /></div>
+          <h1 class="wordmark">midnite<sup>™</sup> couch</h1>
+          <p class="bump-text tagline">welcome to the couch.</p>
         </div>
         <div class="foot-actions">
-          <button class="btn lg block primary press" onclick={next}>Get started</button>
+          <button class="btn lg block primary press" onclick={next}>sit down</button>
         </div>
       {:else if step === "signin"}
         <div class="head">
-          <span class="badge" style:background="linear-gradient(140deg, #8a5cf6, #4f46e5)"><Icon name="personCircle" size={30} /></span>
-          <h1 class="large-title">Sign in to Stremio</h1>
-          <p class="callout dim">Your addons, library and Continue Watching come with you, and stay in sync with your other devices.</p>
+          <span class="badge"><Icon name="personCircle" size={30} /></span>
+          <h1 class="large-title">who's on the couch?</h1>
+          <p class="callout dim">Sign in with your Stremio account. Your addons, library and Up Next come with you and stay in sync.</p>
         </div>
         <div class="body">
           {#if signedIn}
@@ -198,33 +201,40 @@
           {/if}
         </div>
         <div class="foot-actions">
-          {#if signedIn}<button class="btn lg block primary press" onclick={next}>Continue</button>{/if}
+          {#if signedIn}<button class="btn lg block primary press" onclick={next}>continue</button>{/if}
         </div>
-      {:else if step === "theme"}
+      {:else if step === "mood"}
         <div class="head">
-          <span class="badge" style:background="linear-gradient(140deg, #ff9f0a, #ff375f)"><Icon name="palette" size={28} /></span>
-          <h1 class="large-title">Pick a look</h1>
-          <p class="callout dim">Everything changes as you tap. Add your own themes later from Profile.</p>
-        </div>
-        <div class="themes scroll-x">
-          {#each themes.list as t (t.id)}
-            <ThemeCard theme={t} on={app.settings.general.theme === t.id} onclick={() => pickTheme(t.id)} />
-          {/each}
+          <span class="badge"><Icon name="sparkles" size={28} /></span>
+          <h1 class="large-title">set the mood</h1>
+          <p class="callout dim">How bright is the neon in your room? Change it any time in Settings.</p>
         </div>
         <div class="body narrow">
+          <div class="moods">
+            {#each NEON as n (n.v)}
+              <button class="mood press" class:on={app.settings.general.neon === n.v} data-neon={n.v} onclick={() => setLook(() => (app.settings.general.neon = n.v))}>
+                <span class="mood-sign"><Logo size={54} lit /></span>
+                <span class="headline">{n.label}</span>
+                <span class="caption dim">{n.hint}</span>
+              </button>
+            {/each}
+          </div>
           <div class="group">
-            <Item label="Colour from artwork" detail="The accent follows whatever you're looking at">
-              <button class="mini-switch" class:on={app.settings.general.accentFromArtwork} aria-label="Colour from artwork" onclick={() => { app.settings.general.accentFromArtwork = !app.settings.general.accentFromArtwork; applyCurrent(); saveSettings(); haptic("light"); }}><span></span></button>
+            <Item label="Film grain" detail="A whisper of old-TV texture">
+              <button class="mini-switch" class:on={app.settings.general.grain} aria-label="Film grain" onclick={() => setLook(() => (app.settings.general.grain = !app.settings.general.grain))}><span></span></button>
+            </Item>
+            <Item label="Later = cozier" detail="After midnight the room gets warmer and dimmer">
+              <button class="mini-switch" class:on={app.settings.general.timeAware} aria-label="Later is cozier" onclick={() => setLook(() => (app.settings.general.timeAware = !app.settings.general.timeAware))}><span></span></button>
             </Item>
           </div>
         </div>
-        <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>Continue</button></div>
+        <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>continue</button></div>
       {:else if step === "addons"}
         <div class="head">
-          <span class="badge" style:background="linear-gradient(140deg, #30d158, #0a84ff)"><Icon name="addons" size={28} /></span>
-          <h1 class="large-title">Your addons</h1>
+          <span class="badge"><Icon name="addons" size={28} /></span>
+          <h1 class="large-title">bring your addons</h1>
           <p class="callout dim">
-            {#if addons.length}Here's what came over{signedIn ? " from your account" : ""}. Every Stremio addon works.{:else}Paste an addon link, or install one from any addon website: the install button opens Lumen.{/if}
+            {#if addons.length}Here's what came over{signedIn ? " from your account" : ""}. Every Stremio addon works.{:else}Paste an addon link, or install one from any addon website: the install button opens couch.{/if}
           </p>
         </div>
         <div class="body narrow">
@@ -247,12 +257,12 @@
           </form>
           <button class="btn plain" onclick={() => api.openExternal("https://stremio-addons.net")}>Browse community addons</button>
         </div>
-        <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>Continue</button></div>
+        <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>continue</button></div>
       {:else if step === "services"}
         <div class="head">
-          <span class="badge" style:background="linear-gradient(140deg, #bf5af2, #5e5ce6)"><Icon name="sparkles" size={28} /></span>
-          <h1 class="large-title">Connect services</h1>
-          <p class="callout dim">All optional. Each one makes Lumen a little smarter.</p>
+          <span class="badge"><Icon name="key" size={28} /></span>
+          <h1 class="large-title">plug things in</h1>
+          <p class="callout dim">All optional. Each one makes the couch a little smarter.</p>
         </div>
         <div class="body narrow">
           {#if app.platform === "windows"}
@@ -272,41 +282,41 @@
             {/if}
           </div>
         </div>
-        <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>Continue</button></div>
-      {:else if step === "extras"}
+        <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>continue</button></div>
+      {:else if step === "room"}
         <div class="head">
-          <span class="badge" style:background="linear-gradient(140deg, #ffd60a, #ff9f0a)"><Icon name="bulb" size={28} /></span>
-          <h1 class="large-title">Your room</h1>
-          <p class="callout dim">Lights that follow the picture, and a player that knows when you look away.</p>
+          <span class="badge lamp"><Icon name="bulb" size={28} /></span>
+          <h1 class="large-title">dim the lights</h1>
+          <p class="callout dim">Couch mode fades your Hue lights to a warm lamp when you press play, and brings them back after.</p>
         </div>
         <div class="body narrow">
           <div class="group">
             {#if app.secrets.hue_username}
-              <Item label="Philips Hue" detail="Bridge paired. Pick a room in Profile → Philips Hue." icon="bulb" tint="var(--yellow)"><Icon name="checkCircle" size={22} class="ok" /></Item>
+              <Item label="Philips Hue" detail="Bridge paired. Pick a room in Profile → Philips Hue." icon="bulb" tint="var(--lamp)"><Icon name="checkCircle" size={22} class="ok" /></Item>
             {:else}
-              <Item label="Philips Hue" detail={bridges === null ? "Press the button on your bridge, then search" : bridges.length ? "Choose your bridge" : "No bridge found. Add it later by IP address."} icon="bulb" tint="var(--yellow)">
+              <Item label="Philips Hue" detail={bridges === null ? "Press the button on your bridge, then search" : bridges.length ? "Choose your bridge" : "No bridge found. Add it later by IP address."} icon="bulb" tint="var(--lamp)">
                 <button class="btn small tinted press" disabled={hueBusy} onclick={findHue}>{hueBusy ? "Searching…" : "Search"}</button>
               </Item>
               {#each bridges ?? [] as b}
                 <Item label={b.name ?? "Hue Bridge"} detail={b.ip}><button class="btn small accent press" disabled={hueBusy} onclick={() => pairHue(b.ip)}>Pair</button></Item>
               {/each}
             {/if}
-            <Item
-              label="Tobii eye tracker"
-              detail={tobii?.dll ? "Found. Turn it on in Profile → Eye tracking." : "Not found. Skip this if you don't have one."}
-              icon="eye"
-              tint="var(--green)"
-            />
+            {#if desktop}
+              <Item
+                label="Tobii eye tracker"
+                detail={tobii?.dll ? "Found. Turn it on in Settings → Eye tracking." : "Not found. Skip this if you don't have one."}
+                icon="eye"
+                tint="var(--neon-soft)"
+              />
+            {/if}
           </div>
         </div>
-        <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>Continue</button></div>
+        <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>continue</button></div>
       {:else}
         <div class="welcome">
-          <span class="tickbig"><Icon name="check" size={40} /></span>
-          <h1 class="large-title">You're all set</h1>
-          <p class="callout dim tagline">Long-press any poster for quick actions.<br />Change anything later in Profile.</p>
+          <p class="bump-text done-line">you're on the couch.</p>
         </div>
-        <div class="foot-actions"><button class="btn lg block primary press" onclick={finish}>Start watching</button></div>
+        <div class="foot-actions"><button class="btn lg block primary press" onclick={finish}>press play</button></div>
       {/if}
     </section>
   {/key}
@@ -336,7 +346,8 @@
     display: flex;
     gap: 14px;
     transform: rotate(-8deg) scale(1.15);
-    opacity: 0.55;
+    opacity: 0.3;
+    filter: saturate(0.7) sepia(0.15);
   }
   .col {
     flex: 1;
@@ -435,43 +446,65 @@
     text-align: center;
     gap: 10px;
   }
-  .welcome .xl-title {
-    font-size: clamp(52px, 9vw, 84px);
-    animation: rise 900ms var(--glide) 200ms both;
+  .sign {
+    margin-bottom: 8px;
+  }
+  .wordmark {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(40px, 7vw, 64px);
+    letter-spacing: -0.04em;
+    animation: rise 900ms var(--glide) 900ms both;
+  }
+  .wordmark sup {
+    font-size: 0.32em;
+    font-weight: 600;
+    vertical-align: 1.6em;
+    margin-left: 1px;
+    color: var(--text-dim);
   }
   .tagline {
+    margin: 4px 0 0;
+    color: var(--text-dim);
+    animation: rise 900ms var(--glide) 1200ms both;
+  }
+  .done-line {
     margin: 0;
-    font-weight: 500;
-    animation: rise 900ms var(--glide) 380ms both;
+    font-size: clamp(22px, 3vw, 32px);
+    animation: rise 1200ms var(--glide) 200ms both;
   }
-  .sun {
-    width: 84px;
-    height: 84px;
-    border-radius: 50%;
-    background: radial-gradient(circle at 50% 38%, #fff4cc, #ffc22e 55%, #e4736a);
-    box-shadow:
-      0 0 80px 14px rgb(255 194 46 / 0.4),
-      0 0 200px 40px rgb(228 115 106 / 0.18);
-    margin-bottom: 18px;
-    animation: sunrise 1400ms var(--spring) both;
+  .moods {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
   }
-  @keyframes sunrise {
-    from {
-      transform: translateY(60px) scale(0.6);
-      opacity: 0;
-    }
+  .mood {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 18px 8px 14px;
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--separator);
   }
-  .tickbig {
-    width: 88px;
-    height: 88px;
-    border-radius: 50%;
+  .mood.on {
+    background: var(--surface-2);
+    box-shadow: var(--glow-neon);
+  }
+  .mood-sign {
+    height: 70px;
     display: grid;
     place-items: center;
-    background: var(--green);
-    color: #fff;
-    margin-bottom: 14px;
-    box-shadow: 0 0 60px rgb(48 209 88 / 0.35);
-    animation: sunrise 900ms var(--spring) both;
+    margin-bottom: 4px;
+  }
+  .mood[data-neon="soft"] .mood-sign {
+    filter: saturate(0.6) brightness(0.75);
+  }
+  .mood[data-neon="loud"] .mood-sign {
+    filter: saturate(1.25) brightness(1.2) drop-shadow(0 0 12px rgb(var(--neon-rgb) / 0.6));
   }
   .head {
     width: 100%;
@@ -493,9 +526,14 @@
     border-radius: 18px;
     display: grid;
     place-items: center;
-    color: #fff;
+    color: var(--text);
+    background: var(--surface-2);
     margin-bottom: 8px;
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), 0 12px 30px -10px rgb(0 0 0 / 0.5);
+    box-shadow: inset 0 1px 0 rgb(var(--hi) / 0.12), 0 0 0 1px var(--separator), 0 12px 30px -10px rgb(var(--lo) / 0.8);
+  }
+  .badge.lamp {
+    color: var(--lamp);
+    box-shadow: inset 0 1px 0 rgb(var(--hi) / 0.12), 0 0 0 1px var(--separator), var(--glow-lamp);
   }
   .body {
     width: 100%;
@@ -517,15 +555,6 @@
     margin-top: auto;
     padding-top: 24px;
   }
-  .themes {
-    display: flex;
-    gap: 14px;
-    width: calc(100% + 2 * var(--gutter));
-    margin: 0 calc(-1 * var(--gutter)) 18px;
-    padding: 6px var(--gutter) 12px;
-    scroll-snap-type: x mandatory;
-    justify-content: safe center;
-  }
   .mini-switch {
     width: 51px;
     height: 31px;
@@ -541,12 +570,12 @@
     width: 27px;
     height: 27px;
     border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 3px 8px rgb(0 0 0 / 0.15);
+    background: var(--white);
+    box-shadow: 0 3px 8px rgb(var(--lo) / 0.15);
     transition: transform var(--t-med) var(--spring);
   }
   .mini-switch.on {
-    background: var(--green);
+    background: var(--neon);
   }
   .mini-switch.on span {
     transform: translateX(20px);

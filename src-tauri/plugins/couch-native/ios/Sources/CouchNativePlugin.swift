@@ -34,13 +34,13 @@ class PlayArgs: Decodable {
     let startPct: Double?
     let tint: String?
     let headers: [String: String]?
-    /// "auto" (Apple's player when it can, Lumen's otherwise) | "lumen"
+    /// "auto" (Apple's player when it can, couch's otherwise) | "couch"
     let engine: String?
     let subLangs: [String]?
     let audioLangs: [String]?
 }
 
-/// Lumen's native layer on iPhone.
+/// couch's native layer on iPhone.
 ///
 /// - `play` presents AVPlayerViewController full screen: system controls,
 ///   picture-in-picture (also automatically when you swipe home), AirPlay,
@@ -49,7 +49,7 @@ class PlayArgs: Decodable {
 ///   Continue Watching and Simkl keep working.
 /// - `auth` shows a Safari sheet for sign-in pages.
 /// - `haptic` and `share` do what they say.
-class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
+class CouchNativePlugin: Plugin, AVPlayerViewControllerDelegate {
     private var safari: SFSafariViewController?
     private var playerVC: AVPlayerViewController?
     private var player: AVPlayer?
@@ -171,8 +171,8 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
         }
         DispatchQueue.main.async {
             self.teardown(dismiss: true)
-            self.observeLumenPlayer()
-            if (args.engine == "lumen" || Self.needsLumenPlayer(args.url)), self.presentLumenPlayer(args) {
+            self.observeCouchPlayer()
+            if (args.engine == "couch" || args.engine == "lumen" || Self.needsCouchPlayer(args.url)), self.presentCouchPlayer(args) {
                 invoke.resolve()
                 return
             }
@@ -219,7 +219,7 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
 
     @objc public func stop(_ invoke: Invoke) throws {
         DispatchQueue.main.async {
-            if self.mpvActive, let vc = self.top(), NSStringFromClass(type(of: vc)) == "LumenMPVPlayer" {
+            if self.mpvActive, let vc = self.top(), NSStringFromClass(type(of: vc)) == "CouchMPVPlayer" {
                 self.mpvActive = false
                 vc.perform(NSSelectorFromString("close"))
             }
@@ -291,30 +291,30 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
         trigger("closed", data: data)
     }
 
-    /// Apple's player couldn't open it: Lumen's own player takes over.
+    /// Apple's player couldn't open it: couch's own player takes over.
     private func failed() {
         guard let args = current else { return }
         let wasPresented = playerVC?.presentingViewController != nil
         teardown(dismiss: true)
         let fallback = { [weak self] in
             guard let self = self else { return }
-            if !self.presentLumenPlayer(args) { self.trigger("failed", data: ["url": args.url]) }
+            if !self.presentCouchPlayer(args) { self.trigger("failed", data: ["url": args.url]) }
         }
         if wasPresented { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: fallback) } else { fallback() }
     }
 
-    // MARK: Lumen's own player (mpv, in the app target)
+    // MARK: couch's own player (mpv, in the app target)
 
     /// Containers AVPlayer can't open at all.
-    static func needsLumenPlayer(_ url: String) -> Bool {
+    static func needsCouchPlayer(_ url: String) -> Bool {
         let path = (URL(string: url)?.path ?? url).lowercased()
         return ["mkv", "avi", "webm", "wmv", "flv", "ts", "m2ts", "mts", "ogm", "divx", "3gp"].contains((path as NSString).pathExtension)
     }
 
-    private func presentLumenPlayer(_ a: PlayArgs) -> Bool {
-        guard let cls = NSClassFromString("LumenMPVPlayer") as? UIViewController.Type, let host = top() else { return false }
+    private func presentCouchPlayer(_ a: PlayArgs) -> Bool {
+        guard let cls = NSClassFromString("CouchMPVPlayer") as? UIViewController.Type, let host = top() else { return false }
         let vc = cls.init(nibName: nil, bundle: nil)
-        var cfg: [String: Any] = ["url": a.url, "title": a.title ?? "Lumen", "subtitle": a.subtitle ?? "", "artwork": a.artwork ?? ""]
+        var cfg: [String: Any] = ["url": a.url, "title": a.title ?? "couch", "subtitle": a.subtitle ?? "", "artwork": a.artwork ?? ""]
         if let s = a.startAt { cfg["startAt"] = s }
         if let p = a.startPct { cfg["startPct"] = p }
         if let h = a.headers, !h.isEmpty { cfg["headers"] = h }
@@ -329,11 +329,11 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
         return true
     }
 
-    private func observeLumenPlayer() {
+    private func observeCouchPlayer() {
         guard !observing else { return }
         observing = true
         let nc = NotificationCenter.default
-        nc.addObserver(forName: Notification.Name("lumen.player.progress"), object: nil, queue: .main) { [weak self] n in
+        nc.addObserver(forName: Notification.Name("couch.player.progress"), object: nil, queue: .main) { [weak self] n in
             guard let self = self, let u = n.userInfo else { return }
             let pos = u["pos"] as? Double ?? 0
             let dur = u["duration"] as? Double ?? 0
@@ -341,10 +341,10 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
             self.trigger("progress", data: ["pos": pos, "duration": dur, "paused": paused])
             self.updateActivity(paused: paused, position: pos, duration: dur)
         }
-        nc.addObserver(forName: Notification.Name("lumen.player.ended"), object: nil, queue: .main) { [weak self] _ in
+        nc.addObserver(forName: Notification.Name("couch.player.ended"), object: nil, queue: .main) { [weak self] _ in
             self?.trigger("ended", data: [:] as JSObject)
         }
-        nc.addObserver(forName: Notification.Name("lumen.player.closed"), object: nil, queue: .main) { [weak self] n in
+        nc.addObserver(forName: Notification.Name("couch.player.closed"), object: nil, queue: .main) { [weak self] n in
             guard let self = self else { return }
             self.mpvActive = false
             self.endActivity()
@@ -436,31 +436,31 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
         guard #available(iOS 16.2, *) else { return }
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         endActivity()
-        let attrs = LumenActivityAttributes(title: a.title ?? "Lumen", subtitle: a.subtitle ?? "", tint: a.tint ?? "#FFC22E")
-        let state = LumenActivityAttributes.ContentState(paused: false, position: a.startAt ?? 0, duration: 0, sampledAt: Date())
+        let attrs = CouchActivityAttributes(title: a.title ?? "couch", subtitle: a.subtitle ?? "", tint: a.tint ?? "#FFC22E")
+        let state = CouchActivityAttributes.ContentState(paused: false, position: a.startAt ?? 0, duration: 0, sampledAt: Date())
         activity = try? Activity.request(attributes: attrs, content: .init(state: state, staleDate: nil), pushType: nil)
         #endif
     }
 
     private func updateActivity() {
         #if canImport(ActivityKit)
-        guard #available(iOS 16.2, *), let act = activity as? Activity<LumenActivityAttributes>, let p = player else { return }
-        let state = LumenActivityAttributes.ContentState(paused: p.timeControlStatus != .playing, position: position, duration: duration, sampledAt: Date())
+        guard #available(iOS 16.2, *), let act = activity as? Activity<CouchActivityAttributes>, let p = player else { return }
+        let state = CouchActivityAttributes.ContentState(paused: p.timeControlStatus != .playing, position: position, duration: duration, sampledAt: Date())
         Task { await act.update(.init(state: state, staleDate: nil)) }
         #endif
     }
 
     private func updateActivity(paused: Bool, position: Double, duration: Double) {
         #if canImport(ActivityKit)
-        guard #available(iOS 16.2, *), let act = activity as? Activity<LumenActivityAttributes> else { return }
-        let state = LumenActivityAttributes.ContentState(paused: paused, position: position, duration: duration, sampledAt: Date())
+        guard #available(iOS 16.2, *), let act = activity as? Activity<CouchActivityAttributes> else { return }
+        let state = CouchActivityAttributes.ContentState(paused: paused, position: position, duration: duration, sampledAt: Date())
         Task { await act.update(.init(state: state, staleDate: nil)) }
         #endif
     }
 
     private func endActivity() {
         #if canImport(ActivityKit)
-        guard #available(iOS 16.2, *), let act = activity as? Activity<LumenActivityAttributes> else { return }
+        guard #available(iOS 16.2, *), let act = activity as? Activity<CouchActivityAttributes> else { return }
         activity = nil
         Task { await act.end(nil, dismissalPolicy: .immediate) }
         #endif
@@ -478,7 +478,7 @@ class LumenNativePlugin: Plugin, AVPlayerViewControllerDelegate {
     }
 }
 
-@_cdecl("init_plugin_lumen_native")
+@_cdecl("init_plugin_couch_native")
 func initPlugin() -> Plugin {
-    return LumenNativePlugin()
+    return CouchNativePlugin()
 }

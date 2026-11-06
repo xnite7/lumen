@@ -8,6 +8,7 @@
   import YouTube from "../components/YouTube.svelte";
   import Icon from "../components/Icon.svelte";
   import EyeBubbles, { type Bubble } from "../components/EyeBubbles.svelte";
+  import { saveSettings } from "../lib/stores/app.svelte";
 
   let idle = $state(false);
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -139,7 +140,7 @@
     else list.push({ id: "mute", icon: st.muted ? "volume" : "mute", label: st.muted ? "Unmute" : "Mute", run: mute });
     return list;
   });
-  const HINT_KEY = "lumen.eyeHint.v1";
+  const HINT_KEY = "couch.eyeHint.v1";
   let eyeHint = $state(false);
   $effect(() => {
     if (!app.settings.tobii.enabled || !app.settings.tobii.gazeControls || pb.meta?.type !== "series") return;
@@ -246,11 +247,25 @@
     else if (h >= 1000) tags.push("1080p");
     else if (h >= 700) tags.push("720p");
     if (v.hdr) tags.push(v.gamma === "hlg" ? "HLG" : "HDR");
-    if (pb.stream?._lumen?.hdr?.includes("DV")) tags.push("Dolby Vision");
+    if (pb.stream?._couch?.hdr?.includes("DV")) tags.push("Dolby Vision");
     return tags;
   });
 
   const bg = $derived(pb.meta?.background ?? pb.meta?.poster);
+
+  // couch mode: one switch for the Hue lamp (dim + warm while playing)
+  const hueReady = $derived(!!app.settings.hue.enabled && !!app.secrets.hue_username);
+  const couchMode = $derived(app.settings.hue.playbackMode === "dim");
+  async function toggleCouch() {
+    const on = !couchMode;
+    app.settings.hue.playbackMode = on ? "dim" : "off";
+    await saveSettings();
+    // re-run the playback hook so the lamp follows right away
+    await api.hueTest(false).catch(() => {});
+    if (on) await api.hueTest(true).catch(() => {});
+  }
+  // a paused VHS: dimmed frame, vignette, grain, the title in big lowercase
+  const pausedScreen = $derived(st.paused && !pb.loading && !pb.error && st.pos > 1 && !menu);
   const progress = $derived(st.duration ? (st.pos / st.duration) * 100 : 0);
   const buffered = $derived(st.duration ? Math.min(100, ((st.pos + st.cacheAhead) / st.duration) * 100) : 0);
 </script>
@@ -278,6 +293,8 @@
           <p class="foot dim">{torrent.peers} peers · {(torrent.downloadMbps ?? 0).toFixed(1)} MB/s</p>
         {:else if st.bufferingPct > 0}
           <p class="foot dim">{st.bufferingPct}%</p>
+        {:else}
+          <p class="bump-text load-line">finding the remote…</p>
         {/if}
       </div>
     </div>
@@ -287,10 +304,10 @@
 
   {#if pb.error}
     <div class="error glass strong">
-      <p class="headline">Playback stopped</p>
+      <p class="headline">the tv got scared. try again?</p>
       <p class="foot dim">{pb.error}</p>
       <div class="row">
-        <button class="btn tinted press" onclick={close}>Choose another stream</button>
+        <button class="btn tinted press" onclick={close}>pick another stream</button>
       </div>
     </div>
   {/if}
@@ -315,16 +332,32 @@
     <button class="skip glass press" onclick={() => seekTo(activeSegment.end)}>{segLabel[activeSegment.kind] ?? "Skip"} <Icon name="next" size={14} /></button>
   {/if}
 
+  {#if pausedScreen}
+    <div class="paused-vhs" aria-hidden="true">
+      <div class="pv-grain"></div>
+      <div class="pv-copy">
+        <span class="pv-tag">▮▮ paused</span>
+        <h2 class="pv-title">{pb.meta?.name ?? ""}</h2>
+        {#if pb.episodeTitle}<span class="pv-sub">{episodeLabel(pb.videoId)} · {pb.episodeTitle}</span>{/if}
+      </div>
+    </div>
+  {/if}
+
   <!-- up next -->
   {#if showUpNext && next}
     <div class="upnext glass strong">
       {#if next.thumbnail}<img src={img(next.thumbnail)} alt="" />{/if}
       <div class="un-txt">
-        <span class="foot faint">Up next · {episodeLabel(next.id)}</span>
+        <span class="foot faint">up next · {episodeLabel(next.id)}</span>
         <span class="headline clamp-2">{next.title || next.name || `Episode ${next.episode}`}</span>
         <div class="row">
-          <button class="btn primary small press" onclick={playNext}><Icon name="play" size={14} /> {countdown > 0 ? `Playing in ${countdown}` : "Play now"}</button>
-          <button class="btn tinted small press" onclick={() => (upNextDismissed = true)}>Watch credits</button>
+          <button class="btn primary small press un-play" onclick={playNext}>
+            {#if countdown > 0}
+              <svg class="lamp-ring" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8" /><circle class="fg" cx="10" cy="10" r="8" style:stroke-dashoffset={50.3 * (countdown / 10)} /></svg>
+              playing in {countdown}
+            {:else}<Icon name="play" size={14} /> play now{/if}
+          </button>
+          <button class="btn tinted small press" onclick={() => (upNextDismissed = true)}>watch credits</button>
         </div>
       </div>
     </div>
@@ -398,6 +431,7 @@
           <button class="ic press" class:on={menu === "picture"} onclick={() => (menu = menu === "picture" ? "" : "picture")} aria-label="Picture"><Icon name="tv" size={21} /></button>
         {/if}
         <button class="ic press" class:on={menu === "speed"} onclick={() => (menu = menu === "speed" ? "" : "speed")} aria-label="Speed"><span class="spd">{st.speed}×</span></button>
+        {#if hueReady}<button class="ic press couchmode" class:on={couchMode} onclick={toggleCouch} aria-label="Couch mode" title={couchMode ? "couch mode: on" : "couch mode: off"}><Icon name="couch" size={22} /></button>{/if}
         {#if app.native}<button class="ic press" onclick={pip} aria-label="Picture in picture"><Icon name="pip" size={21} /></button>{/if}
         <button class="ic press" onclick={fullscreen} aria-label="Fullscreen"><Icon name={app.fullscreen ? "exitFullscreen" : "fullscreen"} size={21} /></button>
       </div>
@@ -453,8 +487,8 @@
     border-radius: 26px;
     background: rgb(18 18 22 / 0.86);
     box-shadow:
-      inset 0 0 0 1px rgb(255 255 255 / 0.14),
-      0 30px 60px -20px rgb(0 0 0 / 0.8);
+      inset 0 0 0 1px rgb(var(--hi) / 0.14),
+      0 30px 60px -20px rgb(var(--lo) / 0.8);
     animation: hint-in 600ms var(--spring) both;
   }
   @keyframes hint-in {
@@ -470,11 +504,11 @@
     align-items: flex-start;
   }
   .hint-txt .foot {
-    color: rgb(255 255 255 / 0.78);
+    color: rgb(var(--hi) / 0.78);
     line-height: 1.4;
   }
   .hint-txt b {
-    color: #fff;
+    color: var(--white);
   }
   .hint-txt .btn {
     margin-top: 6px;
@@ -491,7 +525,7 @@
     inset: 0;
     border-radius: 10px;
     background: linear-gradient(135deg, #2a2f3a, #14161c);
-    box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.2);
+    box-shadow: inset 0 0 0 1.5px rgb(var(--hi) / 0.2);
   }
   .dot {
     position: absolute;
@@ -526,8 +560,8 @@
     height: 14px;
     margin: -7px;
     border-radius: 50%;
-    background: radial-gradient(circle at 32% 28%, rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.15) 50%, rgb(255 255 255 / 0.3));
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.5);
+    background: radial-gradient(circle at 32% 28%, rgb(var(--hi) / 0.8), rgb(var(--hi) / 0.15) 50%, rgb(var(--hi) / 0.3));
+    box-shadow: inset 0 0 0 1px rgb(var(--hi) / 0.5);
     top: calc(18% + var(--i) * 21%);
     left: calc(12% + (var(--i) - 1.5) * (var(--i) - 1.5) * 3%);
     animation: mini 3.6s infinite;
@@ -559,26 +593,27 @@
     position: fixed;
     inset: 0;
     z-index: 100;
-    background: #000;
-    color: #fff;
+    background: var(--black);
+    color: var(--white);
     color-scheme: dark;
-    --label: #fff;
-    --label-2: rgb(255 255 255 / 0.72);
-    --label-3: rgb(255 255 255 / 0.45);
-    --text: #fff;
-    --text-dim: rgb(255 255 255 / 0.72);
-    --text-faint: rgb(255 255 255 / 0.45);
-    --fill-1: rgb(255 255 255 / 0.28);
-    --fill-2: rgb(255 255 255 / 0.2);
-    --fill-3: rgb(255 255 255 / 0.14);
-    --fill-4: rgb(255 255 255 / 0.08);
-    --separator: rgb(255 255 255 / 0.14);
-    --glass-tint: rgb(16 16 20 / 0.52);
-    --glass-tint-strong: rgb(14 14 18 / 0.88);
-    --glass-spec: rgb(255 255 255 / 0.32);
-    --glass-rim: rgb(255 255 255 / 0.12);
-    --glass-edge: rgb(0 0 0 / 0.3);
-    --glass-shadow: 0 12px 36px -12px rgb(0 0 0 / 0.6);
+    --label: var(--white);
+    --label-2: rgb(var(--hi) / 0.72);
+    --label-3: rgb(var(--hi) / 0.45);
+    --text: var(--white);
+    --text-dim: rgb(var(--hi) / 0.72);
+    --text-faint: rgb(var(--hi) / 0.45);
+    --fill-1: rgb(var(--hi) / 0.28);
+    --fill-2: rgb(var(--hi) / 0.2);
+    --fill-3: rgb(var(--hi) / 0.14);
+    --fill-4: rgb(var(--hi) / 0.08);
+    --separator: rgb(var(--hi) / 0.14);
+    /* black leather chrome */
+    --glass-tint: rgb(26 22 20 / 0.6);
+    --glass-tint-strong: rgb(22 18 17 / 0.9);
+    --glass-spec: rgb(var(--hi) / 0.32);
+    --glass-rim: rgb(var(--hi) / 0.12);
+    --glass-edge: rgb(var(--lo) / 0.3);
+    --glass-shadow: 0 12px 36px -12px rgb(var(--lo) / 0.6);
   }
   .player.native {
     background: transparent;
@@ -593,7 +628,7 @@
     inset: 0;
     width: 100%;
     height: 100%;
-    background: #000;
+    background: var(--black);
   }
   .catch {
     position: absolute;
@@ -606,7 +641,7 @@
     place-items: center;
   }
   .loading.over-art {
-    background: #000;
+    background: var(--black);
   }
   .art {
     position: absolute;
@@ -633,15 +668,15 @@
     max-width: 360px;
     max-height: 120px;
     object-fit: contain;
-    filter: drop-shadow(0 4px 20px rgb(0 0 0 / 0.5));
+    filter: drop-shadow(0 4px 20px rgb(var(--lo) / 0.5));
   }
   .ring,
   .mini-ring {
     width: 38px;
     height: 38px;
     border-radius: 50%;
-    border: 3px solid rgb(255 255 255 / 0.18);
-    border-top-color: #fff;
+    border: 3px solid rgb(var(--hi) / 0.18);
+    border-top-color: var(--white);
     animation: spin 0.9s linear infinite;
   }
   .mini-ring {
@@ -713,18 +748,18 @@
     border-radius: 0.32em;
   }
   .cue[data-bg="glass"] .line {
-    background: rgb(0 0 0 / var(--bg-o));
+    background: rgb(var(--lo) / var(--bg-o));
     backdrop-filter: blur(var(--blur)) saturate(140%);
     -webkit-box-decoration-break: clone;
   }
   .cue[data-bg="box"] .line {
-    background: rgb(0 0 0 / var(--bg-o));
+    background: rgb(var(--lo) / var(--bg-o));
   }
   .cue[data-bg="shadow"] {
-    text-shadow: 0 2px 6px rgb(0 0 0 / 0.95), 0 0 2px rgb(0 0 0 / 0.95);
+    text-shadow: 0 2px 6px rgb(var(--lo) / 0.95), 0 0 2px rgb(var(--lo) / 0.95);
   }
   .cue[data-bg="outline"] {
-    -webkit-text-stroke: 0.12em rgb(0 0 0 / 0.85);
+    -webkit-text-stroke: 0.12em rgb(var(--lo) / 0.85);
     paint-order: stroke fill;
   }
   .sdh {
@@ -797,7 +832,7 @@
     align-items: center;
     gap: 16px;
     padding: 20px var(--gutter) 40px;
-    background: linear-gradient(180deg, rgb(0 0 0 / 0.55), transparent);
+    background: linear-gradient(180deg, rgb(var(--lo) / 0.55), transparent);
     transition: opacity var(--t-med) ease, transform var(--t-med) var(--glide);
   }
   .round {
@@ -824,10 +859,10 @@
     gap: 6px;
   }
   .badges .chip {
-    background: rgb(0 0 0 / 0.42);
-    color: #fff;
+    background: rgb(var(--lo) / 0.42);
+    color: var(--white);
     backdrop-filter: blur(12px);
-    box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.18);
+    box-shadow: inset 0 0 0 0.5px rgb(var(--hi) / 0.18);
   }
   .bottom {
     position: absolute;
@@ -861,7 +896,7 @@
     width: 100%;
     height: 5px;
     border-radius: 5px;
-    background: rgb(255 255 255 / 0.2);
+    background: rgb(var(--hi) / 0.2);
     overflow: hidden;
     transition: height var(--t-fast) var(--spring);
   }
@@ -871,25 +906,126 @@
   .buf {
     position: absolute;
     inset: 0 auto 0 0;
-    background: rgb(255 255 255 / 0.25);
+    background: rgb(var(--hi) / 0.25);
   }
   .seg {
     position: absolute;
     top: 0;
     bottom: 0;
-    background: rgb(255 214 10 / 0.45);
+    background: rgb(var(--lamp-rgb) / 0.45);
   }
   .seg-credits {
-    background: rgb(100 210 255 / 0.4);
+    background: rgb(var(--hi) / 0.3);
   }
   .seg-recap {
-    background: rgb(191 90 242 / 0.4);
+    background: rgb(var(--neon-rgb) / 0.4);
   }
   .done {
     position: absolute;
     inset: 0 auto 0 0;
-    background: #fff;
+    background: var(--text);
     border-radius: inherit;
+  }
+  .scrub:hover .done,
+  .scrub:focus-within .done {
+    background: var(--lamp);
+    box-shadow: 0 0 12px rgb(var(--lamp-rgb) / 0.6);
+  }
+  .load-line {
+    margin: 4px 0 0;
+    font-size: 15px;
+    color: var(--text-dim);
+  }
+  .badges .chip {
+    background: rgb(var(--neon-rgb) / 0.1);
+    color: var(--neon-soft);
+    box-shadow: inset 0 0 0 1px rgb(var(--neon-rgb) / 0.45), 0 0 14px -4px rgb(var(--neon-rgb) / 0.6);
+    font-size: 12px;
+    letter-spacing: 0.03em;
+  }
+  .couchmode.on {
+    color: var(--lamp);
+    filter: drop-shadow(0 0 8px rgb(var(--lamp-rgb) / 0.7));
+  }
+  /* ------------------------------------------------- paused VHS screen */
+  .paused-vhs {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(120% 95% at 50% 45%, rgb(var(--lo) / 0.25) 40%, rgb(var(--lo) / 0.8) 100%),
+      linear-gradient(0deg, rgb(var(--lo) / 0.7), rgb(var(--lo) / 0.15) 55%);
+    animation: pv-in 700ms var(--ease-out) both;
+  }
+  @keyframes pv-in {
+    from {
+      opacity: 0;
+    }
+  }
+  .pv-grain {
+    position: absolute;
+    inset: -50%;
+    opacity: 0.09;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 .9  0 0 0 0 .95  0 0 0 .6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    animation: grain 1.4s steps(6) infinite;
+  }
+  .pv-copy {
+    position: absolute;
+    left: var(--gutter);
+    bottom: 150px;
+    max-width: min(900px, 80vw);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .pv-tag {
+    font-family: var(--font-bump);
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    color: var(--lamp);
+    text-shadow: 0 0 12px rgb(var(--lamp-rgb) / 0.6);
+    animation: vhs-blink 1.6s steps(2) infinite;
+  }
+  @keyframes vhs-blink {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  .pv-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(44px, 7vw, 110px);
+    line-height: 0.95;
+    letter-spacing: -0.045em;
+    text-transform: lowercase;
+    color: var(--text);
+    text-shadow: 0 4px 40px rgb(var(--lo) / 0.6);
+  }
+  .pv-sub {
+    font-size: var(--fs-callout);
+    color: var(--text-dim);
+    text-transform: lowercase;
+  }
+  .un-play {
+    gap: 8px;
+  }
+  .lamp-ring {
+    width: 18px;
+    height: 18px;
+    transform: rotate(-90deg);
+  }
+  .lamp-ring circle {
+    fill: none;
+    stroke: rgb(var(--lo) / 0.25);
+    stroke-width: 2.6;
+  }
+  .lamp-ring .fg {
+    stroke: var(--lamp);
+    stroke-linecap: round;
+    stroke-dasharray: 50.3;
+    transition: stroke-dashoffset 1s linear;
   }
   .tip {
     position: absolute;
@@ -921,7 +1057,7 @@
   }
   .ic:hover,
   .ic.on {
-    background: rgb(255 255 255 / 0.12);
+    background: rgb(var(--hi) / 0.12);
   }
   .spd {
     font-weight: 700;
@@ -948,7 +1084,7 @@
   .vol input::-webkit-slider-runnable-track {
     height: 4px;
     border-radius: 4px;
-    background: linear-gradient(90deg, #fff var(--p), rgb(255 255 255 / 0.25) var(--p));
+    background: linear-gradient(90deg, var(--white) var(--p), rgb(var(--hi) / 0.25) var(--p));
   }
   .vol input::-webkit-slider-thumb {
     -webkit-appearance: none;
@@ -956,7 +1092,7 @@
     height: 14px;
     margin-top: -5px;
     border-radius: 50%;
-    background: #fff;
+    background: var(--white);
   }
   .time {
     margin-left: 10px;
@@ -994,10 +1130,10 @@
     font-size: 14px;
   }
   .opt:hover {
-    background: rgb(255 255 255 / 0.08);
+    background: rgb(var(--hi) / 0.08);
   }
   .opt.sel {
-    background: rgb(255 255 255 / 0.16);
+    background: rgb(var(--hi) / 0.16);
     font-weight: 650;
   }
   .delay {

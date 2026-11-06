@@ -5,7 +5,7 @@ $ErrorActionPreference = "Stop"
 $dest = Join-Path $PSScriptRoot "..\src-tauri\mpv"
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 
-$headers = @{ "User-Agent" = "lumen-build" }
+$headers = @{ "User-Agent" = "couch-build" }
 if ($env:GITHUB_TOKEN) { $headers["Authorization"] = "Bearer $env:GITHUB_TOKEN" }
 $rel = Invoke-RestMethod -Headers $headers "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest"
 # The plain x86_64 build (not -v3) runs on any x64 CPU.

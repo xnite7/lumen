@@ -1,6 +1,6 @@
 """Customise the Xcode project `tauri ios init` generates.
 
-Adds what Lumen's native layer needs: background audio (picture-in-picture
+Adds what couch's native layer needs: background audio (picture-in-picture
 keeps playing), Live Activities, plain-HTTP streams (debrid links, the local
 torrent server), local-network access (Hue), the VLC/Infuse URL schemes,
 and the widget extension that draws the Dynamic Island.
@@ -15,7 +15,7 @@ spec = yaml.safe_load(open(spec_path))
 targets = spec["targets"]
 app_name = next(n for n, t in targets.items() if t.get("type") == "application")
 app = targets[app_name]
-bundle_id = app.get("settings", {}).get("base", {}).get("PRODUCT_BUNDLE_IDENTIFIER", "app.lumen.player")
+bundle_id = app.get("settings", {}).get("base", {}).get("PRODUCT_BUNDLE_IDENTIFIER", "com.midnite.couch")
 
 info = app.setdefault("info", {}).setdefault("properties", {})
 info.update({
@@ -23,17 +23,17 @@ info.update({
     "CADisableMinimumFrameDurationOnPhone": True,
     "UIBackgroundModes": ["audio"],
     "NSAppTransportSecurity": {"NSAllowsArbitraryLoads": True, "NSAllowsLocalNetworking": True},
-    "NSLocalNetworkUsageDescription": "Lumen finds your Philips Hue bridge on your network to dim the lights while you watch.",
+    "NSLocalNetworkUsageDescription": "couch finds your Philips Hue bridge on your network to dim the lights while you watch.",
     "NSBonjourServices": ["_hue._tcp"],
     "LSApplicationQueriesSchemes": ["infuse", "vlc-x-callback", "vlc"],
     "ITSAppUsesNonExemptEncryption": False,
     "UIViewControllerBasedStatusBarAppearance": False,
     "UIStatusBarStyle": "UIStatusBarStyleLightContent",
-    # lumen:// (Simkl sign-in coming back, links) and stremio:// (addon installs)
-    "CFBundleURLTypes": [{"CFBundleURLName": bundle_id, "CFBundleURLSchemes": ["lumen", "stremio"]}],
+    # couch:// (Simkl sign-in coming back, links) and stremio:// (addon installs)
+    "CFBundleURLTypes": [{"CFBundleURLName": bundle_id, "CFBundleURLSchemes": ["couch", "lumen", "stremio"]}],
 })
 
-# Lumen's own player: mpv through MPVKit (Swift package binaries), plus its
+# couch's own player: mpv through MPVKit (Swift package binaries), plus its
 # Swift sources, compiled into the app target.
 spec.setdefault("packages", {})["MPVKit"] = {
     "url": "https://github.com/mpvkit/MPVKit",
@@ -49,15 +49,15 @@ info["UISupportedInterfaceOrientations"] = [
     "UIInterfaceOrientationLandscapeRight",
 ]
 
-targets["LumenWidgets"] = {
+targets["CouchWidgets"] = {
     "type": "app-extension",
     "platform": "iOS",
     "deploymentTarget": "16.2",
     "sources": [{"path": "../../ios-widgets"}],
     "info": {
-        "path": "LumenWidgets/Info.plist",
+        "path": "CouchWidgets/Info.plist",
         "properties": {
-            "CFBundleDisplayName": "Lumen",
+            "CFBundleDisplayName": "couch",
             "CFBundleShortVersionString": "$(MARKETING_VERSION)",
             "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
             "NSExtension": {"NSExtensionPointIdentifier": "com.apple.widgetkit-extension"},
@@ -66,7 +66,7 @@ targets["LumenWidgets"] = {
     "settings": {
         "base": {
             "PRODUCT_BUNDLE_IDENTIFIER": f"{bundle_id}.widgets",
-            "PRODUCT_NAME": "LumenWidgets",
+            "PRODUCT_NAME": "CouchWidgets",
             "SWIFT_VERSION": "5.0",
             "TARGETED_DEVICE_FAMILY": "1,2",
             "SKIP_INSTALL": "YES",
@@ -78,10 +78,27 @@ targets["LumenWidgets"] = {
 }
 
 deps = app.setdefault("dependencies", [])
-if not any(d.get("target") == "LumenWidgets" for d in deps):
-    deps.append({"target": "LumenWidgets", "embed": True})
+if not any(d.get("target") == "CouchWidgets" for d in deps):
+    deps.append({"target": "CouchWidgets", "embed": True})
 if not any(d.get("package") == "MPVKit" for d in deps):
     deps.append({"package": "MPVKit", "product": "MPVKit"})
 
 yaml.safe_dump(spec, open(spec_path, "w"), sort_keys=False)
-print(f"patched {app_name} ({bundle_id}) + LumenWidgets", file=sys.stderr)
+print(f"patched {app_name} ({bundle_id}) + CouchWidgets", file=sys.stderr)
+
+# iOS 18 home-screen appearances: dark and tinted variants of the icon.
+import glob, json, shutil, os
+here = os.path.dirname(os.path.abspath(__file__))
+src = os.path.join(here, "..", "src-tauri", "icons", "ios-appearance")
+for iconset in glob.glob("**/AppIcon.appiconset", recursive=True):
+    cpath = os.path.join(iconset, "Contents.json")
+    contents = json.load(open(cpath))
+    images = [i for i in contents.get("images", []) if not i.get("appearances") and i.get("filename") != "AppIcon-any.png"]
+    for name in ("any", "dark", "tinted"):
+        shutil.copy(os.path.join(src, f"AppIcon-{name}.png"), os.path.join(iconset, f"AppIcon-{name}.png"))
+    images.append({"filename": "AppIcon-any.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"})
+    for name in ("dark", "tinted"):
+        images.append({"appearances": [{"appearance": "luminosity", "value": name}], "filename": f"AppIcon-{name}.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"})
+    contents["images"] = images
+    json.dump(contents, open(cpath, "w"), indent=2)
+    print(f"icon appearances added to {iconset}", file=sys.stderr)

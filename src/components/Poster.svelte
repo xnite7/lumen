@@ -7,6 +7,7 @@
   import Icon from "./Icon.svelte";
   import { pressMenu } from "../lib/menu.svelte";
   import { posterMenu } from "../lib/actions";
+  import { tvFocus } from "../lib/tvfocus";
 
   let {
     meta,
@@ -69,7 +70,7 @@
   {#if rank > 0}
     <span class="rank" aria-hidden="true">{rank}</span>
   {/if}
-  <div class="art" class:loaded>
+  <div class="art" class:loaded use:tvFocus={{ max: landscape ? 5 : 8 }}>
     {#if src && !failed}
       <img {src} alt="" loading="lazy" decoding="async" onload={() => (loaded = true)} onerror={() => (failed = true)} draggable="false" />
     {/if}
@@ -83,6 +84,10 @@
     {/if}
     {#if owned && !landscape}
       <span class="badge" title="In your library"><Icon name="check" size={13} /></span>
+    {/if}
+    {#if landscape && meta.logo && loaded}
+      <div class="lshade"></div>
+      <img class="llogo" src={img(meta.logo)} alt="" loading="lazy" />
     {/if}
     {#if progress > 0}
       <div class="progress"><span style:width="{Math.max(4, progress * 100)}%"></span></div>
@@ -106,7 +111,7 @@
     scroll-snap-align: start;
   }
   .poster.landscape {
-    width: calc(var(--card-w) * 1.9);
+    width: var(--land-w);
   }
   .poster.ranked {
     margin-left: calc(var(--card-w) * 0.42);
@@ -130,38 +135,46 @@
     aspect-ratio: 2 / 3;
     border-radius: var(--poster-r);
     overflow: hidden;
-    background: var(--fill-4);
+    background: var(--surface);
     box-shadow:
-      0 10px 28px -14px rgb(0 0 0 / 0.65),
-      inset 0 0 0 0.5px rgb(255 255 255 / 0.12);
-    transition:
-      transform var(--t-med) var(--spring),
-      box-shadow var(--t-med) ease;
+      0 10px 28px -14px rgb(var(--lo) / 0.8),
+      inset 0 0 0 0.5px rgb(var(--hi) / 0.1);
   }
   .landscape .art {
     aspect-ratio: 16 / 9;
+    border-radius: var(--card-r);
   }
-  @media (hover: hover) {
-    .poster:hover .art {
-      transform: translateY(-4px) scale(1.02);
-      box-shadow:
-        0 22px 40px -18px rgb(0 0 0 / 0.8),
-        inset 0 0 0 1px rgb(255 255 255 / 0.18);
-    }
+  .lshade {
+    position: absolute;
+    inset: 40% 0 0;
+    background: linear-gradient(0deg, rgb(var(--lo) / 0.7), transparent);
+  }
+  img.llogo {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    width: auto;
+    height: auto;
+    max-width: 52%;
+    max-height: 34%;
+    object-fit: contain;
+    object-position: left bottom;
+    opacity: 1;
+    filter: drop-shadow(0 2px 10px rgb(var(--lo) / 0.6));
   }
   :global(.poster.pressing) .art {
     transform: scale(0.95);
     transition-duration: 480ms;
     transition-timing-function: ease-out;
   }
-  img {
+  .art > img:first-child {
     width: 100%;
     height: 100%;
     object-fit: cover;
     opacity: 0;
     transition: opacity 360ms ease;
   }
-  .loaded img {
+  .loaded > img:first-child {
     opacity: 1;
   }
   .fallback {
@@ -174,7 +187,7 @@
     font-weight: 600;
     color: var(--text-dim);
   }
-  .hidden img {
+  .hidden .art > img:first-child {
     filter: blur(22px) saturate(0.6);
     transform: scale(1.15);
   }
@@ -194,9 +207,10 @@
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: color-mix(in srgb, var(--accent) 88%, transparent);
-    color: var(--accent-ink);
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+    background: rgb(var(--lo) / 0.6);
+    color: var(--lamp);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 2px 8px rgb(var(--lo) / 0.35);
   }
   .progress {
     position: absolute;
@@ -205,14 +219,14 @@
     bottom: 10px;
     height: 4px;
     border-radius: 4px;
-    background: rgb(255 255 255 / 0.28);
+    background: rgb(var(--hi) / 0.28);
     overflow: hidden;
     backdrop-filter: blur(6px);
   }
   .progress span {
     display: block;
     height: 100%;
-    background: var(--accent);
+    background: var(--progress);
     border-radius: inherit;
   }
   .label {

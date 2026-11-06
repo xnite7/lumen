@@ -110,7 +110,7 @@ pub async fn sync_library(core: &Core) -> AppResult<(usize, usize)> {
     let dirty = core.db.library_dirty()?;
     let mut pushed = 0;
     if !dirty.is_empty() {
-        // Lumen-only fields (watchedIds, dismissed) ride along harmlessly:
+        // couch-only fields (watchedIds, dismissed) ride along harmlessly:
         // the API stores the object as given.
         call(core, "datastorePut", json!({ "authKey": key, "collection": "libraryItem", "changes": dirty })).await?;
         let ids: Vec<String> = dirty.iter().filter_map(|i| i["_id"].as_str().map(|s| s.to_string())).collect();

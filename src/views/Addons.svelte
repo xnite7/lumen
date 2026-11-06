@@ -174,7 +174,7 @@
     <input bind:value={url} placeholder="Paste an addon link" spellcheck="false" autocapitalize="off" />
     <button class="btn small accent press" disabled={!url.trim() || busy}>Add</button>
   </form>
-  <p class="group-foot">Install buttons on addon websites open Lumen too. Drag to reorder: the order decides which addon answers first.</p>
+  <p class="group-foot">Install buttons on addon websites open couch too. Drag to reorder: the order decides which addon answers first.</p>
 
   <h3 class="group-head">Installed</h3>
   <section class="group list">

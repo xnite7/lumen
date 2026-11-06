@@ -18,7 +18,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-pub const UA: &str = concat!("Lumen/", env!("CARGO_PKG_VERSION"), " (+stremio-compatible)");
+pub const UA: &str = concat!("couch/", env!("CARGO_PKG_VERSION"), " (+stremio-compatible)");
 
 struct DohResolver {
     inner: TokioResolver,

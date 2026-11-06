@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Lumen",
+  "productName": "couch",
   "version": "0.1.0",
-  "identifier": "app.lumen.player",
+  "identifier": "com.midnite.couch",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Lumen",
+        "title": "midnite™ couch",
         "width": 1440,
         "height": 860,
         "minWidth": 960,
@@ -39,7 +39,7 @@
     "publisher": "xnite",
     "category": "Entertainment",
     "shortDescription": "A native streaming app for Stremio addons",
-    "longDescription": "Lumen plays everything your Stremio addons find, natively, with mpv.",
+    "longDescription": "couch plays everything your Stremio addons find, natively, with mpv.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -56,8 +56,8 @@
   },
   "plugins": {
     "deep-link": {
-      "desktop": { "schemes": ["stremio", "lumen"] },
-      "mobile": [{ "scheme": ["lumen"], "appLink": false }]
+      "desktop": { "schemes": ["stremio", "couch", "lumen"] },
+      "mobile": [{ "scheme": ["couch", "lumen"], "appLink": false }]
     }
   }
 }

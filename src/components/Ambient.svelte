@@ -69,7 +69,7 @@
     position: absolute;
     inset: 0;
     opacity: 0;
-    background: repeating-linear-gradient(0deg, rgb(0 0 0 / 0.35) 0 1px, transparent 1px 3px);
+    background: repeating-linear-gradient(0deg, rgb(var(--lo) / 0.35) 0 1px, transparent 1px 3px);
     mix-blend-mode: multiply;
   }
 </style>

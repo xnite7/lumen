@@ -71,7 +71,7 @@
     position: fixed;
     inset: 0;
     z-index: 200;
-    background: rgb(0 0 0 / 0.28);
+    background: rgb(var(--lo) / 0.28);
     backdrop-filter: blur(14px) saturate(120%);
     -webkit-backdrop-filter: blur(14px) saturate(120%);
     animation: fade var(--t-med) ease both;
@@ -86,7 +86,7 @@
     z-index: 201;
     border-radius: calc(var(--poster-r) * 1.4);
     overflow: hidden;
-    box-shadow: 0 30px 80px -20px rgb(0 0 0 / 0.7);
+    box-shadow: 0 30px 80px -20px rgb(var(--lo) / 0.7);
     transform-origin: top left;
     animation: lift var(--t-slow) var(--spring) both;
   }

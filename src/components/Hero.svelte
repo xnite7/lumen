@@ -14,6 +14,10 @@
   import { haptic } from "../lib/native";
   import { pressMenu } from "../lib/menu.svelte";
   import { posterMenu } from "../lib/actions";
+  import { greeting } from "../lib/stores/theme.svelte";
+  import { tvFocus } from "../lib/tvfocus";
+
+  const hello = greeting();
 
   let { scrollY = 0 }: { scrollY?: number } = $props();
 
@@ -115,6 +119,7 @@
 
 {#if cur && ui.phone}
   <section class="hero-phone" aria-roledescription="carousel">
+    <p class="hello phone-hello">{hello}</p>
     <div class="glow" style:background-image="url({img(cur.poster ?? bg, 'w342')})"></div>
     <div class="track scroll-x" bind:this={track} onscroll={onTrack}>
       {#each slides as m, n (m.id)}
@@ -132,8 +137,8 @@
             <p class="foot facts-line">{[facts(m), m.genres?.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}</p>
             <div class="card-actions">
               <button class="btn primary press grow" onclick={() => openDetail(m)}><Icon name="play" size={16} /> Play</button>
-              <button class="btn glass press grow" onclick={() => { haptic("light"); toggleLibrary(m); }}>
-                <Icon name={inLibrary(m.id) ? "check" : "plus"} size={18} /> My List
+              <button class="btn icon glass press" onclick={() => { haptic("light"); toggleLibrary(m); }} aria-label={inLibrary(m.id) ? "In your list" : "Add to your list"}>
+                <Icon name={inLibrary(m.id) ? "check" : "plus"} size={20} />
               </button>
             </div>
           </div>
@@ -164,12 +169,14 @@
         {/if}
       </div>
       <div class="hero-shade"></div>
+      <div class="hero-vignette"></div>
     </div>
 
     <div class="info" class:quiet={trailerOn}>
       <div use:parallax={-0.35}>
       {#key cur.id}
         <div class="copy">
+          <p class="hello">{hello}</p>
           {#if cur.logo}
             <img class="logo" src={img(cur.logo)} alt={cur.name} />
           {:else}
@@ -186,10 +193,9 @@
       {/key}
       </div>
       <div class="actions">
-        <button class="btn lg primary press" onclick={() => openDetail(cur, el)}><Icon name="play" size={18} /> Play</button>
-        <button class="btn lg glass press" onclick={() => toggleLibrary(cur)}>
-          <Icon name={owned ? "check" : "plus"} size={19} />
-          {owned ? "In My List" : "My List"}
+        <button class="btn lg primary press play" use:tvFocus={{ tilt: false }} onclick={() => openDetail(cur, el)}><Icon name="play" size={18} /> Play</button>
+        <button class="btn lg icon glass press" use:tvFocus={{ tilt: false }} onclick={() => toggleLibrary(cur)} aria-label={owned ? "In your list" : "Add to your list"} title={owned ? "In your list" : "Add to your list"}>
+          <Icon name={owned ? "check" : "plus"} size={21} />
         </button>
         {#if trailer}
           <button class="btn lg icon glass press" onclick={() => (muted = !muted)} aria-label={muted ? "Unmute" : "Mute"}>
@@ -232,9 +238,10 @@
     inset: 0;
   }
   .bg {
+    filter: saturate(0.92) brightness(0.9);
     /* fade the art itself into the page so there's no seam where it ends */
-    -webkit-mask-image: linear-gradient(180deg, #000 50%, rgb(0 0 0 / 0.6) 72%, transparent 100%);
-    mask-image: linear-gradient(180deg, #000 50%, rgb(0 0 0 / 0.6) 72%, transparent 100%);
+    -webkit-mask-image: linear-gradient(180deg, var(--black) 50%, rgb(var(--lo) / 0.6) 72%, transparent 100%);
+    mask-image: linear-gradient(180deg, var(--black) 50%, rgb(var(--lo) / 0.6) 72%, transparent 100%);
     position: absolute;
     inset: 0;
     width: 100%;
@@ -249,14 +256,32 @@
       transform: scale(1.04);
     }
   }
+  /* Apple TV's rising dark, in plum: the art sinks into the room */
   .hero-shade {
     position: absolute;
     inset: 0;
-    -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
-    mask-image: linear-gradient(180deg, #000 55%, transparent 100%);
     background:
-      linear-gradient(0deg, color-mix(in srgb, var(--bg) 70%, transparent) 0%, transparent 50%),
-      linear-gradient(90deg, color-mix(in srgb, var(--bg) 90%, transparent) 0%, color-mix(in srgb, var(--bg) 55%, transparent) 34%, transparent 62%);
+      linear-gradient(0deg, var(--bg) 0%, color-mix(in srgb, var(--bg) 82%, transparent) 16%, color-mix(in srgb, var(--bg) 30%, transparent) 46%, transparent 70%),
+      linear-gradient(90deg, color-mix(in srgb, var(--bg) 78%, transparent) 0%, color-mix(in srgb, var(--bg) 40%, transparent) 32%, transparent 60%),
+      linear-gradient(180deg, color-mix(in srgb, var(--bg) 55%, transparent) 0%, transparent 22%);
+  }
+  .hero-vignette {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(120% 95% at 60% 35%, transparent 50%, rgb(var(--lo) / 0.6) 100%);
+  }
+  .hello {
+    margin: 0;
+    font-family: var(--font-bump);
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    color: var(--text-dim);
+    text-transform: lowercase;
+  }
+  .phone-hello {
+    position: relative;
+    padding: 0 var(--gutter) 10px;
   }
   .info {
     position: absolute;
@@ -290,7 +315,7 @@
     max-height: 150px;
     object-fit: contain;
     object-position: left bottom;
-    filter: drop-shadow(0 4px 24px rgb(0 0 0 / 0.45));
+    filter: drop-shadow(0 4px 24px rgb(var(--lo) / 0.45));
   }
   .facts {
     display: flex;
@@ -308,7 +333,7 @@
     color: var(--rating);
   }
   :global(:root:not([data-appearance="light"])) .info {
-    text-shadow: 0 1px 14px rgb(0 0 0 / 0.55);
+    text-shadow: 0 1px 14px rgb(var(--lo) / 0.55);
   }
   .desc {
     margin: 0;
@@ -335,18 +360,18 @@
     width: 7px;
     height: 7px;
     border-radius: 7px;
-    background: rgb(255 255 255 / 0.4);
+    background: rgb(var(--hi) / 0.4);
     overflow: hidden;
     transition: width var(--t-slow) var(--spring), background var(--t-fast);
   }
   .dot.on {
     width: 30px;
-    background: rgb(255 255 255 / 0.3);
+    background: rgb(var(--hi) / 0.3);
   }
   .fill {
     position: absolute;
     inset: 0;
-    background: #fff;
+    background: var(--lamp);
     transform-origin: left;
     transform: scaleX(1);
   }
@@ -368,7 +393,7 @@
   /* ------------------------------------------------------------ phone */
   .hero-phone {
     position: relative;
-    padding-top: calc(var(--safe-top) + 58px);
+    padding-top: calc(var(--safe-top) + 50px);
   }
   .glow {
     position: absolute;
@@ -378,8 +403,8 @@
     filter: blur(60px) saturate(1.6);
     opacity: calc(var(--ambient-strength) * 0.7);
     transition: background-image 0.8s ease;
-    -webkit-mask-image: linear-gradient(180deg, #000 30%, transparent);
-    mask-image: linear-gradient(180deg, #000 30%, transparent);
+    -webkit-mask-image: linear-gradient(180deg, var(--black) 30%, transparent);
+    mask-image: linear-gradient(180deg, var(--black) 30%, transparent);
     pointer-events: none;
   }
   .track {
@@ -399,8 +424,8 @@
     overflow: hidden;
     scroll-snap-align: center;
     box-shadow:
-      inset 0 0 0 0.5px rgb(255 255 255 / 0.16),
-      0 24px 60px -24px rgb(0 0 0 / 0.75);
+      inset 0 0 0 0.5px rgb(var(--hi) / 0.16),
+      0 24px 60px -24px rgb(var(--lo) / 0.75);
     transform: scale(0.94);
     opacity: 0.7;
     transition:
@@ -423,7 +448,7 @@
   .card-shade {
     position: absolute;
     inset: 35% 0 0;
-    background: linear-gradient(180deg, transparent, rgb(0 0 0 / 0.62) 42%, rgb(0 0 0 / 0.9));
+    background: linear-gradient(180deg, transparent, rgb(var(--lo) / 0.62) 42%, rgb(var(--lo) / 0.9));
     pointer-events: none;
   }
   .card-info {
@@ -437,17 +462,17 @@
     align-items: center;
     gap: 8px;
     text-align: center;
-    color: #fff;
+    color: var(--white);
   }
   .card-logo {
     max-width: 78%;
     max-height: 84px;
     object-fit: contain;
-    filter: drop-shadow(0 2px 12px rgb(0 0 0 / 0.5));
+    filter: drop-shadow(0 2px 12px rgb(var(--lo) / 0.5));
   }
   .facts-line {
     margin: 0;
-    color: rgb(255 255 255 / 0.88);
+    color: rgb(var(--hi) / 0.88);
   }
   .card-actions {
     display: flex;
@@ -459,12 +484,12 @@
     flex: 1;
   }
   .card-actions .glass {
-    color: #fff;
-    background: rgb(255 255 255 / 0.16);
+    color: var(--white);
+    background: rgb(var(--hi) / 0.16);
   }
   .card-actions .primary {
-    background: #fff;
-    color: #000;
+    background: var(--white);
+    color: var(--black);
   }
   .pdots {
     display: flex;

@@ -123,7 +123,7 @@
     aspect-ratio: 2 / 3;
     border-radius: var(--r-lg);
     overflow: hidden;
-    box-shadow: 0 30px 60px -30px rgb(0 0 0 / 0.8), inset 0 0 0 1px rgb(255 255 255 / 0.1);
+    box-shadow: 0 30px 60px -30px rgb(var(--lo) / 0.8), inset 0 0 0 1px rgb(var(--hi) / 0.1);
   }
   .portrait img,
   .fill {

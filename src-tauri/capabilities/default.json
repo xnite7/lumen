@@ -15,6 +15,6 @@
     "core:window:allow-close",
     "opener:default",
     "deep-link:default",
-    "lumen-native:default"
+    "couch-native:default"
   ]
 }

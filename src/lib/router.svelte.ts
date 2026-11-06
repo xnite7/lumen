@@ -11,6 +11,7 @@ export type Route =
   | { name: "search"; q?: string }
   | { name: "library" }
   | { name: "profile" }
+  | { name: "couch" }
   | { name: "discover"; type?: string; catalog?: string; genre?: string }
   | { name: "detail"; type: string; id: string; hint?: string; preview?: any }
   | { name: "person"; person: string; tmdbId?: number; adult?: boolean }
@@ -23,13 +24,14 @@ export type Entry = Route & { _k?: number };
 let nextKey = 1;
 const keyed = (r: Route): Entry => ({ ...r, _k: nextKey++ });
 
-export const tabs = ["home", "search", "library", "profile"] as const;
+export const tabs = ["home", "search", "library", "couch", "profile"] as const;
 export type Tab = (typeof tabs)[number];
 
 const stacks: Record<Tab, Entry[]> = {
   home: [keyed({ name: "home" })],
   search: [keyed({ name: "search" })],
   library: [keyed({ name: "library" })],
+  couch: [keyed({ name: "couch" })],
   profile: [keyed({ name: "profile" })],
 };
 /** scroll position per page layer, kept across tab switches */

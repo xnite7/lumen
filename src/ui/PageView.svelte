@@ -15,6 +15,7 @@
   import Addons from "../views/Addons.svelte";
   import Settings from "../views/Settings.svelte";
   import Vibe from "../views/Vibe.svelte";
+  import Couch from "../views/Couch.svelte";
 
   let { route, active, index = 0, layer = $bindable() }: { route: Entry; active: boolean; index?: number; layer?: HTMLElement } = $props();
   let y = $state(0);
@@ -78,6 +79,8 @@
       <Settings section={route.section} />
     {:else if route.name === "vibe"}
       <Vibe q={route.q} />
+    {:else if route.name === "couch"}
+      <Couch />
     {/if}
   </div>
 </main>

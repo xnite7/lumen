@@ -107,9 +107,9 @@
     border-radius: 8px;
     display: grid;
     place-items: center;
-    color: #fff;
+    color: var(--white);
     flex: none;
-    box-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.25);
+    box-shadow: inset 0 0.5px 0 rgb(var(--hi) / 0.25);
   }
   .text {
     flex: 1;

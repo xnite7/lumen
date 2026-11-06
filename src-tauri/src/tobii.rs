@@ -1,7 +1,7 @@
 //! Tobii eye tracker, through Tobii's Stream Engine.
 //!
 //! The DLL is loaded at runtime from wherever Tobii's own software put it
-//! (or a path you set), so Lumen builds and runs fine on machines without a
+//! (or a path you set), so couch builds and runs fine on machines without a
 //! tracker. Gaze, head pose and presence are turned into a few things that
 //! are actually useful while watching:
 //!

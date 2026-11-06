@@ -99,7 +99,7 @@ async function startIOS(url: string, startAt?: number, headers?: Record<string, 
   const m = pb.meta;
   await nativePlay({
     url,
-    title: m?.name ?? "Lumen",
+    title: m?.name ?? "couch",
     subtitle: pb.episodeTitle || (m?.releaseInfo ? String(m.releaseInfo) : ""),
     // the plain https address: the native side loads it itself
     artwork: (m?.background ?? m?.poster ?? "").replace(/\/t\/p\/original\//, "/t/p/w780/"),

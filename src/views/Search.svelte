@@ -90,7 +90,8 @@
   const hiddenAdult = $derived(groups.some((g) => g.catalog.adult) && app.settings.general.hideAdult && !app.adultRevealed);
 
   // ------------------------------------------------------------- browse
-  const tints = ["#6155f5", "#ff375f", "#0a84ff", "#30d158", "#ff9f0a", "#bf5af2", "#40cbe0", "#ac8e68", "#ff453a", "#5e5ce6"];
+  // browse tiles: dusky late-night tones from the midnite palette, no rainbow
+  const tints = ["var(--surface-2)", "#3a1830", "#2a1a24", "#3b2416", "#241626", "#33152a", "#2d1d1a", "#1f1824", "#3a2014", "#281422"];
   const typeLabel = (t: string) => (t === "movie" ? "Films" : t === "series" ? "Shows" : t === "tv" ? "Channels" : t.charAt(0).toUpperCase() + t.slice(1));
   const browse = $derived(
     catalogs
@@ -115,7 +116,7 @@
       oninput={onInput}
       onfocus={() => (focused = true)}
       onblur={() => setTimeout(() => (focused = false), 150)}
-      placeholder="Films, shows, people"
+      placeholder="films, shows, people"
       spellcheck="false"
       autocapitalize="off"
       enterkeyhint="search"
@@ -147,7 +148,7 @@
         {#if hiddenAdult}
           <button class="chip press" onclick={() => (app.adultRevealed = true)}><Icon name="eye" size={13} /> Show hidden</button>
         {/if}
-        {#if pending}<span class="foot faint">Still asking addons…</span>{/if}
+        {#if pending}<span class="foot faint">still asking around…</span>{/if}
       </div>
     {/if}
 
@@ -165,9 +166,8 @@
         <div class="grid">{#each Array(ui.phone ? 6 : 12) as _}<div class="ghost skeleton"></div>{/each}</div>
       {:else}
         <div class="empty">
-          <Icon name="search" size={44} />
-          <p class="title3">No results for “{q}”</p>
-          <p class="sub dim">Check the spelling, or install an addon that searches this kind of thing.</p>
+          <p class="bump-text">nothing called “{q}”. not even in the cushions.</p>
+          <p class="sub dim">Check the spelling, or add an addon that searches this kind of thing.</p>
         </div>
       {/if}
     {/each}
@@ -175,7 +175,7 @@
     {#if recents.length}
       <section class="recents">
         <div class="sect-h">
-          <h2 class="title3">Recent</h2>
+          <h2 class="title3">recent</h2>
           <button class="btn plain small" onclick={() => { api.recentsClear(); recents = []; }}>Clear</button>
         </div>
         <div class="recent-list scroll-x">
@@ -188,7 +188,7 @@
 
     {#if browse.length}
       <section>
-        <h2 class="title3 sect-title">Browse</h2>
+        <h2 class="title3 sect-title">browse</h2>
         <div class="tiles">
           {#each browse as c, n (c.key)}
             <button class="tile press" style:--t={tints[n % tints.length]} onclick={() => go({ name: "discover", type: c.type, catalog: c.key })}>
@@ -222,7 +222,7 @@
       </section>
     {/if}
 
-    <p class="tip foot dim">Tip: paste a link or magnet anywhere in Lumen to play it.</p>
+    <p class="tip foot dim">Tip: paste a link or magnet anywhere in couch to play it.</p>
   {/if}
 </div>
 
@@ -406,12 +406,12 @@
     justify-content: flex-end;
     text-align: left;
     overflow: hidden;
-    color: #fff;
+    color: var(--white);
     background:
       radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--t) 50%, white 0%), transparent 60%),
       linear-gradient(150deg, color-mix(in srgb, var(--t) 82%, black 18%), color-mix(in srgb, var(--t) 45%, black 55%));
-    text-shadow: 0 1px 8px rgb(0 0 0 / 0.35);
-    box-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.3);
+    text-shadow: 0 1px 8px rgb(var(--lo) / 0.35);
+    box-shadow: inset 0 0.5px 0 rgb(var(--hi) / 0.3);
   }
   .tile-name {
     font-size: var(--fs-head);
@@ -435,17 +435,17 @@
     padding: 16px 18px 16px 16px;
     border-radius: var(--r-md);
     text-align: left;
-    color: #fff;
-    background: #17121f;
+    color: var(--white);
+    background: var(--surface);
   }
   .vibe-card .blobs {
     position: absolute;
     inset: -60%;
     z-index: -1;
     background:
-      radial-gradient(30% 50% at 25% 50%, color-mix(in srgb, var(--ambient-1, #a86bff) 75%, #7b4dff), transparent),
-      radial-gradient(30% 55% at 70% 40%, color-mix(in srgb, var(--ambient-2, #ff6bb5) 70%, #ff4f9a), transparent),
-      radial-gradient(25% 50% at 50% 75%, color-mix(in srgb, var(--ambient-3, #4fc3ff) 65%, #3aa0ff), transparent);
+      radial-gradient(30% 50% at 25% 50%, rgb(var(--neon-rgb) / 0.55), transparent),
+      radial-gradient(30% 55% at 70% 40%, rgb(var(--lamp-rgb) / 0.35), transparent),
+      radial-gradient(25% 50% at 50% 75%, #5a2348, transparent);
     filter: blur(28px) saturate(1.3);
     opacity: 0.85;
     animation: drift 14s ease-in-out infinite alternate;
@@ -455,7 +455,7 @@
     position: absolute;
     inset: 0;
     z-index: -1;
-    background: linear-gradient(90deg, rgb(0 0 0 / 0.45), rgb(0 0 0 / 0.1));
+    background: linear-gradient(90deg, rgb(var(--lo) / 0.45), rgb(var(--lo) / 0.1));
   }
   @keyframes drift {
     to {
@@ -469,7 +469,7 @@
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: rgb(255 255 255 / 0.18);
+    background: rgb(var(--hi) / 0.18);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
   }

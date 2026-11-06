@@ -72,7 +72,7 @@
       if (r.ok) done();
       else toast(r.error ?? "Simkl sign-in didn't finish", "warn");
     }).then((u) => (un = u));
-    // iPhone: the lumen:// link landed and App finished the exchange
+    // iPhone: the couch:// link landed and App finished the exchange
     const onFocus = () => {
       if (waiting) refreshSecrets().then(() => app.secrets.simkl_v2 && (waiting = false));
     };

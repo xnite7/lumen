@@ -7,7 +7,7 @@ import ActivityKit
 import Foundation
 
 @available(iOS 16.1, *)
-struct LumenActivityAttributes: ActivityAttributes {
+struct CouchActivityAttributes: ActivityAttributes {
     public struct ContentState: Codable, Hashable {
         var paused: Bool
         /// seconds into the video when this state was sampled

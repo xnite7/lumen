@@ -162,7 +162,7 @@
     box-shadow:
       inset 0 1px 0 var(--glass-spec),
       inset 0 0 0 1px var(--glass-rim),
-      0 40px 80px -30px rgb(0 0 0 / 0.8);
+      0 40px 80px -30px rgb(var(--lo) / 0.8);
   }
   .card.shown {
     opacity: 1;
@@ -174,7 +174,7 @@
     width: 100%;
     aspect-ratio: 16 / 9;
     overflow: hidden;
-    background: #000;
+    background: var(--black);
   }
   .media > img:first-child {
     width: 100%;
@@ -184,7 +184,7 @@
   .shade {
     position: absolute;
     inset: 0;
-    background: linear-gradient(0deg, rgb(0 0 0 / 0.65), transparent 55%);
+    background: linear-gradient(0deg, rgb(var(--lo) / 0.65), transparent 55%);
   }
   .logo {
     position: absolute;
@@ -194,7 +194,7 @@
     max-height: 34%;
     object-fit: contain;
     object-position: left bottom;
-    filter: drop-shadow(0 2px 10px rgb(0 0 0 / 0.5));
+    filter: drop-shadow(0 2px 10px rgb(var(--lo) / 0.5));
   }
   .name {
     position: absolute;
@@ -202,7 +202,7 @@
     bottom: 14px;
     right: 60px;
     text-align: left;
-    color: #fff;
+    color: var(--white);
   }
   .mute {
     position: absolute;
@@ -213,7 +213,7 @@
     border-radius: 50%;
     display: grid;
     place-items: center;
-    color: #fff;
+    color: var(--white);
   }
   .body {
     padding: 14px 16px 16px;

@@ -160,7 +160,7 @@ impl Mpv {
                 ("ytdl", "no".into()),
                 ("volume", p.volume.to_string()),
                 ("volume-max", if p.volume_boost { "200".into() } else { "100".into() }),
-                ("audio-client-name", "Lumen".into()),
+                ("audio-client-name", "couch".into()),
                 ("user-agent", crate::http::UA.into()),
                 ("deband", if p.deband { "yes".into() } else { "no".into() }),
                 ("target-colorspace-hint", if p.hdr_passthrough { "yes".into() } else { "no".into() }),
@@ -558,7 +558,7 @@ fn friendly(e: &libmpv2::Error) -> String {
         Some(-16) => "There's nothing playable in this stream. Try another one.".into(),
         Some(-17) => "This file is in a format the player doesn't recognise. Try another stream.".into(),
         Some(-14) => "No audio device is available. Check your sound output.".into(),
-        Some(-15) => "The video renderer couldn't start. Turn off Settings → Playback → Video inside Lumen and try again.".into(),
+        Some(-15) => "The video renderer couldn't start. Turn off Settings → Playback → Video inside couch and try again.".into(),
         _ => format!("The player hit an error ({raw}). Try another stream."),
     }
 }

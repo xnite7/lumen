@@ -1047,6 +1047,51 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f8f80099a98041a3d1622845c271458a2d73e688351bf3cb999266764b81d48"
 
 [[package]]
+name = "couch"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "dirs 6.0.0",
+ "discord-rich-presence",
+ "env_logger",
+ "futures",
+ "hex",
+ "hickory-resolver",
+ "image",
+ "libloading 0.8.9",
+ "libmpv2",
+ "librqbit",
+ "librqbit-dualstack-sockets",
+ "log",
+ "once_cell",
+ "parking_lot",
+ "rand 0.9.5",
+ "regex",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-couch-native",
+ "tauri-plugin-deep-link",
+ "tauri-plugin-opener",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-window-state",
+ "thiserror 2.0.21",
+ "tokio",
+ "url",
+ "urlencoding",
+ "webrtc-dtls",
+ "webrtc-util",
+ "windows 0.61.3",
+]
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3544,51 +3589,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
-name = "lumen"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "bytes",
- "dirs 6.0.0",
- "discord-rich-presence",
- "env_logger",
- "futures",
- "hex",
- "hickory-resolver",
- "image",
- "libloading 0.8.9",
- "libmpv2",
- "librqbit",
- "librqbit-dualstack-sockets",
- "log",
- "once_cell",
- "parking_lot",
- "rand 0.9.5",
- "regex",
- "reqwest 0.12.28",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-deep-link",
- "tauri-plugin-lumen-native",
- "tauri-plugin-opener",
- "tauri-plugin-single-instance",
- "tauri-plugin-window-state",
- "thiserror 2.0.21",
- "tokio",
- "url",
- "urlencoding",
- "webrtc-dtls",
- "webrtc-util",
- "windows 0.61.3",
-]
-
-[[package]]
 name = "markup5ever"
 version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6048,6 +6048,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-couch-native"
+version = "0.1.0"
+dependencies = [
+ "tauri",
+ "tauri-plugin",
+]
+
+[[package]]
 name = "tauri-plugin-deep-link"
 version = "2.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6066,14 +6074,6 @@ dependencies = [
  "url",
  "windows-registry",
  "windows-result 0.4.1",
-]
-
-[[package]]
-name = "tauri-plugin-lumen-native"
-version = "0.1.0"
-dependencies = [
- "tauri",
- "tauri-plugin",
 ]
 
 [[package]]

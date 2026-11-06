@@ -53,7 +53,7 @@
 
   const visible = $derived.by(() => {
     let list = streams.filter((x) => {
-      const p = x._lumen;
+      const p = x._couch;
       if (!p) return true;
       if (s.hideCam && p.cam) return false;
       if (s.hide3d && p.threeD) return false;
@@ -62,10 +62,10 @@
       return true;
     });
     const by: Record<string, (a: Stream, b: Stream) => number> = {
-      smart: (a, b) => (b._lumen?.score ?? 0) - (a._lumen?.score ?? 0),
-      quality: (a, b) => (b._lumen?.resRank ?? 0) - (a._lumen?.resRank ?? 0) || (b._lumen?.sizeBytes ?? 0) - (a._lumen?.sizeBytes ?? 0),
-      size: (a, b) => (b._lumen?.sizeBytes ?? 0) - (a._lumen?.sizeBytes ?? 0),
-      seeders: (a, b) => (b._lumen?.seeders ?? 0) - (a._lumen?.seeders ?? 0),
+      smart: (a, b) => (b._couch?.score ?? 0) - (a._couch?.score ?? 0),
+      quality: (a, b) => (b._couch?.resRank ?? 0) - (a._couch?.resRank ?? 0) || (b._couch?.sizeBytes ?? 0) - (a._couch?.sizeBytes ?? 0),
+      size: (a, b) => (b._couch?.sizeBytes ?? 0) - (a._couch?.sizeBytes ?? 0),
+      seeders: (a, b) => (b._couch?.seeders ?? 0) - (a._couch?.seeders ?? 0),
       addon: () => 0,
     };
     return list.slice().sort(by[s.sort] ?? by.smart);
@@ -73,10 +73,10 @@
 
   const groups = $derived.by(() => {
     if (!s.groupByQuality) return [{ tier: "", items: visible }];
-    return tiers.map((t) => ({ tier: t, items: visible.filter((x) => (x._lumen?.res ?? "Unknown") === t) })).filter((g) => g.items.length);
+    return tiers.map((t) => ({ tier: t, items: visible.filter((x) => (x._couch?.res ?? "Unknown") === t) })).filter((g) => g.items.length);
   });
 
-  const best = (res: string) => visible.filter((x) => x._lumen?.res === res).sort((a, b) => b._lumen.score - a._lumen.score)[0];
+  const best = (res: string) => visible.filter((x) => x._couch?.res === res).sort((a, b) => b._couch.score - a._couch.score)[0];
 
   function choose(st: Stream) {
     haptic("medium");
@@ -130,8 +130,7 @@
     {#each Array(5) as _}<div class="ghost skeleton"></div>{/each}
   {:else if !visible.length}
     <div class="empty">
-      <Icon name="film" size={34} />
-      <p class="headline">No streams found</p>
+      <p class="bump-text">the tv got scared. no streams.</p>
       <p class="foot dim">None of your addons returned a playable stream for this. Add a stream addon in Addons, or loosen the filters in Settings → Streams.</p>
     </div>
   {:else}
@@ -146,7 +145,7 @@
       {#if !collapsed[g.tier]}
         <div class="list">
           {#each g.items as st, i (i + (st.url ?? st.infoHash ?? "") + st._addonId)}
-            {@const p = st._lumen}
+            {@const p = st._couch}
             <button class="stream press" onclick={() => choose(st)}>
               <div class="l1">
                 <span class="label">{p?.label ?? st.title ?? st.name}</span>
@@ -224,6 +223,7 @@
   }
   .t-4K {
     color: var(--tier-4k);
+    text-shadow: 0 0 14px rgb(var(--neon-rgb) / 0.55);
   }
   .t-1080p {
     color: var(--tier-1080);
@@ -241,7 +241,7 @@
     padding: 12px 14px;
     border-radius: var(--r-md);
     background: var(--cell);
-    box-shadow: inset 0 0 0 0.5px rgb(255 255 255 / 0.06);
+    box-shadow: inset 0 0 0 0.5px rgb(var(--hi) / 0.06);
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -294,9 +294,13 @@
     background: var(--good-bg);
     color: var(--good-text);
   }
+  /* quality badges: small neon pills */
   .pill.hdr {
-    background: var(--hdr-bg);
-    color: var(--hdr-text);
+    background: rgb(var(--neon-rgb) / 0.12);
+    color: var(--neon-soft);
+    box-shadow: inset 0 0 0 1px rgb(var(--neon-rgb) / 0.45), 0 0 12px -4px rgb(var(--neon-rgb) / 0.6);
+    border-radius: 999px;
+    letter-spacing: 0.02em;
   }
   .pill.plain {
     background: transparent;

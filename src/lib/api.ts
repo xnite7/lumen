@@ -152,7 +152,7 @@ export interface Stream {
   title?: string;
   description?: string;
   behaviorHints?: Record<string, any>;
-  _lumen: ParsedStream;
+  _couch: ParsedStream;
   _addonId: string;
   _addonName: string;
   [k: string]: any;
@@ -288,6 +288,9 @@ export const api = {
   simklPinStart: () => invoke<any>("simkl_pin_start"),
   simklPinPoll: (code: string) => invoke<boolean>("simkl_pin_poll", { code }),
   simklLogout: () => invoke<void>("simkl_logout"),
+  crewList: () => invoke<{ setup: boolean; members: CrewMember[] }>("crew_list"),
+  crewJoin: (url: string, code: string) => invoke<{ setup: boolean; members: CrewMember[] }>("crew_join", { url, code }),
+  crewInvite: () => invoke<string | null>("crew_invite"),
   simklSync: () => invoke<boolean>("simkl_sync"),
   simklOAuthStart: () => invoke<void>("simkl_oauth_start"),
   simklOAuthFinish: (url: string) => invoke<void>("simkl_oauth_finish", { url }),
@@ -308,9 +311,6 @@ export const api = {
   tobiiStop: () => invoke<void>("tobii_stop"),
   window: (action: string) => invoke<void>("window_action", { action }),
   pip: (on: boolean) => invoke<void>("window_pip", { on }),
-  themesUser: () => invoke<any[]>("themes_user"),
-  themeSave: (theme: any) => invoke<void>("theme_save", { theme }),
-  themesOpenDir: () => invoke<void>("themes_open_dir"),
   cacheInfo: () => invoke<{ images: number }>("cache_info"),
   cacheClear: () => invoke<void>("cache_clear"),
   importEnhanced: () => invoke<Record<string, boolean>>("import_stremio_enhanced"),
@@ -318,4 +318,14 @@ export const api = {
 
 export function uid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+export interface CrewMember {
+  id: string;
+  name: string;
+  watching: { title?: string; year?: number; poster?: string; background?: string; episode?: string; link?: string; metaId?: string; type?: string } | null;
+  paused: boolean;
+  pos: number;
+  duration: number;
+  at: number;
 }

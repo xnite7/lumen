@@ -134,7 +134,7 @@ pub async fn addons_health(s: S<'_>) -> AppResult<Vec<health::Health>> {
 
 #[tauri::command]
 pub fn addons_export(s: S<'_>) -> Value {
-    json!({ "lumen": 1, "addons": s.addons.list().iter().map(|a| a.transport_url.clone()).collect::<Vec<_>>() })
+    json!({ "couch": 1, "addons": s.addons.list().iter().map(|a| a.transport_url.clone()).collect::<Vec<_>>() })
 }
 
 #[tauri::command]
@@ -545,11 +545,11 @@ pub async fn simkl_oauth_start(app: AppHandle, s: S<'_>) -> AppResult<()> {
             let path = head.split_whitespace().nth(1).unwrap_or("/").to_string();
             let result = simkl::oauth_finish(&core, &path).await;
             let (title, line) = match &result {
-                Ok(_) => ("Connected", "Simkl is connected to Lumen. You can close this tab."),
-                Err(_) => ("Didn't work", "Simkl sign-in didn't finish. Go back to Lumen and try again."),
+                Ok(_) => ("Connected", "Simkl is connected to couch. You can close this tab."),
+                Err(_) => ("Didn't work", "Simkl sign-in didn't finish. Go back to couch and try again."),
             };
             let page = format!(
-                "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>Lumen</title><body style=\"margin:0;height:100vh;display:grid;place-items:center;background:#07080c;color:#fff;font:17px -apple-system,Segoe UI,system-ui\"><div style=text-align:center><div style=\"width:64px;height:64px;margin:0 auto 18px;border-radius:50%;background:radial-gradient(circle at 50% 38%,#fff4cc,#ffc22e 55%,#e4736a)\"></div><h1 style=\"font-size:28px;margin:0 0 8px\">{title}</h1><p style=\"opacity:.7;margin:0\">{line}</p></div><script>setTimeout(()=>window.close(),1500)</script>"
+                "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'><title>couch</title><body style=\"margin:0;height:100vh;display:grid;place-items:center;background:#07080c;color:#fff;font:17px -apple-system,Segoe UI,system-ui\"><div style=text-align:center><div style=\"width:64px;height:64px;margin:0 auto 18px;border-radius:50%;background:radial-gradient(circle at 50% 38%,#fff4cc,#ffc22e 55%,#e4736a)\"></div><h1 style=\"font-size:28px;margin:0 0 8px\">{title}</h1><p style=\"opacity:.7;margin:0\">{line}</p></div><script>setTimeout(()=>window.close(),1500)</script>"
             );
             let _ = sock.write_all(format!("HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{page}", page.len()).as_bytes()).await;
             let _ = h.emit("simkl-auth", json!({ "ok": result.is_ok(), "error": result.err().map(|e| e.to_string()) }));
@@ -745,52 +745,6 @@ pub fn window_pip(app: AppHandle, on: bool) -> AppResult<()> {
     Ok(())
 }
 
-// --------------------------------------------------------------- themes
-
-#[tauri::command]
-pub fn themes_user(s: S<'_>) -> Vec<Value> {
-    let dir = s.core.data_dir.join("themes");
-    let _ = std::fs::create_dir_all(&dir);
-    let mut out = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(&dir) {
-        for e in rd.flatten() {
-            let p = e.path();
-            if p.extension().and_then(|x| x.to_str()) != Some("json") {
-                continue;
-            }
-            if let Ok(txt) = std::fs::read_to_string(&p) {
-                if let Ok(mut v) = serde_json::from_str::<Value>(&txt) {
-                    // A sibling .css file with the same name is appended.
-                    if let Ok(css) = std::fs::read_to_string(p.with_extension("css")) {
-                        v["css"] = json!(format!("{}\n{}", v.get("css").and_then(|c| c.as_str()).unwrap_or(""), css));
-                    }
-                    v["user"] = json!(true);
-                    out.push(v);
-                }
-            }
-        }
-    }
-    out
-}
-
-#[tauri::command]
-pub fn theme_save(s: S<'_>, theme: Value) -> AppResult<()> {
-    let id = theme.get("id").and_then(|i| i.as_str()).ok_or_else(|| AppError::msg("theme needs an id"))?;
-    let safe: String = id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
-    let dir = s.core.data_dir.join("themes");
-    std::fs::create_dir_all(&dir)?;
-    std::fs::write(dir.join(format!("{safe}.json")), serde_json::to_string_pretty(&theme)?)?;
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn themes_open_dir(app: AppHandle, s: S<'_>) -> AppResult<()> {
-    use tauri_plugin_opener::OpenerExt;
-    let dir = s.core.data_dir.join("themes");
-    std::fs::create_dir_all(&dir)?;
-    app.opener().open_path(dir.to_string_lossy().to_string(), None::<&str>).map_err(|e| AppError::msg(e.to_string()))
-}
-
 // ---------------------------------------------------------------- cache
 
 #[tauri::command]
@@ -809,4 +763,36 @@ pub async fn cache_clear(s: S<'_>) -> AppResult<()> {
 #[tauri::command]
 pub async fn import_stremio_enhanced(s: S<'_>) -> AppResult<Value> {
     crate::migrate::import(&s.core)
+}
+
+// ------------------------------------------------------------------ crew
+
+#[tauri::command]
+pub async fn crew_list(s: S<'_>) -> AppResult<Value> {
+    crate::crew::list(&s.core).await
+}
+
+/// Join with a crew server URL and code (parsed from an invite link).
+#[tauri::command]
+pub async fn crew_join(s: S<'_>, url: String, code: String) -> AppResult<Value> {
+    let url = url.trim().trim_end_matches('/').to_string();
+    if !url.starts_with("https://") {
+        return Err(AppError::msg("that crew link doesn't look right"));
+    }
+    s.core.db.set_secret("crew_code", Some(code.trim()))?;
+    {
+        let mut st = s.core.settings.write();
+        st.integrations.crew_url = url;
+        s.core.db.set("settings", &*st)?;
+    }
+    crate::crew::list(&s.core).await
+}
+
+#[tauri::command]
+pub fn crew_invite(s: S<'_>) -> Option<String> {
+    let url = s.core.settings.read().integrations.crew_url.clone();
+    let code = s.core.db.secret("crew_code")?;
+    // an https link, because Discord only makes those clickable; the page
+    // hands it to couch:// and couch joins
+    (!url.is_empty()).then(|| format!("{}/join?c={}", url.trim_end_matches('/'), urlencoding::encode(&code)))
 }

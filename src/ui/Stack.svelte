@@ -179,13 +179,13 @@
     view-transition-name: none !important;
   }
   .swiping .slot.top {
-    box-shadow: -18px 0 40px rgb(0 0 0 / 0.3);
+    box-shadow: -18px 0 40px rgb(var(--lo) / 0.3);
   }
   .shade {
     z-index: 2;
     position: absolute;
     inset: 0;
-    background: #000;
+    background: var(--black);
     opacity: 0;
     pointer-events: none;
   }

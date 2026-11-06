@@ -23,7 +23,7 @@
 <Sheet bind:open title="Open in another player" width={480} onclose={() => (pb.handoff = "")}>
   <p class="sub dim lead">
     This file is a format Apple's player can't open.
-    {#if local}It's streaming from Lumen, so keep Lumen open in the background while it plays.{/if}
+    {#if local}It's streaming from couch, so keep couch open in the background while it plays.{/if}
   </p>
   <div class="group">
     <Item label="Infuse" detail="Best picture and subtitles" icon="play" tint="#ff9f0a" chevron onclick={() => go(`infuse://x-callback-url/play?url=${enc}`)} />

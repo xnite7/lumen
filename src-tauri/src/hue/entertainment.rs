@@ -78,7 +78,11 @@ pub async fn start(core: CoreRef, ip: String, user: String, psk_hex: String, are
                 .iter()
                 .enumerate()
                 .map(|(i, (ch, x, z))| {
-                    let target = frame.as_ref().map(|f| f.region_color(*x, *z, sat)).unwrap_or([0.0; 3]);
+                    let mut target = frame.as_ref().map(|f| f.region_color(*x, *z, sat)).unwrap_or([0.0; 3]);
+                    // softened toward a warm lamp: the room stays cosy even in blue scenes
+                    for (k, w) in [1.0f32, 0.9, 0.74].iter().enumerate() {
+                        target[k] *= w;
+                    }
                     let c = &mut current[i];
                     for k in 0..3 {
                         c[k] = c[k] * smooth + target[k] * bright * (1.0 - smooth);

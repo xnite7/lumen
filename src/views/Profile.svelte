@@ -132,7 +132,7 @@
       {#if signed}<Item label="Sign out of Stremio" destructive onclick={signOut} />{/if}
     </div>
 
-    <p class="foot faint ver">Lumen {app.version}</p>
+    <p class="foot faint ver">midnite™ couch {app.version}</p>
   {/if}
 </div>
 
@@ -175,7 +175,7 @@
     font-weight: 700;
     color: var(--accent-ink);
     background: linear-gradient(140deg, var(--ambient-1), var(--ambient-3));
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35);
+    box-shadow: inset 0 1px 0 rgb(var(--hi) / 0.35);
   }
   .avatar.empty {
     background: var(--fill-3);

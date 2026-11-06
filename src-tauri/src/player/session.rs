@@ -81,6 +81,7 @@ impl Session {
             });
         }
         crate::discord::update(core, crate::discord::Msg::Clear);
+        crate::crew::stopped(core);
         crate::state::hue(&core.app).on_playback(false).await;
     }
 }
@@ -159,6 +160,9 @@ pub fn spawn_tracker(player: Arc<Player>) {
                 }
                 continue;
             }
+            if let Some(known) = s.known.as_ref() {
+                crate::crew::playing(core, known, &s.req.meta, s.pos, s.duration, s.user_paused);
+            }
             if let Some(known) = s.known.clone() {
                 let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
                 let end = now + ((s.duration - s.pos) * 1000.0) as i64;
@@ -171,8 +175,14 @@ pub fn spawn_tracker(player: Arc<Player>) {
                     sent = Some((s.user_paused, end));
                 }
             }
+            // couch mode: lights go down when playback starts, come up a
+            // little on pause, and are restored when the session ends
             if was_hue != Some(s.paused) {
-                crate::state::hue(&core.app).on_playback(!s.paused).await;
+                let hue = crate::state::hue(&core.app);
+                if was_hue.is_none() {
+                    hue.on_playback(true).await;
+                }
+                hue.on_pause(s.paused).await;
                 was_hue = Some(s.paused);
             }
 

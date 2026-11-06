@@ -1,7 +1,7 @@
 //! The Simkl worker, brought home.
 //!
 //! The worker existed because a plugin couldn't answer stremio-core's HTTP
-//! requests -- core ran in a Web Worker with its own fetch. Lumen IS the core
+//! requests -- core ran in a Web Worker with its own fetch. couch IS the core
 //! now, so the same catalogs are answered in-process: no deploy, no public
 //! URL, no subrequest budget, and the keys never leave your machine.
 
@@ -70,9 +70,9 @@ pub fn descriptor() -> AddonDescriptor {
         transport_url: BUILTIN_TRANSPORT.into(),
         transport_name: "builtin".into(),
         manifest: Manifest {
-            id: "app.lumen.builtin".into(),
+            id: "com.midnite.couch.builtin".into(),
             version: env!("CARGO_PKG_VERSION").into(),
-            name: "Lumen".into(),
+            name: "couch".into(),
             description: Some("Simkl lists, TMDB browse rows, Top 10 and richer artwork — built in.".into()),
             logo: None,
             background: None,
@@ -207,7 +207,7 @@ async fn new_episodes(core: &Core, skip: u32) -> AppResult<Vec<Value>> {
     let now = chrono_now();
     let mut hits: Vec<(i64, Value)> = vec![];
     for file in ["tv", "anime"] {
-        let u = format!("https://data.simkl.in/calendar/v2/{file}.json?client_id={}&app-name=lumen&app-version=1.0", urlencoding::encode(&cid));
+        let u = format!("https://data.simkl.in/calendar/v2/{file}.json?client_id={}&app-name=couch&app-version=1.0", urlencoding::encode(&cid));
         let Ok(cal) = core.http.get_json_cached::<Value>(&u, std::time::Duration::from_secs(3600 * 3), std::time::Duration::from_secs(12)).await else { continue };
         for c in cal.as_array().into_iter().flatten() {
             let Some(id) = c.pointer("/ids/simkl_id").map(|i| i.to_string()) else { continue };
