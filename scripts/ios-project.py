@@ -86,7 +86,7 @@ if not any(d.get("package") == "MPVKit" for d in deps):
 yaml.safe_dump(spec, open(spec_path, "w"), sort_keys=False)
 print(f"patched {app_name} ({bundle_id}) + CouchWidgets", file=sys.stderr)
 
-# iOS 18 home-screen appearances: dark and tinted variants of the icon.
+# The 1024 icon as a single universal entry (iOS draws its own dark/tinted looks).
 import glob, json, shutil, os
 here = os.path.dirname(os.path.abspath(__file__))
 src = os.path.join(here, "..", "src-tauri", "icons", "ios-appearance")
@@ -94,11 +94,9 @@ for iconset in glob.glob("**/AppIcon.appiconset", recursive=True):
     cpath = os.path.join(iconset, "Contents.json")
     contents = json.load(open(cpath))
     images = [i for i in contents.get("images", []) if not i.get("appearances") and i.get("filename") != "AppIcon-any.png"]
-    for name in ("any", "dark", "tinted"):
+    for name in ("any",):
         shutil.copy(os.path.join(src, f"AppIcon-{name}.png"), os.path.join(iconset, f"AppIcon-{name}.png"))
     images.append({"filename": "AppIcon-any.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"})
-    for name in ("dark", "tinted"):
-        images.append({"appearances": [{"appearance": "luminosity", "value": name}], "filename": f"AppIcon-{name}.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"})
     contents["images"] = images
     json.dump(contents, open(cpath, "w"), indent=2)
-    print(f"icon appearances added to {iconset}", file=sys.stderr)
+    print(f"icon added to {iconset}", file=sys.stderr)

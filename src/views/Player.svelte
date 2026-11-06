@@ -9,6 +9,7 @@
   import Icon from "../components/Icon.svelte";
   import EyeBubbles, { type Bubble } from "../components/EyeBubbles.svelte";
   import { saveSettings } from "../lib/stores/app.svelte";
+  import wobble from "../assets/brand/couch-wobble.webp";
 
   let idle = $state(false);
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -288,7 +289,7 @@
       {#if st.pos < 1 && bg}<img class="art" src={img(bg, "original")} alt="" />{/if}
       <div class="load-center">
         {#if pb.meta?.logo}<img class="load-logo" src={img(pb.meta.logo)} alt="" />{/if}
-        <div class="ring"></div>
+        <img class="couch-load" src={wobble} alt="" />
         {#if torrent?.peers != null}
           <p class="foot dim">{torrent.peers} peers · {(torrent.downloadMbps ?? 0).toFixed(1)} MB/s</p>
         {:else if st.bufferingPct > 0}
@@ -670,7 +671,12 @@
     object-fit: contain;
     filter: drop-shadow(0 4px 20px rgb(var(--lo) / 0.5));
   }
-  .ring,
+  /* the couch wobbling while the stream warms up */
+  .couch-load {
+    width: 150px;
+    height: auto;
+    opacity: 0.9;
+  }
   .mini-ring {
     width: 38px;
     height: 38px;

@@ -9,6 +9,8 @@
   import Controls from "../components/Controls.svelte";
   import Cell from "../components/Cell.svelte";
   import Icon from "../components/Icon.svelte";
+  import boil from "../assets/brand/couch-boil.webp";
+  import wobble from "../assets/brand/couch-wobble.webp";
 
   const s = app.settings;
   let link = $state("");
@@ -52,10 +54,10 @@
   <p class="lede dim">the midnite crew, live.</p>
 
   {#if !crew.loaded}
-    <p class="bump-text quiet">finding the remote…</p>
+    <div class="state"><img src={wobble} alt="" /><p class="bump-text">finding the remote…</p></div>
   {:else if !crew.setup}
     <section class="setup">
-      <p class="bump-text quiet">it's just you and the couch.</p>
+      <div class="state"><img src={boil} alt="" /><p class="bump-text">it's just you and the couch.</p></div>
       <form class="join glass" onsubmit={join}>
         <Icon name="link" size={18} />
         <input bind:value={link} placeholder="paste the crew link" spellcheck="false" autocapitalize="off" />
@@ -68,7 +70,7 @@
     {#if live.length}
       <CouchRow big />
     {:else}
-      <p class="bump-text quiet">nobody's on the couch. save them a seat.</p>
+      <div class="state"><img src={boil} alt="" /><p class="bump-text">nobody's on the couch. save them a seat.</p></div>
     {/if}
     {#if idle.length}
       <p class="foot dim around">around: {idle.map((m) => m.name).join(", ")}</p>
@@ -111,6 +113,21 @@
   .quiet {
     padding: 48px var(--gutter);
     color: var(--text-dim);
+  }
+  .state {
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    padding: 28px var(--gutter) 20px;
+    color: var(--text-dim);
+  }
+  .state img {
+    width: min(240px, 56vw);
+    height: auto;
+    opacity: 0.85;
+  }
+  .state p {
+    margin: 0;
   }
   .setup {
     display: flex;

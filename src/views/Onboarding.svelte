@@ -6,6 +6,7 @@
   import { app, saveSettings, refreshSecrets } from "../lib/stores/app.svelte";
   import { applyCurrent } from "../lib/stores/theme.svelte";
   import Logo from "../components/Logo.svelte";
+  import boil from "../assets/brand/couch-boil.webp";
   import { toast, errorText } from "../lib/stores/toast.svelte";
   import { haptic, isIOS } from "../lib/native";
   import { ui } from "../lib/ui.svelte";
@@ -178,7 +179,7 @@
     <section class="step" style:--dir={dir}>
       {#if step === "welcome"}
         <div class="welcome">
-          <div class="sign"><Logo size={132} lit flicker /></div>
+          <img class="sign" src={boil} alt="" />
           <h1 class="wordmark">midnite<sup>™</sup> couch</h1>
           <p class="bump-text tagline">welcome to the couch.</p>
         </div>
@@ -314,6 +315,7 @@
         <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>continue</button></div>
       {:else}
         <div class="welcome">
+          <img class="sign" src={boil} alt="" />
           <p class="bump-text done-line">you're on the couch.</p>
         </div>
         <div class="foot-actions"><button class="btn lg block primary press" onclick={finish}>press play</button></div>
@@ -447,7 +449,10 @@
     gap: 10px;
   }
   .sign {
+    width: min(280px, 60vw);
+    height: auto;
     margin-bottom: 8px;
+    animation: rise 900ms var(--glide) both;
   }
   .wordmark {
     margin: 0;

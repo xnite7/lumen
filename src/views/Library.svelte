@@ -1,4 +1,5 @@
 <script lang="ts">
+  import boil from "../assets/brand/couch-boil.webp";
   import { lib, loadLibrary } from "../lib/stores/library.svelte";
   import { app } from "../lib/stores/app.svelte";
   import { api, type Meta } from "../lib/api";
@@ -80,6 +81,7 @@
     </div>
   {:else if lib.loaded}
     <div class="empty rise">
+      <img class="couch-empty" src={boil} alt="" />
       <p class="bump-text">nothing yet. get comfy.</p>
       <p class="sub dim">Press + on anything you want to keep around.</p>
       {#if !app.secrets.stremio_auth}
@@ -144,5 +146,10 @@
       grid-template-columns: repeat(3, 1fr);
       gap: 16px 10px;
     }
+  }
+  .couch-empty {
+    width: min(220px, 50vw);
+    height: auto;
+    opacity: 0.85;
   }
 </style>
