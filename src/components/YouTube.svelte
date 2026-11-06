@@ -53,6 +53,14 @@
 
   let playing = $state(false);
 
+  // YouTube picks quality from the player's own pixel size, so a small card
+  // got 240p. Render the player at (at least) 1600 px wide and scale it down
+  // to fit: it streams 1080p and looks sharp at any size.
+  const BASE = 1600;
+  let w = $state(0);
+  let h = $state(0);
+  const k = $derived(w > 0 ? Math.min(1, w / BASE) : 1);
+
   function onLoad() {
     // Ask the player to start talking to us.
     frame?.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: 1, channel: "widget" }), "*");
@@ -62,8 +70,10 @@
 
 <svelte:window onmessage={onMessage} />
 
-<div class="yt" class:fill class:playing>
+<div class="yt" class:fill class:playing bind:clientWidth={w} bind:clientHeight={h}>
+  <div class="scaler" style:width="{w / k}px" style:height="{h / k}px" style:transform="scale({k})">
   <iframe bind:this={frame} {src} title="Trailer" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" onload={onLoad} tabindex="-1"></iframe>
+  </div>
 </div>
 
 <style>
@@ -78,20 +88,26 @@
   .yt.playing {
     opacity: 1;
   }
+  .scaler {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+  }
   iframe {
     position: absolute;
     border: 0;
     /* oversize to push YouTube's own chrome off the edges */
     width: 100%;
-    height: calc(100% + 120px);
-    top: -60px;
+    height: calc(100% + 140px);
+    top: -70px;
     left: 0;
   }
   /* zoom scope (2.39:1) trailers so they fill instead of letterboxing */
   .fill iframe {
     width: 135%;
     left: -17.5%;
-    height: calc(135% + 120px);
-    top: calc(-17.5% - 60px);
+    height: calc(135% + 140px);
+    top: calc(-17.5% - 70px);
   }
 </style>

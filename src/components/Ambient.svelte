@@ -6,7 +6,6 @@
   import { img } from "../lib/api";
   import { ambient } from "../lib/stores/ambient.svelte";
   import { app } from "../lib/stores/app.svelte";
-  import { gaze } from "../lib/stores/gaze.svelte";
 
   let layers = $state<{ id: number; src: string }[]>([]);
   let n = 0;
@@ -18,20 +17,11 @@
     untrack(() => (layers = [...layers.slice(-1), { id, src }]));
   });
 
-  // Head-tracked parallax (Tobii): the backdrop drifts opposite your head,
-  // like looking through a window.
-  const shift = $derived.by(() => {
-    if (!app.settings.tobii.enabled || !app.settings.tobii.headParallax) return "";
-    const k = app.settings.tobii.parallaxStrength;
-    const x = Math.max(-1, Math.min(1, gaze.head.x / 220)) * 18 * k;
-    const y = Math.max(-1, Math.min(1, gaze.head.y / 160)) * 12 * k;
-    return `translate3d(${-x}px, ${y}px, 0) scale(1.08)`;
-  });
 </script>
 
 <div class="ambient" aria-hidden="true" class:off={app.playing}>
   {#each layers as l (l.id)}
-    <div class="ambient-layer" style:background-image="url({l.src})" style:transform={shift || undefined}></div>
+    <div class="ambient-layer" style:background-image="url({l.src})"></div>
   {/each}
   <div class="wash"></div>
   <div class="scanlines"></div>

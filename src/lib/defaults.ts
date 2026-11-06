@@ -100,7 +100,7 @@ export const DEFAULT_SETTINGS = {
     stremioSync: true,
     kinocheckTrailers: true,
     discordPresence: true,
-    discordAppId: "",
+    discordAppId: "1568062298721886290",
   },
   hue: {
     enabled: false,
@@ -124,8 +124,7 @@ export const DEFAULT_SETTINGS = {
     presencePause: true,
     presenceGraceMs: 2500,
     gazeControls: true,
-    lookToPreview: true,
-    dwellMs: 700,
+    dwellMs: 800,
     headParallax: true,
     parallaxStrength: 1,
     awayDimsLights: false,

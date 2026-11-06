@@ -14,6 +14,9 @@
 use crate::core::Core;
 use serde_json::Value;
 
+/// Lumen's Discord application (its name is what friends see).
+const DEFAULT_APP_ID: &str = "1568062298721886290";
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Known {
     pub title: String,
@@ -200,9 +203,7 @@ pub fn update(core: &Core, m: Msg) {
             let s = core.settings.read();
             (s.integrations.discord_presence, s.integrations.discord_app_id.trim().to_string())
         };
-        if id.is_empty() {
-            return;
-        }
+        let id = if id.is_empty() { DEFAULT_APP_ID.to_string() } else { id };
         let m = if on { m } else { Msg::Clear };
         imp::send(&id, m);
     }

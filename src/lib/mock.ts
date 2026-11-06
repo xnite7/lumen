@@ -86,6 +86,7 @@ export async function mock(cmd: string, args: any): Promise<any> {
       const st = structuredClone(DEFAULT_SETTINGS);
       st.general.onboarded = q.has("onboarded");
       if (q.get("theme")) st.general.theme = q.get("theme")!;
+      if (q.has("tobii")) st.tobii.enabled = true;
       return st;
     }
     case "secrets_status":

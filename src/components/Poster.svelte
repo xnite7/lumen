@@ -3,7 +3,6 @@
   import { app } from "../lib/stores/app.svelte";
   import { openPreview, closePreview, preview } from "../lib/stores/preview.svelte";
   import { inLibrary } from "../lib/stores/library.svelte";
-  import { dwell } from "../lib/stores/gaze.svelte";
   import { openDetail } from "../lib/open";
   import Icon from "./Icon.svelte";
   import { pressMenu } from "../lib/menu.svelte";
@@ -64,7 +63,6 @@
   onmousemove={arm}
   onmouseleave={disarm}
   onclick={click}
-  use:dwell={() => el && !hidden && openPreview(meta, el)}
   use:pressMenu={() => (hidden ? null : posterMenu(meta))}
   aria-label={meta.name}
 >

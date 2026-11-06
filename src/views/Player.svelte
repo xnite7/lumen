@@ -3,11 +3,11 @@
   // transparent page -- everything here is the glass floating over it.
   import { api, img } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
-  import { gaze } from "../lib/stores/gaze.svelte";
   import { pb, close, cmd, nextVideo, playNext } from "../lib/stores/playback.svelte";
   import { time, lang, episodeLabel } from "../lib/format";
   import YouTube from "../components/YouTube.svelte";
   import Icon from "../components/Icon.svelte";
+  import EyeBubbles, { type Bubble } from "../components/EyeBubbles.svelte";
 
   let idle = $state(false);
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -36,10 +36,6 @@
   $effect(() => {
     poke();
     return () => clearTimeout(idleTimer);
-  });
-  // Eyes on the bottom of the screen bring the controls back (Tobii).
-  $effect(() => {
-    if (app.settings.tobii.enabled && app.settings.tobii.gazeControls && gaze.inside && gaze.y > innerHeight * 0.8) poke();
   });
   const chromeHidden = $derived(idle && !st.paused && !menu && !pb.loading && !pb.error);
 
@@ -130,6 +126,35 @@
 
   // ---------------------------------------------------------------- up next
   const next = $derived(nextVideo());
+
+  // ------------------------------------------------------------ eye controls
+  const eyeItems = $derived.by((): Bubble[] => {
+    const n = pbs.seekSmall;
+    const list: Bubble[] = [];
+    if (next) list.push({ id: "next", icon: "next", label: "Next episode", run: playNext });
+    list.push({ id: "fwd", icon: "skipF", label: `Forward ${n}s`, run: () => seekBy(n), repeat: true });
+    list.push({ id: "toggle", icon: st.paused ? "play" : "pause", label: st.paused ? "Play" : "Pause", run: toggle });
+    list.push({ id: "back", icon: "skipB", label: `Back ${n}s`, run: () => seekBy(-n), repeat: true });
+    if (activeSegment) list.push({ id: "skip", icon: "forward", label: segLabel[activeSegment.kind] ?? "Skip", run: () => seekTo(activeSegment!.end) });
+    else list.push({ id: "mute", icon: st.muted ? "volume" : "mute", label: st.muted ? "Unmute" : "Mute", run: mute });
+    return list;
+  });
+  const HINT_KEY = "lumen.eyeHint.v1";
+  let eyeHint = $state(false);
+  $effect(() => {
+    if (!app.settings.tobii.enabled || !app.settings.tobii.gazeControls || pb.meta?.type !== "series") return;
+    let seen = false;
+    try {
+      seen = !!localStorage.getItem(HINT_KEY);
+    } catch {}
+    if (!seen) eyeHint = true;
+  });
+  function hintDone() {
+    eyeHint = false;
+    try {
+      localStorage.setItem(HINT_KEY, "1");
+    } catch {}
+  }
   const creditsStart = $derived(pb.segments?.credits?.[0]?.start);
   const showUpNext = $derived(
     !!next && !upNextDismissed && st.duration > 60 && (creditsStart ? st.pos >= creditsStart : st.duration - st.pos <= pbs.nextCardSecs),
@@ -305,6 +330,22 @@
     </div>
   {/if}
 
+  <EyeBubbles items={eyeItems} onopen={() => eyeHint && hintDone()} />
+  {#if eyeHint}
+    <div class="eye-hint">
+      <div class="demo" aria-hidden="true">
+        <span class="screen"></span>
+        <span class="dot"></span>
+        {#each Array(4) as _, i}<span class="mini" style:--i={i}></span>{/each}
+      </div>
+      <div class="hint-txt">
+        <span class="headline">Eye controls</span>
+        <span class="foot">Look at the <b>bottom-left corner</b>. Bubbles float up on the left. Rest your eyes on one to pause, skip back, or jump to the next episode.</span>
+        <button class="btn primary small press" onclick={hintDone}>Got it</button>
+      </div>
+    </div>
+  {/if}
+
   <!-- top chrome -->
   <header class="top" class:gone={chromeHidden}>
     <button class="round glass press" onclick={close} aria-label="Close player"><Icon name="back" size={20} /></button>
@@ -398,6 +439,120 @@
 </div>
 
 <style>
+  .eye-hint {
+    position: fixed;
+    z-index: 115;
+    left: 50%;
+    top: 104px;
+    translate: -50% 0;
+    width: min(560px, calc(100vw - 40px));
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    padding: 18px 20px;
+    border-radius: 26px;
+    background: rgb(18 18 22 / 0.86);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.14),
+      0 30px 60px -20px rgb(0 0 0 / 0.8);
+    animation: hint-in 600ms var(--spring) both;
+  }
+  @keyframes hint-in {
+    from {
+      opacity: 0;
+      transform: translateY(-16px) scale(0.96);
+    }
+  }
+  .hint-txt {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+  }
+  .hint-txt .foot {
+    color: rgb(255 255 255 / 0.78);
+    line-height: 1.4;
+  }
+  .hint-txt b {
+    color: #fff;
+  }
+  .hint-txt .btn {
+    margin-top: 6px;
+  }
+  /* a tiny screen: the gaze dot drifts to the corner, bubbles rise in a "(" */
+  .demo {
+    position: relative;
+    flex: none;
+    width: 128px;
+    height: 84px;
+  }
+  .screen {
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #2a2f3a, #14161c);
+    box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.2);
+  }
+  .dot {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    margin: -5px;
+    border-radius: 50%;
+    background: #ffc22e;
+    box-shadow: 0 0 10px 3px rgb(255 194 46 / 0.6);
+    animation: look 3.6s ease-in-out infinite;
+  }
+  @keyframes look {
+    0%,
+    10% {
+      left: 64%;
+      top: 40%;
+    }
+    35%,
+    45% {
+      left: 9%;
+      top: 88%;
+    }
+    65%,
+    100% {
+      left: 14%;
+      top: 50%;
+    }
+  }
+  .mini {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    margin: -7px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 32% 28%, rgb(255 255 255 / 0.8), rgb(255 255 255 / 0.15) 50%, rgb(255 255 255 / 0.3));
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.5);
+    top: calc(18% + var(--i) * 21%);
+    left: calc(12% + (var(--i) - 1.5) * (var(--i) - 1.5) * 3%);
+    animation: mini 3.6s infinite;
+    animation-delay: calc(var(--i) * 60ms);
+  }
+  @keyframes mini {
+    0%,
+    45% {
+      opacity: 0;
+      transform: translateY(18px) scale(0.3);
+    }
+    58% {
+      opacity: 1;
+      transform: translateY(-2px) scale(1.15);
+    }
+    66%,
+    92% {
+      opacity: 1;
+      transform: none;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
   /* Video is always dark, whatever the theme: the player's chrome uses its
      own dark material so it stays readable over any picture. */
   .player {

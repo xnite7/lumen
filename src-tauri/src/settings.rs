@@ -304,7 +304,7 @@ impl Default for Integrations {
             stremio_sync: true,
             kinocheck_trailers: true,
             discord_presence: true,
-            discord_app_id: String::new(),
+            discord_app_id: "1568062298721886290".into(),
         }
     }
 }
@@ -363,10 +363,9 @@ pub struct Tobii {
     /// Pause when you look away, resume when you come back.
     pub presence_pause: bool,
     pub presence_grace_ms: u32,
-    /// Player controls appear when you look at the bottom of the screen.
+    /// Look at the bottom-left corner in the player: dwell bubbles appear.
     pub gaze_controls: bool,
-    /// Dwell on a poster with your eyes to open its preview.
-    pub look_to_preview: bool,
+    /// How long to rest your eyes on a bubble.
     pub dwell_ms: u32,
     /// Hero artwork shifts with your head like a window.
     pub head_parallax: bool,
@@ -383,8 +382,7 @@ impl Default for Tobii {
             presence_pause: true,
             presence_grace_ms: 2500,
             gaze_controls: true,
-            look_to_preview: true,
-            dwell_ms: 700,
+            dwell_ms: 800,
             head_parallax: true,
             parallax_strength: 1.0,
             away_dims_lights: false,

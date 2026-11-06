@@ -3,6 +3,7 @@
   import { app } from "../lib/stores/app.svelte";
   import { setAmbient } from "../lib/stores/ambient.svelte";
   import { pageCtx, isActive } from "../lib/page";
+  import { parallax } from "../lib/stores/gaze.svelte";
   const page = pageCtx();
   import { inLibrary, toggleLibrary, setWatched, watchedIds, progressOf, itemOf, lib } from "../lib/stores/library.svelte";
   import { play, orderedVideos } from "../lib/stores/playback.svelte";
@@ -150,10 +151,10 @@
   <article class="detail">
     <section class="hero">
       {#if backdrop}
-        <img class="bg" src={img(backdrop, "original")} alt="" style:view-transition-name="hero-art" />
+        <img class="bg" src={img(backdrop, "original")} alt="" style:view-transition-name="hero-art" use:parallax={1} />
       {/if}
       <div class="hero-shade"></div>
-      <div class="info">
+      <div class="info" use:parallax={-0.3}>
         {#if logo}
           <img class="logo" src={img(logo)} alt={m.name} />
         {:else}

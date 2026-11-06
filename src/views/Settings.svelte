@@ -310,7 +310,6 @@
             <h3 class="group-head">Discord</h3>
             <div class="group">
               <Cell label="Show what you're watching" hint="Only titles Simkl knows, with Simkl's own name and poster. Anything else never appears."><Controls kind="switch" bind:value={s.integrations.discordPresence} onchange={changed} /></Cell>
-              <Cell label="Application ID" hint="From discord.com/developers. The app's name is what friends see."><input class="field small" bind:value={s.integrations.discordAppId} onchange={changed} inputmode="numeric" placeholder="1234…" /></Cell>
             </div>
           {/if}
           <h3 class="group-head">Vibe search</h3>
@@ -398,10 +397,12 @@
           <div class="group">
             <Cell label="Pause when I look away" hint="Resumes when you look back."><Controls kind="switch" bind:value={s.tobii.presencePause} onchange={changed} /></Cell>
             <Cell label="Grace period" hint="{(s.tobii.presenceGraceMs / 1000).toFixed(1)} s"><div style="width:200px"><Controls kind="slider" bind:value={s.tobii.presenceGraceMs} min={800} max={8000} step={100} onchange={changed} label="Grace" /></div></Cell>
-            <Cell label="Show controls when I look down" hint="Player controls appear when your eyes rest on the bottom of the screen."><Controls kind="switch" bind:value={s.tobii.gazeControls} onchange={changed} /></Cell>
-            <Cell label="Look to preview" hint="Rest your eyes on a poster to open its preview."><Controls kind="switch" bind:value={s.tobii.lookToPreview} onchange={changed} /></Cell>
-            <Cell label="Dwell time" hint="{s.tobii.dwellMs} ms"><div style="width:200px"><Controls kind="slider" bind:value={s.tobii.dwellMs} min={300} max={2000} step={50} onchange={changed} label="Dwell" /></div></Cell>
+            <Cell label="Eye controls" hint="Look at the bottom-left corner while watching: bubbles appear, rest your eyes on one to use it."><Controls kind="switch" bind:value={s.tobii.gazeControls} onchange={changed} /></Cell>
+            <Cell label="Bubble dwell time" hint="{s.tobii.dwellMs} ms"><div style="width:200px"><Controls kind="slider" bind:value={s.tobii.dwellMs} min={300} max={2000} step={50} onchange={changed} label="Dwell" /></div></Cell>
             <Cell label="Window effect" hint="Artwork shifts with your head, like looking through glass."><Controls kind="switch" bind:value={s.tobii.headParallax} onchange={changed} /></Cell>
+            {#if s.tobii.headParallax}
+              <Cell label="Window depth" hint="{Math.round(s.tobii.parallaxStrength * 100)}%"><div style="width:200px"><Controls kind="slider" bind:value={s.tobii.parallaxStrength} min={0.3} max={2} step={0.1} onchange={changed} label="Depth" /></div></Cell>
+            {/if}
             <Cell label="Effect strength"><div style="width:200px"><Controls kind="slider" bind:value={s.tobii.parallaxStrength} min={0.2} max={2.5} step={0.1} onchange={changed} label="Strength" /></div></Cell>
           </div>
         {:else if section === "home"}

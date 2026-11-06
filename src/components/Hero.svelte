@@ -3,6 +3,7 @@
   import { app } from "../lib/stores/app.svelte";
   import { setAmbient } from "../lib/stores/ambient.svelte";
   import { pageCtx, isActive } from "../lib/page";
+  import { parallax } from "../lib/stores/gaze.svelte";
   const page = pageCtx();
   import { inLibrary, toggleLibrary } from "../lib/stores/library.svelte";
   import { openDetail } from "../lib/open";
@@ -154,16 +155,19 @@
     role="group"
   >
     <div class="stage">
-      {#key cur.id}
-        <img class="bg" src={img(bg, "original")} alt="" />
-      {/key}
-      {#if trailer}
-        <YouTube id={trailer} {muted} fill onplaying={() => (trailerOn = true)} onended={() => setTimeout(next, 2500)} />
-      {/if}
+      <div class="pane" use:parallax={1}>
+        {#key cur.id}
+          <img class="bg" src={img(bg, "original")} alt="" />
+        {/key}
+        {#if trailer}
+          <YouTube id={trailer} {muted} fill onplaying={() => (trailerOn = true)} onended={() => setTimeout(next, 2500)} />
+        {/if}
+      </div>
       <div class="hero-shade"></div>
     </div>
 
     <div class="info" class:quiet={trailerOn}>
+      <div use:parallax={-0.35}>
       {#key cur.id}
         <div class="copy">
           {#if cur.logo}
@@ -180,6 +184,7 @@
           {#if cur.description}<p class="desc clamp-3">{cur.description}</p>{/if}
         </div>
       {/key}
+      </div>
       <div class="actions">
         <button class="btn lg primary press" onclick={() => openDetail(cur, el)}><Icon name="play" size={18} /> Play</button>
         <button class="btn lg glass press" onclick={() => toggleLibrary(cur)}>
@@ -221,6 +226,10 @@
     transform: translateY(calc(var(--lift, 0) * 18%)) scale(calc(1 + var(--lift, 0) * 0.06));
     opacity: calc(1 - var(--lift, 0) * 0.6);
     will-change: transform;
+  }
+  .pane {
+    position: absolute;
+    inset: 0;
   }
   .bg {
     /* fade the art itself into the page so there's no seam where it ends */
