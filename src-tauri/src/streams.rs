@@ -64,6 +64,7 @@ re!(RWEBDL, r"(?i)\bweb[- .]?dl\b");
 re!(RWEBRIP, r"(?i)\bweb-?rip\b");
 re!(RHDTV, r"(?i)\bhdtv\b");
 re!(RCAM, r"(?i)\b(cam|camrip|hdcam|ts|telesync|hdts|tc|telecine)\b");
+re!(RVIDEXT, r"(?i)\.(mkv|mp4|avi|m4v|ts|mov|webm|wmv)$");
 re!(R3D, r"(?i)\b(3d|sbs|h-?sbs|f-?sbs|half[ ._-]?sbs|full[ ._-]?sbs|h-?ou|f-?ou|half[ ._-]?ou|full[ ._-]?ou|h-?tab)\b");
 re!(ROU, r"(?i)\b(h-?ou|f-?ou|half[ ._-]?ou|full[ ._-]?ou|h-?tab|tab|over[ ._-]?under|top[ ._-]?bottom)\b");
 re!(RSIZE, r"(?i)(?:💾|size[:\s]*)?\s*(\d+(?:[.,]\d+)?)\s*(tb|gb|mb|gib|mib)\b");
@@ -203,16 +204,32 @@ pub fn parse(s: &Value) -> Parsed {
         p.group = RGROUP.captures(f).map(|c| c[1].to_string());
     }
 
-    // The first line of the title is usually the release name; fall back to
-    // the addon's name column.
-    p.label = s
-        .get("title")
-        .or_else(|| s.get("description"))
+    // Label: the real release name. The file name when the addon gives one
+    // (formatted addons like AIOStreams put tags in the text instead), else
+    // the title line that looks most like a release, else the first line.
+    let file_label = s
+        .pointer("/behaviorHints/filename")
         .and_then(|v| v.as_str())
-        .and_then(|v| v.lines().next())
-        .unwrap_or_else(|| s.get("name").and_then(|v| v.as_str()).unwrap_or("Stream"))
-        .trim()
-        .to_string();
+        .map(|f| RVIDEXT.replace(f.trim(), "").to_string())
+        .filter(|f| f.len() > 4);
+    let text_label = || {
+        let lines: Vec<&str> = s
+            .get("title")
+            .or_else(|| s.get("description"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
+        lines
+            .iter()
+            .find(|l| l.matches('.').count() >= 3 && !l.contains(' '))
+            .or_else(|| lines.first())
+            .map(|l| l.to_string())
+            .unwrap_or_else(|| s.get("name").and_then(|v| v.as_str()).unwrap_or("Stream").trim().to_string())
+    };
+    p.label = file_label.unwrap_or_else(text_label);
 
     p.score = score(&p);
     p

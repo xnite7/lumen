@@ -1,4 +1,14 @@
 <script lang="ts">
+  // Flags render as bare letters on Windows ("GB"), which read like file
+  // sizes; show them as language codes instead.
+  const FLAG_LANG: Record<string, string> = { GB: "EN", US: "EN", AU: "EN", CA: "EN", JP: "JA", KR: "KO", CN: "ZH", TW: "ZH", HK: "ZH", UA: "UK", DK: "DA", SE: "SV", GR: "EL", CZ: "CS", IL: "HE", IR: "FA", IN: "HI", BR: "PT", MX: "ES", AR: "ES", SA: "AR", AE: "AR", EG: "AR", VN: "VI", RS: "SR", NO: "NO" };
+  function langsOf(flags: string[]) {
+    const codes = flags.map((f) => {
+      const cc = [...f].map((ch) => String.fromCharCode((ch.codePointAt(0) ?? 0) - 0x1f1e6 + 65)).join("");
+      return /^[A-Z]{2}$/.test(cc) ? (FLAG_LANG[cc] ?? cc) : f;
+    });
+    return [...new Set(codes)].join(" · ");
+  }
   // Streams, grouped by resolution and ranked the way you'd pick by hand:
   // instant debrid first, then quality, then the extras that make a 4K worth
   // it. Results appear as each addon answers; "Best" buttons are one tap.
@@ -163,7 +173,7 @@
                 {#each (p?.audio ?? []).slice(0, 2) as a}<span class="pill">{a}</span>{/each}
                 {#if p?.sizeBytes}<span class="pill plain">{bytes(p.sizeBytes)}</span>{/if}
                 {#if p?.kind === "torrent"}<span class="pill plain"><Icon name="magnet" size={11} /> P2P</span>{/if}
-                {#each p?.languages ?? [] as f}<span class="flag">{f}</span>{/each}
+                {#if p?.languages?.length}<span class="pill plain langs" title="Audio / subtitle languages">{langsOf(p.languages)}</span>{/if}
                 <span class="src dim">{st._addonName}{p?.debrid ? ` · ${p.debrid}` : ""}</span>
               </div>
             </button>
