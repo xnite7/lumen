@@ -11,7 +11,7 @@ export function applyCurrent() {
   const g = app.settings.general;
   const root = document.documentElement;
   root.style.setProperty("--grain-opacity", g.grain ? "0.03" : "0");
-  root.style.setProperty("--ambient-strength", g.ambientGlow ? "0.45" : "0");
+  root.style.setProperty("--ambient-strength", g.ambientGlow ? "0.3" : "0");
   root.style.setProperty("--neon-k", String(NEON_K[g.neon as keyof typeof NEON_K] ?? 1));
   root.dataset.neon = g.neon;
   root.classList.toggle("refraction", g.refraction);

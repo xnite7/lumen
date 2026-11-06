@@ -19,10 +19,10 @@
 
 :root {
   /* ------------------------------------------------------ midnite core */
-  --bg: #0c070b; /* plum-black room, never pure black */
-  --surface: #160e14; /* cards, sheets */
-  --surface-2: #211620; /* raised / hover */
-  --leather: #1a1614; /* warm black: player chrome */
+  --bg: #000000; /* OLED black: pixels off */
+  --surface: #0a0809; /* cards, sheets: barely lifted off black */
+  --surface-2: #141113; /* raised / hover */
+  --leather: #0d0b0a; /* warm black: player chrome */
   --neon: #e0309a;
   --neon-soft: #ff6ec4;
   --lamp: #ffb25c;
@@ -32,7 +32,7 @@
 
   /* channels for alpha mixes: rgb(var(--hi) / .2) etc. */
   --hi: 244 234 240; /* warm white */
-  --lo: 8 4 7; /* deepest plum */
+  --lo: 0 0 0; /* true black */
   --neon-rgb: 224 48 154;
   --lamp-rgb: 255 178 92;
   --white: var(--text);
@@ -44,12 +44,12 @@
   --label-2: rgb(var(--hi) / 0.6);
   --label-3: rgb(var(--hi) / 0.34);
   --label-4: rgb(var(--hi) / 0.16);
-  --fill-1: rgb(150 110 140 / 0.34);
-  --fill-2: rgb(150 110 140 / 0.26);
-  --fill-3: rgb(150 110 140 / 0.19);
-  --fill-4: rgb(150 110 140 / 0.12);
-  --separator: rgb(150 110 140 / 0.22);
-  --cell: rgb(var(--hi) / 0.05);
+  --fill-1: rgb(120 110 118 / 0.3);
+  --fill-2: rgb(120 110 118 / 0.22);
+  --fill-3: rgb(120 110 118 / 0.15);
+  --fill-4: rgb(120 110 118 / 0.09);
+  --separator: rgb(120 110 118 / 0.18);
+  --cell: rgb(var(--hi) / 0.035);
   --cell-press: rgb(var(--hi) / 0.1);
   --scrim: rgb(var(--lo) / 0.55);
 
@@ -88,8 +88,8 @@
   --ambient-strength: 0.45;
 
   /* ----------------------------------------- glass, tinted plum not grey */
-  --glass-tint: rgb(40 20 34 / 0.42);
-  --glass-tint-strong: rgb(24 13 21 / 0.8);
+  --glass-tint: rgb(12 9 11 / 0.55);
+  --glass-tint-strong: rgb(6 5 6 / 0.88);
   --glass-blur: 22px;
   --glass-sat: 160%;
   --glass-spec: rgb(255 214 236 / 0.32);
