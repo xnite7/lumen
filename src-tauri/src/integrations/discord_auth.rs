@@ -65,15 +65,21 @@ pub async fn finish(core: &Core, url: &str) -> AppResult<Value> {
         return Err(AppError::msg("sign-in didn't match, try again"));
     }
     let client = core.http.client();
+    let mut form = vec![
+        ("client_id", CLIENT_ID.to_string()),
+        ("grant_type", "authorization_code".to_string()),
+        ("code", code.clone()),
+        ("redirect_uri", p.redirect.clone()),
+        ("code_verifier", p.verifier.clone()),
+    ];
+    // With "Public Client" on, PKCE alone is enough. Otherwise the secret
+    // comes from the build (repo secret DISCORD_CLIENT_SECRET), never the source.
+    if let Some(secret) = option_env!("DISCORD_CLIENT_SECRET").filter(|s| !s.is_empty()) {
+        form.push(("client_secret", secret.to_string()));
+    }
     let tok: Value = client
         .post("https://discord.com/api/oauth2/token")
-        .form(&[
-            ("client_id", CLIENT_ID),
-            ("grant_type", "authorization_code"),
-            ("code", code.as_str()),
-            ("redirect_uri", p.redirect.as_str()),
-            ("code_verifier", p.verifier.as_str()),
-        ])
+        .form(&form)
         .timeout(Duration::from_secs(15))
         .send()
         .await

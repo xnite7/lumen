@@ -6,6 +6,10 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# Discord sign-in (only needed if the Discord app isn't a "Public Client")
+env:
+  DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
+
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
