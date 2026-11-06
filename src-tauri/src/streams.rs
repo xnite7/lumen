@@ -27,6 +27,8 @@ pub struct Parsed {
     pub kind: &'static str,
     pub cam: bool,
     pub three_d: bool,
+    /// "sbs" (left|right) or "ou" (left over right) for 3D releases
+    pub three_d_layout: Option<&'static str>,
     pub languages: Vec<String>,
     pub group: Option<String>,
     pub label: String,
@@ -62,7 +64,8 @@ re!(RWEBDL, r"(?i)\bweb[- .]?dl\b");
 re!(RWEBRIP, r"(?i)\bweb-?rip\b");
 re!(RHDTV, r"(?i)\bhdtv\b");
 re!(RCAM, r"(?i)\b(cam|camrip|hdcam|ts|telesync|hdts|tc|telecine)\b");
-re!(R3D, r"(?i)\b(3d|sbs|h-?sbs|half-?ou)\b");
+re!(R3D, r"(?i)\b(3d|sbs|h-?sbs|f-?sbs|half[ ._-]?sbs|full[ ._-]?sbs|h-?ou|f-?ou|half[ ._-]?ou|full[ ._-]?ou|h-?tab)\b");
+re!(ROU, r"(?i)\b(h-?ou|f-?ou|half[ ._-]?ou|full[ ._-]?ou|h-?tab|tab|over[ ._-]?under|top[ ._-]?bottom)\b");
 re!(RSIZE, r"(?i)(?:💾|size[:\s]*)?\s*(\d+(?:[.,]\d+)?)\s*(tb|gb|mb|gib|mib)\b");
 re!(RSEED, r"(?i)(?:👤|seeders?[:\s]*|seeds?[:\s]*|🌱)\s*(\d[\d,]*)");
 re!(RCACHED, r"(?i)(⚡|\[(rd|ad|pm|tb|dl|oc|ed|pk)\+\]|\binstant\b|\bcached\b|✅)");
@@ -167,6 +170,8 @@ pub fn parse(s: &Value) -> Parsed {
 
     p.cam = RCAM.is_match(&t) && p.source.is_none();
     p.three_d = R3D.is_match(&t);
+    // most 3D releases are half side-by-side; over-under says so
+    p.three_d_layout = p.three_d.then(|| if ROU.is_match(&t) { "ou" } else { "sbs" });
     p.size_bytes = size_of(&t, s);
     p.seeders = RSEED.captures(&t).and_then(|c| c[1].replace(',', "").parse().ok());
 

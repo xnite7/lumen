@@ -157,6 +157,7 @@
                 {#if p?.cached}<span class="pill instant"><Icon name="bolt" size={11} /> Instant</span>{/if}
                 {#if p?.cached === false}<span class="pill">Not cached</span>{/if}
                 {#each p?.hdr ?? [] as h}<span class="pill hdr">{h}</span>{/each}
+                {#if p?.threeD}<span class="pill hdr" title="Head-tracked 3D with the eye tracker">3D</span>{/if}
                 {#if p?.source}<span class="pill">{p.source}</span>{/if}
                 {#if p?.codec}<span class="pill">{p.codec}</span>{/if}
                 {#each (p?.audio ?? []).slice(0, 2) as a}<span class="pill">{a}</span>{/each}

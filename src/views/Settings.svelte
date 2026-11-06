@@ -383,7 +383,7 @@
             {#if s.tobii.headParallax}
               <Cell label="Window depth" hint="{Math.round(s.tobii.parallaxStrength * 100)}%"><div style="width:200px"><Controls kind="slider" bind:value={s.tobii.parallaxStrength} min={0.3} max={2} step={0.1} onchange={changed} label="Depth" /></div></Cell>
             {/if}
-            <Cell label="Effect strength"><div style="width:200px"><Controls kind="slider" bind:value={s.tobii.parallaxStrength} min={0.2} max={2.5} step={0.1} onchange={changed} label="Strength" /></div></Cell>
+            <Cell label="3D films: look around" hint="On 3D releases (SBS / OU) the picture follows your head, like a window into the scene. Depth uses the window depth slider."><Controls kind="switch" bind:value={s.tobii.depth3d} onchange={changed} /></Cell>
           </div>
         {:else if section === "home"}
           <p class="dim lead">Turn rows off or move them. New addons add their rows at the end.</p>

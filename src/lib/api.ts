@@ -136,6 +136,7 @@ export interface ParsedStream {
   kind: "debrid" | "torrent" | "http" | "youtube" | "external";
   cam: boolean;
   threeD: boolean;
+  threeDLayout?: "sbs" | "ou";
   languages: string[];
   group?: string;
   label: string;

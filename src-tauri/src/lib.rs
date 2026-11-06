@@ -101,6 +101,11 @@ pub fn run() {
             if settings.tobii.dwell_ms < 1300 {
                 settings.tobii.dwell_ms = 1500;
             }
+            // 3D releases are worth seeing now (head-tracked 3D): show them once
+            if db.get::<bool>("seen_3d_v1").is_none() {
+                settings.streams.hide_3d = false;
+                let _ = db.set("seen_3d_v1", &true);
+            }
             if settings.playback.ios_player == "lumen" {
                 settings.playback.ios_player = "couch".into();
             }

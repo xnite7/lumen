@@ -10,6 +10,7 @@
   import EyeBubbles, { type Bubble } from "../components/EyeBubbles.svelte";
   import { saveSettings } from "../lib/stores/app.svelte";
   import wobble from "../assets/brand/couch-wobble.webp";
+  import { gaze } from "../lib/stores/gaze.svelte";
 
   let idle = $state(false);
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -142,6 +143,58 @@
     else list.push({ id: "mute", icon: st.muted ? "volume" : "mute", label: st.muted ? "Turn sound on" : "Mute", run: mute });
     return list;
   });
+  // ------------------------------------------------- head-tracked 3D
+  // 3D releases (SBS / OU) go through a depth shader in mpv; your head
+  // position picks the camera, so the screen behaves like a window.
+  let mode3d = $state<"auto" | "off" | "sbs" | "ou">("auto");
+  const layout3d = $derived<"" | "sbs" | "ou">(
+    !native ? "" : mode3d === "off" ? "" : mode3d === "auto" ? (pb.stream?._couch?.threeD ? (pb.stream?._couch?.threeDLayout ?? "sbs") : "") : mode3d,
+  );
+  let applied3d = "";
+  $effect(() => {
+    const w = st.video.width;
+    const h = st.video.height;
+    const want = layout3d && w && h ? layout3d : "";
+    const key = want ? `${want}:${w}x${h}` : "";
+    if (key === applied3d) return;
+    applied3d = key;
+    if (!want) {
+      cmd("3d-off").catch(() => {});
+      return;
+    }
+    // full-width SBS / full-height OU: each eye is already the right shape
+    const r = w / h;
+    const aspect = want === "sbs" && r > 2.5 ? r / 2 : want === "ou" && r < 1.2 ? r * 2 : 0;
+    cmd("3d-on", { layout: want, aspect }).catch(() => {});
+  });
+  // follow the head: self-centring, smoothed, sent ~30 times a second
+  $effect(() => {
+    if (!layout3d || !app.settings.tobii.enabled || !app.settings.tobii.depth3d) return;
+    let raf = 0;
+    let centre: number | null = null;
+    let cur = 0;
+    let sent = 99;
+    let lastSend = 0;
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick);
+      const hx = gaze.head.x;
+      if (centre === null) centre = hx;
+      centre += (hx - centre) * 0.002;
+      const t = Math.max(-1, Math.min(1, (hx - centre) / 160));
+      cur += (t - cur) * 0.2;
+      if (now - lastSend > 33 && Math.abs(cur - sent) > 0.003) {
+        sent = cur;
+        lastSend = now;
+        cmd("3d-view", { x: cur, strength: app.settings.tobii.parallaxStrength }).catch(() => {});
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      cmd("3d-view", { x: 0, strength: 1 }).catch(() => {});
+    };
+  });
+
   // shown in the middle while the eye controls are up
   const leftSecs = $derived(Math.max(0, (st.duration || 0) - (st.pos || 0)));
   const timeLeft = $derived.by(() => {
@@ -400,6 +453,7 @@
     </div>
     <div class="badges">
       {#each quality as q}<span class="chip">{q}</span>{/each}
+      {#if layout3d}<span class="chip">3D{app.settings.tobii.enabled && app.settings.tobii.depth3d ? " · look around" : ""}</span>{/if}
       {#if pb.mode === "web" && pb.url}
         <!-- the system player can't do MKV/HEVC: hand off to a real player -->
         <button class="chip press" onclick={() => api.openExternal(`vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(pb.url)}`)}>Open in VLC</button>
@@ -477,6 +531,12 @@
           {#each [["fit", "Fit"], ["fill", "Fill screen"], ["stretch", "Stretch"]] as [v, l]}
             <button class="opt" onclick={() => cmd("aspect", { value: v })}>{l}</button>
           {/each}
+          {#if native}
+            <h4 class="foot faint">3D</h4>
+            {#each [["auto", pb.stream?._couch?.threeD ? "Auto (3D)" : "Auto (2D)"], ["off", "Off"], ["sbs", "Side by side"], ["ou", "Over-under"]] as [v, l]}
+              <button class="opt" class:sel={mode3d === v} onclick={() => (mode3d = v as typeof mode3d)}>{l}</button>
+            {/each}
+          {/if}
           <p class="foot faint info">{st.video.width}×{st.video.height} · {st.video.codec} · {st.video.hwdec && st.video.hwdec !== "no" ? `hardware (${st.video.hwdec})` : "software"} · {st.video.fps?.toFixed(2)} fps</p>
         {/if}
       </div>

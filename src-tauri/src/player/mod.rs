@@ -10,6 +10,7 @@
 //! UI plays it in a native-backed <video> instead.
 
 #[cfg(desktop)]
+pub mod depth3d;
 mod mpv;
 mod session;
 

@@ -228,7 +228,7 @@ impl Default for Streams {
         Self {
             sort: "smart".into(),
             hide_cam: true,
-            hide_3d: true,
+            hide_3d: false,
             max_size_gb: 0.0,
             prefer_hdr: true,
             prefer_cached: true,
@@ -387,6 +387,8 @@ pub struct Tobii {
     pub dwell_ms: u32,
     /// Hero artwork shifts with your head like a window.
     pub head_parallax: bool,
+    /// 3D films: the picture follows your head (look around the scene).
+    pub depth3d: bool,
     pub parallax_strength: f32,
     /// Dim the Hue lights while you're away.
     pub away_dims_lights: bool,
@@ -402,6 +404,7 @@ impl Default for Tobii {
             gaze_controls: true,
             dwell_ms: 1500,
             head_parallax: true,
+            depth3d: true,
             parallax_strength: 1.0,
             away_dims_lights: false,
         }

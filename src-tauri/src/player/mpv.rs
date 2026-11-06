@@ -473,6 +473,32 @@ impl Mpv {
                 }
                 Ok(())
             }
+            // head-tracked 3D (see depth3d.rs)
+            "3d-on" => {
+                let layout = if a.get("layout").and_then(|v| v.as_str()) == Some("ou") { "ou" } else { "sbs" };
+                let path = self.core.cache_dir.join(format!("couch-3d-{layout}.glsl"));
+                std::fs::write(&path, super::depth3d::shader(layout)).map_err(|e| AppError::msg(e.to_string()))?;
+                let p = path.to_string_lossy().to_string();
+                let _ = mpv.command("change-list", &["glsl-shaders", "remove", &self.core.cache_dir.join("couch-3d-sbs.glsl").to_string_lossy()]);
+                let _ = mpv.command("change-list", &["glsl-shaders", "remove", &self.core.cache_dir.join("couch-3d-ou.glsl").to_string_lossy()]);
+                let _ = mpv.set_property("glsl-shader-opts", "head=0.0,strength=1.0");
+                // full-width SBS / full-height OU: each eye is the real shape
+                if let Some(r) = num("aspect").filter(|r| *r > 0.0) {
+                    let _ = mpv.set_property("video-aspect-override", format!("{r:.4}").as_str());
+                }
+                mpv.command("change-list", &["glsl-shaders", "append", &p])
+            }
+            "3d-off" => {
+                for l in ["sbs", "ou"] {
+                    let _ = mpv.command("change-list", &["glsl-shaders", "remove", &self.core.cache_dir.join(format!("couch-3d-{l}.glsl")).to_string_lossy()]);
+                }
+                mpv.set_property("video-aspect-override", "-1")
+            }
+            "3d-view" => {
+                let x = num("x").unwrap_or(0.0).clamp(-1.0, 1.0);
+                let k = num("strength").unwrap_or(1.0).clamp(0.0, 2.0);
+                mpv.set_property("glsl-shader-opts", format!("head={x:.3},strength={k:.2}").as_str())
+            }
             "deband" => mpv.set_property("deband", a.get("value").and_then(|v| v.as_bool()).unwrap_or(true)),
             "chapters" => {
                 let n: i64 = mpv.get_property("chapter-list/count").unwrap_or(0);

@@ -70,7 +70,7 @@ export const DEFAULT_SETTINGS = {
   streams: {
     sort: "smart",
     hideCam: true,
-    hide3d: true,
+    hide3d: false,
     maxSizeGb: 0,
     preferHdr: true,
     preferCached: true,
@@ -132,6 +132,7 @@ export const DEFAULT_SETTINGS = {
     gazeControls: true,
     dwellMs: 1500,
     headParallax: true,
+    depth3d: true,
     parallaxStrength: 1,
     awayDimsLights: false,
   },
