@@ -65,8 +65,10 @@ re!(RWEBRIP, r"(?i)\bweb-?rip\b");
 re!(RHDTV, r"(?i)\bhdtv\b");
 re!(RCAM, r"(?i)\b(cam|camrip|hdcam|ts|telesync|hdts|tc|telecine)\b");
 re!(RVIDEXT, r"(?i)\.(mkv|mp4|avi|m4v|ts|mov|webm|wmv)$");
-re!(R3D, r"(?i)\b(3d|sbs|h-?sbs|f-?sbs|half[ ._-]?sbs|full[ ._-]?sbs|h-?ou|f-?ou|half[ ._-]?ou|full[ ._-]?ou|h-?tab)\b");
-re!(ROU, r"(?i)\b(h-?ou|f-?ou|half[ ._-]?ou|full[ ._-]?ou|h-?tab|tab|over[ ._-]?under|top[ ._-]?bottom)\b");
+re!(R3D, r"(?i)\b(3d|sbs|h-?sbs|f-?sbs|half[ ._-]?sbs|full[ ._-]?sbs|side[ ._-]?by[ ._-]?side|h-?ou|f-?ou|half[ ._-]?ou|full[ ._-]?ou|over[ ._-]?under|h-?tab)\b|3д");
+re!(ROU, r"(?i)\b(h-?ou|f-?ou|half[ ._-]?ou|full[ ._-]?ou|h-?tab|tab|over[ ._-]?under|top[ ._-]?(and[ ._-]?)?bottom|3d[ ._-]ou)\b");
+// frame-packed 3D Blu-ray (MVC): mpv shows the base eye only, so it plays as 2D
+re!(RMVC, r"(?i)(bd3d|\bmvc\b|3d[ ._-]?blu-?ray[ ._-]?disc)");
 re!(RSIZE, r"(?i)(?:💾|size[:\s]*)?\s*(\d+(?:[.,]\d+)?)\s*(tb|gb|mb|gib|mib)\b");
 re!(RSEED, r"(?i)(?:👤|seeders?[:\s]*|seeds?[:\s]*|🌱)\s*(\d[\d,]*)");
 re!(RCACHED, r"(?i)(⚡|\[(rd|ad|pm|tb|dl|oc|ed|pk)\+\]|\binstant\b|\bcached\b|✅)");
@@ -172,7 +174,9 @@ pub fn parse(s: &Value) -> Parsed {
     p.cam = RCAM.is_match(&t) && p.source.is_none();
     p.three_d = R3D.is_match(&t);
     // most 3D releases are half side-by-side; over-under says so
-    p.three_d_layout = p.three_d.then(|| if ROU.is_match(&t) { "ou" } else { "sbs" });
+    let mvc = RMVC.is_match(&t) && !ROU.is_match(&t) && !t.to_lowercase().contains("sbs") && !t.to_lowercase().contains("sidebyside");
+    p.three_d = p.three_d || mvc;
+    p.three_d_layout = (p.three_d && !mvc).then(|| if ROU.is_match(&t) { "ou" } else { "sbs" });
     p.size_bytes = size_of(&t, s);
     p.seeders = RSEED.captures(&t).and_then(|c| c[1].replace(',', "").parse().ok());
 
@@ -345,5 +349,23 @@ mod tests {
         assert_eq!(p.size_bytes, Some(78_400_000_000));
         assert_eq!(p.kind, "debrid");
         assert!(p.audio.contains(&"Atmos"));
+    }
+}
+
+#[cfg(test)]
+mod tests_3d {
+    use super::*;
+    fn lay(t: &str) -> (bool, Option<&'static str>) {
+        let p = parse(&serde_json::json!({ "name": "Torrentio 1080p", "title": t }));
+        (p.three_d, p.three_d_layout)
+    }
+    #[test]
+    fn detects_3d_layouts() {
+        assert_eq!(lay("Avengers Age of Ultron 3D [2015 BDRip 1080p] OverUnder"), (true, Some("ou")));
+        assert_eq!(lay("Avengers 3D [2015 BDRip 1080p] Half OverUnder"), (true, Some("ou")));
+        assert_eq!(lay("Avengers 3D [2015 WEB-DL] Half SideBySide"), (true, Some("sbs")));
+        assert_eq!(lay("Avengers.Age.of.Ultron.2015.1080p.3D.HSBS.BluRay.x264"), (true, Some("sbs")));
+        assert_eq!(lay("Avengers.Age.of.Ultron.2015.BD3D.1080p.BluRay.REMUX.AVC"), (true, None));
+        assert_eq!(lay("Avengers.Age.of.Ultron.2015.1080p.BluRay.x264"), (false, None));
     }
 }

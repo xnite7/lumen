@@ -148,7 +148,7 @@
   // position picks the camera, so the screen behaves like a window.
   let mode3d = $state<"auto" | "off" | "sbs" | "ou">("auto");
   const layout3d = $derived<"" | "sbs" | "ou">(
-    !native ? "" : mode3d === "off" ? "" : mode3d === "auto" ? (pb.stream?._couch?.threeD ? (pb.stream?._couch?.threeDLayout ?? "sbs") : "") : mode3d,
+    !native ? "" : mode3d === "off" ? "" : mode3d === "auto" ? (pb.stream?._couch?.threeDLayout ?? "") : mode3d,
   );
   let applied3d = "";
   $effect(() => {
