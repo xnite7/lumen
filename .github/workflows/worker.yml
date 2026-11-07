@@ -26,6 +26,7 @@ jobs:
           npm install --no-audit --no-fund
           echo "${{ secrets.CREW_CODE }}" | npx wrangler secret put CREW_CODE || true
           echo "${{ secrets.DISCORD_GUILD_ID }}" | npx wrangler secret put GUILD_ID || true
+          if [ -n "${{ secrets.DISCORD_BOT_TOKEN }}" ]; then echo "${{ secrets.DISCORD_BOT_TOKEN }}" | npx wrangler secret put DISCORD_BOT_TOKEN || true; fi
           if [ -n "${{ secrets.ALLOWED_ROLE_IDS }}" ]; then echo "${{ secrets.ALLOWED_ROLE_IDS }}" | npx wrangler secret put ALLOWED_ROLES || true; fi
           if [ -n "${{ secrets.GH_RELEASES_TOKEN }}" ]; then echo "${{ secrets.GH_RELEASES_TOKEN }}" | npx wrangler secret put GH_TOKEN || true; fi
           if [ -n "${{ secrets.DISCORD_CLIENT_SECRET }}" ]; then echo "${{ secrets.DISCORD_CLIENT_SECRET }}" | npx wrangler secret put DISCORD_SECRET || true; fi

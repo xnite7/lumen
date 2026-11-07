@@ -80,6 +80,32 @@ pub async fn login(core: &Core) -> AppResult<()> {
     Ok(())
 }
 
+/// Does the crew server let this Discord sign-in in (right role)? None = couldn't tell.
+pub async fn access(core: &Core, tok: &str) -> Option<bool> {
+    let r = core
+        .http
+        .client()
+        .post(format!("{}/v1/auth", CREW_URL.trim_end_matches('/')))
+        .json(&json!({ "token": tok }))
+        .timeout(Duration::from_secs(12))
+        .send()
+        .await
+        .ok()?;
+    match r.status().as_u16() {
+        200 => {
+            if let Ok(v) = r.json::<Value>().await {
+                if let Some(s) = v.get("session").and_then(|s| s.as_str()) {
+                    let _ = core.db.set_secret("crew_session", Some(s));
+                    let _ = core.db.set("crew_session_exp", &json!(v.get("exp").and_then(|e| e.as_u64()).unwrap_or(0)));
+                }
+            }
+            Some(true)
+        }
+        403 => Some(false),
+        _ => None,
+    }
+}
+
 /// Your Discord name and avatar are who you are on the couch.
 fn who(core: &Core) -> (String, Option<String>) {
     let d = core.db.get::<Value>("discord_user");

@@ -28,13 +28,10 @@ fn roles() -> Vec<&'static str> {
     ROLES.unwrap_or("").split(|c: char| c == ',' || c.is_whitespace()).filter(|s| !s.is_empty()).collect()
 }
 
-/// Seeing your roles needs one more permission.
+/// Roles are read by couch's bot on the crew server, so sign-in only ever
+/// asks for your profile and your server list.
 fn scopes() -> &'static [&'static str] {
-    if roles().is_empty() {
-        &["identify", "guilds"]
-    } else {
-        &["identify", "guilds", "guilds.members.read"]
-    }
+    &["identify", "guilds"]
 }
 #[allow(dead_code)]
 pub const MOBILE_REDIRECT: &str = "couch://auth/discord";
@@ -280,22 +277,12 @@ pub async fn membership(core: &Core) -> &'static str {
     let Ok(list) = res.json::<Value>().await else { return cached(core) };
     let mut inside = list.as_array().map_or(false, |a| a.iter().any(|g| g.get("id").and_then(|i| i.as_str()) == Some(guild)));
     // in the server, but does a subscription (or a picked role) let you in?
-    let want = roles();
-    if inside && !want.is_empty() {
-        let r = core
-            .http
-            .client()
-            .get(format!("https://discord.com/api/users/@me/guilds/{guild}/member"))
-            .bearer_auth(&tok)
-            .timeout(Duration::from_secs(12))
-            .send()
-            .await;
-        let Ok(r) = r else { return cached(core) };
-        if r.status().as_u16() == 429 {
-            return cached(core);
+    // The crew server's bot can see roles; ask it.
+    if inside && !roles().is_empty() {
+        match crate::crew::access(core, &tok).await {
+            Some(ok) => inside = ok,
+            None => return cached(core),
         }
-        let Ok(m) = r.json::<Value>().await else { return cached(core) };
-        inside = m.get("roles").and_then(|r| r.as_array()).map_or(false, |rs| rs.iter().any(|x| x.as_str().map_or(false, |x| want.contains(&x))));
     }
     let _ = core.db.set("discord_member", &json!(inside));
     if inside { "member" } else { "outsider" }

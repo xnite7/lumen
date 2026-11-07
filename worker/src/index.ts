@@ -30,6 +30,9 @@ export interface Env {
   /** who gets in: role ids (server-subscription roles + any you pick),
    *  comma-separated. Unset = everyone in the server. */
   ALLOWED_ROLES?: string;
+  /** couch's bot, sitting in the server: reads members' roles, so nobody has
+   *  to give couch an extra permission or sign in again */
+  DISCORD_BOT_TOKEN?: string;
   /** read-only GitHub token for the app's releases (updates) */
   GH_TOKEN?: string;
   /** owner/repo holding the releases */
@@ -162,7 +165,13 @@ async function auth(req: Request, env: Env): Promise<Response> {
     const list: any[] = await g.json();
     if (!list.some((x) => x?.id === env.GUILD_ID)) return json({ error: "not in the server", notMember: true }, 403);
     const roles = (env.ALLOWED_ROLES ?? "").split(/[\s,]+/).filter(Boolean);
-    if (roles.length) {
+    if (roles.length && env.DISCORD_BOT_TOKEN) {
+      const br = await fetch(`https://discord.com/api/guilds/${env.GUILD_ID}/members/${u.id}`, { headers: { authorization: `Bot ${env.DISCORD_BOT_TOKEN}` } });
+      if (br.status === 404) return json({ error: "not in the server", notMember: true }, 403);
+      if (!br.ok) return json({ error: "couldn't check your roles" }, 503);
+      const mem: any = await br.json();
+      if (!(mem?.roles ?? []).some((r: string) => roles.includes(r))) return json({ error: "no subscription", notMember: true }, 403);
+    } else if (roles.length) {
       const mr = await fetch(`https://discord.com/api/users/@me/guilds/${env.GUILD_ID}/member`, { headers: h });
       // no permission to see roles = an old sign-in (or an old app): no way in
       // until they sign in again; new apps show "one more knock", old ones lock
