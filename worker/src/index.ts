@@ -19,6 +19,7 @@
 //   GET    /logo.png           the midnite mark (Discord's small image)
 
 import logo from "./logo.png";
+import { TERMS_HTML } from "./terms";
 
 export interface Env {
   CREW: DurableObjectNamespace;
@@ -228,6 +229,9 @@ export default {
     }
     if (url.pathname === "/") return new Response("on the couch.\n");
     if (url.pathname === "/join") return joinPage(url);
+    if (url.pathname === "/terms" || url.pathname === "/tos") {
+      return new Response(TERMS_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
+    }
     const share = url.pathname.match(/^\/t\/(movie|series)\/([A-Za-z0-9:._-]{1,100})$/);
     if (share) return titlePage(share[1], share[2], url.searchParams.get("n") ?? "");
     if (!url.pathname.startsWith("/v1/")) return json({ error: "not here" }, 404);
