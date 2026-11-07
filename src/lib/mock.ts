@@ -63,6 +63,10 @@ const catalogs = [
   { key: "a/movie/top", addonId: "a", addonName: "Cinemeta", transportUrl: "x", type: "movie", id: "top", name: "Popular", extra: [], adult: false, builtin: false },
   { key: "b/series/top", addonId: "b", addonName: "Cinemeta", transportUrl: "x", type: "series", id: "top", name: "Popular", extra: [], adult: false, builtin: false },
   { key: "c/movie/motn-top", addonId: "c", addonName: "couch", transportUrl: "x", type: "movie", id: "motn-top", name: "Top 10 Today", extra: [], adult: false, builtin: true },
+  { key: "e/movie/tmdb-popular", addonId: "e", addonName: "couch", transportUrl: "x", type: "movie", id: "tmdb-popular", name: "Popular", extra: [{ name: "genre", options: ["Action", "Adventure", "Animation", "Comedy", "Crime", "Documentary", "Drama", "Family", "Fantasy", "History", "Horror", "Mystery", "Romance", "Science Fiction", "Thriller"] }], adult: false, builtin: true },
+  { key: "e/movie/tmdb-top", addonId: "e", addonName: "couch", transportUrl: "x", type: "movie", id: "tmdb-top", name: "Top Rated", extra: [{ name: "genre", options: ["Drama"] }], adult: false, builtin: true },
+  { key: "e/series/tmdb-popular", addonId: "e", addonName: "couch", transportUrl: "x", type: "series", id: "tmdb-popular", name: "Popular", extra: [{ name: "genre", options: ["Action & Adventure", "Animation", "Comedy", "Crime", "Documentary", "Drama", "Family", "Kids", "Mystery", "Reality", "Sci-Fi & Fantasy", "War & Politics", "Western"] }], adult: false, builtin: true },
+  { key: "e/series/tmdb-trending", addonId: "e", addonName: "couch", transportUrl: "x", type: "series", id: "tmdb-trending", name: "Trending This Week", extra: [{ name: "genre", options: ["Drama"] }], adult: false, builtin: true },
   { key: "d/movie/simkl-recs", addonId: "d", addonName: "couch", transportUrl: "x", type: "movie", id: "simkl-recs", name: "Because You Watched", extra: [], adult: false, builtin: true },
 ];
 

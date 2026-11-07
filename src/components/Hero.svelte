@@ -21,7 +21,12 @@
 
 
 
-  let { scrollY = 0, kind = undefined }: { scrollY?: number; kind?: "series" | "movie" } = $props();
+  let {
+    scrollY = 0,
+    kind = undefined,
+    items = undefined,
+    inset = false,
+  }: { scrollY?: number; kind?: "series" | "movie"; items?: Meta[]; inset?: boolean } = $props();
 
   let slides = $state<Meta[]>([]);
   let i = $state(0);
@@ -37,7 +42,14 @@
   const cur = $derived(slides[i]);
 
   $effect(() => {
-    api.hero().then((s) => (slides = (s ?? []).filter((m) => (m.background || m.poster) && (!kind || m.type === kind)).slice(0, 10)));
+    const pick = (s: Meta[] | null | undefined) => (s ?? []).filter((m) => (m.background || m.poster) && (!kind || m.type === kind)).slice(0, 10);
+    // a genre page hands its own titles in
+    if (items) {
+      i = 0;
+      slides = pick(items);
+      return;
+    }
+    api.hero().then((s) => (slides = pick(s)));
   });
 
   // Wide MOTN backdrops when available (nicer crops than metahub).
@@ -152,7 +164,8 @@
   function line(m: Meta): string[] {
     const seasons = new Set((m.videos ?? []).map((v) => v.season).filter((n) => n && n > 0)).size;
     const len = m.type === "series" ? (seasons ? `${seasons} Season${seasons > 1 ? "s" : ""}` : "") : m.runtime ? runtime(m.runtime) : "";
-    return [m.type === "series" ? "Show" : "Movie", m.genres?.[0] ?? "", year(m), len, (m as any).certification ?? ""].filter(Boolean).map(String);
+    // on the Shows / Movies tabs the kind goes without saying
+    return [kind ? "" : m.type === "series" ? "Show" : "Movie", m.genres?.[0] ?? "", year(m), len, (m as any).certification ?? ""].filter(Boolean).map(String);
   }
   const facts = (m: Meta) => [m.type === "series" ? "Series" : "Film", year(m), m.runtime ? runtime(m.runtime) : ""].filter(Boolean).join(" · ");
   const lift = $derived(Math.min(1, scrollY / 520));
@@ -190,6 +203,7 @@
 {:else if cur}
   <section
     class="hero"
+    class:inset
     bind:this={el}
     style:--lift={lift}
     onmouseenter={() => (paused = true)}
@@ -321,6 +335,28 @@
     flex-direction: column;
     gap: 18px;
     transition: opacity var(--t-slow) ease, transform var(--t-slow) var(--glide);
+  }
+  /* the Shows / Movies tabs: the billboard is a big rounded card */
+  .hero.inset {
+    margin: 0 var(--gutter);
+    height: min(66vh, 40vw);
+    min-height: 420px;
+    border-radius: 18px;
+    isolation: isolate;
+    box-shadow: inset 0 0 0 1px rgb(var(--hi) / 0.06), 0 30px 80px -40px rgb(0 0 0 / 0.9);
+  }
+  .hero.inset .info {
+    left: 44px;
+    bottom: 44px;
+  }
+  .hero.inset .bg {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+  .hero.inset .hero-shade {
+    background:
+      linear-gradient(0deg, rgb(0 0 0 / 0.7) 0%, transparent 45%),
+      linear-gradient(90deg, rgb(0 0 0 / 0.75) 0%, rgb(0 0 0 / 0.35) 38%, transparent 62%);
   }
   .info.quiet .copy .desc,
   .info.quiet .facts {

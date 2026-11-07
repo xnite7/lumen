@@ -471,13 +471,37 @@ pub async fn resolve_rows(core: &Core, rows: Vec<Value>, kind: &str) -> Vec<Valu
     out.into_iter().flatten().collect()
 }
 
+fn today() -> String {
+    let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() / 86_400).unwrap_or(0) as i64;
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
 pub async fn catalog(core: &Core, def: &CatalogDef, stremio_type: &str, genre: Option<&str>, skip: u32) -> AppResult<Vec<Value>> {
     let kind = kind_of(stremio_type);
     let page = skip / 20 + 1;
     let genres = if kind == "tv" { TV_GENRES } else { MOVIE_GENRES };
     let gid = genre.and_then(|g| genres.iter().find(|(n, _)| *n == g).map(|(_, id)| *id));
     let v = match gid {
-        Some(gid) => get(core, &format!("/discover/{kind}"), &format!("&sort_by=popularity.desc&with_genres={gid}&page={page}"), Duration::from_secs(3600)).await?,
+        Some(gid) => {
+            // each row keeps its own character inside a genre
+            let date = if kind == "tv" { "first_air_date" } else { "primary_release_date" };
+            let sort = match def.id {
+                "tmdb-popular" => "&sort_by=vote_count.desc".to_string(),
+                "tmdb-top" => "&sort_by=vote_average.desc&vote_count.gte=400".to_string(),
+                "tmdb-new" => format!("&sort_by={date}.desc&{date}.lte={}&vote_count.gte=20", today()),
+                _ => "&sort_by=popularity.desc".to_string(),
+            };
+            get(core, &format!("/discover/{kind}"), &format!("{sort}&with_genres={gid}&page={page}"), Duration::from_secs(3600)).await?
+        }
         None => {
             let path = if kind == "tv" { def.series } else { def.movie };
             get(core, path, &format!("&page={page}"), Duration::from_secs(3600)).await?
