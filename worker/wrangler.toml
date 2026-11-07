@@ -16,3 +16,4 @@ class_name = "Crew"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Crew"]
+# bot token picked up 2026-11-07
