@@ -80,6 +80,53 @@ pub fn tile(r: &Value, kind: &str) -> Value {
     })
 }
 
+/// When it can actually be watched at home: the first digital (4),
+/// physical (5) or TV (6) release anywhere, from TMDB's release dates.
+fn home_release(full: &Value) -> Option<String> {
+    full.pointer("/release_dates/results")?
+        .as_array()?
+        .iter()
+        .flat_map(|r| r.get("release_dates").and_then(|d| d.as_array()).cloned().unwrap_or_default())
+        .filter(|d| matches!(d.get("type").and_then(|t| t.as_u64()), Some(4..=6)))
+        .filter_map(|d| d.get("release_date").and_then(|x| x.as_str()).map(|s| s.get(..10).unwrap_or(s).to_string()))
+        .min()
+}
+
+/// Not out to watch yet: a film with no digital/disc/TV release that's
+/// still in (or not yet in) cinemas, or a show that hasn't aired.
+fn unreleased(full: &Value, kind: &str) -> bool {
+    let today = {
+        let d = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() / 86_400).unwrap_or(0) as i64;
+        // civil date from days since epoch
+        let z = d + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z - era * 146_097;
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let day = doy - (153 * mp + 2) / 5 + 1;
+        let m = if mp < 10 { mp + 3 } else { mp - 9 };
+        let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+        format!("{y:04}-{m:02}-{day:02}")
+    };
+    if kind != "movie" {
+        let first = full.get("first_air_date").and_then(|v| v.as_str()).unwrap_or("");
+        return first.is_empty() || first > today.as_str();
+    }
+    if let Some(h) = home_release(full) {
+        return h.as_str() > today.as_str();
+    }
+    // no home release on file: only "unreleased" while it's new (TMDB's
+    // older films often have no digital date at all)
+    let rel = full.get("release_date").and_then(|v| v.as_str()).unwrap_or("");
+    if rel.is_empty() || rel > today.as_str() {
+        return true;
+    }
+    let (Ok(y), Ok(m)) = (rel.get(..4).unwrap_or("0").parse::<i64>(), rel.get(5..7).unwrap_or("0").parse::<i64>()) else { return false };
+    let (ty, tm) = (today[..4].parse::<i64>().unwrap_or(0), today[5..7].parse::<i64>().unwrap_or(0));
+    (ty * 12 + tm) - (y * 12 + m) < 4
+}
+
 fn certification(full: &Value, kind: &str) -> Option<String> {
     // UAE first (you're there), then the US rating everybody recognises.
     let prefs = ["AE", "US", "GB"];
@@ -295,6 +342,8 @@ pub async fn enrich(core: &Core, stremio_type: &str, id: &str) -> AppResult<Valu
         "networks": full.get("networks").and_then(|n| n.as_array()).map(|n| n.iter().map(|x| json!({"name": x["name"], "logo": img(x.get("logo_path").and_then(|v| v.as_str()), "w154")})).collect::<Vec<_>>()),
         "studios": full.get("production_companies").and_then(|n| n.as_array()).map(|n| n.iter().take(3).map(|x| x["name"].clone()).collect::<Vec<_>>()),
         "certification": certification(&full, kind),
+        "homeRelease": if kind == "movie" { home_release(&full) } else { None },
+        "unreleased": unreleased(&full, kind),
         "rating": full.get("vote_average"),
         "votes": full.get("vote_count"),
         "budget": full.get("budget").filter(|b| b.as_u64().unwrap_or(0) > 0),

@@ -56,6 +56,8 @@
   });
   const finaleName = ["", "Mid-season finale", "Season finale", "Series finale"];
   let reviewOpen = $state(false);
+  const unreleased = $derived(!!extra?.unreleased);
+  const relNote = $derived(extra?.homeRelease && new Date(extra.homeRelease).getTime() > Date.now() ? "on digital " + new Date(extra.homeRelease).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "not out to watch yet");
   let reviews = $state<Activity[]>([]);
   const myReview = $derived(reviews.find((r) => r.who === social.me?.id));
   const others = $derived(reviews.filter((r) => r.who !== social.me?.id && (r.text || r.rating)));
@@ -214,7 +216,11 @@
           {#each factLine as f, n}{#if n}<span class="sep" aria-hidden="true"></span>{/if}<span>{f}</span>{/each}
         </div>
         <div class="actions">
-          {#if primary}
+          {#if primary && unreleased}
+            <button class="btn lg primary press cta unreleased" onclick={() => toast(`${m.name}: ${relNote}`, "info")} title={relNote}>
+              <Icon name="play" size={18} />Unreleased<span class="psub">{relNote}</span>
+            </button>
+          {:else if primary}
             <button class="btn lg primary press cta" onclick={() => { haptic("medium"); openStreams(primary.video); }}>
               <Icon name="play" size={18} />
               {primary.label}{#if primary.sub}<span class="psub">{primary.sub}</span>{/if}
@@ -568,6 +574,11 @@
   .finale.f3 {
     background: rgb(224 48 154 / 0.2);
     color: #ff6fc0;
+  }
+  .cta.unreleased {
+    opacity: 0.42;
+    filter: grayscale(1);
+    cursor: default;
   }
   .review-btn {
     align-self: flex-start;

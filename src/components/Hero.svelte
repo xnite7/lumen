@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { checkRelease, isUnreleased, releaseNote } from "../lib/release.svelte";
+  import { toast } from "../lib/stores/toast.svelte";
   import { trimLogo } from "../lib/trimlogo";
   import { api, img, type Meta } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
@@ -60,6 +62,9 @@
 
   $effect(() => {
     if (bg && scrollY < 300 && isActive(page)) setAmbient(bg);
+  });
+  $effect(() => {
+    for (const m of slides) checkRelease(m);
   });
 
   function schedule() {
@@ -188,7 +193,7 @@
             {/if}
             <p class="foot facts-line">{[facts(m), m.genres?.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}</p>
             <div class="card-actions">
-              <button class="btn primary press grow" onclick={() => playNow(m)} disabled={starting === m.id}>{#if starting === m.id}<span class="spin"></span>{:else}<Icon name="play" size={16} />{/if} Play</button>
+              {#if isUnreleased(m.id)}<button class="btn primary press grow unreleased" title={releaseNote(m.id)} onclick={() => openDetail(m, null)}><Icon name="play" size={16} /> Unreleased</button>{:else}<button class="btn primary press grow" onclick={() => playNow(m)} disabled={starting === m.id}>{#if starting === m.id}<span class="spin"></span>{:else}<Icon name="play" size={16} />{/if} Play</button>{/if}
               <button class="btn icon glass press" onclick={() => openDetail(m)} aria-label="More info"><Icon name="info" size={18} /></button>
               <button class="btn icon glass press" onclick={() => { haptic("light"); toggleLibrary(m); }} aria-label={inLibrary(m.id) ? "In your list" : "Add to your list"}>
                 <Icon name={inLibrary(m.id) ? "check" : "plus"} size={20} />
@@ -251,7 +256,7 @@
       {/key}
       </div>
       <div class="actions">
-        <button class="btn lg primary press play" use:tvFocus={{ tilt: false }} onclick={() => playNow(cur)} disabled={starting === cur.id}>{#if starting === cur.id}<span class="spin"></span>{:else}<Icon name="play" size={18} />{/if} Play</button>
+        {#if isUnreleased(cur.id)}<button class="btn lg primary press play unreleased" title={releaseNote(cur.id)} use:tvFocus={{ tilt: false }} onclick={() => toast(`${cur.name}: ${releaseNote(cur.id)}`, "info")}><Icon name="play" size={18} /> Unreleased</button>{:else}<button class="btn lg primary press play" use:tvFocus={{ tilt: false }} onclick={() => playNow(cur)} disabled={starting === cur.id}>{#if starting === cur.id}<span class="spin"></span>{:else}<Icon name="play" size={18} />{/if} Play</button>{/if}
         <button class="btn lg glass press more-info" use:tvFocus={{ tilt: false }} onclick={() => openDetail(cur, el)}><Icon name="info" size={18} /> More info</button>
         <button class="btn lg icon glass press" use:tvFocus={{ tilt: false }} onclick={() => toggleLibrary(cur)} aria-label={owned ? "In your list" : "Add to your list"} title={owned ? "In your list" : "Add to your list"}>
           <Icon name={owned ? "check" : "plus"} size={21} />
@@ -710,5 +715,11 @@
     to {
       transform: rotate(360deg);
     }
+  }
+  /* not out yet: the button stays, dimmed, so nobody thinks they can watch */
+  .unreleased {
+    opacity: 0.42;
+    filter: grayscale(1);
+    cursor: default;
   }
 </style>

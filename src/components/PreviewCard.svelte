@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { checkRelease, isUnreleased, releaseNote } from "../lib/release.svelte";
   // The hover card: grows out of the poster it came from, plays the trailer
   // (muted unless you ask), and offers the three things people do from here.
   // Lookups start the moment it opens; the trailer fades in only once it's
@@ -21,6 +22,7 @@
   let bodyH = $state(190);
 
   const meta = $derived(preview.meta);
+  $effect(() => checkRelease(meta));
 
   // Where it ends up: half again as wide as the poster (within reason), its
   // picture centred on the poster, kept inside the window and under the bar.
@@ -124,7 +126,11 @@
       <div class="clip">
       <div class="body" bind:offsetHeight={bodyH}>
         <div class="actions">
-          <button class="btn primary small press" onclick={() => { const m = meta; closePreview(0, false); app.settings.streams.autoplayBest ? quickPlay(m, card) : openDetail(m, card); }}><Icon name="play" size={15} /> Watch</button>
+          {#if isUnreleased(meta.id)}
+            <button class="btn primary small press unreleased" title={releaseNote(meta.id)} onclick={() => { const m = meta; closePreview(0, false); openDetail(m, card); }}><Icon name="play" size={15} /> Unreleased</button>
+          {:else}
+            <button class="btn primary small press" onclick={() => { const m = meta; closePreview(0, false); app.settings.streams.autoplayBest ? quickPlay(m, card) : openDetail(m, card); }}><Icon name="play" size={15} /> Watch</button>
+          {/if}
           <button class="btn tinted icon small press" onclick={() => toggleLibrary(meta)} aria-label={owned ? "Remove from library" : "Add to library"} title={owned ? "In your library" : "Add to library"}>
             <Icon name={owned ? "check" : "plus"} size={17} />
           </button>
@@ -318,5 +324,9 @@
   .genres,
   .desc {
     margin: 0;
+  }
+  .unreleased {
+    opacity: 0.42;
+    filter: grayscale(1);
   }
 </style>
