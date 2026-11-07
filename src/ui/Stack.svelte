@@ -125,7 +125,7 @@
   const enabled = $derived(n > 1 && (ui.phone || app.platform === "ios") && !ui.onboarding);
 </script>
 
-<div class="stack" class:hidden class:swiping style:--win-controls={app.platform === "windows" || app.platform === "linux" ? "118px" : "0px"}>
+<div class="stack" class:hidden class:swiping style:--win-controls={app.platform === "windows" || app.platform === "linux" ? "138px" : "0px"}>
   {#each nav.stack as r, i (r._k)}
     <div class="slot" class:top={i === n - 1} class:under={i === n - 2} class:deep={i < n - 2} bind:this={slots[i]}>
       {#if i >= n - 2}<Ambient />{/if}

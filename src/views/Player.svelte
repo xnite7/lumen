@@ -350,6 +350,15 @@
   // a paused VHS: dimmed frame, vignette, grain, the title in big lowercase
   const pausedScreen = $derived(st.paused && !pb.loading && !pb.error && st.pos > 1);
   const idleScreen = $derived(pausedScreen && restful && !menu);
+  $effect(() => {
+    document.documentElement.classList.toggle("chrome-off", chromeHidden || idleScreen);
+    return () => document.documentElement.classList.remove("chrome-off");
+  });
+  function dragWindow(e: MouseEvent) {
+    if (e.button !== 0 || (e.target as Element).closest("button, select, input, a")) return;
+    if (e.detail === 2) api.window("maximize");
+    else api.window("drag");
+  }
 
   // ------------------------------------------------------------ episodes
   const isShow = $derived(pb.meta?.type === "series" && (pb.meta?.videos?.length ?? 0) > 1);
@@ -509,7 +518,8 @@
   {/if}
 
   <!-- top chrome -->
-  <header class="top" class:gone={chromeHidden || idleScreen}>
+  <!-- the empty part of the top bar moves the window, like a title bar -->
+  <header class="top" class:gone={chromeHidden || idleScreen} onmousedown={dragWindow} role="presentation">
     <button class="round glass press" onclick={close} aria-label="Close player"><Icon name="back" size={20} /></button>
     <div class="ttl">
       {#if !pausedScreen}
@@ -1015,6 +1025,10 @@
     gap: 16px;
     padding: 20px var(--gutter) 40px;
     background: linear-gradient(180deg, rgb(var(--lo) / 0.55), transparent);
+  }
+  :global(html.winctl) .top {
+    padding-top: 36px;
+    padding-right: calc(var(--gutter) + 10px);
     transition: opacity var(--t-med) ease, transform var(--t-med) var(--glide);
   }
   .round {

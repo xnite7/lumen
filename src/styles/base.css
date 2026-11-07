@@ -248,8 +248,13 @@ a {
   background: color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
+/* no scrollbars: everything scrolls by wheel, touch and keys */
+* {
+  scrollbar-width: none;
+}
 ::-webkit-scrollbar {
-  width: 10px;
+  display: none;
+  width: 0;
   height: 0;
 }
 ::-webkit-scrollbar-thumb {

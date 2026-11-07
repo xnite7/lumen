@@ -26,6 +26,9 @@
   let splashing = $state(!(import.meta.env.DEV && new URLSearchParams(location.search).has("nosplash")));
 
   const winControls = $derived(isTauri && (app.platform === "windows" || app.platform === "linux"));
+  $effect(() => {
+    document.documentElement.classList.toggle("winctl", winControls);
+  });
 
   $effect(() => {
     (async () => {
@@ -179,10 +182,16 @@
   {#if winControls}
     <!-- borderless window: the strip along the top drags it -->
     <div class="drag" onmousedown={startDrag} role="presentation"></div>
-    <div class="win" class:hidden={app.playing}>
-      <button onclick={() => api.window("minimize")} aria-label="Minimize"><Icon name="minimize" size={14} /></button>
-      <button onclick={() => api.window("maximize")} aria-label="Maximize"><Icon name="maximize" size={13} /></button>
-      <button class="x" onclick={() => api.window("close")} aria-label="Close"><Icon name="close" size={14} /></button>
+    <div class="win">
+      <button onclick={() => api.window("minimize")} aria-label="Minimize">
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M0 5.5h10" stroke="currentColor" stroke-width="1" /></svg>
+      </button>
+      <button onclick={() => api.window("maximize")} aria-label="Maximize">
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" /></svg>
+      </button>
+      <button class="x" onclick={() => api.window("close")} aria-label="Close">
+        <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M0.5 0.5l9 9M9.5 0.5l-9 9" stroke="currentColor" stroke-width="1" /></svg>
+      </button>
     </div>
   {/if}
 
@@ -207,34 +216,38 @@
     height: calc(var(--bar-h) + 10px);
     z-index: 50;
   }
+  /* like every other Windows app: flush in the corner, full-height squares */
   .win {
     position: fixed;
-    z-index: 71;
-    top: 16px;
-    right: 14px;
+    z-index: 200;
+    top: 0;
+    right: 0;
     display: flex;
-    gap: 2px;
     transition: opacity var(--t-med) ease;
   }
-  .win.hidden {
+  /* watching: they fade with the player's controls */
+  :global(html.playing.chrome-off) .win {
     opacity: 0;
     pointer-events: none;
   }
   .win button {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
+    width: 46px;
+    height: 32px;
+    border-radius: 0;
     display: grid;
     place-items: center;
-    color: var(--label-2);
-    transition: background var(--t-fast), color var(--t-fast);
+    color: rgb(255 255 255 / 0.82);
+    transition: background 120ms linear, color 120ms linear;
   }
   .win button:hover {
-    background: var(--fill-3);
-    color: var(--label);
+    background: rgb(255 255 255 / 0.1);
+    color: #fff;
   }
   .win .x:hover {
-    background: var(--danger);
-    color: var(--text);
+    background: #c42b1c;
+    color: #fff;
+  }
+  .win .x:active {
+    background: #b0271a;
   }
 </style>
