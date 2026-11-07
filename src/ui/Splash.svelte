@@ -1,6 +1,6 @@
 <script lang="ts">
   // Launch: the midnite sign sits still on the first frame for a beat, then
-  // redraws itself into the couch (2x), holds, and you're home. Any tap,
+  // redraws itself into the couch (2x), holds, and you're home.
   // plays through every time; nothing skips it.
   import { fade } from "svelte/transition";
   import { app } from "../lib/stores/app.svelte";
