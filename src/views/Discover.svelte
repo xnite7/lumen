@@ -57,6 +57,8 @@
       more = false;
     }
     loading = false;
+    // a page should feel full: keep pulling pages until there's plenty
+    for (let n = 0; n < 4 && more && my === seq && items.length < 60; n++) await loadMore();
   }
 
   async function loadMore() {
@@ -89,10 +91,16 @@
     return () => io.disconnect();
   });
 
+  // Shows <-> Films keeps you on the same row (Top 10 Movies <-> Top 10 TV
+  // Shows, Popular <-> Popular) and the same genre when the other side has it
   function setType(t: string) {
+    if (t === type) return;
+    const same = all.find((x) => x.type === t && x.id === cat?.id && x.addonId === cat?.addonId);
+    const next = same ?? all.find((x) => x.type === t);
+    const opts = next?.extra.find((e) => e.name === "genre")?.options ?? [];
+    if (!opts.includes(genre)) genre = "";
     type = t;
-    genre = "";
-    key = all.find((x) => x.type === t)?.key ?? "";
+    key = next?.key ?? "";
   }
 </script>
 

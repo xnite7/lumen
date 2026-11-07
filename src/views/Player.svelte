@@ -19,6 +19,13 @@
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let menu = $state<"" | "tracks" | "episodes" | "volume" | "more">("");
   let menuX = $state(0);
+  // only the picture itself goes fullscreen on a double-click; the bars,
+  // buttons, menus, text and cards never do
+  function dblFull(e: MouseEvent) {
+    const t = e.target as HTMLElement;
+    if (t.closest("button, a, input, select, textarea, header, footer, .top, .bottom, .pop, .bar, .carousel, .skip, .p-info, .upnext, .eye-hint, [role=dialog], [role=slider]")) return;
+    fullscreen();
+  }
   // a click anywhere outside the open menu (and its buttons) closes it
   function clickAway(e: PointerEvent) {
     if (!menu) return;
@@ -453,7 +460,7 @@
 
 <svelte:window onkeydown={onKey} onmousemove={poke} onpointerdown={clickAway} />
 
-<div class="player" class:hide-cursor={chromeHidden} class:native ondblclick={fullscreen} role="presentation" style:--scene={scene}>
+<div class="player" class:hide-cursor={chromeHidden} class:native ondblclick={dblFull} role="presentation" style:--scene={scene}>
   {#if pb.mode === "web" && pb.url}
     <!-- svelte-ignore a11y_media_has_caption -->
     <video bind:this={video} src={pb.url} autoplay playsinline onclick={toggle}></video>

@@ -11,7 +11,7 @@
   import Poster from "../components/Poster.svelte";
   import Icon from "../components/Icon.svelte";
   import Controls from "../components/Controls.svelte";
-  import { searchBar } from "../lib/search.svelte";
+  import { searchBar, searchHint } from "../lib/search.svelte";
 
   let { q: initial = "" }: { q?: string } = $props();
   let q = $state("");
@@ -25,6 +25,16 @@
   let reqId = "";
   let typeTimer: ReturnType<typeof setTimeout> | undefined;
   let kind = $state<"all" | "movie" | "series">("all");
+  // "brkng bed" -> did you mean Breaking Bad? (asked only when the search
+  // looks lost: no title matches as you type, or nothing came back)
+  let fix = $state<string | null>(null);
+  let fixFor = "";
+  function maybeFix(text: string) {
+    const t = text.trim();
+    if (t.length < 3 || fixFor === t) return;
+    fixFor = t;
+    api.didYouMean(t).then((f) => q.trim() === t && (fix = f)).catch(() => {});
+  }
 
   $effect(() => {
     api.recents().then((r) => (recents = r ?? []));
@@ -34,6 +44,7 @@
       if (c.reqId !== reqId) return;
       if (c.finished) {
         pending = false;
+        if (!groups.some((g) => g.metas.length)) maybeFix(q);
         return;
       }
       if (c.metas?.length) groups = [...groups, { catalog: c.catalog, metas: c.metas }];
@@ -71,12 +82,22 @@
     clearTimeout(typeTimer);
     typeTimer = setTimeout(() => {
       run(q);
-      if (q.trim()) api.suggest(q).then((s) => (suggestions = (s ?? []).slice(0, 5))).catch(() => {});
+      fix = null;
+      if (q.trim())
+        api
+          .suggest(q)
+          .then((s) => {
+            suggestions = (s ?? []).slice(0, 5);
+            if (!suggestions.length) maybeFix(q);
+          })
+          .catch(() => {});
       else suggestions = [];
     }, 250);
   }
 
   function pick(r: string) {
+    fix = null;
+    if (!ui.phone) searchBar.q = r;
     q = r;
     run(r);
     input?.blur();
@@ -114,7 +135,7 @@
       oninput={onInput}
       onfocus={() => (focused = true)}
       onblur={() => setTimeout(() => (focused = false), 150)}
-      placeholder="films, shows, people"
+      placeholder={searchHint.text}
       spellcheck="false"
       autocapitalize="off"
       enterkeyhint="search"
@@ -125,20 +146,8 @@
   {/if}
 
   {#if searching}
-    <!-- top hits -->
-    {#if suggestions.length}
-      <div class="hits group">
-        {#each suggestions as s (s.id)}
-          <button class="hit" onclick={(e) => openDetail({ id: s.id, type: s.type, name: s.name, poster: s.poster }, e.currentTarget)}>
-            {#if s.poster}<img src={img(s.poster)} alt="" />{:else}<span class="ph"></span>{/if}
-            <span class="st">
-              <span class="nm">{s.name}</span>
-              <span class="foot dim">{[s.type === "series" ? "Show" : s.type === "movie" ? "Film" : "", s.year, s.cast].filter(Boolean).join(" · ")}</span>
-            </span>
-            <Icon name="chevron" size={14} class="chev" />
-          </button>
-        {/each}
-      </div>
+    {#if fix}
+      <button class="dym press" onclick={() => pick(fix!)}>did you mean <b>{fix}</b>?</button>
     {/if}
 
     {#if groups.length}
@@ -363,5 +372,22 @@
       grid-template-columns: repeat(3, 1fr);
       gap: 16px 10px;
     }
+  }
+  .dym {
+    align-self: flex-start;
+    padding: 10px 16px;
+    border-radius: 14px;
+    font-size: 15px;
+    color: var(--label-2);
+    background: rgb(255 255 255 / 0.06);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+  }
+  .dym b {
+    color: var(--label);
+    text-decoration: underline 1.5px rgb(var(--neon-rgb) / 0.7);
+    text-underline-offset: 3px;
+  }
+  .dym:hover {
+    background: rgb(255 255 255 / 0.1);
   }
 </style>

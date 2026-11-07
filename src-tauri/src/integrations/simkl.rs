@@ -653,6 +653,16 @@ async fn public(core: &Core, path: &str, ttl: Duration) -> AppResult<Value> {
     core.http.get_json_cached(&url(core, path)?, ttl, Duration::from_secs(10)).await
 }
 
+/// One title's full record by Simkl id ("movie" or "tv"), cached a week.
+pub async fn details(core: &Core, t: &str, id: u64) -> Option<Value> {
+    let path = if t == "tv" { format!("/tv/{id}?extended=full") } else { format!("/movies/{id}?extended=full") };
+    let mut v = public(core, &path, Duration::from_secs(86_400 * 7)).await.ok()?;
+    if t == "tv" {
+        v["type"] = json!("tv"); // so to_meta sees a show
+    }
+    Some(v)
+}
+
 /// Simkl's own id for an IMDb id.
 pub async fn sid(core: &Core, imdb: &str) -> Option<u64> {
     let v = public(core, &format!("/search/id?imdb={}", urlencoding::encode(imdb)), Duration::from_secs(86_400 * 30)).await.ok()?;

@@ -20,6 +20,7 @@
   import { share, haptic } from "../lib/native";
   import { ui } from "../lib/ui.svelte";
   import { trimLogo } from "../lib/trimlogo";
+  import { openGenre } from "../lib/genrelink.svelte";
   import { checkRelease, isUnreleased, releaseNote } from "../lib/release.svelte";
   import RateSheet from "../components/RateSheet.svelte";
   import { social, loadMe, reviewsOf, postActivity, isFav, toggleFav, ago, ref, type Activity } from "../lib/stores/social.svelte";
@@ -96,6 +97,7 @@
     api.simklStatus(t, i).then((s) => (rating = s?.rating ?? null)).catch(() => {});
   });
 
+  const mainGenre = $derived(m ? String((extra?.genres ?? m.genres)?.[0] ?? "") : "");
   const factLine = $derived.by(() => {
     if (!m) return [];
     const n = seasons.filter((x) => x > 0).length;
@@ -216,7 +218,7 @@
         {/if}
         <!-- same line as the billboard: Show • Thriller • 2017 • 2 Seasons • 16+ -->
         <div class="facts">
-          {#each factLine as f, n}{#if n}<span class="sep" aria-hidden="true"></span>{/if}<span>{f}</span>{/each}
+          {#each factLine as f, n}{#if n}<span class="sep" aria-hidden="true"></span>{/if}{#if n === 1 && f === mainGenre}<button class="genre-link" onclick={() => openGenre(m.type, f)} title="More {f}">{f}</button>{:else}<span>{f}</span>{/if}{/each}
         </div>
         <div class="actions">
           {#if primary && unreleased}
@@ -582,6 +584,16 @@
     opacity: 0.42;
     filter: grayscale(1);
     cursor: default;
+  }
+  .genre-link {
+    font: inherit;
+    color: inherit;
+    text-decoration: underline transparent 1.5px;
+    text-underline-offset: 3px;
+    transition: text-decoration-color var(--t-fast);
+  }
+  .genre-link:hover {
+    text-decoration-color: currentColor;
   }
   .review-btn {
     align-self: flex-start;

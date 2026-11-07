@@ -30,10 +30,12 @@
     const r = preview.rect;
     if (!r) return { left: 0, top: 0, w: 380, mh: 214 };
     const vw = innerWidth, vh = innerHeight;
-    const w = Math.round(Math.min(460, Math.max(340, r.width * 1.6)));
+    const w = Math.round(Math.min(480, Math.max(360, r.width * 1.8, r.width + 40)));
     const mh = Math.round((w * 9) / 16);
     const left = Math.max(16, Math.min(vw - w - 16, r.left + r.width / 2 - w / 2));
-    const top = Math.max(76, Math.min(vh - mh - bodyH - 14, r.top + r.height / 2 - mh / 2));
+    // a tall poster: the card starts at its top so none of it peeks out above
+    const want = r.height > mh ? r.top - 14 : r.top + r.height / 2 - mh / 2;
+    const top = Math.max(76, Math.min(vh - mh - bodyH - 14, want));
     return { left, top, w, mh };
   });
 

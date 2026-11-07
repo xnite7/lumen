@@ -615,3 +615,32 @@ pub async fn prompts(core: &Core) -> AppResult<Value> {
     let v = parse_json(m.get("content").and_then(|c| c.as_str()).unwrap_or("{}"))?;
     Ok(json!({ "prompts": v.get("prompts").and_then(|p| p.as_array()).map(|p| p.iter().take(3).cloned().collect::<Vec<_>>()) }))
 }
+
+/// "brkng bed" -> "Breaking Bad": a misspelled search, corrected to the
+/// title (or person) it most likely means. None when it already looks right
+/// or nothing fits. Cached per query.
+pub async fn did_you_mean(core: &Core, q: &str) -> Option<String> {
+    static CACHE: once_cell::sync::Lazy<parking_lot::Mutex<std::collections::HashMap<String, Option<String>>>> = once_cell::sync::Lazy::new(Default::default);
+    let key = q.trim().to_lowercase();
+    if key.len() < 3 {
+        return None;
+    }
+    if let Some(v) = CACHE.lock().get(&key) {
+        return v.clone();
+    }
+    let msgs = [
+        json!({ "role": "system", "content": "You fix misspelled searches in a movie & TV app. Reply with JSON only: {\"fix\": \"<the exact official title of the film, show, anime or person the user most likely meant>\"} or {\"fix\": null} if the search is already spelled right or you can't tell." }),
+        json!({ "role": "user", "content": q }),
+    ];
+    let fix = match chat(core, &msgs, None, true).await {
+        Ok(m) => m
+            .get("content")
+            .and_then(|c| c.as_str())
+            .and_then(|t| parse_json(t).ok())
+            .and_then(|v| v.get("fix").and_then(|f| f.as_str()).map(|s| s.trim().to_string()))
+            .filter(|f| !f.is_empty() && f.to_lowercase() != key),
+        Err(_) => return None, // don't cache a hiccup
+    };
+    CACHE.lock().insert(key, fix.clone());
+    fix
+}

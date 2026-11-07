@@ -37,7 +37,12 @@ pub fn descriptor() -> AddonDescriptor {
             catalogs.push(ManifestCatalog {
                 kind: t.to_string(),
                 id: id.to_string(),
-                name: Some(name.to_string()),
+                // Top 10 says what it's a Top 10 of
+                name: Some(match (*id, *t) {
+                    ("motn-top", "series") => "Top 10 TV Shows".to_string(),
+                    ("motn-top", _) => "Top 10 Movies".to_string(),
+                    _ => name.to_string(),
+                }),
                 extra: vec![ExtraProp { name: "skip".into(), ..Default::default() }],
                 extra_supported: vec![],
                 extra_required: vec![],
@@ -271,11 +276,14 @@ async fn surprise(core: &Core, kind: &str) -> AppResult<Vec<Value>> {
         return Ok(vec![]);
     }
     let t = if kind == "series" { "tv" } else { "movie" };
-    // Not cached: the point is that it rerolls.
-    let v = simkl::get(core, &format!("/search/random/?type={t}&rank_limit=500&limit=20")).await?;
-    let rows = match v {
-        Value::Array(a) => a,
-        other => vec![other],
+    // POST, not cached: the point is that it rerolls. It only gives Simkl
+    // ids, so each pick is looked up for its IMDb id, title and poster.
+    let v = simkl::post(core, &format!("/search/random?type={t}&rank_limit=1500&limit=24"), json!({})).await?;
+    let ids: Vec<u64> = match &v {
+        Value::Array(a) => a.iter().filter_map(|r| r.get("simkl_id").and_then(|x| x.as_u64())).collect(),
+        o => o.get("simkl_id").and_then(|x| x.as_u64()).into_iter().collect(),
     };
-    Ok(dedupe(rows.iter().filter_map(|r| simkl::to_meta(r, Some(kind))).collect()))
+    let looks = ids.into_iter().map(|id| simkl::details(core, t, id));
+    let metas = futures::future::join_all(looks).await;
+    Ok(dedupe(metas.into_iter().flatten().filter_map(|d| simkl::to_meta(&d, Some(kind))).collect()))
 }

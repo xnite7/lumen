@@ -5,7 +5,7 @@
   // the selected one sits on a warm-white pill.
   import Icon from "../components/Icon.svelte";
   import { nav, selectTab, go, tabs, phoneTabs, type Tab } from "../lib/router.svelte";
-  import { searchBar } from "../lib/search.svelte";
+  import { searchHint, searchBar } from "../lib/search.svelte";
   import logo from "../assets/brand/couch-mark.png";
   import { ui } from "../lib/ui.svelte";
   import { app } from "../lib/stores/app.svelte";
@@ -202,7 +202,7 @@
         oninput={typed}
         onblur={blurred}
         onkeydown={(e) => e.key === "Escape" && closeSearch()}
-        placeholder="films, shows, people"
+        placeholder={searchHint.text}
         spellcheck="false"
         autocomplete="off"
         aria-label="Search"

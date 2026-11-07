@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { wantGenre } from "../lib/genrelink.svelte";
   // The Shows / Movies tabs (Netflix): a title with a Genres picker, a
   // billboard card, then rows. Pick a genre and the whole page becomes it.
   import { api, listen, type CatalogRef, type Meta } from "../lib/api";
@@ -54,6 +55,15 @@
     const sim = await api.genreTrending(kind, g).catch(() => [] as Meta[]);
     heroItems = sim.length ? sim : pop ? await api.catalog(pop, [["genre", g]]).catch(() => []) : [];
   }
+
+  // a genre opened from a title page
+  $effect(() => {
+    const g = wantGenre[kind];
+    if (!g) return;
+    wantGenre[kind] = "";
+    const match = genres.find((x) => x.toLowerCase() === g.toLowerCase()) ?? g;
+    choose(match);
+  });
 
   function choose(g: string) {
     haptic("selection");
