@@ -494,6 +494,13 @@
   .me-btn.on {
     box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--lamp);
   }
+  /* squircle, like an app icon */
+  .avatar.big,
+  .avatar.big img,
+  .me-btn {
+    border-radius: 30%;
+    corner-shape: squircle;
+  }
   .avatar.big {
     width: 34px;
     height: 34px;
