@@ -1,7 +1,7 @@
 <script lang="ts">
   import { img, type Meta } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
-  import { openPreview, closePreview, preview } from "../lib/stores/preview.svelte";
+  import { openPreview, closePreview, preview, hoverDelay } from "../lib/stores/preview.svelte";
   import { inLibrary } from "../lib/stores/library.svelte";
   import { openDetail } from "../lib/open";
   import Icon from "./Icon.svelte";
@@ -37,11 +37,12 @@
   const src = $derived(img(landscape ? (meta.background ?? meta.poster) : meta.poster, landscape ? "w780" : "medium"));
   const owned = $derived(inLibrary(meta.id));
 
-  // Intent = the pointer sitting STILL, not merely passing over.
+  // A short rest on the poster opens it; moving across from an open preview
+  // swaps straight over (Netflix).
   function arm() {
     clearTimeout(timer);
     if (!app.settings.general.hoverPreviews || hidden) return;
-    timer = setTimeout(() => el && openPreview(meta, el), app.settings.general.hoverDelayMs);
+    timer = setTimeout(() => el && openPreview(meta, el), hoverDelay(app.settings.general.hoverDelayMs));
   }
   function disarm() {
     clearTimeout(timer);
@@ -61,7 +62,6 @@
   class:hidden
   class:ranked={rank > 0}
   onmouseenter={arm}
-  onmousemove={arm}
   onmouseleave={disarm}
   onclick={click}
   use:pressMenu={() => (hidden ? null : posterMenu(meta))}

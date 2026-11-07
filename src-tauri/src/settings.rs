@@ -83,7 +83,7 @@ impl Default for General {
             hide_adult: true,
             ui_language: "en".into(),
             hover_previews: true,
-            hover_delay_ms: 900,
+            hover_delay_ms: 450,
             hero_trailers: true,
             hero_muted: false,
             preview_muted: true,

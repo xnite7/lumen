@@ -148,8 +148,8 @@
           </div>
           <div class="group">
             <Cell label="Hover previews" hint="Rest the pointer on a poster to see its trailer."><Controls kind="switch" bind:value={s.general.hoverPreviews} onchange={changed} /></Cell>
-            <Cell label="Hover delay" hint="{(s.general.hoverDelayMs / 1000).toFixed(1)} s of stillness">
-              <div style="width:220px"><Controls kind="slider" bind:value={s.general.hoverDelayMs} min={300} max={3000} step={100} onchange={changed} label="Hover delay" /></div>
+            <Cell label="Hover delay" hint="{(s.general.hoverDelayMs / 1000).toFixed(2)} s">
+              <div style="width:220px"><Controls kind="slider" bind:value={s.general.hoverDelayMs} min={200} max={1500} step={50} onchange={changed} label="Hover delay" /></div>
             </Cell>
             <Cell label="Previews start muted"><Controls kind="switch" bind:value={s.general.previewMuted} onchange={changed} /></Cell>
             <Cell label="Hero trailers" hint="The banner plays its trailer after a few seconds."><Controls kind="switch" bind:value={s.general.heroTrailers} onchange={changed} /></Cell>

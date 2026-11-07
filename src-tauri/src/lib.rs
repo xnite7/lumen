@@ -111,6 +111,11 @@ pub fn run() {
                 settings.streams.autoplay_best = true;
                 let _ = db.set("autopick_v1", &true);
             }
+            // previews open about as fast as Netflix's now
+            if db.get::<bool>("snappy_previews_v1").is_none() {
+                settings.general.hover_delay_ms = settings.general.hover_delay_ms.min(450);
+                let _ = db.set("snappy_previews_v1", &true);
+            }
             if settings.playback.ios_player == "lumen" {
                 settings.playback.ios_player = "couch".into();
             }

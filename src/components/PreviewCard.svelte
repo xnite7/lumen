@@ -13,36 +13,45 @@
   import Icon from "./Icon.svelte";
 
   let trailer = $state<string | null>(null);
+  let trailerOn = $state(false);
   let muted = $state(true);
   let card: HTMLElement | undefined = $state();
-  let shown = $state(false);
+  let grown = $state(false);
+  let bodyH = $state(190);
 
   const meta = $derived(preview.meta);
-  const W = 380;
 
-  const pos = $derived.by(() => {
+  // Where it ends up: half again as wide as the poster (within reason), its
+  // picture centred on the poster, kept inside the window and under the bar.
+  const target = $derived.by(() => {
     const r = preview.rect;
-    if (!r) return { left: 0, top: 0, ox: "50%", oy: "50%" };
+    if (!r) return { left: 0, top: 0, w: 380, mh: 214 };
     const vw = innerWidth, vh = innerHeight;
-    let left = r.left + r.width / 2 - W / 2;
-    left = Math.max(16, Math.min(vw - W - 16, left));
-    const h = W * (9 / 16) + 210;
-    let top = r.top + r.height / 2 - h / 2;
-    top = Math.max(84, Math.min(vh - h - 16, top));
-    // grow from the poster's centre
-    const ox = `${r.left + r.width / 2 - left}px`;
-    const oy = `${r.top + r.height / 2 - top}px`;
-    return { left, top, ox, oy };
+    const w = Math.round(Math.min(460, Math.max(340, r.width * 1.6)));
+    const mh = Math.round((w * 9) / 16);
+    const left = Math.max(16, Math.min(vw - w - 16, r.left + r.width / 2 - w / 2));
+    const top = Math.max(76, Math.min(vh - mh - bodyH - 14, r.top + r.height / 2 - mh / 2));
+    return { left, top, w, mh };
+  });
+
+  // Starts exactly as the poster, grows into the card, shrinks back on close.
+  const box = $derived.by(() => {
+    const r = preview.rect;
+    const big = grown && !preview.closing;
+    if (!r || big) return { ...target, body: true };
+    return { left: r.left, top: r.top, w: r.width, mh: r.height, body: false };
   });
 
   $effect(() => {
     const m = meta;
     const token = preview.token;
     trailer = null;
-    shown = false;
+    trailerOn = false;
+    grown = false;
     muted = app.settings.general.previewMuted;
     if (!m) return;
-    requestAnimationFrame(() => (shown = true));
+    // two frames: lay out at the poster's size first, then grow
+    requestAnimationFrame(() => requestAnimationFrame(() => preview.token === token && (grown = true)));
     const own = m.trailerStreams?.[0]?.ytId ?? m.trailers?.find((t) => t.type === "Trailer")?.source ?? m.trailers?.[0]?.source;
     if (own) {
       trailer = own;
@@ -67,25 +76,27 @@
 {#if meta}
   <div
     bind:this={card}
-    class="card glass strong"
-    class:shown
-    style:left="{pos.left}px"
-    style:top="{pos.top}px"
-    style:width="{W}px"
-    style:transform-origin="{pos.ox} {pos.oy}"
+    class="pv card"
+    class:grown={box.body}
+    style:left="{box.left}px"
+    style:top="{box.top}px"
+    style:width="{box.w}px"
+    style:--mh="{box.mh}px"
     onmouseenter={keepPreview}
-    onmouseleave={() => closePreview(120)}
+    onmouseleave={() => closePreview(80)}
     role="dialog"
     aria-label={meta.name}
     tabindex="-1"
   >
     <button class="media" onclick={() => openDetail(meta, card)} aria-label="Open {meta.name}">
       {#if meta.background || meta.poster}
-        <img src={img(meta.background ?? meta.poster, "w780")} alt="" />
+        <img class="pv-art" src={img(meta.background ?? meta.poster, "w780")} alt="" />
       {/if}
       {#if trailer}
-        <YouTube id={trailer} {muted} loop fill />
+        <div class="tr" class:on={trailerOn}><YouTube id={trailer} {muted} loop fill onplaying={() => (trailerOn = true)} /></div>
       {/if}
+      <!-- the poster it came from, fading out as the card grows -->
+      {#if preview.art}<img class="from" src={preview.art} alt="" />{/if}
       <div class="shade"></div>
       {#if meta.logo}
         <img class="logo" src={img(meta.logo)} alt={meta.name} />
@@ -108,83 +119,156 @@
         </span>
       {/if}
     </button>
-    <div class="body">
-      <div class="actions">
-        <button class="btn primary small press" onclick={() => openDetail(meta, card)}><Icon name="play" size={15} /> Watch</button>
-        <button class="btn tinted icon small press" onclick={() => toggleLibrary(meta)} aria-label={owned ? "Remove from library" : "Add to library"} title={owned ? "In your library" : "Add to library"}>
-          <Icon name={owned ? "check" : "plus"} size={17} />
-        </button>
-        <button class="btn tinted icon small press" onclick={() => setWatched(meta, null, true)} aria-label="Mark as watched" title="Mark as watched">
-          <Icon name="eye" size={17} />
-        </button>
-        {#if preview.cw}
-          <button
-            class="btn tinted icon small press"
-            onclick={async () => {
-              await api.dismiss(meta.id);
-              closePreview();
-              loadLibrary();
-            }}
-            aria-label="Remove from Continue Watching"
-            title="Remove from Continue Watching"
-          >
-            <Icon name="close" size={16} />
+    <div class="body-wrap">
+      <div class="clip">
+      <div class="body" bind:offsetHeight={bodyH}>
+        <div class="actions">
+          <button class="btn primary small press" onclick={() => openDetail(meta, card)}><Icon name="play" size={15} /> Watch</button>
+          <button class="btn tinted icon small press" onclick={() => toggleLibrary(meta)} aria-label={owned ? "Remove from library" : "Add to library"} title={owned ? "In your library" : "Add to library"}>
+            <Icon name={owned ? "check" : "plus"} size={17} />
           </button>
+          <button class="btn tinted icon small press" onclick={() => setWatched(meta, null, true)} aria-label="Mark as watched" title="Mark as watched">
+            <Icon name="eye" size={17} />
+          </button>
+          {#if preview.cw}
+            <button
+              class="btn tinted icon small press"
+              onclick={async () => {
+                await api.dismiss(meta.id);
+                closePreview();
+                loadLibrary();
+              }}
+              aria-label="Remove from Continue Watching"
+              title="Remove from Continue Watching"
+            >
+              <Icon name="close" size={16} />
+            </button>
+          {/if}
+          <button class="btn tinted icon small press more" onclick={() => openDetail(meta, card)} aria-label="More info" title="More info">
+            <Icon name="chevronDown" size={17} />
+          </button>
+        </div>
+        <div class="facts">
+          {#if meta.imdbRating}<span class="chip"><Icon name="star" size={11} fill /> {meta.imdbRating}</span>{/if}
+          {#if year(meta)}<span class="chip outline">{year(meta)}</span>{/if}
+          {#if meta.runtime}<span class="chip outline">{runtime(meta.runtime)}</span>{/if}
+          <span class="chip outline">{meta.type === "series" ? "Series" : "Film"}</span>
+        </div>
+        {#if meta.genres?.length}
+          <p class="genres foot dim">{meta.genres.slice(0, 3).join(" · ")}</p>
+        {/if}
+        {#if meta.description}
+          <p class="desc foot dim clamp-3">{meta.description}</p>
         {/if}
       </div>
-      <div class="facts">
-        {#if meta.imdbRating}<span class="chip"><Icon name="star" size={11} fill /> {meta.imdbRating}</span>{/if}
-        {#if year(meta)}<span class="chip outline">{year(meta)}</span>{/if}
-        {#if meta.runtime}<span class="chip outline">{runtime(meta.runtime)}</span>{/if}
-        <span class="chip outline">{meta.type === "series" ? "Series" : "Film"}</span>
       </div>
-      {#if meta.genres?.length}
-        <p class="genres foot dim">{meta.genres.slice(0, 3).join(", ")}</p>
-      {/if}
-      {#if meta.description}
-        <p class="desc foot dim clamp-3">{meta.description}</p>
-      {/if}
     </div>
   </div>
 {/if}
 
 <style>
+  /* one easing for every part, so it moves as one piece */
   .card {
+    --pv-ease: cubic-bezier(0.22, 0.9, 0.24, 1);
+    --pv-t: 300ms;
     position: fixed;
     z-index: 70;
-    border-radius: var(--r-lg);
+    border-radius: var(--card-r, 10px);
     overflow: hidden;
-    opacity: 0;
-    transform: scale(0.62);
+    background: var(--surface);
+    box-shadow: 0 0 0 1px rgb(var(--hi) / 0);
     transition:
-      transform var(--t-slow) var(--spring),
-      opacity var(--t-med) ease;
-    box-shadow:
-      inset 0 1px 0 var(--glass-spec),
-      inset 0 0 0 1px var(--glass-rim),
-      0 40px 80px -30px rgb(var(--lo) / 0.8);
+      left var(--pv-t) var(--pv-ease),
+      top var(--pv-t) var(--pv-ease),
+      width var(--pv-t) var(--pv-ease),
+      border-radius var(--pv-t) var(--pv-ease),
+      box-shadow var(--pv-t) ease;
+    will-change: left, top, width;
   }
-  .card.shown {
-    opacity: 1;
-    transform: scale(1);
+  .card.grown {
+    border-radius: var(--r-md);
+    box-shadow:
+      inset 0 0 0 1px rgb(var(--hi) / 0.08),
+      0 30px 70px -20px rgb(var(--lo) / 0.95);
   }
   .media {
     position: relative;
     display: block;
     width: 100%;
-    aspect-ratio: 16 / 9;
+    height: var(--mh);
     overflow: hidden;
     background: var(--black);
+    transition: height var(--pv-t) var(--pv-ease);
   }
-  .media > img:first-child {
+  .media > img.pv-art,
+  .from {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+  .from {
+    transition: opacity 220ms ease;
+  }
+  .grown .from {
+    opacity: 0;
+  }
+  .tr {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 500ms ease;
+  }
+  .tr.on {
+    opacity: 1;
   }
   .shade {
     position: absolute;
     inset: 0;
     background: linear-gradient(0deg, rgb(var(--lo) / 0.65), transparent 55%);
+    opacity: 0;
+    transition: opacity var(--pv-t) ease;
+  }
+  .grown .shade,
+  .grown .logo,
+  .grown .name,
+  .grown .mute {
+    opacity: 1;
+  }
+  .logo,
+  .name,
+  .mute {
+    opacity: 0;
+    transition: opacity 200ms ease 80ms;
+  }
+  /* the details unfold under the picture */
+  .body-wrap {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows var(--pv-t) var(--pv-ease);
+  }
+  .grown .body-wrap {
+    grid-template-rows: 1fr;
+  }
+  .clip {
+    min-height: 0;
+    overflow: hidden;
+  }
+  .body {
+    padding: 14px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    opacity: 0;
+    transition: opacity 180ms ease;
+  }
+  .grown .body {
+    opacity: 1;
+    transition-delay: 90ms;
+  }
+  .actions .more {
+    margin-left: auto;
   }
   .logo {
     position: absolute;

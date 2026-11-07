@@ -157,7 +157,7 @@
   {/each}
 </nav>
 {:else}
-<div class="top" class:scrolled={ui.scrollY > 40} style:view-transition-name="tabbar">
+<div class="top" style:--fade={Math.min(1, ui.scrollY / 260)} style:view-transition-name="tabbar">
   <button class="brand" class:away={nav.stack.length > 1} onclick={() => wideTab("home")} aria-label="Home">
     <img src={logo} alt="couch" />
   </button>
@@ -324,12 +324,9 @@
     inset: 0 0 -30px;
     z-index: -1;
     pointer-events: none;
-    background: linear-gradient(180deg, rgb(var(--lo) / 0.75), rgb(var(--lo) / 0.35) 60%, transparent);
-    opacity: 0;
-    transition: opacity var(--t-med) ease;
-  }
-  .top.scrolled::before {
-    opacity: 1;
+    /* clear over the billboard, fading to solid black as the page scrolls */
+    background: linear-gradient(180deg, #000 0%, #000 calc(var(--fade) * 72%), rgb(0 0 0 / calc(var(--fade) * 0.6)) 86%, transparent);
+    opacity: var(--fade);
   }
   :global(html.playing) .top,
   :global(html.onboarding) .top {

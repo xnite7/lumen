@@ -13,7 +13,7 @@ export const DEFAULT_SETTINGS = {
     hideAdult: true,
     uiLanguage: "en",
     hoverPreviews: true,
-    hoverDelayMs: 900,
+    hoverDelayMs: 450,
     heroTrailers: true,
     heroMuted: false,
     previewMuted: true,

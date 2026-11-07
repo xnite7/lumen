@@ -97,7 +97,7 @@ export function selectTab(tab: Tab) {
   }, "tab");
 }
 
-export function go(route: Route, opts: { replace?: boolean } = {}) {
+export function go(route: Route, opts: { replace?: boolean; during?: () => void } = {}) {
   if (isTab(route.name)) {
     selectTab(route.name);
     // carry parameters (e.g. a search query) into the tab root
@@ -108,6 +108,7 @@ export function go(route: Route, opts: { replace?: boolean } = {}) {
   withTransition(() => {
     nav.stack = opts.replace ? [...nav.stack.slice(0, -1), keyed(route)] : [...nav.stack, keyed(route)];
     stacks[nav.tab] = nav.stack;
+    opts.during?.();
   }, "push");
 }
 

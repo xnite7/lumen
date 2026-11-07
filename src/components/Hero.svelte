@@ -9,6 +9,7 @@
   import { openDetail } from "../lib/open";
   import { year, runtime } from "../lib/format";
   import YouTube from "./YouTube.svelte";
+  import { preview } from "../lib/stores/preview.svelte";
   import Icon from "./Icon.svelte";
   import { ui } from "../lib/ui.svelte";
   import { haptic } from "../lib/native";
@@ -60,6 +61,7 @@
     trailer = null;
     trailerOn = false;
     if (!slides.length) return;
+    if (held) return;
     rotate = setTimeout(() => !paused && !trailerOn && next(), 9000);
     // After sitting at the top for a moment, the slide's trailer takes over.
     if (app.settings.general.heroTrailers && !app.playing && !ui.phone) {
@@ -90,6 +92,25 @@
     if (scrollY > 380 && trailer) {
       trailer = null;
       trailerOn = false;
+    }
+  });
+
+  // A poster preview takes the stage: the billboard stops on its picture,
+  // then picks up again (trailer and all) once the preview closes.
+  let held = false;
+  $effect(() => {
+    const open = !!preview.meta && !preview.closing;
+    if (open && !held) {
+      held = true;
+      paused = true;
+      clearTimeout(rotate);
+      clearTimeout(dwell);
+      trailer = null;
+      trailerOn = false;
+    } else if (!open && held) {
+      held = false;
+      paused = false;
+      schedule();
     }
   });
 

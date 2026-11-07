@@ -1,36 +1,68 @@
 // One hover preview at a time, owned by the app shell. Posters ask for it;
-// the card grows out of the poster's own rectangle.
+// the card grows out of the poster's own rectangle and shrinks back into it.
 
 import type { Meta } from "../api";
 
 export const preview = $state({
   meta: null as Meta | null,
   rect: null as DOMRect | null,
+  /** the artwork the poster was showing, so the card starts as the poster */
+  art: "" as string,
   source: "" as string,
   cw: null as any,
   token: 0,
+  closing: false,
 });
 
 let closeTimer: ReturnType<typeof setTimeout> | undefined;
+let goneTimer: ReturnType<typeof setTimeout> | undefined;
+let lastClosed = 0;
+
+/** Netflix-quick: once one preview is open, sliding to the next is instant. */
+export function hoverDelay(base: number): number {
+  return (preview.meta && !preview.closing) || performance.now() - lastClosed < 450 ? 70 : base;
+}
 
 export function openPreview(meta: Meta, el: HTMLElement, extra: { source?: string; cw?: any } = {}) {
   clearTimeout(closeTimer);
+  clearTimeout(goneTimer);
+  preview.closing = false;
   preview.meta = meta;
   preview.rect = el.getBoundingClientRect();
+  preview.art = (el.querySelector("img") as HTMLImageElement | null)?.currentSrc ?? "";
   preview.source = extra.source ?? "";
   preview.cw = extra.cw ?? null;
   preview.token++;
 }
 
-export function closePreview(delay = 0) {
+/** `delay` before it starts shrinking back; `animate: false` drops it at once. */
+export function closePreview(delay = 0, animate = true) {
   clearTimeout(closeTimer);
-  if (!delay) {
-    preview.meta = null;
-    return;
-  }
-  closeTimer = setTimeout(() => (preview.meta = null), delay);
+  const shut = () => {
+    if (!preview.meta) return;
+    if (!animate) {
+      clearTimeout(goneTimer);
+      preview.meta = null;
+      preview.closing = false;
+      lastClosed = performance.now();
+      return;
+    }
+    preview.closing = true;
+    clearTimeout(goneTimer);
+    goneTimer = setTimeout(() => {
+      preview.meta = null;
+      preview.closing = false;
+      lastClosed = performance.now();
+    }, 240);
+  };
+  if (!delay) shut();
+  else closeTimer = setTimeout(shut, delay);
 }
 
 export function keepPreview() {
   clearTimeout(closeTimer);
+  if (preview.closing) {
+    clearTimeout(goneTimer);
+    preview.closing = false;
+  }
 }

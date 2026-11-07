@@ -4,7 +4,7 @@
   // the logo laid over it, so the layout never changes either way.
   import { api, img, type LibraryItem, type Meta } from "../lib/api";
   import { lib } from "../lib/stores/library.svelte";
-  import { openPreview, closePreview, preview } from "../lib/stores/preview.svelte";
+  import { openPreview, closePreview, preview, hoverDelay } from "../lib/stores/preview.svelte";
   import { app } from "../lib/stores/app.svelte";
   import { go } from "../lib/router.svelte";
   import { episodeLabel, remaining } from "../lib/format";
@@ -57,7 +57,7 @@
   function arm(it: LibraryItem, el: HTMLElement) {
     clearTimeout(timers.get(it._id));
     if (!app.settings.general.hoverPreviews) return;
-    timers.set(it._id, setTimeout(() => openPreview(asMeta(it), el, { cw: it }), app.settings.general.hoverDelayMs + 300));
+    timers.set(it._id, setTimeout(() => openPreview(asMeta(it), el, { cw: it }), hoverDelay(app.settings.general.hoverDelayMs)));
   }
   function disarm(it: LibraryItem) {
     clearTimeout(timers.get(it._id));
@@ -81,7 +81,6 @@
           class="card press"
           onclick={() => resume(it)}
           onmouseenter={(e) => arm(it, e.currentTarget)}
-          onmousemove={(e) => arm(it, e.currentTarget)}
           onmouseleave={() => disarm(it)}
           use:pressMenu={() => cwMenu(it)}
         >
