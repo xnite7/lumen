@@ -237,7 +237,7 @@ export async function mock(cmd: string, args: any): Promise<any> {
       clearInterval(mpTimer);
       return null;
     case "skip_segments":
-      return { intro: [{ start: 1200, end: 1290 }], credits: [{ start: 5200, end: null }] };
+      return { recap: [{ start: 0, end: 70 }], intro: [{ start: 380, end: 470 }], credits: [{ start: 4600, end: 5300 }], preview: [{ start: 5300, end: null }] };
     case "tobii_status":
       return { status: "off" };
     case "crew_list":

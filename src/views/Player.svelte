@@ -435,7 +435,7 @@
 
   <!-- skip -->
   {#if activeSegment && pbs.showSkipButtons && !showUpNext && !pausedScreen}
-    <button class="skip glass press" onclick={() => seekTo(activeSegment.end)}>{segLabel[activeSegment.kind] ?? "Skip"} <Icon name="next" size={14} /></button>
+    <button class="skip press skip-{activeSegment.kind}" onclick={() => seekTo(activeSegment.end)}><Icon name="skipAhead" size={17} /> {segLabel[activeSegment.kind] ?? "Skip"}</button>
   {/if}
 
   {#if pausedScreen && !idleScreen}
@@ -536,12 +536,12 @@
       <div class="scrub" bind:this={bar} onpointerdown={barDown} onpointermove={barMove} onpointerup={barUp} onpointerleave={() => !dragging && (scrub = null)} role="slider" aria-label="Seek" aria-valuemin={0} aria-valuemax={st.duration} aria-valuenow={st.pos} tabindex="0">
         <div class="track">
           <div class="buf" style:width="{buffered}%"></div>
+          <div class="done" style:width="{dragging && scrub ? (scrub.t / (st.duration || 1)) * 100 : progress}%"></div>
           {#each Object.entries(pb.segments ?? {}) as [kind, list]}
             {#each list ?? [] as s}
               <div class="seg seg-{kind}" style:left="{(s.start / (st.duration || 1)) * 100}%" style:width="{(((s.end ?? st.duration) - s.start) / (st.duration || 1)) * 100}%"></div>
             {/each}
           {/each}
-          <div class="done" style:width="{dragging && scrub ? (scrub.t / (st.duration || 1)) * 100 : progress}%"></div>
         </div>
         <div class="knob" style:left="{dragging && scrub ? (scrub.t / (st.duration || 1)) * 100 : progress}%"></div>
         {#if scrub}
@@ -941,17 +941,35 @@
   }
 
   .skip {
+    --c: 244 234 240;
     position: absolute;
     right: var(--gutter);
     bottom: 128px;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 9px;
     height: 46px;
-    padding: 0 20px;
-    border-radius: var(--r-pill);
+    padding: 0 20px 0 16px;
+    border-radius: 14px;
     font-weight: 650;
+    color: rgb(var(--c));
+    background: color-mix(in srgb, rgb(var(--c)) 16%, rgb(8 10 20 / 0.82));
+    box-shadow: inset 0 0 0 1px rgb(var(--c) / 0.35), 0 10px 30px -12px rgb(var(--c) / 0.6);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     animation: pop var(--t-slow) var(--spring) both;
+  }
+  .skip-intro {
+    --c: var(--seg-intro);
+  }
+  .skip-recap {
+    --c: var(--seg-recap);
+  }
+  .skip-credits {
+    --c: var(--seg-credits);
+  }
+  .skip-preview {
+    --c: var(--seg-preview);
   }
   @keyframes pop {
     from {
@@ -1073,17 +1091,31 @@
     inset: 0 auto 0 0;
     background: rgb(var(--hi) / 0.25);
   }
+  /* intro blue · recap orange · credits purple · preview cyan */
+  .player {
+    --seg-intro: 59 130 246;
+    --seg-recap: 249 115 22;
+    --seg-credits: 168 85 247;
+    --seg-preview: 20 184 166;
+  }
   .seg {
     position: absolute;
+    z-index: 1;
     top: 0;
     bottom: 0;
-    background: rgb(var(--lamp-rgb) / 0.45);
+    background: rgb(var(--c));
   }
-  .seg-credits {
-    background: rgb(var(--hi) / 0.3);
+  .seg-intro {
+    --c: var(--seg-intro);
   }
   .seg-recap {
-    background: rgb(var(--neon-rgb) / 0.4);
+    --c: var(--seg-recap);
+  }
+  .seg-credits {
+    --c: var(--seg-credits);
+  }
+  .seg-preview {
+    --c: var(--seg-preview);
   }
   .done {
     position: absolute;
