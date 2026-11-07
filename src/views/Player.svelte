@@ -672,7 +672,7 @@
     </div>
     {/if}
 
-    <div class="bar glass strong" class:mini={minimal}>
+    <div class="bar glass strong" class:minimal-bar={minimal}>
       <button class="ic press" onclick={toggle} aria-label={st.paused ? "Play" : "Pause"}><Icon name={st.paused ? "play" : "pause"} size={22} /></button>
       <button class="ic press seekic" onclick={() => seekBy(-pbs.seekSmall)} aria-label="Back {pbs.seekSmall} seconds">{#if numbered}<Icon name={"replay" + pbs.seekSmall} size={24} />{:else}<Icon name="skipB" size={22} /><span>{pbs.seekSmall}</span>{/if}</button>
       <button class="ic press seekic" onclick={() => seekBy(pbs.seekSmall)} aria-label="Forward {pbs.seekSmall} seconds">{#if numbered}<Icon name={"forward" + pbs.seekSmall} size={24} />{:else}<Icon name="skipF" size={22} /><span>{pbs.seekSmall}</span>{/if}</button>
