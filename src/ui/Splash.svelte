@@ -1,7 +1,7 @@
 <script lang="ts">
   // Launch: the midnite sign sits still on the first frame for a beat, then
   // redraws itself into the couch (2x), holds, and you're home. Any tap,
-  // click or key skips straight through.
+  // plays through every time; nothing skips it.
   import { fade } from "svelte/transition";
   import { app } from "../lib/stores/app.svelte";
   import { hum } from "../lib/sound";
@@ -44,9 +44,8 @@
   });
 </script>
 
-<svelte:window onkeydown={done} />
 
-<div class="splash" role="presentation" onpointerdown={done} out:fade={{ duration: 520 }}>
+<div class="splash" out:fade={{ duration: 520 }}>
   <img class="intro" {src} alt="" draggable="false" />
 </div>
 
