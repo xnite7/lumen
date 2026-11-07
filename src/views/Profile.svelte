@@ -43,7 +43,7 @@
   });
 
   const groups: string[][] = [
-    ["appearance", "playback", "subtitles", "streams", "home"],
+    ["playback", "subtitles", "streams"],
     ["accounts", "integrations"],
     ["network", "storage", "about"],
     ["experimental"],

@@ -97,6 +97,7 @@ pub fn run() {
             let db = Arc::new(db::Db::open(&data_dir.join("couch.db"))?);
             db.cache_prune();
             let mut settings: settings::Settings = db.get("settings").unwrap_or_default();
+            settings.pin();
             // eye-control dwell used to be 0.8 s, which fired while reading the labels
             if settings.tobii.dwell_ms < 1300 {
                 settings.tobii.dwell_ms = 1500;

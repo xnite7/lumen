@@ -229,6 +229,8 @@ impl Addons {
                 });
             }
         }
+        // adult content isn't part of couch (it lives in midnite afterdark)
+        out.retain(|c| !c.adult);
         out
     }
 
@@ -401,6 +403,7 @@ impl Addons {
                     builtin: a.transport_url == BUILTIN_TRANSPORT,
                 })
             })
+            .filter(|c| !c.adult)
             .collect();
         let mut futs = FuturesUnordered::new();
         for c in cats {

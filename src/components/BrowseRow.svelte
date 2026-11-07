@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Home: "Search by vibe" up front, then browse tiles for every catalog and
+  // Home: the smart bar up front, then browse tiles for every catalog and
   // a row of genres. (Used to live on the Search page.)
   import { api, type CatalogRef } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
@@ -32,7 +32,7 @@
         <button class="vibe press" onclick={() => go({ name: "vibe" })}>
           <span class="blobs" aria-hidden="true"></span>
           <span class="vc-icon"><Icon name="sparkles" size={20} /></span>
-          <span class="tile-name">Search by vibe</span>
+          <span class="tile-name">Smart bar</span>
           <span class="tile-sub">describe a feeling</span>
         </button>
       {/if}

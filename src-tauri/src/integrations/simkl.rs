@@ -437,7 +437,7 @@ pub async fn scrobble(core: &Core, action: &str, meta: &Value, video_id: &str, p
     }
     body["progress"] = json!(((progress * 100.0).clamp(0.0, 100.0) * 100.0).round() / 100.0);
     let mut path = format!("/scrobble/{action}?min_progress={}", th.clamp(50, 100));
-    if action == "stop" && s.simkl_rewatches && progress * 100.0 >= th as f64 {
+    if action == "stop" && paid(core) && progress * 100.0 >= th as f64 {
         let imdb = video_id.split(':').next().unwrap_or(video_id);
         if super::simkl_sync::entry(core, imdb).map_or(false, |e| e["status"] == "completed") {
             path.push_str("&allow_rewatch=yes");
@@ -580,4 +580,12 @@ pub async fn trending(core: &Core) -> AppResult<Vec<Value>> {
         }
     }
     Ok(mixed)
+}
+
+/// Simkl PRO or VIP: rewatches can be logged as separate viewings.
+pub fn paid(core: &Core) -> bool {
+    core.db
+        .get::<Value>("simkl_user")
+        .and_then(|u| u.pointer("/account/type").and_then(|t| t.as_str()).map(|t| t.to_ascii_lowercase()))
+        .map_or(false, |t| t == "pro" || t == "vip")
 }

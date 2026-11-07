@@ -9,6 +9,11 @@ on:
 # Discord sign-in (only needed if the Discord app isn't a "Public Client")
 env:
   DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
+  # service keys compiled into couch (Settings → Secrets and variables → Actions)
+  COUCH_TMDB_KEY: ${{ secrets.COUCH_TMDB_KEY }}
+  COUCH_TIDB_KEY: ${{ secrets.COUCH_TIDB_KEY }}
+  COUCH_MOTN_KEY: ${{ secrets.COUCH_MOTN_KEY }}
+  COUCH_AI_KEY: ${{ secrets.COUCH_AI_KEY }}
 
 concurrency:
   group: build-${{ github.ref }}

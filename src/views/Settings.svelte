@@ -16,7 +16,7 @@
   import SimklConnect from "../ui/SimklConnect.svelte";
   import { SECTIONS, sectionById } from "../lib/sections";
 
-  let { section = "appearance" }: { section?: string } = $props();
+  let { section = "playback" }: { section?: string } = $props();
   const meta = $derived(sectionById(section) ?? SECTIONS[0]);
 
   const s = app.settings;
@@ -92,31 +92,8 @@
   });
 
   // ------------------------------------------------------------ home rows
-  let rows = $state<any[]>([]);
   $effect(() => {
-    if (section === "home") api.catalogs().then((c) => (rows = c.filter((x) => !x.extra.some((e) => e.isRequired && e.name === "search"))));
   });
-  function toggleRow(key: string) {
-    const h = s.home.hiddenRows;
-    s.home.hiddenRows = h.includes(key) ? h.filter((k) => k !== key) : [...h, key];
-    saveSettings();
-  }
-  function moveRow(key: string, dir: number) {
-    const keys = s.home.rowOrder.length ? [...s.home.rowOrder] : rows.map((r) => r.key);
-    for (const r of rows) if (!keys.includes(r.key)) keys.push(r.key);
-    const i = keys.indexOf(key);
-    const j = i + dir;
-    if (j < 0 || j >= keys.length) return;
-    [keys[i], keys[j]] = [keys[j], keys[i]];
-    s.home.rowOrder = keys;
-    saveSettings();
-  }
-  const orderedRows = $derived.by(() => {
-    const order = new Map(s.home.rowOrder.map((k, i) => [k, i]));
-    return rows.map((r, i) => ({ r, i })).sort((a, b) => (order.get(a.r.key) ?? 1000 + a.i) - (order.get(b.r.key) ?? 1000 + b.i)).map((x) => x.r);
-  });
-
-
   const langOptions = ["eng", "ara", "jpn", "spa", "fre", "ger", "ita", "por", "kor", "chi", "hin", "tur", "rus"];
   function toggleLang(list: string[], l: string) {
     return list.includes(l) ? list.filter((x) => x !== l) : [...list, l];
@@ -129,48 +106,9 @@
   <h1 class="large-title">{meta.label}</h1>
   {#key section}
       <div class="inner">
-        {#if section === "appearance"}
-          <div class="group">
-            <Cell label="Neon" hint={s.general.neon === "soft" ? "A lamp in the corner" : s.general.neon === "loud" ? "Full neon" : "The sign is on"}>
-              <Controls kind="segmented" bind:value={s.general.neon} options={[{ value: "soft", label: "soft" }, { value: "lit", label: "lit" }, { value: "loud", label: "loud" }]} onchange={changed} />
-            </Cell>
-            <Cell label="Later = cozier" hint="After midnight the room gets warmer and dimmer, and the couch notices you're still up."><Controls kind="switch" bind:value={s.general.timeAware} onchange={changed} /></Cell>
-            <Cell label="Sounds" hint="A soft CRT hum on launch and tiny clicks."><Controls kind="switch" bind:value={s.general.sound} onchange={changed} /></Cell>
-          </div>
-          <div class="group">
-            <Cell label="Colour from artwork" hint="The accent and the glow take their colour from what you're looking at."><Controls kind="switch" bind:value={s.general.accentFromArtwork} onchange={changed} /></Cell>
-            <Cell label="Ambient glow"><Controls kind="switch" bind:value={s.general.ambientGlow} onchange={changed} /></Cell>
-            <Cell label="Film grain" hint="Faint TV grain. Also removes banding in dark gradients."><Controls kind="switch" bind:value={s.general.grain} onchange={changed} /></Cell>
-            <Cell label="Glass refraction" hint="Glass edges bend what's behind them. Costs a little GPU."><Controls kind="switch" bind:value={s.general.refraction} onchange={changed} /></Cell>
-            <Cell label="Motion" hint={s.general.motionScale === 0 ? "Off" : s.general.motionScale < 0.8 ? "Quick" : s.general.motionScale > 1.15 ? "Floaty" : "Normal"}>
-              <div style="width:220px"><Controls kind="slider" bind:value={s.general.motionScale} min={0} max={1.5} step={0.05} onchange={changed} label="Motion" /></div>
-            </Cell>
-          </div>
-          <div class="group">
-            <Cell label="Hover previews" hint="Rest the pointer on a poster to see its trailer."><Controls kind="switch" bind:value={s.general.hoverPreviews} onchange={changed} /></Cell>
-            <Cell label="Hover delay" hint="{(s.general.hoverDelayMs / 1000).toFixed(2)} s">
-              <div style="width:220px"><Controls kind="slider" bind:value={s.general.hoverDelayMs} min={200} max={1500} step={50} onchange={changed} label="Hover delay" /></div>
-            </Cell>
-            <Cell label="Previews start muted"><Controls kind="switch" bind:value={s.general.previewMuted} onchange={changed} /></Cell>
-            <Cell label="Hero trailers" hint="The banner plays its trailer after a few seconds."><Controls kind="switch" bind:value={s.general.heroTrailers} onchange={changed} /></Cell>
-            <Cell label="Hero starts muted"><Controls kind="switch" bind:value={s.general.heroMuted} onchange={changed} /></Cell>
-            <Cell label="Titles under posters"><Controls kind="switch" bind:value={s.general.showTitlesUnderPosters} onchange={changed} /></Cell>
-            <Cell label="Top 10 numbers"><Controls kind="switch" bind:value={s.general.topTenRanks} onchange={changed} /></Cell>
-            <Cell label="Hide adult content" hint="Adult rows and results stay blurred until you choose Show."><Controls kind="switch" bind:value={s.general.hideAdult} onchange={changed} /></Cell>
-          </div>
-        {:else if section === "playback"}
+        {#if section === "playback"}
           <div class="group">
             <Cell label="Play next episode automatically"><Controls kind="switch" bind:value={s.playback.autoplayNext} onchange={changed} /></Cell>
-            <Cell label="Keep the same source" hint="The next episode plays from the same addon, quality and release group, without the stream list."><Controls kind="switch" bind:value={s.playback.bingeSameSource} onchange={changed} /></Cell>
-            <Cell label="Up next appears" hint="{s.playback.nextCardSecs} s before the end, or when the credits start">
-              <div style="width:200px"><Controls kind="slider" bind:value={s.playback.nextCardSecs} min={10} max={120} step={5} onchange={changed} label="Up next timing" /></div>
-            </Cell>
-          </div>
-          <div class="group">
-            <Cell label="Skip buttons" hint="From TheIntroDB, when segments are known for the episode."><Controls kind="switch" bind:value={s.playback.showSkipButtons} onchange={changed} /></Cell>
-            <Cell label="Skip intros automatically"><Controls kind="switch" bind:value={s.playback.autoSkipIntro} onchange={changed} /></Cell>
-            <Cell label="Skip recaps automatically"><Controls kind="switch" bind:value={s.playback.autoSkipRecap} onchange={changed} /></Cell>
-            <Cell label="Skip credits automatically"><Controls kind="switch" bind:value={s.playback.autoSkipCredits} onchange={changed} /></Cell>
           </div>
           <div class="group">
             <Cell label="Audio language" stack>
@@ -183,9 +121,6 @@
               <Controls kind="segmented" bind:value={s.playback.seekSmall} options={[{ value: 5, label: "5 s" }, { value: 10, label: "10 s" }, { value: 15, label: "15 s" }, { value: 30, label: "30 s" }]} onchange={changed} />
             </Cell>
             <Cell label="Volume boost" hint="Allows up to 200% for quiet mixes."><Controls kind="switch" bind:value={s.playback.volumeBoost} onchange={changed} /></Cell>
-            <Cell label="Count as watched at" hint="{s.playback.watchedThreshold}% (Simkl needs at least 80%)">
-              <div style="width:200px"><Controls kind="slider" bind:value={s.playback.watchedThreshold} min={80} max={98} step={1} onchange={changed} label="Watched threshold" /></div>
-            </Cell>
           </div>
           {#if app.platform !== "ios"}
           <h3 class="group-head">Video engine</h3>
@@ -231,10 +166,7 @@
             <Cell label="Animate lines"><Controls kind="switch" bind:value={s.subtitles.animateCues} onchange={changed} /></Cell>
           </div>
           <div class="group">
-            <Cell label="Style sound descriptions" hint="(door slams), [music] and speaker labels are set apart in italics."><Controls kind="switch" bind:value={s.subtitles.styleSdh} onchange={changed} /></Cell>
             <Cell label="Hide sound descriptions"><Controls kind="switch" bind:value={s.subtitles.hideSdh} onchange={changed} /></Cell>
-            <Cell label="Fix right-to-left text" hint="Correct punctuation and direction for Arabic."><Controls kind="switch" bind:value={s.subtitles.rtlFix} onchange={changed} /></Cell>
-            <Cell label="Native rendering for styled anime subtitles" hint="Typeset ASS tracks are drawn by the video engine exactly as authored; everything else uses the styles above."><Controls kind="switch" bind:value={s.playback.nativeAss} onchange={changed} /></Cell>
           </div>
         {:else if section === "streams"}
           <div class="group">
@@ -269,39 +201,11 @@
           <div class="group">
             <SimklConnect />
             <Cell label="Scrobble what you watch"><Controls kind="switch" bind:value={s.integrations.simklScrobble} onchange={changed} /></Cell>
-            <Cell label="Log rewatches" hint="Watching something again records a separate viewing on Simkl, instead of nothing. Simkl PRO or VIP."><Controls kind="switch" bind:value={s.integrations.simklRewatches} onchange={changed} /></Cell>
             <Cell label="Library is your Plan to Watch"><Controls kind="switch" bind:value={s.integrations.simklSyncWatchlist} onchange={changed} /></Cell>
           </div>
         {:else if section === "integrations"}
           <div class="group">
-            <Cell label="Built-in rows" hint="Simkl lists, TMDB browse rows, Top 10 and richer artwork, without the worker."><Controls kind="switch" bind:value={s.integrations.builtinCatalogs} onchange={changed} /></Cell>
-            <Cell label="TMDB key" hint="Cast, collections, recommendations and trailers. A shared key is used until you add your own."><SecretField name="tmdb" placeholder="TMDB v3 key" /></Cell>
-            <Cell label="Official trailers from KinoCheck"><Controls kind="switch" bind:value={s.integrations.kinocheckTrailers} onchange={changed} /></Cell>
-          </div>
-          {#if app.platform !== "ios"}
-            <h3 class="group-head">Discord</h3>
-            <div class="group">
-              <Cell label="Show what you're watching" hint="Only titles Simkl knows, with Simkl's own name and poster. Anything else never appears."><Controls kind="switch" bind:value={s.integrations.discordPresence} onchange={changed} /></Cell>
-            </div>
-          {/if}
-          <h3 class="group-head">Vibe search</h3>
-          <div class="group">
-            <Cell label="Vibe search" hint="A card in Search: ask for a feeling, picks come from your own Simkl ratings."><Controls kind="switch" bind:value={s.integrations.aiEnabled} onchange={changed} /></Cell>
-            <Cell label="Anthropic API key" hint="Sent only to Anthropic, straight from this computer."><SecretField name="anthropic" placeholder="sk-ant-…" /></Cell>
-            <Cell label="Model"><input class="field small" bind:value={s.integrations.aiModel} onchange={changed} /></Cell>
-            <Cell label="Fast mode when available"><Controls kind="switch" bind:value={s.integrations.aiFast} onchange={changed} /></Cell>
-          </div>
-          <h3 class="group-head">Skip intros</h3>
-          <div class="group">
-            <Cell label="TheIntroDB"><Controls kind="switch" bind:value={s.integrations.tidbEnabled} onchange={changed} /></Cell>
-            <Cell label="API key"><SecretField name="tidb" placeholder="theintrodb:…" /></Cell>
-          </div>
-          <h3 class="group-head">Movie of the Night</h3>
-          <div class="group">
-            <Cell label="API key" hint="Wide Continue Watching art and Top 10 rows. 500 requests a month, so everything is cached."><SecretField name="motn" placeholder="MOTN key" /></Cell>
-            <Cell label="Or your worker" hint="Your Simkl worker's URL, which already holds the key."><SecretField name="art_worker" placeholder="https://…workers.dev" /></Cell>
-            <Cell label="Country"><input class="field small" bind:value={s.integrations.motnCountry} onchange={changed} maxlength="2" /></Cell>
-            <Cell label="Top 10 service"><input class="field small" bind:value={s.integrations.motnService} onchange={changed} /></Cell>
+            <Cell label="Discord RPC" hint="Show what you're watching on your Discord profile. Only titles Simkl knows, with Simkl's own name and poster."><Controls kind="switch" bind:value={s.integrations.discordPresence} onchange={changed} /></Cell>
           </div>
         {:else if section === "hue"}
           <div class="group">
@@ -376,17 +280,6 @@
               <Cell label="Window depth" hint="{Math.round(s.tobii.parallaxStrength * 100)}%"><div style="width:200px"><Controls kind="slider" bind:value={s.tobii.parallaxStrength} min={0.3} max={2} step={0.1} onchange={changed} label="Depth" /></div></Cell>
             {/if}
             <Cell label="3D films: look around" hint="On 3D releases (SBS / OU) the picture follows your head, like a window into the scene. Depth uses the window depth slider."><Controls kind="switch" bind:value={s.tobii.depth3d} onchange={changed} /></Cell>
-          </div>
-        {:else if section === "home"}
-          <p class="dim lead">Turn rows off or move them. New addons add their rows at the end.</p>
-          <div class="group">
-            {#each orderedRows as r, i (r.key)}
-              <Cell label={r.name} hint="{r.addonName} · {r.type === 'series' ? 'Shows' : r.type === 'movie' ? 'Films' : r.type}">
-                <button class="btn tinted small icon press" onclick={() => moveRow(r.key, -1)} disabled={i === 0} aria-label="Move up"><Icon name="chevronUp" size={16} /></button>
-                <button class="btn tinted small icon press" onclick={() => moveRow(r.key, 1)} disabled={i === orderedRows.length - 1} aria-label="Move down"><Icon name="chevronDown" size={16} /></button>
-                <Controls kind="switch" value={!s.home.hiddenRows.includes(r.key)} onchange={() => toggleRow(r.key)} />
-              </Cell>
-            {/each}
           </div>
         {:else if section === "network"}
           <div class="group">

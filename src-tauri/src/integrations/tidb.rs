@@ -22,7 +22,7 @@ pub async fn segments(core: &Core, video_id: &str, duration_ms: Option<u64>) -> 
         q.push_str(&format!("&duration_ms={d}"));
     }
     let mut req = core.http.client().get(format!("{API}/media?{q}")).timeout(Duration::from_secs(8)).header("User-Agent", "couch");
-    if let Some(k) = core.db.secret("tidb") {
+    if let Some(k) = core.key("tidb") {
         req = req.bearer_auth(k);
     }
     let res = req.send().await?;

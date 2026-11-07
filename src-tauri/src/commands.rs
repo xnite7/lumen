@@ -31,7 +31,8 @@ pub fn settings_get(s: S<'_>) -> Settings {
 }
 
 #[tauri::command]
-pub fn settings_set(s: S<'_>, settings: Settings) -> AppResult<()> {
+pub fn settings_set(s: S<'_>, mut settings: Settings) -> AppResult<()> {
+    settings.pin();
     let prev = s.core.settings();
     s.core.db.set("settings", &settings)?;
     if prev.network.doh != settings.network.doh || prev.network.doh_provider != settings.network.doh_provider {
@@ -76,6 +77,7 @@ pub fn secrets_status(s: S<'_>) -> Value {
     m.insert("simklUser".into(), s.core.db.get::<Value>("simkl_user").unwrap_or(Value::Null));
     m.insert("stremioUser".into(), s.core.db.get::<Value>("stremio_user").unwrap_or(Value::Null));
     m.insert("discordUser".into(), crate::integrations::discord_auth::user(&s.core).unwrap_or(Value::Null));
+    m.insert("smartBar".into(), json!(crate::integrations::ai::available(&s.core)));
     Value::Object(m)
 }
 

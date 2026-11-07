@@ -20,6 +20,49 @@ pub struct Settings {
     pub home: Home,
 }
 
+impl Settings {
+    /// Things couch just does now -- no switches for them. Applied on every
+    /// load and save, so old settings files can't turn them back off.
+    pub fn pin(&mut self) {
+        let g = &mut self.general;
+        g.sound = true;
+        g.neon = "lit".into();
+        g.time_aware = true;
+        g.accent_from_artwork = true;
+        g.ambient_glow = true;
+        g.grain = true;
+        g.refraction = true;
+        g.motion_scale = 1.3; // floaty
+        g.hover_previews = true;
+        g.hover_delay_ms = 450;
+        g.preview_muted = true;
+        g.hero_trailers = true;
+        g.hero_muted = true;
+        g.show_titles_under_posters = false;
+        g.top_ten_ranks = true;
+        g.hide_adult = true; // adult content lives in midnite afterdark
+        let p = &mut self.playback;
+        p.show_skip_buttons = true;
+        p.auto_skip_intro = true;
+        p.auto_skip_recap = true;
+        p.auto_skip_credits = true;
+        p.next_card_secs = 35;
+        p.binge_same_source = true;
+        p.watched_threshold = 84;
+        p.native_ass = true;
+        let s = &mut self.subtitles;
+        s.style_sdh = true;
+        s.rtl_fix = true;
+        let i = &mut self.integrations;
+        i.builtin_catalogs = true;
+        i.kinocheck_trailers = true;
+        i.tidb_enabled = true;
+        i.ai_enabled = true;
+        self.home.hidden_rows.clear();
+        self.home.row_order.clear();
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {

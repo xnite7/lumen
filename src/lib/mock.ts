@@ -120,7 +120,7 @@ export async function mock(cmd: string, args: any): Promise<any> {
     }
     case "secrets_status":
       return {
-        tmdb: false, simkl_client_id: true, simkl_token: true, anthropic: true, simklUser: { user: { name: "xnite" } },
+        tmdb: false, simkl_client_id: true, simkl_token: true, smartBar: true, simklUser: { user: { name: "xnite" } },
         ...(q.has("signed") ? { discordUser: { id: "1", name: "xnite", avatar: "" } } : {}),
       };
     case "stremio_link_start":

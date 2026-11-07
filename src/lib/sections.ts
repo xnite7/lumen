@@ -11,13 +11,11 @@ export interface Section {
 }
 
 export const SECTIONS: Section[] = [
-  { id: "appearance", label: "Appearance", icon: "palette", tint: "var(--indigo)" },
   { id: "playback", label: "Playback", icon: "play", tint: "var(--pink)" },
   { id: "subtitles", label: "Subtitles", icon: "subtitles", tint: "var(--blue)" },
   { id: "streams", label: "Streams", icon: "film", tint: "var(--orange)" },
-  { id: "home", label: "Home rows", icon: "rows", tint: "var(--teal)" },
   { id: "accounts", label: "Accounts", icon: "personCircle", tint: "#30b0c7" },
-  { id: "integrations", label: "Services & keys", icon: "sparkles", tint: "var(--purple)" },
+  { id: "integrations", label: "Discord RPC", icon: "discord", tint: "#5865f2", only: ["windows", "browser", "linux"] },
   { id: "experimental", label: "Experimental", icon: "flask", tint: "var(--neon)" },
   { id: "hue", label: "Philips Hue", icon: "bulb", tint: "#e5b800" },
   { id: "tobii", label: "Eye tracking", icon: "eye", tint: "var(--green)", only: ["windows", "browser", "linux"] },

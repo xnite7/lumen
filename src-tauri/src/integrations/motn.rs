@@ -38,7 +38,7 @@ fn curated(s: &Value) -> bool {
 }
 
 async fn motn_get(core: &Core, path: &str, ttl: Duration) -> Option<Value> {
-    let key = core.db.secret("motn")?;
+    let key = core.key("motn")?;
     let url = format!("{API}{path}");
     if let Some(body) = core.db.cache_get(&url) {
         return serde_json::from_slice(&body).ok();
@@ -55,7 +55,7 @@ async fn motn_get(core: &Core, path: &str, ttl: Duration) -> Option<Value> {
 /// `{ backdrop, poster }` -- wide backdrop and the 16:9 poster with title.
 pub async fn art(core: &Core, imdb: &str) -> AppResult<Value> {
     let country = core.settings.read().integrations.motn_country.clone();
-    if core.db.secret("motn").is_some() {
+    if core.key("motn").is_some() {
         if let Some(s) = motn_get(core, &format!("/shows/{imdb}?country={country}"), MONTH).await {
             if curated(&s) {
                 return Ok(json!({

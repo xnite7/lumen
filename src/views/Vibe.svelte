@@ -37,7 +37,7 @@
   let input: HTMLInputElement | undefined = $state();
   let history = $state<Past[]>(loadHistory());
 
-  const ready = $derived(!!app.secrets.anthropic && !!app.secrets.simkl_token);
+  const ready = $derived(!!app.secrets.smartBar && !!app.secrets.simkl_token);
 
   function loadHistory(): Past[] {
     try {
@@ -120,10 +120,10 @@
   };
 </script>
 
-<NavBar title="Vibe" />
+<NavBar title="Smart bar" />
 
 <div class="vibe">
-  <h1 class="large-title">Vibe</h1>
+  <h1 class="large-title">Smart bar</h1>
   <p class="lede sub dim">Describe a feeling. couch picks from what you've loved.</p>
 
   <form
@@ -159,10 +159,14 @@
 
   {#if !ready}
     <section class="setup group">
-      <p class="sub">Vibe search needs Simkl (your ratings) and a Claude key.</p>
-      <div class="setup-row">
-        <button class="btn accent small press" onclick={() => go({ name: "settings", section: "integrations" })}>Set up</button>
-      </div>
+      {#if !app.secrets.simkl_token}
+        <p class="sub">The smart bar picks from your Simkl ratings. Connect Simkl to use it.</p>
+        <div class="setup-row">
+          <button class="btn accent small press" onclick={() => go({ name: "settings", section: "accounts" })}>Connect Simkl</button>
+        </div>
+      {:else}
+        <p class="sub">The smart bar isn't available in this build.</p>
+      {/if}
     </section>
   {/if}
 

@@ -13,7 +13,6 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
-const ANTHROPIC: &str = "https://api.anthropic.com/v1/messages";
 
 struct Profile {
     text: String,
@@ -278,71 +277,64 @@ async fn profile(core: &Core) -> AppResult<(String, HashSet<String>, usize)> {
     Ok(r)
 }
 
-async fn ask(core: &Core, profile: &str, instructions: &str, user: &str, schema: Value, max_tokens: u32, effort: &str) -> AppResult<Value> {
-    let key = core.db.secret("anthropic").ok_or_else(|| AppError::msg("Add your Anthropic API key in Settings → Integrations"))?;
-    let s = core.settings.read().integrations.clone();
-    let mut body = json!({
-        "model": s.ai_model,
-        "max_tokens": max_tokens,
-        "thinking": { "type": "adaptive" },
-        "output_config": { "effort": effort, "format": { "type": "json_schema", "schema": schema } },
-        "system": [
-            { "type": "text", "text": instructions },
-            { "type": "text", "text": profile, "cache_control": { "type": "ephemeral", "ttl": "1h" } }
-        ],
-        "messages": [{ "role": "user", "content": user }]
+/// The smart bar runs on a free model (Google Gemini's free tier through its
+/// OpenAI-compatible endpoint, by default). The key is couch's own, built in;
+/// the provider can be swapped at build time with COUCH_AI_URL / COUCH_AI_MODEL.
+const AI_URL: &str = match option_env!("COUCH_AI_URL") {
+    Some(u) => u,
+    None => "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+};
+const AI_MODEL: &str = match option_env!("COUCH_AI_MODEL") {
+    Some(m) => m,
+    None => "gemini-2.5-flash",
+};
+
+pub fn available(core: &Core) -> bool {
+    core.key("ai").is_some()
+}
+
+async fn ask(core: &Core, profile: &str, instructions: &str, user: &str, schema: Value, max_tokens: u32, _effort: &str) -> AppResult<Value> {
+    let key = core.key("ai").ok_or_else(|| AppError::msg("The smart bar isn't set up in this build"))?;
+    let system = format!(
+        "{instructions}\n\nAnswer with JSON only, matching this JSON Schema exactly:\n{}\n\n{profile}",
+        serde_json::to_string(&schema).unwrap_or_default()
+    );
+    let body = json!({
+        "model": AI_MODEL,
+        "max_tokens": max_tokens.max(2048),
+        "response_format": { "type": "json_object" },
+        "messages": [
+            { "role": "system", "content": system },
+            { "role": "user", "content": user }
+        ]
     });
-    let send = |b: &Value, fast: bool| {
-        let mut betas = vec!["server-side-fallback-2026-07-01"];
-        if fast {
-            betas.push("fast-mode-2026-02-01");
-        }
-        core.http
-            .client()
-            .post(ANTHROPIC)
-            .header("x-api-key", &key)
-            .header("anthropic-version", "2023-06-01")
-            .header("anthropic-beta", betas.join(","))
-            .timeout(Duration::from_secs(120))
-            .json(b)
-            .send()
-    };
-    if s.ai_fast {
-        body["speed"] = json!("fast");
-    }
-    let mut res = send(&body, s.ai_fast).await?;
-    // Fast mode is opportunistic: 400/403/429 mean "not available", never
-    // "fail the search".
-    if s.ai_fast && matches!(res.status().as_u16(), 400 | 403 | 429) {
-        body.as_object_mut().map(|o| o.remove("speed"));
-        res = send(&body, false).await?;
-    }
-    // A few spaced retries on transient errors; retrying hard made it worse.
+    let send = || core.http.client().post(AI_URL).bearer_auth(&key).timeout(Duration::from_secs(90)).json(&body).send();
+    let mut res = send().await?;
+    // free tiers rate-limit: a few spaced retries
     for attempt in 1..4 {
         let st = res.status().as_u16();
-        if st != 403 && st < 500 {
+        if st != 429 && st < 500 {
             break;
         }
-        tokio::time::sleep(Duration::from_millis((400.0 * 2.4f64.powi(attempt - 1)) as u64)).await;
-        res = send(&body, false).await?;
+        tokio::time::sleep(Duration::from_millis((700.0 * 2.2f64.powi(attempt - 1)) as u64)).await;
+        res = send().await?;
     }
     if !res.status().is_success() {
         let st = res.status();
+        if st.as_u16() == 429 {
+            return Err(AppError::msg("The smart bar is busy right now, try again in a minute"));
+        }
         let t = res.text().await.unwrap_or_default();
-        return Err(AppError::msg(format!("Anthropic HTTP {st}: {}", t.chars().take(240).collect::<String>())));
+        return Err(AppError::msg(format!("Smart bar error {st}: {}", t.chars().take(200).collect::<String>())));
     }
     let data: Value = res.json().await?;
-    if data.get("stop_reason").and_then(|s| s.as_str()) == Some("refusal") {
-        return Err(AppError::msg("The model declined that one"));
-    }
     let text = data
-        .get("content")
-        .and_then(|c| c.as_array())
-        .and_then(|c| c.iter().find(|b| b.get("type").and_then(|t| t.as_str()) == Some("text")))
-        .and_then(|b| b.get("text"))
+        .pointer("/choices/0/message/content")
         .and_then(|t| t.as_str())
         .ok_or_else(|| AppError::msg("Empty answer"))?;
-    Ok(serde_json::from_str(text)?)
+    // some models wrap JSON in a code fence
+    let t = text.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+    Ok(serde_json::from_str(t)?)
 }
 
 async fn resolve(core: &Core, title: &str, year: Option<i64>, kind: &str) -> Option<Value> {
@@ -413,7 +405,7 @@ pub async fn vibe(core: &Core, q: &str) -> AppResult<Value> {
 }
 
 pub async fn prompts(core: &Core) -> AppResult<Value> {
-    if !simkl::connected(core) || core.db.secret("anthropic").is_none() {
+    if !simkl::connected(core) || !available(core) {
         return Ok(json!({ "prompts": [] }));
     }
     let (text, _, rated) = profile(core).await?;

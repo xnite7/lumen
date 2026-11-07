@@ -30,8 +30,26 @@ impl Core {
     /// Keys with a sensible public default fall back to it so the app works
     /// on first launch; anything the user pastes in wins.
     pub fn tmdb_key(&self) -> Option<String> {
-        self.db.secret("tmdb").or_else(|| Some(DEFAULT_TMDB_KEY.to_string()))
+        self.key("tmdb").or_else(|| Some(DEFAULT_TMDB_KEY.to_string()))
     }
+
+    /// A service key: one pasted on this machine wins, otherwise the one
+    /// couch was built with (repo secrets COUCH_*_KEY), shared by everyone.
+    pub fn key(&self, name: &str) -> Option<String> {
+        self.db.secret(name).or_else(|| baked(name).map(|s| s.to_string()))
+    }
+}
+
+/// Keys compiled in from the build's environment (never in the source).
+pub fn baked(name: &str) -> Option<&'static str> {
+    let v = match name {
+        "tmdb" => option_env!("COUCH_TMDB_KEY"),
+        "tidb" => option_env!("COUCH_TIDB_KEY"),
+        "motn" => option_env!("COUCH_MOTN_KEY"),
+        "ai" => option_env!("COUCH_AI_KEY"),
+        _ => None,
+    };
+    v.filter(|s| !s.trim().is_empty())
 }
 
 /// The key your Clip Previews plugin already shipped with.

@@ -30,7 +30,7 @@
   });
 
   $effect(() => {
-    if (enabled && app.secrets.anthropic && app.secrets.simkl_token) {
+    if (enabled && app.secrets.smartBar && app.secrets.simkl_token) {
       api.vibePrompts().then((r) => (chips = r?.prompts ?? [])).catch(() => {});
     }
   });
