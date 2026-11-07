@@ -23,7 +23,7 @@
 <style>
   .asks {
     position: fixed;
-    z-index: 90;
+    z-index: 300; /* above the player, so "Let them in" works mid-film */
     top: calc(var(--safe-top) + 68px);
     right: var(--gutter);
     display: flex;

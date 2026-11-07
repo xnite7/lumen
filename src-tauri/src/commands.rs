@@ -957,6 +957,10 @@ pub async fn crew_ask_status(s: S<'_>, id: String) -> AppResult<Value> {
     crate::crew::ask_status(&s.core, &id).await
 }
 #[tauri::command]
+pub async fn crew_cancel_ask(s: S<'_>, id: String) -> AppResult<Value> {
+    crate::crew::cancel_ask(&s.core, &id).await
+}
+#[tauri::command]
 pub async fn crew_inbox(s: S<'_>) -> AppResult<Value> {
     crate::crew::inbox(&s.core).await
 }

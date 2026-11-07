@@ -308,6 +308,10 @@ pub async fn ask_status(core: &Core, id: &str) -> AppResult<Value> {
     call(core, reqwest::Method::GET, &format!("/v1/ask/{id}"), None).await
 }
 
+pub async fn cancel_ask(core: &Core, id: &str) -> AppResult<Value> {
+    call(core, reqwest::Method::DELETE, &format!("/v1/ask/{id}"), None).await
+}
+
 pub async fn inbox(core: &Core) -> AppResult<Value> {
     if login(core).await.is_err() || server(core).is_none() {
         return Ok(json!({ "asks": [] }));

@@ -181,7 +181,7 @@ type Member = {
 };
 
 /** "can I join your couch?" */
-type Ask = { id: string; from: string; fromName: string; fromAvatar?: string; to: string; at: number; status: "pending" | "accepted" | "declined" };
+type Ask = { id: string; from: string; fromName: string; fromAvatar?: string; to: string; at: number; status: "pending" | "accepted" | "declined" | "ended" };
 /** a host's playback, followed by the guests they let in */
 type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[] };
 type React = { n: number; who: string; name: string; avatar?: string; emoji: string; at: number };
@@ -393,6 +393,12 @@ export class Crew {
       const a = this.asks.get(m[1]);
       if (!a) return json({ status: "gone" });
       if (req.method === "GET") return json({ status: a.status });
+      // the asker changed their mind: it's gone from the host's screen too
+      if (req.method === "DELETE") {
+        if (who.id !== a.from) return json({ error: "not yours" }, 403);
+        this.asks.delete(a.id);
+        return json({ ok: true });
+      }
       if (req.method === "POST") {
         if (who.id !== a.to) return json({ error: "not yours" }, 403);
         a.status = b?.accept ? "accepted" : "declined";
@@ -529,6 +535,11 @@ export class Crew {
       this.members.delete(m[1]);
       this.rooms.delete(m[1]);
       this.frames.delete(m[1]);
+      // stopped watching with people still asking: that's a no
+      for (const a of this.asks.values()) if (a.to === m[1] && a.status === "pending") {
+        a.status = "ended";
+        a.at = Date.now();
+      }
       return json({ ok: true });
     }
 

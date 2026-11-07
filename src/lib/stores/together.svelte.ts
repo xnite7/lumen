@@ -76,7 +76,10 @@ export async function askToJoin(host: CrewMember) {
     }
     if (status !== "pending") {
       together.asking = null;
-      toast(status === "declined" ? `${host.name} wants the couch to themselves` : "that ask expired", "warn");
+      toast(
+        status === "declined" ? `${host.name} wants the couch to themselves` : status === "ended" ? `${host.name} stopped watching` : "that ask expired",
+        "warn",
+      );
       return;
     }
   }
@@ -87,7 +90,9 @@ export async function askToJoin(host: CrewMember) {
 }
 
 export function cancelAsk() {
+  const a = together.asking;
   together.asking = null;
+  if (a) api.crewCancelAsk(a.id).catch(() => {});
 }
 
 let syncTimer = 0;
