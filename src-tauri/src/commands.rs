@@ -895,6 +895,13 @@ pub async fn discord_finish(s: S<'_>, url: String) -> AppResult<Value> {
     crate::integrations::discord_auth::finish(&s.core, &url).await
 }
 
+/// "member" | "outsider" | "signin" | "unknown": is this person in the
+/// midnite Discord server? couch is only for the server.
+#[tauri::command]
+pub async fn discord_membership(s: S<'_>) -> AppResult<String> {
+    Ok(crate::integrations::discord_auth::membership(&s.core).await.to_string())
+}
+
 #[tauri::command]
 pub fn discord_logout(s: S<'_>) -> AppResult<()> {
     crate::integrations::discord_auth::logout(&s.core)

@@ -1,10 +1,9 @@
 <script lang="ts">
-  // The Couch tab: the midnite crew. Who's watching right now, your own
-  // sharing switch, and the invite link to pass around the server.
-  import { api } from "../lib/api";
+  // The Couch tab: the midnite crew. Who's watching right now, and your
+  // Gatekeeper switch. Everyone in the midnite Discord server is in; there's
+  // nothing to join.
   import { app, saveSettings } from "../lib/stores/app.svelte";
-  import { crew, refreshCrew, joinCrew } from "../lib/stores/crew.svelte";
-  import { toast, errorText } from "../lib/stores/toast.svelte";
+  import { crew, refreshCrew } from "../lib/stores/crew.svelte";
   import CouchRow from "../components/CouchRow.svelte";
   import Controls from "../components/Controls.svelte";
   import Cell from "../components/Cell.svelte";
@@ -13,40 +12,13 @@
   import wobble from "../assets/brand/couch-wobble.webp";
 
   const s = app.settings;
-  let link = $state("");
-  let joining = $state(false);
-  let invite = $state<string | null>(null);
 
   $effect(() => {
     refreshCrew();
-    api.crewInvite().then((v) => (invite = v)).catch(() => {});
   });
 
   const live = $derived(crew.members.filter((m) => m.watching?.title));
   const idle = $derived(crew.members.filter((m) => !m.watching?.title));
-
-  async function join(e: Event) {
-    e.preventDefault();
-    joining = true;
-    try {
-      await joinCrew(link);
-      link = "";
-      invite = await api.crewInvite().catch(() => null);
-      toast("you're in the crew.", "ok");
-    } catch (err) {
-      toast(errorText(err), "warn");
-    }
-    joining = false;
-  }
-  async function copyInvite() {
-    if (!invite) return;
-    try {
-      await navigator.clipboard.writeText(invite);
-      toast("invite copied. drop it in #midnite.", "ok");
-    } catch {
-      toast(invite, "info");
-    }
-  }
 </script>
 
 <div class="couch">
@@ -56,15 +28,7 @@
   {#if !crew.loaded}
     <div class="state"><img src={wobble} alt="" /><p class="bump-text">finding the remote…</p></div>
   {:else if !crew.setup}
-    <section class="setup">
-      <div class="state"><img src={boil} alt="" /><p class="bump-text">it's just you and the couch.</p></div>
-      <form class="join glass" onsubmit={join}>
-        <Icon name="link" size={18} />
-        <input bind:value={link} placeholder="paste the crew link" spellcheck="false" autocapitalize="off" />
-        <button class="btn small primary press" disabled={!link.trim() || joining}>{joining ? "…" : "join"}</button>
-      </form>
-      <p class="foot dim hint">Someone in the midnite server has the link. Tap it in Discord and couch opens it.</p>
-    </section>
+    <div class="state"><img src={wobble} alt="" /><p class="bump-text">getting you on the couch…</p></div>
   {:else}
     {#if crew.error}<p class="foot err">the crew server got scared. {crew.error}</p>{/if}
     {#if live.length}
@@ -82,13 +46,6 @@
           <Controls kind="switch" bind:value={s.integrations.crewGatekeeper} onchange={saveSettings} />
         </Cell>
       </div>
-      {#if invite}
-        <div class="group">
-          <Cell label="Invite link" hint="Anyone with it can see who's on the couch. Share it in the server, not in public.">
-            <button class="btn small tinted press" onclick={copyInvite}><Icon name="share" size={15} /> copy</button>
-          </Cell>
-        </div>
-      {/if}
     </div>
   {/if}
 </div>

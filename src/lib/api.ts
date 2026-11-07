@@ -292,6 +292,7 @@ export const api = {
   discordStart: () => invoke<void>("discord_start"),
   discordFinish: (url: string) => invoke<{ id: string; name: string; avatar?: string }>("discord_finish", { url }),
   discordLogout: () => invoke<void>("discord_logout"),
+  discordMembership: () => invoke<"member" | "outsider" | "signin" | "unknown">("discord_membership"),
   netSpeed: (fresh = false) => invoke<number>("net_speed", { fresh }),
   crewList: () => invoke<{ setup: boolean; members: CrewMember[] }>("crew_list"),
   crewJoin: (url: string, code: string) => invoke<{ setup: boolean; members: CrewMember[] }>("crew_join", { url, code }),

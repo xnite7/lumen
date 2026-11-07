@@ -23,7 +23,7 @@ export function startCrew() {
   if (timer) return;
   startTogether();
   refreshCrew();
-  timer = window.setInterval(() => document.visibilityState === "visible" && crew.setup && refreshCrew(), 45_000);
+  timer = window.setInterval(() => document.visibilityState === "visible" && refreshCrew(), 45_000);
 }
 
 /** couch://crew?u=<server>&c=<code>, or the https://<server>/join?c=<code> page */

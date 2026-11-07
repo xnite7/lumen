@@ -21,22 +21,55 @@ struct Sent {
 }
 static LAST: Mutex<Option<Sent>> = Mutex::new(None);
 
-/// This install's stable member id (random, made on first use).
+/// The crew server (built in; COUCH_CREW_URL at build time overrides it).
+pub const CREW_URL: &str = match option_env!("COUCH_CREW_URL") {
+    Some(u) => u,
+    None => "https://midnite-couch.xnite7.workers.dev",
+};
+
+/// You on the couch: your Discord id (the server vouches for it).
 pub fn member_id(core: &Core) -> String {
-    if let Some(id) = core.db.get::<String>("crew_id").filter(|s| !s.is_empty()) {
-        return id;
-    }
-    use rand::Rng;
-    let id: String = rand::rng().sample_iter(rand::distr::Alphanumeric).take(16).map(char::from).collect();
-    let _ = core.db.set("crew_id", &id);
-    id
+    core.db
+        .get::<Value>("discord_user")
+        .and_then(|u| u.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .unwrap_or_default()
 }
 
-/// (url, code) when the crew is set up.
+/// (url, "Bearer <session>") once the server has checked you're in the
+/// midnite Discord server. No codes, no invite links.
 fn server(core: &Core) -> Option<(String, String)> {
-    let url = core.settings.read().integrations.crew_url.trim().trim_end_matches('/').to_string();
-    let code = core.db.secret("crew_code")?;
-    (!url.is_empty()).then_some((url, code))
+    let session = core.db.secret("crew_session")?;
+    let exp = core.db.get::<Value>("crew_session_exp").and_then(|v| v.as_u64()).unwrap_or(0);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    (exp > now + 60).then(|| (CREW_URL.trim_end_matches('/').to_string(), format!("Bearer {session}")))
+}
+
+/// Trade your Discord sign-in for a couch session (the server checks you're
+/// in the midnite server with Discord itself).
+pub async fn login(core: &Core) -> AppResult<()> {
+    if server(core).is_some() {
+        return Ok(());
+    }
+    let tok = crate::integrations::discord_auth::access_token(core).await.ok_or_else(|| AppError::msg("sign in with Discord first"))?;
+    let r = core
+        .http
+        .client()
+        .post(format!("{}/v1/auth", CREW_URL.trim_end_matches('/')))
+        .json(&json!({ "token": tok }))
+        .timeout(Duration::from_secs(12))
+        .send()
+        .await
+        .map_err(|e| AppError::msg(format!("the crew server didn't answer: {e}")))?;
+    let st = r.status().as_u16();
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    if st == 403 {
+        let _ = core.db.set("discord_member", &json!(false));
+        return Err(AppError::msg("not in the midnite server"));
+    }
+    let session = v.get("session").and_then(|s| s.as_str()).ok_or_else(|| AppError::msg(v.get("error").and_then(|e| e.as_str()).unwrap_or("the crew server said no").to_string()))?;
+    core.db.set_secret("crew_session", Some(session))?;
+    core.db.set("crew_session_exp", &json!(v.get("exp").and_then(|e| e.as_u64()).unwrap_or(0)))?;
+    Ok(())
 }
 
 /// Your Discord name and avatar are who you are on the couch.
@@ -89,7 +122,7 @@ pub fn playing(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f6
     });
     let client = core.http.client();
     tauri::async_runtime::spawn(async move {
-        let _ = client.put(format!("{url}/v1/presence")).header("x-crew-code", code).json(&body).timeout(Duration::from_secs(8)).send().await;
+        let _ = client.put(format!("{url}/v1/presence")).header("authorization", code).json(&body).timeout(Duration::from_secs(8)).send().await;
     });
 }
 
@@ -104,25 +137,29 @@ pub fn stopped(core: &Core) {
     let id = member_id(core);
     let client = core.http.client();
     tauri::async_runtime::spawn(async move {
-        let _ = client.delete(format!("{url}/v1/presence/{id}")).header("x-crew-code", code).timeout(Duration::from_secs(8)).send().await;
+        let _ = client.delete(format!("{url}/v1/presence/{id}")).header("authorization", code).timeout(Duration::from_secs(8)).send().await;
     });
 }
 
 /// Who's on the couch right now (for the Home row and the Couch tab).
 pub async fn list(core: &Core) -> AppResult<Value> {
+    if login(core).await.is_err() {
+        return Ok(json!({ "setup": false, "members": [] }));
+    }
     let Some((url, code)) = server(core) else { return Ok(json!({ "setup": false, "members": [] })) };
     let me = member_id(core);
     let r = core
         .http
         .client()
         .get(format!("{url}/v1/presence"))
-        .header("x-crew-code", code)
+        .header("authorization", code)
         .timeout(Duration::from_secs(8))
         .send()
         .await
         .map_err(|e| AppError::msg(format!("the crew server didn't answer: {e}")))?;
     if r.status().as_u16() == 401 {
-        return Err(AppError::msg("that crew code doesn't work"));
+        let _ = core.db.set_secret("crew_session", None);
+        return Err(AppError::msg("your couch session ran out, trying again shortly"));
     }
     let v: Value = r.json().await.map_err(|e| AppError::msg(e.to_string()))?;
     let members: Vec<Value> = v.get("members").and_then(|m| m.as_array()).cloned().unwrap_or_default().into_iter().filter(|m| m.get("id").and_then(|i| i.as_str()) != Some(me.as_str())).collect();
@@ -140,7 +177,7 @@ fn send(core: &Core, method: reqwest::Method, path: &str, body: Option<Value>) -
     let client = core.http.client();
     let path = path.to_string();
     tauri::async_runtime::spawn(async move {
-        let mut r = client.request(method, format!("{url}{path}")).header("x-crew-code", code).timeout(Duration::from_secs(8));
+        let mut r = client.request(method, format!("{url}{path}")).header("authorization", code).timeout(Duration::from_secs(8));
         if let Some(b) = body {
             r = r.json(&b);
         }
@@ -151,7 +188,7 @@ fn send(core: &Core, method: reqwest::Method, path: &str, body: Option<Value>) -
 
 async fn call(core: &Core, method: reqwest::Method, path: &str, body: Option<Value>) -> AppResult<Value> {
     let (url, code) = server(core).ok_or_else(|| AppError::msg("the crew isn't set up"))?;
-    let mut r = core.http.client().request(method, format!("{url}{path}")).header("x-crew-code", code).timeout(Duration::from_secs(8));
+    let mut r = core.http.client().request(method, format!("{url}{path}")).header("authorization", code).timeout(Duration::from_secs(8));
     if let Some(b) = body {
         r = r.json(&b);
     }
@@ -188,7 +225,7 @@ fn host_tick(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f64,
     });
     let client = core.http.client();
     tauri::async_runtime::spawn(async move {
-        if let Ok(r) = client.put(format!("{url}/v1/room")).header("x-crew-code", code).json(&body).timeout(Duration::from_secs(5)).send().await {
+        if let Ok(r) = client.put(format!("{url}/v1/room")).header("authorization", code).json(&body).timeout(Duration::from_secs(5)).send().await {
             if r.status().as_u16() == 404 {
                 HOSTING.store(false, std::sync::atomic::Ordering::Relaxed); // everyone left
             }
@@ -205,7 +242,7 @@ pub async fn ask_status(core: &Core, id: &str) -> AppResult<Value> {
 }
 
 pub async fn inbox(core: &Core) -> AppResult<Value> {
-    if server(core).is_none() {
+    if login(core).await.is_err() || server(core).is_none() {
         return Ok(json!({ "asks": [] }));
     }
     let me = member_id(core);

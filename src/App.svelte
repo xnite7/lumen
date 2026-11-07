@@ -18,6 +18,8 @@
   import PreviewCard from "./components/PreviewCard.svelte";
   import Toasts from "./components/Toasts.svelte";
   import JoinRequests from "./components/JoinRequests.svelte";
+  import Gate from "./ui/Gate.svelte";
+  import { refreshCrew } from "./lib/stores/crew.svelte";
   import Player from "./views/Player.svelte";
   import Splash from "./ui/Splash.svelte";
   import { installTvNav } from "./lib/tvfocus";
@@ -39,6 +41,7 @@
       loadLibrary();
       startCrew();
       if (!app.settings.general.onboarded) ui.onboarding = true;
+      else checkGate();
     })();
     listen<string>("deeplink", handleLink);
     listen("library-changed", () => loadLibrary());
@@ -66,6 +69,20 @@
     document.documentElement.classList.toggle("onboarding", ui.onboarding);
     document.documentElement.dataset.platform = app.platform;
   });
+
+  // couch is for the midnite Discord server
+  let gate = $state<"" | "outsider" | "signin">("");
+  async function checkGate() {
+    if (!isTauri) {
+      // preview: ?gate=outsider / ?gate=signin
+      const g = new URLSearchParams(location.search).get("gate");
+      gate = g === "outsider" || g === "signin" ? g : "";
+      return;
+    }
+    const m = await api.discordMembership().catch(() => "unknown" as const);
+    gate = m === "outsider" ? "outsider" : m === "signin" ? "signin" : "";
+    if (!gate) refreshCrew();
+  }
 
   function handleLink(raw: string) {
     const u = raw.trim();
@@ -200,8 +217,9 @@
   <ContextMenu />
   <Handoff />
   {#if ui.onboarding}
-    <Onboarding ondone={() => (ui.onboarding = false)} />
+    <Onboarding ondone={() => { ui.onboarding = false; checkGate(); }} />
   {/if}
+  {#if gate && !ui.onboarding}<Gate state={gate} recheck={checkGate} />{/if}
   <Toasts />
   <JoinRequests />
 {/if}

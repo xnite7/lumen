@@ -1,10 +1,14 @@
-// crew server: presence + watch together (ask / answer / room)
-// midnite™ couch crew server.
+// midnite™ couch crew server: presence + watch together (ask / answer / room).
 //
 // One Durable Object holds who's on the couch right now, in memory only:
 // nothing is written to disk, and anyone who stops sending heartbeats is
-// forgotten after two minutes. Every request needs the crew code (a shared
-// secret set with `wrangler secret put CREW_CODE`).
+// forgotten after two minutes.
+//
+// Who may use it: members of the midnite Discord server. The app sends its
+// Discord access token to /v1/auth once; this checks the server list with
+// Discord itself and hands back a signed session (HMAC with CREW_CODE). Every
+// other call carries that session, and your id IS your Discord id, so nobody
+// can act as someone else.
 //
 //   PUT    /v1/presence        { id, name, watching, paused, pos, duration }
 //   DELETE /v1/presence/:id
@@ -15,7 +19,67 @@ import logo from "./logo.png";
 
 export interface Env {
   CREW: DurableObjectNamespace;
+  /** signing key for sessions */
   CREW_CODE: string;
+  /** the Discord server couch is for */
+  GUILD_ID?: string;
+}
+
+type Who = { id: string; name: string; avatar?: string };
+const SESSION_TTL = 7 * 86400;
+const enc = new TextEncoder();
+const b64u = (b: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const unb64u = (s: string) => atob(s.replace(/-/g, "+").replace(/_/g, "/"));
+
+async function hmac(key: string, data: string) {
+  const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return b64u(await crypto.subtle.sign("HMAC", k, enc.encode(data)));
+}
+
+async function sign(env: Env, who: Who) {
+  const body = b64u(enc.encode(JSON.stringify({ ...who, exp: Math.floor(Date.now() / 1000) + SESSION_TTL })));
+  return `${body}.${await hmac(env.CREW_CODE, body)}`;
+}
+
+async function verify(env: Env, header: string | null): Promise<Who | null> {
+  const t = header?.replace(/^Bearer\s+/i, "") ?? "";
+  const [body, mac] = t.split(".");
+  if (!body || !mac || !safeEqual(mac, await hmac(env.CREW_CODE, body))) return null;
+  try {
+    const v = JSON.parse(unb64u(body));
+    if (typeof v.exp !== "number" || v.exp < Date.now() / 1000) return null;
+    return { id: String(v.id), name: String(v.name ?? "someone"), avatar: v.avatar || undefined };
+  } catch {
+    return null;
+  }
+}
+
+/** Discord says who you are and which servers you're in. */
+async function auth(req: Request, env: Env): Promise<Response> {
+  let b: any;
+  try {
+    b = await req.json();
+  } catch {
+    return json({ error: "bad json" }, 400);
+  }
+  const token = typeof b?.token === "string" ? b.token : "";
+  if (!token) return json({ error: "no token" }, 400);
+  const h = { authorization: `Bearer ${token}` };
+  const me = await fetch("https://discord.com/api/users/@me", { headers: h });
+  if (!me.ok) return json({ error: "discord didn't recognise that sign-in" }, 401);
+  const u: any = await me.json();
+  if (env.GUILD_ID) {
+    const g = await fetch("https://discord.com/api/users/@me/guilds", { headers: h });
+    if (!g.ok) return json({ error: "couldn't check your servers" }, 401);
+    const list: any[] = await g.json();
+    if (!list.some((x) => x?.id === env.GUILD_ID)) return json({ error: "not in the server", notMember: true }, 403);
+  }
+  const who: Who = {
+    id: String(u.id),
+    name: String(u.global_name || u.username || "someone").slice(0, 40),
+    avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=128` : undefined,
+  };
+  return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id });
 }
 
 const STALE_MS = 120_000;
@@ -61,9 +125,14 @@ export default {
     if (url.pathname === "/") return new Response("on the couch.\n");
     if (url.pathname === "/join") return joinPage(url);
     if (!url.pathname.startsWith("/v1/")) return json({ error: "not here" }, 404);
-    if (!safeEqual(req.headers.get("x-crew-code") ?? "", env.CREW_CODE ?? "")) return json({ error: "wrong crew code" }, 401);
+    if (req.method === "POST" && url.pathname === "/v1/auth") return auth(req, env);
+    const who = await verify(env, req.headers.get("authorization"));
+    if (!who) return json({ error: "sign in again" }, 401);
+    // the Durable Object trusts this header; set it here, never from the client
+    const fwd = new Request(req);
+    fwd.headers.set("x-who", JSON.stringify(who));
     const stub = env.CREW.get(env.CREW.idFromName("midnite"));
-    return stub.fetch(req);
+    return stub.fetch(fwd);
   },
 };
 
@@ -100,7 +169,7 @@ export class Crew {
   }
 
   /** watch together: asking, answering, and the host's playback for guests */
-  together(req: Request, url: URL, b: any): Response | null {
+  together(req: Request, url: URL, b: any, who: Who): Response | null {
     const okId = (v: unknown) => {
       const id = str(v, 40);
       return id && /^[A-Za-z0-9_-]+$/.test(id) ? id : null;
@@ -108,7 +177,7 @@ export class Crew {
     const p = url.pathname;
     // ask to join someone's couch
     if (req.method === "POST" && p === "/v1/ask") {
-      const from = okId(b?.from), to = okId(b?.to);
+      const from = who.id, to = okId(b?.to);
       if (!from || !to || from === to) return json({ error: "bad ask" }, 400);
       const me = this.members.get(from), them = this.members.get(to);
       if (!me) return json({ error: "you're not on the couch" }, 400);
@@ -120,7 +189,7 @@ export class Crew {
     }
     let m = p.match(/^\/v1\/inbox\/([A-Za-z0-9_-]{1,40})$/);
     if (req.method === "GET" && m) {
-      const asks = [...this.asks.values()].filter((a) => a.to === m![1] && a.status === "pending");
+      const asks = [...this.asks.values()].filter((a) => a.to === who.id && a.status === "pending");
       return json({ asks });
     }
     m = p.match(/^\/v1\/ask\/([0-9a-f-]{36})$/);
@@ -129,7 +198,7 @@ export class Crew {
       if (!a) return json({ status: "gone" });
       if (req.method === "GET") return json({ status: a.status });
       if (req.method === "POST") {
-        if (b?.me !== a.to) return json({ error: "not yours" }, 403);
+        if (who.id !== a.to) return json({ error: "not yours" }, 403);
         a.status = b?.accept ? "accepted" : "declined";
         a.at = Date.now();
         if (a.status === "accepted") {
@@ -143,8 +212,7 @@ export class Crew {
     }
     // the host's player reports here about once a second while it has guests
     if (req.method === "PUT" && p === "/v1/room") {
-      const host = okId(b?.host);
-      const r = host && this.rooms.get(host);
+      const r = this.rooms.get(who.id);
       if (!r || !r.guests.length) return json({ error: "no room" }, 404);
       Object.assign(r, {
         metaId: str(b.metaId, 100) ?? r.metaId,
@@ -167,8 +235,9 @@ export class Crew {
         return json({ room: { ...r, now } });
       }
       if (req.method === "DELETE") {
-        if (r && m[2]) r.guests = r.guests.filter((g) => g !== m![2]);
-        else this.rooms.delete(m[1]);
+        // a guest leaves, or the host ends it
+        if (r && m[2] && m[2] === who.id) r.guests = r.guests.filter((g) => g !== who.id);
+        else if (m[1] === who.id) this.rooms.delete(m[1]);
         return json({ ok: true });
       }
     }
@@ -178,6 +247,12 @@ export class Crew {
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     this.sweep();
+    let who: Who;
+    try {
+      who = JSON.parse(req.headers.get("x-who") ?? "");
+    } catch {
+      return json({ error: "sign in again" }, 401);
+    }
 
     if (req.method === "GET" && url.pathname === "/v1/presence") {
       const members = [...this.members.values()].sort((a, b) => b.at - a.at);
@@ -191,14 +266,13 @@ export class Crew {
       } catch {
         return json({ error: "bad json" }, 400);
       }
-      const id = str(b?.id, 40);
-      if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) return json({ error: "bad id" }, 400);
+      const id = who.id;
       if (!this.members.has(id) && this.members.size >= MAX_MEMBERS) return json({ error: "couch is full" }, 429);
       const w = b.watching && typeof b.watching === "object" ? b.watching : null;
       this.members.set(id, {
         id,
-        name: str(b.name, 40) || "someone",
-        avatar: /^https:\/\/cdn\.discordapp\.com\//.test(str(b.avatar, 300) ?? "") ? str(b.avatar, 300) : undefined,
+        name: who.name,
+        avatar: who.avatar,
         watching: w && {
           title: str(w.title, 200),
           year: typeof w.year === "number" ? w.year : undefined,
@@ -219,6 +293,7 @@ export class Crew {
 
     const m = url.pathname.match(/^\/v1\/presence\/([A-Za-z0-9_-]{1,40})$/);
     if (req.method === "DELETE" && m) {
+      if (m[1] !== who.id) return json({ error: "not yours" }, 403);
       this.members.delete(m[1]);
       this.rooms.delete(m[1]);
       return json({ ok: true });
@@ -232,7 +307,7 @@ export class Crew {
         return json({ error: "bad json" }, 400);
       }
     }
-    const t = this.together(req, url, body);
+    const t = this.together(req, url, body, who);
     if (t) return t;
 
     return json({ error: "not here" }, 404);

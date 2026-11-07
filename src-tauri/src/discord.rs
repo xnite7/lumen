@@ -244,8 +244,7 @@ pub fn update(core: &Core, m: Msg) {
             (s.integrations.discord_presence, s.integrations.discord_app_id.trim().to_string())
         };
         let id = if id.is_empty() { DEFAULT_APP_ID.to_string() } else { id };
-        let crew = core.settings.read().integrations.crew_url.trim().trim_end_matches('/').to_string();
-        *imp::LOGO.lock() = if crew.is_empty() { String::new() } else { format!("{crew}/logo.png") };
+        *imp::LOGO.lock() = format!("{}/logo.png", crate::crew::CREW_URL.trim_end_matches('/'));
         let m = if on { m } else { Msg::Clear };
         imp::send(&id, m);
     }

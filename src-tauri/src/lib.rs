@@ -228,6 +228,7 @@ pub fn run() {
             commands::person_get,
             commands::hero_items,
             commands::home_rows,
+            commands::discord_membership,
             commands::crew_ask,
             commands::crew_ask_status,
             commands::crew_inbox,
