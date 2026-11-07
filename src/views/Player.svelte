@@ -3,7 +3,10 @@
   // transparent page -- everything here is the glass floating over it.
   import { api, img } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
-  import { pb, close, cmd, nextVideo, playNext } from "../lib/stores/playback.svelte";
+  import { pb, close, cmd, nextVideo, playNext, playVideo, orderedVideos } from "../lib/stores/playback.svelte";
+  import { progressOf, watchedIds } from "../lib/stores/library.svelte";
+  import EpisodeCarousel from "../components/player/EpisodeCarousel.svelte";
+  import EpisodesPopover from "../components/player/EpisodesPopover.svelte";
   import { time, lang, episodeLabel } from "../lib/format";
   import YouTube from "../components/YouTube.svelte";
   import Icon from "../components/Icon.svelte";
@@ -14,7 +17,14 @@
 
   let idle = $state(false);
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
-  let menu = $state<"" | "subs" | "audio" | "speed" | "picture">("");
+  let menu = $state<"" | "tracks" | "episodes" | "volume" | "more">("");
+  let menuX = $state(0);
+  function openMenu(m: typeof menu, e: MouseEvent) {
+    if (menu === m) return void (menu = "");
+    const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    menuX = b.left + b.width / 2;
+    menu = m;
+  }
   let scrub = $state<{ x: number; t: number } | null>(null);
   let dragging = $state(false);
   let bar: HTMLElement | undefined = $state();
@@ -29,7 +39,15 @@
   const pbs = $derived(app.settings.playback);
 
   // ------------------------------------------------------------ chrome idle
+  // paused and the mouse left alone: the "you're watching" screen
+  let restful = $state(false);
+  let restTimer: ReturnType<typeof setTimeout> | undefined;
   function poke() {
+    restful = false;
+    clearTimeout(restTimer);
+    restTimer = setTimeout(() => {
+      if (st.paused && !menu && !dragging) restful = true;
+    }, 6000);
     idle = false;
     clearTimeout(idleTimer);
     idleTimer = setTimeout(() => {
@@ -330,7 +348,30 @@
     if (on) await api.hueTest(true).catch(() => {});
   }
   // a paused VHS: dimmed frame, vignette, grain, the title in big lowercase
-  const pausedScreen = $derived(st.paused && !pb.loading && !pb.error && st.pos > 1 && !menu);
+  const pausedScreen = $derived(st.paused && !pb.loading && !pb.error && st.pos > 1);
+  const idleScreen = $derived(pausedScreen && restful && !menu);
+
+  // ------------------------------------------------------------ episodes
+  const isShow = $derived(pb.meta?.type === "series" && (pb.meta?.videos?.length ?? 0) > 1);
+  const allVideos = $derived(orderedVideos(pb.meta));
+  const nowVideo = $derived(allVideos.find((v) => v.id === pb.videoId));
+  const seasons = $derived([...new Set(allVideos.map((v) => v.season ?? 0))].sort((a, b) => (a || 999) - (b || 999)));
+  let season = $state(0);
+  $effect(() => {
+    season = nowVideo?.season ?? seasons[0] ?? 0;
+  });
+  const seasonVideos = $derived(allVideos.filter((v) => (v.season ?? 0) === season));
+  const watched = $derived(pb.meta ? watchedIds(pb.meta.id) : new Set<string>());
+  const epProgress = (v: { id: string }) => (pb.meta ? progressOf(pb.meta.id, v.id) : 0);
+  function pickEpisode(v: any) {
+    menu = "";
+    playVideo(v);
+  }
+  const facts = $derived(
+    [pb.meta?.type === "series" ? (nowVideo?.season ? `Season ${nowVideo.season}` : "") : "", pb.meta?.releaseInfo ?? "", pb.meta?.genres?.[0] ?? ""].filter(Boolean).join(" · "),
+  );
+  const blurb = $derived(nowVideo?.overview ?? nowVideo?.description ?? pb.meta?.description ?? "");
+  const epShort = $derived(nowVideo ? `S${nowVideo.season}: Ep. ${nowVideo.episode ?? nowVideo.number}` : "");
   const progress = $derived(st.duration ? (st.pos / st.duration) * 100 : 0);
   const buffered = $derived(st.duration ? Math.min(100, ((st.pos + st.cacheAhead) / st.duration) * 100) : 0);
 </script>
@@ -378,7 +419,7 @@
   {/if}
 
   <!-- subtitles -->
-  {#if pb.cue && st.subOverlay && subsOn}
+  {#if pb.cue && st.subOverlay && subsOn && !pausedScreen}
     <div class="subs" class:top={pb.cue.top} class:lifted={!chromeHidden} style:--sub-bottom="{sub.bottomOffset}vh">
       {#key pb.cue.key}
         <div class="cue" class:anim={sub.animateCues} data-bg={sub.background} style:font-size="calc({sub.size} * clamp(20px, 2.4vw, 46px))" style:font-weight={sub.weight} style:color={sub.color} style:--bg-o={sub.bgOpacity} style:--blur="{sub.blur}px" style:font-family={sub.font === "system-ui" ? undefined : sub.font}>
@@ -393,17 +434,40 @@
   {/if}
 
   <!-- skip -->
-  {#if activeSegment && pbs.showSkipButtons && !showUpNext}
+  {#if activeSegment && pbs.showSkipButtons && !showUpNext && !pausedScreen}
     <button class="skip glass press" onclick={() => seekTo(activeSegment.end)}>{segLabel[activeSegment.kind] ?? "Skip"} <Icon name="next" size={14} /></button>
   {/if}
 
-  {#if pausedScreen}
-    <div class="paused-vhs" aria-hidden="true">
-      <div class="pv-grain"></div>
-      <div class="pv-copy">
-        <span class="pv-tag">▮▮ paused</span>
-        <h2 class="pv-title">{pb.meta?.name ?? ""}</h2>
-        {#if pb.episodeTitle}<span class="pv-sub">{episodeLabel(pb.videoId)} · {pb.episodeTitle}</span>{/if}
+  {#if pausedScreen && !idleScreen}
+    <!-- paused: the episode up close, the season fanned on the right -->
+    <div class="paused" role="presentation">
+      <div class="p-shade"></div>
+      <div class="p-center">
+        <button class="p-seek press" onclick={() => seekBy(-pbs.seekSmall)} aria-label="Back {pbs.seekSmall} seconds"><Icon name="skipB" size={34} /><span>{pbs.seekSmall}</span></button>
+        <button class="p-play press" onclick={toggle} aria-label="Play"><Icon name="play" size={40} /></button>
+        <button class="p-seek press" onclick={() => seekBy(pbs.seekSmall)} aria-label="Forward {pbs.seekSmall} seconds"><Icon name="skipF" size={34} /><span>{pbs.seekSmall}</span></button>
+      </div>
+      <div class="p-info">
+        <span class="p-show">{pb.meta?.name ?? ""}</span>
+        {#if facts}<span class="p-facts">{facts}</span>{/if}
+        <h2 class="p-title">{pb.episodeTitle || pb.meta?.name || ""}</h2>
+        {#if blurb}<p class="p-desc">{blurb}</p>{/if}
+      </div>
+      {#if isShow}
+        <EpisodeCarousel videos={seasonVideos} currentId={pb.videoId} {timeLeft} {watched} progress={epProgress} onplay={pickEpisode} />
+      {/if}
+    </div>
+  {/if}
+
+  {#if idleScreen}
+    <!-- paused and left alone: who's watching what, like a screensaver -->
+    <div class="resting" role="presentation" onclick={() => (restful = false)}>
+      <div class="r-copy">
+        <span class="r-eyebrow">you're watching</span>
+        <h2 class="r-title">{pb.meta?.name ?? ""}</h2>
+        {#if epShort}<span class="r-ep">{epShort}</span>{/if}
+        {#if pb.episodeTitle}<span class="r-name">{pb.episodeTitle}</span>{/if}
+        {#if blurb}<p class="r-desc">{blurb}</p>{/if}
       </div>
     </div>
   {/if}
@@ -445,99 +509,122 @@
   {/if}
 
   <!-- top chrome -->
-  <header class="top" class:gone={chromeHidden}>
+  <header class="top" class:gone={chromeHidden || idleScreen}>
     <button class="round glass press" onclick={close} aria-label="Close player"><Icon name="back" size={20} /></button>
     <div class="ttl">
-      {#if pb.meta?.logo}<img src={img(pb.meta.logo)} alt={pb.meta.name} />{:else}<span class="title3">{pb.meta?.name}</span>{/if}
-      {#if pb.episodeTitle}<span class="foot dim">{episodeLabel(pb.videoId)} · {pb.episodeTitle}</span>{/if}
+      {#if !pausedScreen}
+        {#if pb.meta?.logo}<img src={img(pb.meta.logo)} alt={pb.meta.name} />{:else}<span class="title3">{pb.meta?.name}</span>{/if}
+      {/if}
     </div>
     <div class="badges">
+      {#if pausedScreen && isShow && seasons.length > 1}
+        <label class="season-pick">
+          <select bind:value={season} aria-label="Season">
+            {#each seasons as n}<option value={n}>{n === 0 ? "Specials" : `Season ${n}`}</option>{/each}
+          </select>
+          <Icon name="chevronDown" size={14} />
+        </label>
+      {/if}
       {#each quality as q}<span class="chip">{q}</span>{/each}
       {#if layout3d}<span class="chip">3D{tobiiOn() && app.settings.tobii.depth3d ? " · look around" : ""}</span>{/if}
-      {#if pb.mode === "web" && pb.url}
-        <!-- the system player can't do MKV/HEVC: hand off to a real player -->
-        <button class="chip press" onclick={() => api.openExternal(`vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(pb.url)}`)}>Open in VLC</button>
-        <button class="chip press" onclick={() => api.openExternal(`infuse://x-callback-url/play?url=${encodeURIComponent(pb.url)}`)}>Open in Infuse</button>
-      {/if}
     </div>
   </header>
 
   <!-- bottom chrome -->
-  <footer class="bottom glass" class:gone={chromeHidden}>
-    <div class="scrub" bind:this={bar} onpointerdown={barDown} onpointermove={barMove} onpointerup={barUp} onpointerleave={() => !dragging && (scrub = null)} role="slider" aria-label="Seek" aria-valuemin={0} aria-valuemax={st.duration} aria-valuenow={st.pos} tabindex="0">
-      <div class="track">
-        <div class="buf" style:width="{buffered}%"></div>
-        {#each Object.entries(pb.segments ?? {}) as [kind, list]}
-          {#each list ?? [] as s}
-            <div class="seg seg-{kind}" style:left="{(s.start / (st.duration || 1)) * 100}%" style:width="{(((s.end ?? st.duration) - s.start) / (st.duration || 1)) * 100}%"></div>
+  <footer class="bottom" class:gone={chromeHidden || idleScreen}>
+    <div class="scrub-row">
+      <div class="scrub" bind:this={bar} onpointerdown={barDown} onpointermove={barMove} onpointerup={barUp} onpointerleave={() => !dragging && (scrub = null)} role="slider" aria-label="Seek" aria-valuemin={0} aria-valuemax={st.duration} aria-valuenow={st.pos} tabindex="0">
+        <div class="track">
+          <div class="buf" style:width="{buffered}%"></div>
+          {#each Object.entries(pb.segments ?? {}) as [kind, list]}
+            {#each list ?? [] as s}
+              <div class="seg seg-{kind}" style:left="{(s.start / (st.duration || 1)) * 100}%" style:width="{(((s.end ?? st.duration) - s.start) / (st.duration || 1)) * 100}%"></div>
+            {/each}
           {/each}
-        {/each}
-        <div class="done" style:width="{dragging && scrub ? (scrub.t / (st.duration || 1)) * 100 : progress}%"></div>
-      </div>
-      {#if scrub}
-        <div class="tip glass strong" style:left="{scrub.x}px">{time(scrub.t)}</div>
-      {/if}
-    </div>
-    <div class="ctl">
-      <div class="grp">
-        <button class="ic press" onclick={toggle} aria-label={st.paused ? "Play" : "Pause"}><Icon name={st.paused ? "play" : "pause"} size={26} /></button>
-        <button class="ic press" onclick={() => seekBy(-pbs.seekSmall)} aria-label="Back {pbs.seekSmall} seconds"><Icon name="skipB" size={22} /></button>
-        <button class="ic press" onclick={() => seekBy(pbs.seekSmall)} aria-label="Forward {pbs.seekSmall} seconds"><Icon name="skipF" size={22} /></button>
-        {#if next}<button class="ic press" onclick={playNext} aria-label="Next episode" title="Next episode"><Icon name="next" size={20} /></button>{/if}
-        <div class="vol">
-          <button class="ic press" onclick={mute} aria-label={st.muted ? "Unmute" : "Mute"}><Icon name={st.muted || st.volume === 0 ? "mute" : "volume"} size={22} /></button>
-          <input type="range" min="0" max={pbs.volumeBoost ? 200 : 100} value={st.volume} oninput={(e) => setVolume(+(e.target as HTMLInputElement).value)} aria-label="Volume" style:--p="{(st.volume / (pbs.volumeBoost ? 200 : 100)) * 100}%" />
+          <div class="done" style:width="{dragging && scrub ? (scrub.t / (st.duration || 1)) * 100 : progress}%"></div>
         </div>
-        <span class="time foot">{time(st.pos)} <span class="dim">/ {time(st.duration)}</span></span>
-      </div>
-      <div class="grp">
-        {#if native}
-          <button class="ic press" class:on={menu === "subs"} onclick={() => (menu = menu === "subs" ? "" : "subs")} aria-label="Subtitles"><Icon name="subtitles" size={22} /></button>
-          <button class="ic press" class:on={menu === "audio"} onclick={() => (menu = menu === "audio" ? "" : "audio")} aria-label="Audio"><Icon name="audio" size={21} /></button>
-          <button class="ic press" class:on={menu === "picture"} onclick={() => (menu = menu === "picture" ? "" : "picture")} aria-label="Picture"><Icon name="tv" size={21} /></button>
+        <div class="knob" style:left="{dragging && scrub ? (scrub.t / (st.duration || 1)) * 100 : progress}%"></div>
+        {#if scrub}
+          <div class="tip glass strong" style:left="{scrub.x}px">{time(scrub.t)}</div>
         {/if}
-        <button class="ic press" class:on={menu === "speed"} onclick={() => (menu = menu === "speed" ? "" : "speed")} aria-label="Speed"><span class="spd">{st.speed}×</span></button>
-        {#if hueReady}<button class="ic press couchmode" class:on={couchMode} onclick={toggleCouch} aria-label="Couch mode" title={couchMode ? "couch mode: on" : "couch mode: off"}><Icon name="couch" size={22} /></button>{/if}
-        {#if app.native}<button class="ic press" onclick={pip} aria-label="Picture in picture"><Icon name="pip" size={21} /></button>{/if}
-        <button class="ic press" onclick={fullscreen} aria-label="Fullscreen"><Icon name={app.fullscreen ? "exitFullscreen" : "fullscreen"} size={21} /></button>
       </div>
+      <span class="remain tabular">{time(Math.max(0, (st.duration || 0) - (st.pos || 0)))}</span>
+    </div>
+
+    <div class="bar glass strong">
+      <button class="ic press" onclick={toggle} aria-label={st.paused ? "Play" : "Pause"}><Icon name={st.paused ? "play" : "pause"} size={22} /></button>
+      <button class="ic press seekic" onclick={() => seekBy(-pbs.seekSmall)} aria-label="Back {pbs.seekSmall} seconds"><Icon name="skipB" size={22} /><span>{pbs.seekSmall}</span></button>
+      <button class="ic press seekic" onclick={() => seekBy(pbs.seekSmall)} aria-label="Forward {pbs.seekSmall} seconds"><Icon name="skipF" size={22} /><span>{pbs.seekSmall}</span></button>
+      <div class="now">
+        <span class="now-show">{pb.meta?.name ?? ""}</span>
+        {#if epShort}<span class="now-ep">{epShort} {pb.episodeTitle}</span>{/if}
+      </div>
+      {#if next}<button class="ic press" onclick={playNext} aria-label="Next episode" title="Next episode"><Icon name="next" size={20} /></button>{/if}
+      <button class="ic press" class:on={menu === "volume"} onclick={(e) => openMenu("volume", e)} aria-label="Volume"><Icon name={st.muted || st.volume === 0 ? "mute" : "volume"} size={21} /></button>
+      {#if native}<button class="ic press" class:on={menu === "tracks"} onclick={(e) => openMenu("tracks", e)} aria-label="Audio and subtitles"><Icon name="subtitles" size={21} /></button>{/if}
+      {#if isShow}<button class="ic press" class:on={menu === "episodes"} onclick={(e) => openMenu("episodes", e)} aria-label="Episodes"><Icon name="stack" size={21} /></button>{/if}
+      <button class="ic press" class:on={menu === "more"} onclick={(e) => openMenu("more", e)} aria-label="Speed and picture"><Icon name="sliders" size={20} /></button>
+      {#if hueReady}<button class="ic press couchmode" class:on={couchMode} onclick={toggleCouch} aria-label="Couch mode" title={couchMode ? "couch mode: on" : "couch mode: off"}><Icon name="couch" size={21} /></button>{/if}
+      {#if app.native}<button class="ic press" onclick={pip} aria-label="Picture in picture"><Icon name="pip" size={20} /></button>{/if}
+      <button class="ic press" onclick={fullscreen} aria-label="Fullscreen"><Icon name={app.fullscreen ? "exitFullscreen" : "fullscreen"} size={20} /></button>
     </div>
 
     {#if menu}
-      <div class="menu glass strong">
-        {#if menu === "subs"}
-          <h4 class="foot faint">Subtitles</h4>
-          <button class="opt" class:sel={!subsOn} onclick={() => cmd("sid", { value: "no" })}>Off</button>
-          {#each subs as t (t.id)}
-            <button class="opt" class:sel={t.selected} onclick={() => cmd("sid", { value: t.id })}>{trackName(t)}{#if t.external}<span class="faint"> · addon</span>{/if}</button>
-          {/each}
-          <div class="delay">
-            <span class="foot dim">Delay {st.subDelay.toFixed(1)} s</span>
-            <button class="btn tinted small press" onclick={() => cmd("sub-delay", { value: st.subDelay - 0.1 })}>−0.1</button>
-            <button class="btn tinted small press" onclick={() => cmd("sub-delay", { value: st.subDelay + 0.1 })}>+0.1</button>
+      <div class="pop glass strong" class:wide={menu === "tracks" || menu === "episodes"} style:--x="{menuX}px">
+        {#if menu === "volume"}
+          <div class="vol-pop">
+            <input type="range" min="0" max={pbs.volumeBoost ? 200 : 100} value={st.volume} oninput={(e) => setVolume(+(e.target as HTMLInputElement).value)} aria-label="Volume" style:--p="{(st.volume / (pbs.volumeBoost ? 200 : 100)) * 100}%" />
+            <button class="ic press" onclick={mute} aria-label={st.muted ? "Unmute" : "Mute"}><Icon name={st.muted ? "mute" : "volume"} size={18} /></button>
           </div>
-        {:else if menu === "audio"}
-          <h4 class="foot faint">Audio</h4>
-          {#each audio as t (t.id)}
-            <button class="opt" class:sel={t.selected} onclick={() => cmd("aid", { value: t.id })}>{trackName(t)}</button>
-          {/each}
-        {:else if menu === "speed"}
-          <h4 class="foot faint">Speed</h4>
-          {#each [0.5, 0.75, 1, 1.25, 1.5, 2] as s}
-            <button class="opt" class:sel={st.speed === s} onclick={() => (native ? cmd("speed", { value: s }) : video && (video.playbackRate = s))}>{s}×</button>
-          {/each}
-        {:else if menu === "picture"}
-          <h4 class="foot faint">Picture</h4>
-          {#each [["fit", "Fit"], ["fill", "Fill screen"], ["stretch", "Stretch"]] as [v, l]}
-            <button class="opt" onclick={() => cmd("aspect", { value: v })}>{l}</button>
-          {/each}
-          {#if native}
-            <h4 class="foot faint">3D</h4>
-            {#each [["auto", pb.stream?._couch?.threeD ? "Auto (3D)" : "Auto (2D)"], ["off", "Off"], ["sbs", "Side by side"], ["ou", "Over-under"]] as [v, l]}
-              <button class="opt" class:sel={mode3d === v} onclick={() => (mode3d = v as typeof mode3d)}>{l}</button>
-            {/each}
-          {/if}
-          <p class="foot faint info">{st.video.width}×{st.video.height} · {st.video.codec} · {st.video.hwdec && st.video.hwdec !== "no" ? `hardware (${st.video.hwdec})` : "software"} · {st.video.fps?.toFixed(2)} fps</p>
+        {:else if menu === "tracks"}
+          <div class="tracks">
+            <div class="col">
+              <h4 class="headline">Audio</h4>
+              {#each audio as t (t.id)}
+                <button class="opt" class:sel={t.selected} onclick={() => cmd("aid", { value: t.id })}>{trackName(t)}</button>
+              {/each}
+            </div>
+            <div class="col alt">
+              <h4 class="headline">Subtitles</h4>
+              <button class="opt" class:sel={!subsOn} onclick={() => cmd("sid", { value: "no" })}>Off</button>
+              {#each subs as t (t.id)}
+                <button class="opt" class:sel={t.selected} onclick={() => cmd("sid", { value: t.id })}>{trackName(t)}{#if t.external}<span class="faint"> · addon</span>{/if}</button>
+              {/each}
+              {#if subsOn}
+                <div class="delay">
+                  <span class="foot dim">timing {st.subDelay.toFixed(1)} s</span>
+                  <button class="btn tinted small press" onclick={() => cmd("sub-delay", { value: st.subDelay - 0.1 })}>−0.1</button>
+                  <button class="btn tinted small press" onclick={() => cmd("sub-delay", { value: st.subDelay + 0.1 })}>+0.1</button>
+                </div>
+              {/if}
+            </div>
+          </div>
+        {:else if menu === "episodes"}
+          <EpisodesPopover {seasons} bind:season videos={seasonVideos} currentId={pb.videoId} {watched} progress={epProgress} onplay={pickEpisode} />
+        {:else if menu === "more"}
+          <div class="more-pop">
+            <h4 class="foot faint">Speed</h4>
+            <div class="seg-row">
+              {#each [0.5, 0.75, 1, 1.25, 1.5, 2] as s}
+                <button class="chip press" class:sel={st.speed === s} onclick={() => (native ? cmd("speed", { value: s }) : video && (video.playbackRate = s))}>{s}×</button>
+              {/each}
+            </div>
+            <h4 class="foot faint">Picture</h4>
+            <div class="seg-row">
+              {#each [["fit", "Fit"], ["fill", "Fill screen"], ["stretch", "Stretch"]] as [v, l]}
+                <button class="chip press" onclick={() => cmd("aspect", { value: v })}>{l}</button>
+              {/each}
+            </div>
+            {#if native}
+              <h4 class="foot faint">3D</h4>
+              <div class="seg-row">
+                {#each [["auto", pb.stream?._couch?.threeD ? "Auto (3D)" : "Auto"], ["off", "Off"], ["sbs", "SBS"], ["ou", "OU"]] as [v, l]}
+                  <button class="chip press" class:sel={mode3d === v} onclick={() => (mode3d = v as typeof mode3d)}>{l}</button>
+                {/each}
+              </div>
+            {/if}
+            <p class="foot faint info">{st.video.width}×{st.video.height} · {st.video.codec} · {st.video.hwdec && st.video.hwdec !== "no" ? `hardware (${st.video.hwdec})` : "software"} · {st.video.fps?.toFixed(2)} fps</p>
+          </div>
         {/if}
       </div>
     {/if}
@@ -945,9 +1032,10 @@
     position: absolute;
     left: var(--gutter);
     right: var(--gutter);
-    bottom: 22px;
-    padding: 10px 18px 10px;
-    border-radius: var(--r-xl);
+    bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     transition: opacity var(--t-med) ease, transform var(--t-med) var(--glide);
   }
   .gone {
@@ -1024,67 +1112,6 @@
     color: var(--lamp);
     filter: drop-shadow(0 0 8px rgb(var(--lamp-rgb) / 0.7));
   }
-  /* ------------------------------------------------- paused VHS screen */
-  .paused-vhs {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background:
-      radial-gradient(120% 95% at 50% 45%, rgb(var(--lo) / 0.25) 40%, rgb(var(--lo) / 0.8) 100%),
-      linear-gradient(0deg, rgb(var(--lo) / 0.7), rgb(var(--lo) / 0.15) 55%);
-    animation: pv-in 700ms var(--ease-out) both;
-  }
-  @keyframes pv-in {
-    from {
-      opacity: 0;
-    }
-  }
-  .pv-grain {
-    position: absolute;
-    inset: -50%;
-    opacity: 0.09;
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 .9  0 0 0 0 .95  0 0 0 .6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-    animation: grain 1.4s steps(6) infinite;
-  }
-  .pv-copy {
-    position: absolute;
-    left: var(--gutter);
-    bottom: 150px;
-    max-width: min(900px, 80vw);
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .pv-tag {
-    font-family: var(--font-bump);
-    font-size: 13px;
-    letter-spacing: 0.08em;
-    color: var(--lamp);
-    text-shadow: 0 0 12px rgb(var(--lamp-rgb) / 0.6);
-    animation: vhs-blink 1.6s steps(2) infinite;
-  }
-  @keyframes vhs-blink {
-    50% {
-      opacity: 0.35;
-    }
-  }
-  .pv-title {
-    margin: 0;
-    font-family: var(--font-display);
-    font-weight: 800;
-    font-size: clamp(44px, 7vw, 110px);
-    line-height: 0.95;
-    letter-spacing: -0.045em;
-    text-transform: lowercase;
-    color: var(--text);
-    text-shadow: 0 4px 40px rgb(var(--lo) / 0.6);
-  }
-  .pv-sub {
-    font-size: var(--fs-callout);
-    color: var(--text-dim);
-    text-transform: lowercase;
-  }
   .un-play {
     gap: 8px;
   }
@@ -1114,115 +1141,404 @@
     font-weight: 600;
     font-variant-numeric: tabular-nums;
   }
-  .ctl {
+  /* --------------------------------------------- control bar (image 3) */
+  .scrub-row {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-top: 4px;
+    gap: 14px;
   }
-  .grp {
+  .scrub-row .scrub {
+    flex: 1;
+  }
+  .knob {
+    position: absolute;
+    top: 50%;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
+    margin-top: -7px;
+    border-radius: 50%;
+    background: var(--lamp);
+    box-shadow: 0 0 0 4px rgb(var(--lamp-rgb) / 0.2), 0 0 14px rgb(var(--lamp-rgb) / 0.7);
+    transform: scale(0.8);
+    transition: transform var(--t-fast) var(--spring);
+    pointer-events: none;
+  }
+  .scrub:hover .knob {
+    transform: scale(1.1);
+  }
+  .done {
+    background: var(--lamp) !important;
+  }
+  .remain {
+    font-size: 14px;
+    font-weight: 600;
+    min-width: 54px;
+    text-align: right;
+  }
+  .bar {
     display: flex;
     align-items: center;
     gap: 2px;
+    padding: 6px 10px;
+    border-radius: var(--r-lg);
   }
   .ic {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
+    position: relative;
+    width: 42px;
+    height: 42px;
+    flex: none;
+    border-radius: 12px;
     display: grid;
     place-items: center;
+    color: rgb(var(--hi) / 0.85);
   }
   .ic:hover,
   .ic.on {
-    background: rgb(var(--hi) / 0.12);
+    color: var(--text);
+    background: rgb(var(--hi) / 0.1);
   }
-  .spd {
+  .seekic span,
+  .p-seek span {
+    position: absolute;
+    font-size: 8.5px;
+    font-weight: 800;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -35%);
+  }
+  .now {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 10px;
+    padding: 0 12px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .now-show {
     font-weight: 700;
     font-size: 14px;
   }
-  .vol {
-    display: flex;
-    align-items: center;
+  .now-ep {
+    font-size: 14px;
+    color: rgb(var(--hi) / 0.55);
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .vol input {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 0;
-    opacity: 0;
-    height: 24px;
-    background: transparent;
-    transition: width var(--t-med) var(--spring), opacity var(--t-fast);
-  }
-  .vol:hover input {
-    width: 110px;
-    opacity: 1;
-    margin-right: 8px;
-  }
-  .vol input::-webkit-slider-runnable-track {
-    height: 4px;
-    border-radius: 4px;
-    background: linear-gradient(90deg, var(--white) var(--p), rgb(var(--hi) / 0.25) var(--p));
-  }
-  .vol input::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
-    margin-top: -5px;
-    border-radius: 50%;
-    background: var(--white);
-  }
-  .time {
-    margin-left: 10px;
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-  }
-  .menu {
-    position: absolute;
-    right: 12px;
-    bottom: calc(100% + 10px);
+
+  /* popovers, each pointing at its button */
+  .pop {
+    position: fixed;
+    bottom: 96px;
+    left: clamp(12px, calc(var(--x) - 140px), calc(100vw - 292px));
     min-width: 280px;
-    max-height: 50vh;
-    overflow-y: auto;
     padding: 10px;
     border-radius: var(--r-lg);
     animation: menu-in var(--t-med) var(--spring) both;
-    transform-origin: bottom right;
+    transform-origin: bottom center;
+    z-index: 5;
+  }
+  .pop.wide {
+    left: clamp(12px, calc(var(--x) - 260px), calc(100vw - 532px));
+    min-width: 0;
   }
   @keyframes menu-in {
     from {
       opacity: 0;
-      transform: scale(0.9);
+      transform: translateY(8px) scale(0.96);
     }
   }
-  h4 {
-    margin: 4px 10px 6px;
-    font-weight: 600;
+  .vol-pop {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 6px;
+  }
+  .vol-pop input {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 24px;
+    background: transparent;
+  }
+  .vol-pop input::-webkit-slider-runnable-track {
+    height: 5px;
+    border-radius: 5px;
+    background: linear-gradient(90deg, var(--lamp) var(--p), rgb(var(--hi) / 0.22) var(--p));
+  }
+  .vol-pop input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: -5.5px;
+    border-radius: 50%;
+    background: var(--text);
+  }
+  .tracks {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: min(520px, calc(100vw - 40px));
+    max-height: 50vh;
+    border-radius: var(--r-md);
+    overflow: hidden;
+  }
+  .col {
+    padding: 10px 6px;
+    overflow-y: auto;
+    max-height: 50vh;
+  }
+  .col.alt {
+    background: rgb(var(--hi) / 0.04);
+  }
+  .col h4 {
+    margin: 4px 12px 10px;
   }
   .opt {
+    position: relative;
     display: block;
     width: 100%;
     text-align: left;
-    padding: 9px 12px;
+    padding: 8px 12px 8px 26px;
     border-radius: 10px;
     font-size: 14px;
+    color: rgb(var(--hi) / 0.7);
   }
   .opt:hover {
-    background: rgb(var(--hi) / 0.08);
+    background: rgb(var(--hi) / 0.07);
+    color: var(--text);
   }
   .opt.sel {
-    background: rgb(var(--hi) / 0.16);
+    color: var(--text);
     font-weight: 650;
+  }
+  .opt.sel::before {
+    content: "";
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    margin-top: -3px;
+    border-radius: 50%;
+    background: var(--lamp);
+    box-shadow: 0 0 8px var(--lamp);
   }
   .delay {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 10px 2px;
+    padding: 10px 10px 2px;
   }
   .delay span {
     margin-right: auto;
   }
+  .more-pop h4 {
+    margin: 6px 4px 8px;
+    font-weight: 600;
+  }
+  .seg-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
   .info {
-    margin: 8px 12px 4px;
+    margin: 8px 4px 2px;
+  }
+  .season-pick {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
+  .season-pick select {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 32px;
+    padding: 0 30px 0 14px;
+    border-radius: 999px;
+    border: 0;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text);
+    background: rgb(var(--lo) / 0.5);
+    box-shadow: inset 0 0 0 1px rgb(var(--hi) / 0.25);
+    backdrop-filter: blur(12px);
+    cursor: pointer;
+  }
+  .season-pick :global(svg) {
+    position: absolute;
+    right: 11px;
+    pointer-events: none;
+  }
+
+  /* --------------------------------------- paused (image 1) */
+  .paused {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    animation: fade-in 380ms var(--ease-out) both;
+  }
+  .p-center,
+  .paused :global(.carousel) {
+    pointer-events: auto;
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  .p-shade {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(90deg, rgb(var(--lo) / 0.7), rgb(var(--lo) / 0.25) 45%, rgb(var(--lo) / 0.1) 65%, rgb(var(--lo) / 0.55)),
+      linear-gradient(0deg, rgb(var(--lo) / 0.75), transparent 45%);
+  }
+  .p-center {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    gap: 44px;
+  }
+  .paused:has(.carousel) .p-center {
+    left: 42%;
+  }
+  .p-play {
+    width: 92px;
+    height: 92px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    padding-left: 5px;
+    color: var(--text);
+    border: 2.5px solid rgb(var(--hi) / 0.9);
+    background: rgb(var(--lo) / 0.25);
+    backdrop-filter: blur(8px);
+    transition: transform var(--t-med) var(--spring), box-shadow var(--t-med);
+  }
+  .p-play:hover {
+    transform: scale(1.06);
+    box-shadow: 0 0 40px -6px rgb(var(--neon-rgb) / 0.6);
+  }
+  .p-seek {
+    position: relative;
+    width: 56px;
+    height: 56px;
+    display: grid;
+    place-items: center;
+    color: var(--text);
+    border-radius: 50%;
+  }
+  .p-seek span {
+    font-size: 11px;
+  }
+  .p-seek:hover {
+    background: rgb(var(--hi) / 0.1);
+  }
+  .p-info {
+    position: absolute;
+    left: var(--gutter);
+    bottom: 150px;
+    max-width: min(560px, 46vw);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+  }
+  .p-show {
+    font-weight: 600;
+    font-size: 15px;
+    color: rgb(var(--hi) / 0.85);
+  }
+  .p-facts {
+    font-size: 13px;
+    color: rgb(var(--hi) / 0.6);
+  }
+  .p-title {
+    margin: 4px 0 2px;
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(32px, 3.6vw, 52px);
+    line-height: 1.02;
+    letter-spacing: -0.03em;
+  }
+  .p-desc {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.45;
+    color: rgb(var(--hi) / 0.82);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* --------------------------------------- resting (image 4) */
+  .resting {
+    position: absolute;
+    inset: 0;
+    cursor: none;
+    background:
+      linear-gradient(90deg, rgb(var(--lo) / 0.82), rgb(var(--lo) / 0.4) 45%, transparent 75%),
+      linear-gradient(0deg, rgb(var(--lo) / 0.6), transparent 50%);
+    animation: fade-in 1.2s var(--ease-out) both;
+  }
+  .r-copy {
+    position: absolute;
+    left: calc(var(--gutter) + 8px);
+    bottom: 18vh;
+    max-width: min(560px, 50vw);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    animation: rise-in 1.4s var(--ease-out) 0.2s both;
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+  }
+  .r-eyebrow {
+    font-family: var(--font-bump);
+    font-size: 13px;
+    color: rgb(var(--hi) / 0.55);
+  }
+  .r-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(36px, 4.2vw, 64px);
+    letter-spacing: -0.035em;
+    line-height: 1;
+  }
+  .r-ep {
+    font-size: 16px;
+    font-weight: 600;
+    color: rgb(var(--hi) / 0.85);
+  }
+  .r-name {
+    margin-top: 12px;
+    font-size: 18px;
+    font-weight: 700;
+  }
+  .r-desc {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.45;
+    color: rgb(var(--hi) / 0.6);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 </style>

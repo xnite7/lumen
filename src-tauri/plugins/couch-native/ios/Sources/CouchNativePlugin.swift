@@ -38,6 +38,13 @@ class PlayArgs: Decodable {
     let engine: String?
     let subLangs: [String]?
     let audioLangs: [String]?
+    /// the season's episodes, as JSON: [{id, episode, title, overview, thumbnail, progress, current}]
+    let episodesJson: String?
+    /// "S1:E3"
+    let episodeLabel: String?
+    /// -1 meh, 1 liked, 2 loved, 0 none
+    let rating: Int?
+    let hasNext: Bool?
 }
 
 /// couch's native layer on iPhone.
@@ -170,9 +177,19 @@ class CouchNativePlugin: Plugin, AVPlayerViewControllerDelegate {
             return
         }
         DispatchQueue.main.async {
-            self.teardown(dismiss: true)
             self.observeCouchPlayer()
-            if (args.engine == "couch" || args.engine == "lumen" || Self.needsCouchPlayer(args.url)), self.presentCouchPlayer(args) {
+            // already in couch's player (next episode, a fallback stream):
+            // swap the file in place instead of closing and reopening
+            if self.mpvActive {
+                self.current = args
+                NotificationCenter.default.post(name: Notification.Name("couch.player.load"), object: nil, userInfo: ["config": Self.couchConfig(args) as NSDictionary])
+                self.startActivity(args)
+                invoke.resolve()
+                return
+            }
+            self.teardown(dismiss: true)
+            // couch's own player is the only player now
+            if self.presentCouchPlayer(args) {
                 invoke.resolve()
                 return
             }
@@ -314,19 +331,29 @@ class CouchNativePlugin: Plugin, AVPlayerViewControllerDelegate {
     private func presentCouchPlayer(_ a: PlayArgs) -> Bool {
         guard let cls = NSClassFromString("CouchMPVPlayer") as? UIViewController.Type, let host = top() else { return false }
         let vc = cls.init(nibName: nil, bundle: nil)
-        var cfg: [String: Any] = ["url": a.url, "title": a.title ?? "couch", "subtitle": a.subtitle ?? "", "artwork": a.artwork ?? ""]
-        if let s = a.startAt { cfg["startAt"] = s }
-        if let p = a.startPct { cfg["startPct"] = p }
-        if let h = a.headers, !h.isEmpty { cfg["headers"] = h }
-        if let s = a.subLangs { cfg["subLangs"] = s }
-        if let l = a.audioLangs { cfg["audioLangs"] = l }
-        vc.setValue(cfg as NSDictionary, forKey: "config")
+        vc.setValue(Self.couchConfig(a) as NSDictionary, forKey: "config")
         vc.modalPresentationStyle = .fullScreen
         current = a
         mpvActive = true
         host.present(vc, animated: true)
         startActivity(a)
         return true
+    }
+
+    static func couchConfig(_ a: PlayArgs) -> [String: Any] {
+        var cfg: [String: Any] = ["url": a.url, "title": a.title ?? "couch", "subtitle": a.subtitle ?? "", "artwork": a.artwork ?? ""]
+        if let s = a.startAt { cfg["startAt"] = s }
+        if let p = a.startPct { cfg["startPct"] = p }
+        if let h = a.headers, !h.isEmpty { cfg["headers"] = h }
+        if let s = a.subLangs { cfg["subLangs"] = s }
+        if let l = a.audioLangs { cfg["audioLangs"] = l }
+        if let l = a.episodeLabel { cfg["episodeLabel"] = l }
+        if let r = a.rating { cfg["rating"] = r }
+        cfg["hasNext"] = a.hasNext ?? false
+        if let j = a.episodesJson?.data(using: .utf8), let eps = try? JSONSerialization.jsonObject(with: j) as? [[String: Any]] {
+            cfg["episodes"] = eps
+        }
+        return cfg
     }
 
     private func observeCouchPlayer() {
@@ -343,6 +370,18 @@ class CouchNativePlugin: Plugin, AVPlayerViewControllerDelegate {
         }
         nc.addObserver(forName: Notification.Name("couch.player.ended"), object: nil, queue: .main) { [weak self] _ in
             self?.trigger("ended", data: [:] as JSObject)
+        }
+        nc.addObserver(forName: Notification.Name("couch.player.failed"), object: nil, queue: .main) { [weak self] n in
+            self?.trigger("failed", data: ["message": n.userInfo?["message"] as? String ?? ""])
+        }
+        nc.addObserver(forName: Notification.Name("couch.player.rate"), object: nil, queue: .main) { [weak self] n in
+            self?.trigger("rate", data: ["value": n.userInfo?["value"] as? Int ?? 0])
+        }
+        nc.addObserver(forName: Notification.Name("couch.player.episode"), object: nil, queue: .main) { [weak self] n in
+            self?.trigger("episode", data: ["id": n.userInfo?["id"] as? String ?? ""])
+        }
+        nc.addObserver(forName: Notification.Name("couch.player.next"), object: nil, queue: .main) { [weak self] _ in
+            self?.trigger("next", data: [:] as JSObject)
         }
         nc.addObserver(forName: Notification.Name("couch.player.closed"), object: nil, queue: .main) { [weak self] n in
             guard let self = self else { return }

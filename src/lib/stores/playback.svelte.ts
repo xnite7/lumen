@@ -5,7 +5,7 @@
 import { api, listen, type Meta, type PlayerState, type Stream, type Track, type Video } from "../api";
 import { app } from "./app.svelte";
 import { setAmbient } from "./ambient.svelte";
-import { loadLibrary } from "./library.svelte";
+import { loadLibrary, progressOf, watchedIds } from "./library.svelte";
 import { toast, errorText } from "./toast.svelte";
 import { parseCue, type Cue } from "../subs";
 import { isTauri } from "../api";
@@ -90,6 +90,23 @@ export function initPlayback() {
   onNative("ended", () => {
     if (app.settings.playback.autoplayNext && nextVideo()) playNext();
   });
+  // the player's own buttons: rating, the Episodes list, Next Episode
+  onNative<{ value: number }>("rate", async ({ value }) => {
+    const m = pb.meta;
+    if (!m) return;
+    const n = value === 2 ? 10 : value === 1 ? 8 : value === -1 ? 4 : null;
+    simklRating = { id: m.id, value };
+    try {
+      await api.simklRate(m.type, m.id, n);
+    } catch (e) {
+      toast(errorText(e), "error");
+    }
+  });
+  onNative<{ id: string }>("episode", ({ id }) => {
+    const v = pb.meta ? orderedVideos(pb.meta).find((x) => x.id === id) : null;
+    if (v) playVideo(v);
+  });
+  onNative("next", () => playNext());
   onNative<{ url: string }>("failed", ({ url }) => {
     pb.ios = false;
     if (tryNext()) return;
@@ -97,11 +114,51 @@ export function initPlayback() {
   });
 }
 
+/** Your Simkl rating for what's playing, as the player's three buttons. */
+let simklRating: { id: string; value: number } | null = null;
+async function ratingFor(m: Meta | null): Promise<number> {
+  if (!m || !app.secrets.simkl_token) return 0;
+  if (simklRating?.id === m.id) return simklRating.value;
+  let r: number | null = null;
+  try {
+    r = (await api.simklStatus(m.type, m.id))?.rating ?? null;
+  } catch {
+    /* not on Simkl */
+  }
+  const value = !r ? 0 : r >= 10 ? 2 : r >= 6 ? 1 : -1;
+  simklRating = { id: m.id, value };
+  return value;
+}
+
+/** The season of the episode playing, for the player's Episodes list. */
+function seasonList(m: Meta | null) {
+  if (!m || m.type !== "series") return undefined;
+  const all = orderedVideos(m);
+  const now = all.find((v) => v.id === pb.videoId);
+  if (!now) return undefined;
+  const watched = watchedIds(m.id);
+  const today = Date.now();
+  return JSON.stringify(
+    all
+      .filter((v) => (v.season ?? 0) === (now.season ?? 0) && (!v.released || new Date(v.released).getTime() <= today))
+      .map((v) => ({
+        id: v.id,
+        episode: v.episode ?? v.number ?? 0,
+        title: v.title || v.name || "",
+        overview: v.overview ?? v.description ?? "",
+        thumbnail: v.thumbnail ?? "",
+        progress: watched.has(v.id) ? 1 : progressOf(m.id, v.id),
+        current: v.id === now.id,
+      })),
+  );
+}
+
 async function startIOS(url: string, startAt?: number, headers?: Record<string, string>, startPct?: number) {
   pb.url = url;
   pb.ios = true;
   haptic("medium");
   const m = pb.meta;
+  const ep = m && m.type === "series" ? orderedVideos(m).find((v) => v.id === pb.videoId) : undefined;
   await nativePlay({
     url,
     title: m?.name ?? "couch",
@@ -112,7 +169,11 @@ async function startIOS(url: string, startAt?: number, headers?: Record<string, 
     startPct,
     tint: getComputedStyle(document.documentElement).getPropertyValue("--ambient-1").trim(),
     headers,
-    engine: app.settings.playback.iosPlayer,
+    engine: "couch",
+    episodeLabel: ep ? `S${ep.season ?? 0}:E${ep.episode ?? ep.number ?? 0}` : undefined,
+    episodesJson: seasonList(m),
+    rating: await ratingFor(m),
+    hasNext: !!nextVideo(),
     // mpv takes ISO 639-2 codes, same as the settings store
     subLangs: app.settings.subtitles.enabledByDefault ? app.settings.subtitles.languages : [],
     audioLangs: app.settings.playback.audioLanguages,
@@ -239,7 +300,12 @@ export function nextVideo(): Video | null {
 
 export async function playNext() {
   const n = nextVideo();
-  if (!n || !pb.meta || !pb.stream) return;
+  if (n) await playVideo(n);
+}
+
+/** Jump to any episode of the show that's playing (same addon & quality). */
+export async function playVideo(n: Video) {
+  if (!pb.meta || !pb.stream || n.id === pb.videoId) return;
   pb.loading = true;
   pb.cue = null;
   const title = n.title || n.name || `Episode ${n.episode ?? n.number}`;

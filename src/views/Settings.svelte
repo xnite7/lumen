@@ -187,14 +187,6 @@
               <div style="width:200px"><Controls kind="slider" bind:value={s.playback.watchedThreshold} min={80} max={98} step={1} onchange={changed} label="Watched threshold" /></div>
             </Cell>
           </div>
-          {#if app.platform === "ios"}
-            <h3 class="group-head">iPhone player</h3>
-            <div class="group">
-              <Cell label="Player" hint={s.playback.iosPlayer === "couch" ? "couch's player for everything: every format, styled subtitles, all audio tracks." : "Apple's player for MP4 and streams (picture-in-picture, AirPlay); couch's player for MKV and anything Apple's can't open."}>
-                <Controls kind="segmented" bind:value={s.playback.iosPlayer} options={[{ value: "auto", label: "Auto" }, { value: "couch", label: "Always couch" }]} onchange={changed} />
-              </Cell>
-            </div>
-          {/if}
           {#if app.platform !== "ios"}
           <h3 class="group-head">Video engine</h3>
           <div class="group">

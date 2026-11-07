@@ -83,6 +83,21 @@ if (import.meta.env.VITE_DEMO) {
   if (!q.has("platform") && /iPhone|iPad|Android/i.test(navigator.userAgent)) q.set("platform", "ios");
 }
 
+// ------------------------------------------------------------ fake player
+const mp = { pos: 1234, duration: 2700, paused: false, volume: 80, muted: false, speed: 1, aid: "1", sid: "3" };
+let mpTimer: ReturnType<typeof setInterval> | undefined;
+function pushMock() {
+  emit?.("player://state", { ...mp, buffering: false, cacheAhead: 300, bufferingPct: 100, ended: false, idle: false, subOverlay: true, subDelay: 0, video: { width: 3840, height: 2160, hdr: true, gamma: "pq", codec: "hevc", hwdec: "d3d11va", fps: 23.976 } });
+}
+function startMockPlayer() {
+  clearInterval(mpTimer);
+  mpTimer = setInterval(() => {
+    if (!mp.paused) mp.pos = Math.min(mp.duration, mp.pos + mp.speed);
+    pushMock();
+  }, 1000);
+  setTimeout(pushMock, 300);
+}
+
 export async function mock(cmd: string, args: any): Promise<any> {
   if (!emit) emit = (await import("./api")).emitLocal;
   await new Promise((r) => setTimeout(r, 60 + Math.random() * 160));
@@ -170,11 +185,39 @@ export async function mock(cmd: string, args: any): Promise<any> {
     case "art_get":
       return { backdrop: null, poster: null };
     case "player_open":
-      setTimeout(() => emit!("player://state", { pos: 1234, duration: 5400, paused: false, buffering: false, cacheAhead: 300, bufferingPct: 100, volume: 80, muted: false, speed: 1, aid: "1", sid: "2", ended: false, idle: false, subOverlay: true, subDelay: 0, video: { width: 3840, height: 2160, hdr: true, gamma: "pq", codec: "hevc", hwdec: "d3d11va", fps: 23.976 } }), 300);
+    case "player_next": {
+      // a pretend player that answers play/pause/seek, so the preview behaves
+      mp.pos = cmd === "player_next" ? 0 : 1234;
+      mp.paused = false;
+      startMockPlayer();
+      setTimeout(() => emit!("player://tracks", [
+        { id: "1", type: "audio", lang: "eng", title: "English", channels: 6, codec: "eac3", selected: true },
+        { id: "2", type: "audio", lang: "jpn", title: "Japanese", channels: 2, codec: "aac", selected: false },
+        { id: "3", type: "sub", lang: "eng", title: "English", codec: "subrip", selected: true },
+        { id: "4", type: "sub", lang: "ara", title: "Arabic", codec: "subrip", selected: false },
+        { id: "5", type: "sub", lang: "spa", title: "Spanish", codec: "subrip", selected: false },
+      ]), 300);
       setTimeout(() => emit!("player://sub", { text: "(soft static)\nThe porch light's been on all summer." }), 400);
       setTimeout(() => emit!("player://loaded", {}), 350);
       if (q.has("playerError")) setTimeout(() => emit!("player://error", { message: "This stream wouldn't open. The link may have expired, or the server isn't answering. Try another stream." }), 600);
-      return { mode: "native", url: "" };
+      const open = { mode: "native", url: "" };
+      return cmd === "player_next" ? { stream: args.previous, open } : open;
+    }
+    case "player_cmd": {
+      const a = args.args ?? {};
+      if (args.cmd === "pause") mp.paused = a.value ?? !mp.paused;
+      else if (args.cmd === "seek") mp.pos = Math.max(0, Math.min(mp.duration, a.relative ? mp.pos + a.to : a.to));
+      else if (args.cmd === "volume") mp.volume = a.value;
+      else if (args.cmd === "mute") mp.muted = a.value ?? !mp.muted;
+      else if (args.cmd === "speed") mp.speed = a.value;
+      else if (args.cmd === "sid") mp.sid = String(a.value);
+      else if (args.cmd === "aid") mp.aid = String(a.value);
+      pushMock();
+      return null;
+    }
+    case "player_stop":
+      clearInterval(mpTimer);
+      return null;
     case "skip_segments":
       return { intro: [{ start: 1200, end: 1290 }], credits: [{ start: 5200, end: null }] };
     case "tobii_status":

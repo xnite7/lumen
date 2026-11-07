@@ -24,6 +24,8 @@ use serde_json::Value;
 use serde_json::json;
 use std::sync::Arc;
 pub use session::Session;
+#[cfg(desktop)]
+pub use mpv::refit as refit_video;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

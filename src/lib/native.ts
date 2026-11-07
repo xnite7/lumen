@@ -57,6 +57,10 @@ export interface NativePlay {
   engine?: string;
   subLangs?: string[];
   audioLangs?: string[];
+  episodeLabel?: string;
+  episodesJson?: string;
+  rating?: number;
+  hasNext?: boolean;
 }
 /** AVPlayer, full screen: PiP, AirPlay, Now Playing, Live Activity. */
 export const nativePlay = (req: NativePlay) => call("play", req as any);

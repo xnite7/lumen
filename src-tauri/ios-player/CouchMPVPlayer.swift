@@ -10,6 +10,11 @@
 //   couch.player.ended     {}
 //   couch.player.closed    { pos, duration }
 //   couch.player.failed    { message }
+//   couch.player.rate      { value: -1 meh | 1 liked | 2 loved | 0 cleared }
+//   couch.player.episode   { id }   picked from the Episodes list
+//   couch.player.next      {}       the Next Episode button
+// and it listens for couch.player.load (a new config) to switch episodes
+// without closing.
 
 import AVFoundation
 import Libmpv
@@ -21,6 +26,17 @@ private enum Note {
     static let ended = Notification.Name("couch.player.ended")
     static let closed = Notification.Name("couch.player.closed")
     static let failed = Notification.Name("couch.player.failed")
+    static let rate = Notification.Name("couch.player.rate")
+    static let episode = Notification.Name("couch.player.episode")
+    static let next = Notification.Name("couch.player.next")
+    static let load = Notification.Name("couch.player.load")
+}
+
+/// couch's colours (match the app's tokens)
+private extension UIColor {
+    static let lamp = UIColor(red: 1.0, green: 0.698, blue: 0.361, alpha: 1)
+    static let neon = UIColor(red: 0.878, green: 0.188, blue: 0.604, alpha: 1)
+    static let warmWhite = UIColor(red: 0.957, green: 0.918, blue: 0.941, alpha: 1)
 }
 
 /// CAMetalLayer with MoltenVK's 1x1 drawable workaround (mpv PR 13651) and
@@ -72,32 +88,45 @@ final class CouchMPVPlayer: UIViewController {
     private var fill = false
     private var chromeVisible = true
     private var hideTimer: Timer?
+    private var lockedMask: UIInterfaceOrientationMask?
+    private var rating = 0 // -1 meh, 1 liked, 2 loved
+    private var episodesOpen = false
 
     // UI
     private let chrome = UIView()
     private let topBar = UIStackView()
     private let titleLabel = UILabel()
-    private let subtitleLabel = UILabel()
     private let closeButton = UIButton(type: .system)
+    private let lockButton = UIButton(type: .system)
+    private let rateStack = UIStackView()
+    private var rateButtons: [Int: UIButton] = [:]
     private let playButton = UIButton(type: .system)
     private let backButton = UIButton(type: .system)
     private let fwdButton = UIButton(type: .system)
     private let slider = UISlider()
-    private let timeLabel = UILabel()
     private let remainLabel = UILabel()
-    private let subsButton = UIButton(type: .system)
-    private let audioButton = UIButton(type: .system)
     private let speedButton = UIButton(type: .system)
-    private let fillButton = UIButton(type: .system)
+    private let episodesButton = UIButton(type: .system)
+    private let tracksButton = UIButton(type: .system)
+    private let nextButton = UIButton(type: .system)
+    private let optionsRow = UIStackView()
+    private let brightness = UISlider()
+    private let brightnessBox = UIView()
     private let spinner = UIActivityIndicatorView(style: .large)
     private let errorLabel = UILabel()
-    private let bottomPanel = UIView()
+    private let episodesPanel = UIView()
+    private let episodesTable = UITableView(frame: .zero, style: .plain)
+    private var episodesTrailing: NSLayoutConstraint?
+    private var landscapeRate: [NSLayoutConstraint] = []
+    private var portraitRate: [NSLayoutConstraint] = []
+
+    private var episodes: [[String: Any]] { config["episodes"] as? [[String: Any]] ?? [] }
 
     // MARK: lifecycle
 
     override var prefersStatusBarHidden: Bool { !chromeVisible }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .allButUpsideDown }
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { lockedMask ?? .allButUpsideDown }
     override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .landscapeRight }
 
     override func viewDidLoad() {
@@ -119,6 +148,9 @@ final class CouchMPVPlayer: UIViewController {
 
         NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(willEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(loadNew(_:)), name: Note.load, object: nil)
+        rating = config["rating"] as? Int ?? 0
+        updateRating()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -131,7 +163,19 @@ final class CouchMPVPlayer: UIViewController {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         metalLayer.frame = view.bounds
+        // the swapchain must follow the view, or portrait comes out squashed
+        // into the old landscape size
+        let scale = metalLayer.contentsScale
+        metalLayer.drawableSize = CGSize(width: view.bounds.width * scale, height: view.bounds.height * scale)
         CATransaction.commit()
+        let portrait = view.bounds.height > view.bounds.width
+        NSLayoutConstraint.deactivate(portrait ? landscapeRate : portraitRate)
+        NSLayoutConstraint.activate(portrait ? portraitRate : landscapeRate)
+        // labels drop off the bottom options when there isn't room for them
+        for b in [speedButton, episodesButton, tracksButton, nextButton] {
+            b.configuration?.title = portrait ? nil : b.accessibilityLabel
+        }
+        updateSpeedTitle()
     }
 
     deinit {
@@ -350,6 +394,7 @@ final class CouchMPVPlayer: UIViewController {
         haptic(.light)
         let data: [String: Any] = ["pos": pos, "duration": duration]
         teardown()
+        lockedMask = nil
         rotate(to: .portrait)
         dismiss(animated: true) {
             NotificationCenter.default.post(name: Note.closed, object: nil, userInfo: data)
@@ -361,7 +406,6 @@ final class CouchMPVPlayer: UIViewController {
         fill.toggle()
         set("panscan", fill ? "1.0" : "0.0")
         command(["set", "panscan", fill ? "1.0" : "0.0"])
-        fillButton.setImage(UIImage(systemName: fill ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right"), for: .normal)
         scheduleHide()
     }
 
@@ -373,8 +417,7 @@ final class CouchMPVPlayer: UIViewController {
     @objc private func sliderMoved() {
         guard duration > 0 else { return }
         let t = Double(slider.value) * duration
-        timeLabel.text = Self.fmt(t)
-        remainLabel.text = "-" + Self.fmt(duration - t)
+        remainLabel.text = Self.fmt(t)
     }
 
     @objc private func sliderEnded() {
@@ -386,6 +429,7 @@ final class CouchMPVPlayer: UIViewController {
     }
 
     @objc private func tapped(_ g: UITapGestureRecognizer) {
+        if episodesOpen { return closeEpisodes() }
         chromeVisible ? hideChrome() : showChrome()
     }
 
@@ -401,6 +445,101 @@ final class CouchMPVPlayer: UIViewController {
 
     @objc private func swipedDown() {
         close()
+    }
+
+    // MARK: new episode in the same player
+
+    @objc private func loadNew(_ n: Notification) {
+        guard let cfg = n.userInfo?["config"] as? NSDictionary, let url = cfg["url"] as? String else { return }
+        config = cfg
+        titleLabel.text = Self.title(cfg)
+        rating = cfg["rating"] as? Int ?? 0
+        updateRating()
+        nextButton.isHidden = !(cfg["hasNext"] as? Bool ?? false)
+        episodesButton.isHidden = episodes.isEmpty
+        episodesTable.reloadData()
+        errorLabel.isHidden = true
+        buffering = true
+        pos = 0
+        duration = 0
+        slider.value = 0
+        updateSpinner()
+        closeEpisodes()
+        let h = cfg["headers"] as? [String: String] ?? [:]
+        command(["set", "http-header-fields", h.map { "\($0.key): \($0.value.replacingOccurrences(of: ",", with: "\\,"))" }.joined(separator: ",")])
+        load(url)
+        updateNowPlaying()
+    }
+
+    @objc private func rateTapped(_ b: UIButton) {
+        let v = b.tag
+        rating = rating == v ? 0 : v
+        haptic(rating == 2 ? .heavy : .light)
+        updateRating()
+        UIView.animate(withDuration: 0.12, animations: { b.transform = CGAffineTransform(scaleX: 1.25, y: 1.25) }) { _ in
+            UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.45, initialSpringVelocity: 4) { b.transform = .identity }
+        }
+        NotificationCenter.default.post(name: Note.rate, object: nil, userInfo: ["value": rating])
+        scheduleHide()
+    }
+
+    private func updateRating() {
+        let syms = [-1: ("hand.thumbsdown", "hand.thumbsdown.fill"), 1: ("hand.thumbsup", "hand.thumbsup.fill"), 2: ("heart", "heart.fill")]
+        for (v, b) in rateButtons {
+            let on = rating == v
+            let (off, fill) = syms[v] ?? ("circle", "circle.fill")
+            b.setImage(UIImage(systemName: on ? fill : off, withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)), for: .normal)
+            b.tintColor = on ? (v == 2 ? .neon : .lamp) : .warmWhite
+            b.superview?.backgroundColor = on ? UIColor.white.withAlphaComponent(0.2) : UIColor.white.withAlphaComponent(0.1)
+        }
+    }
+
+    @objc private func toggleLock() {
+        haptic(.light)
+        if lockedMask != nil {
+            lockedMask = nil
+        } else {
+            let o = view.window?.windowScene?.interfaceOrientation ?? .landscapeRight
+            lockedMask = o.isPortrait ? .portrait : (o == .landscapeLeft ? .landscapeLeft : .landscapeRight)
+        }
+        if #available(iOS 16.0, *) { setNeedsUpdateOfSupportedInterfaceOrientations() }
+        lockButton.setImage(UIImage(systemName: lockedMask != nil ? "lock.rotation" : "lock.rotation.open", withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .semibold)), for: .normal)
+        lockButton.tintColor = lockedMask != nil ? .lamp : .warmWhite
+        scheduleHide()
+    }
+
+    @objc private func brightnessChanged() {
+        UIScreen.main.brightness = CGFloat(brightness.value)
+        scheduleHide()
+    }
+
+    @objc private func nextTapped() {
+        haptic(.light)
+        NotificationCenter.default.post(name: Note.next, object: nil)
+    }
+
+    @objc private func episodesTapped() {
+        haptic(.light)
+        episodesOpen ? closeEpisodes() : openEpisodes()
+    }
+
+    private func openEpisodes() {
+        episodesOpen = true
+        hideTimer?.invalidate()
+        episodesTable.reloadData()
+        if let i = episodes.firstIndex(where: { ($0["current"] as? Bool) == true }) {
+            episodesTable.scrollToRow(at: IndexPath(row: i, section: 0), at: .middle, animated: false)
+        }
+        episodesTrailing?.constant = 0
+        UIView.animate(withDuration: 0.45, delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0) { self.view.layoutIfNeeded() }
+    }
+
+    private func closeEpisodes() {
+        guard episodesOpen else { return }
+        episodesOpen = false
+        episodesTrailing?.constant = 440
+        UIView.animate(withDuration: 0.3) { self.view.layoutIfNeeded() }
+        scheduleHide()
     }
 
     private func teardown() {
@@ -448,33 +587,43 @@ final class CouchMPVPlayer: UIViewController {
     }
 
     private func rebuildMenus() {
-        subsButton.menu = UIMenu(title: "Subtitles", children: [UIDeferredMenuElement.uncached { [weak self] done in
+        // one menu, two sections: Audio and Subtitles
+        tracksButton.menu = UIMenu(title: "", children: [UIDeferredMenuElement.uncached { [weak self] done in
             guard let self = self else { return done([]) }
-            let subs = self.tracks().filter { $0.type == "sub" }
-            var items: [UIMenuElement] = [UIAction(title: "Off", state: subs.contains { $0.selected } ? .off : .on) { [weak self] _ in self?.command(["set", "sid", "no"]) }]
-            items += subs.map { t in UIAction(title: t.title, state: t.selected ? .on : .off) { [weak self] _ in self?.command(["set", "sid", String(t.id)]) } }
-            let delay = UIMenu(title: "Timing", options: .displayInline, children: [
+            let all = self.tracks()
+            let audio = all.filter { $0.type == "audio" }
+            let subs = all.filter { $0.type == "sub" }
+            let audioMenu = UIMenu(title: "Audio", options: .displayInline, children: audio.map { t in
+                UIAction(title: t.title, state: t.selected ? .on : .off) { [weak self] _ in self?.command(["set", "aid", String(t.id)]) }
+            })
+            var subItems: [UIMenuElement] = [UIAction(title: "Off", state: subs.contains { $0.selected } ? .off : .on) { [weak self] _ in self?.command(["set", "sid", "no"]) }]
+            subItems += subs.map { t in UIAction(title: t.title, state: t.selected ? .on : .off) { [weak self] _ in self?.command(["set", "sid", String(t.id)]) } }
+            let subMenu = UIMenu(title: "Subtitles", options: .displayInline, children: subItems)
+            let timing = UIMenu(title: "Subtitle timing", children: [
                 UIAction(title: "Earlier 0.1 s", image: UIImage(systemName: "minus")) { [weak self] _ in self?.command(["add", "sub-delay", "-0.1"]) },
                 UIAction(title: "Later 0.1 s", image: UIImage(systemName: "plus")) { [weak self] _ in self?.command(["add", "sub-delay", "0.1"]) },
             ])
-            done(items + [delay])
-        }])
-        audioButton.menu = UIMenu(title: "Audio", children: [UIDeferredMenuElement.uncached { [weak self] done in
-            guard let self = self else { return done([]) }
-            let audio = self.tracks().filter { $0.type == "audio" }
-            done(audio.map { t in UIAction(title: t.title, state: t.selected ? .on : .off) { [weak self] _ in self?.command(["set", "aid", String(t.id)]) } })
+            done([audioMenu, subMenu, timing])
         }])
         speedButton.menu = UIMenu(title: "Speed", children: [UIDeferredMenuElement.uncached { [weak self] done in
             guard let self = self else { return done([]) }
             let cur = Double(self.getString("speed") ?? "1") ?? 1
-            done([0.75, 1.0, 1.25, 1.5, 2.0].map { s in
-                UIAction(title: s == 1 ? "Normal" : "\(s)×", state: abs(cur - s) < 0.01 ? .on : .off) { [weak self] _ in
+            done([0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map { s in
+                UIAction(title: s == 1 ? "1× (normal)" : "\(s)×", state: abs(cur - s) < 0.01 ? .on : .off) { [weak self] _ in
                     self?.command(["set", "speed", String(s)])
-                    self?.speedButton.setTitle(s == 1 ? nil : "\(s)×", for: .normal)
+                    self?.speed = s
+                    self?.updateSpeedTitle()
                 }
             })
         }])
-        [subsButton, audioButton, speedButton].forEach { $0.showsMenuAsPrimaryAction = true }
+        [tracksButton, speedButton].forEach { $0.showsMenuAsPrimaryAction = true }
+    }
+
+    private var speed: Double = 1
+    private func updateSpeedTitle() {
+        let portrait = view.bounds.height > view.bounds.width
+        let s = speed == 1 ? "1x" : String(format: "%gx", speed)
+        speedButton.configuration?.title = portrait ? nil : "Speed (\(s))"
     }
 
     // MARK: Now Playing / remote control
@@ -546,110 +695,192 @@ final class CouchMPVPlayer: UIViewController {
         return v
     }
 
-    private func roundButton(_ b: UIButton, _ symbol: String, size: CGFloat, point: CGFloat, action: Selector?) -> UIView {
-        let g = glass(size / 2)
-        g.translatesAutoresizingMaskIntoConstraints = false
+    private func iconButton(_ b: UIButton, _ symbol: String, point: CGFloat, action: Selector?) {
         b.translatesAutoresizingMaskIntoConstraints = false
         b.setImage(UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: point, weight: .semibold)), for: .normal)
-        b.tintColor = .white
+        b.tintColor = .warmWhite
         if let a = action { b.addTarget(self, action: a, for: .touchUpInside) }
-        g.contentView.addSubview(b)
-        NSLayoutConstraint.activate([
-            g.widthAnchor.constraint(equalToConstant: size), g.heightAnchor.constraint(equalToConstant: size),
-            b.leadingAnchor.constraint(equalTo: g.contentView.leadingAnchor), b.trailingAnchor.constraint(equalTo: g.contentView.trailingAnchor),
-            b.topAnchor.constraint(equalTo: g.contentView.topAnchor), b.bottomAnchor.constraint(equalTo: g.contentView.bottomAnchor),
-        ])
-        return g
+    }
+
+    /// The labelled options along the bottom ("Speed (1x)", "Episodes"…).
+    private func option(_ b: UIButton, _ symbol: String, _ title: String, action: Selector?) {
+        var c = UIButton.Configuration.plain()
+        c.image = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold))
+        c.imagePadding = 8
+        c.title = title
+        c.baseForegroundColor = .warmWhite
+        c.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10)
+        c.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { a in
+            var a = a
+            a.font = .systemFont(ofSize: 15, weight: .semibold)
+            return a
+        }
+        b.configuration = c
+        b.accessibilityLabel = title
+        if let a = action { b.addTarget(self, action: a, for: .touchUpInside) }
     }
 
     private func buildUI() {
         chrome.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(chrome)
-        // soft shade top and bottom so white controls read on any frame
+        // shade top and bottom so the controls read on any frame
         let shade = CAGradientLayer()
-        shade.colors = [UIColor.black.withAlphaComponent(0.55).cgColor, UIColor.clear.cgColor, UIColor.clear.cgColor, UIColor.black.withAlphaComponent(0.6).cgColor]
-        shade.locations = [0, 0.25, 0.65, 1]
+        shade.colors = [UIColor.black.withAlphaComponent(0.6).cgColor, UIColor.clear.cgColor, UIColor.clear.cgColor, UIColor.black.withAlphaComponent(0.7).cgColor]
+        shade.locations = [0, 0.28, 0.6, 1]
         let shadeView = GradientView(gradient: shade)
         shadeView.translatesAutoresizingMaskIntoConstraints = false
         shadeView.isUserInteractionEnabled = false
         chrome.addSubview(shadeView)
 
-        // top: close + titles
-        let closeView = roundButton(closeButton, "xmark", size: 44, point: 16, action: #selector(CouchMPVPlayer.close))
-        titleLabel.text = config["title"] as? String
-        titleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
-        titleLabel.textColor = .white
-        subtitleLabel.text = config["subtitle"] as? String
-        subtitleLabel.font = .systemFont(ofSize: 13)
-        subtitleLabel.textColor = UIColor.white.withAlphaComponent(0.72)
-        let titles = UIStackView(arrangedSubviews: [titleLabel, subtitleLabel])
-        titles.axis = .vertical
-        titles.spacing = 1
-        topBar.addArrangedSubview(closeView)
-        topBar.addArrangedSubview(titles)
+        // top left: couch mark + "S1:E3 "Title""
+        let mark = UIImageView(image: UIImage(systemName: "sofa.fill"))
+        mark.tintColor = .neon
+        mark.contentMode = .scaleAspectFit
+        mark.widthAnchor.constraint(equalToConstant: 26).isActive = true
+        titleLabel.text = Self.title(config)
+        titleLabel.font = .systemFont(ofSize: 17, weight: .bold)
+        titleLabel.textColor = .warmWhite
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        // top right: rotation lock, close
+        iconButton(lockButton, "lock.rotation.open", point: 20, action: #selector(toggleLock))
+        iconButton(closeButton, "xmark", point: 20, action: #selector(CouchMPVPlayer.close))
+        for b in [lockButton, closeButton] {
+            b.widthAnchor.constraint(equalToConstant: 44).isActive = true
+            b.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        }
+        let spacer = UIView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        [mark, titleLabel, spacer, lockButton, closeButton].forEach { topBar.addArrangedSubview($0) }
         topBar.axis = .horizontal
         topBar.alignment = .center
         topBar.spacing = 12
+        topBar.setCustomSpacing(4, after: lockButton)
         topBar.translatesAutoresizingMaskIntoConstraints = false
         chrome.addSubview(topBar)
 
-        // centre: back / play / forward
-        let back = roundButton(backButton, "gobackward.10", size: 60, point: 24, action: #selector(skipBack))
-        let play = roundButton(playButton, "pause.fill", size: 80, point: 32, action: #selector(togglePause))
-        let fwd = roundButton(fwdButton, "goforward.10", size: 60, point: 24, action: #selector(skipForward))
-        let centre = UIStackView(arrangedSubviews: [back, play, fwd])
+        // ratings: meh / liked / loved (Simkl 4, 8, 10)
+        for (v, label) in [(-1, "Not for me"), (1, "I liked it"), (2, "Loved it")] {
+            let bubble = UIView()
+            bubble.translatesAutoresizingMaskIntoConstraints = false
+            bubble.layer.cornerRadius = 26
+            bubble.backgroundColor = UIColor.white.withAlphaComponent(0.1)
+            let b = UIButton(type: .system)
+            b.tag = v
+            b.accessibilityLabel = label
+            iconButton(b, "circle", point: 18, action: #selector(rateTapped(_:)))
+            bubble.addSubview(b)
+            NSLayoutConstraint.activate([
+                bubble.widthAnchor.constraint(equalToConstant: 52), bubble.heightAnchor.constraint(equalToConstant: 52),
+                b.leadingAnchor.constraint(equalTo: bubble.leadingAnchor), b.trailingAnchor.constraint(equalTo: bubble.trailingAnchor),
+                b.topAnchor.constraint(equalTo: bubble.topAnchor), b.bottomAnchor.constraint(equalTo: bubble.bottomAnchor),
+            ])
+            rateButtons[v] = b
+            rateStack.addArrangedSubview(bubble)
+        }
+        rateStack.axis = .horizontal
+        rateStack.spacing = 18
+        rateStack.translatesAutoresizingMaskIntoConstraints = false
+        chrome.addSubview(rateStack)
+
+        // left: brightness
+        brightnessBox.translatesAutoresizingMaskIntoConstraints = false
+        chrome.addSubview(brightnessBox)
+        let sun = UIImageView(image: UIImage(systemName: "sun.max", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)))
+        sun.tintColor = .warmWhite
+        sun.translatesAutoresizingMaskIntoConstraints = false
+        brightnessBox.addSubview(sun)
+        brightness.minimumValue = 0
+        brightness.maximumValue = 1
+        brightness.value = Float(UIScreen.main.brightness)
+        brightness.minimumTrackTintColor = .warmWhite
+        brightness.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.25)
+        brightness.setThumbImage(UIImage(), for: .normal)
+        brightness.transform = CGAffineTransform(rotationAngle: -.pi / 2)
+        brightness.translatesAutoresizingMaskIntoConstraints = false
+        brightness.addTarget(self, action: #selector(brightnessChanged), for: .valueChanged)
+        brightnessBox.addSubview(brightness)
+
+        // centre: back 10 · play/pause · forward 10 (plain glyphs, no discs)
+        iconButton(backButton, "gobackward.10", point: 34, action: #selector(skipBack))
+        iconButton(playButton, "pause.fill", point: 52, action: #selector(togglePause))
+        iconButton(fwdButton, "goforward.10", point: 34, action: #selector(skipForward))
+        for b in [backButton, fwdButton] {
+            b.widthAnchor.constraint(equalToConstant: 72).isActive = true
+            b.heightAnchor.constraint(equalToConstant: 72).isActive = true
+        }
+        playButton.widthAnchor.constraint(equalToConstant: 96).isActive = true
+        playButton.heightAnchor.constraint(equalToConstant: 96).isActive = true
+        let centre = UIStackView(arrangedSubviews: [backButton, playButton, fwdButton])
         centre.axis = .horizontal
         centre.alignment = .center
-        centre.spacing = 44
+        centre.spacing = 56
         centre.translatesAutoresizingMaskIntoConstraints = false
         chrome.addSubview(centre)
 
-        // bottom: glass panel with scrubber, times and menus
-        let panel = glass(26)
-        panel.translatesAutoresizingMaskIntoConstraints = false
-        chrome.addSubview(panel)
-        slider.minimumTrackTintColor = .white
-        slider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.25)
-        slider.setThumbImage(Self.thumb(), for: .normal)
+        // bottom: scrubber with time left, then the labelled options
+        slider.minimumTrackTintColor = .lamp
+        slider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.28)
+        slider.setThumbImage(Self.thumb(.lamp, 20), for: .normal)
+        slider.setThumbImage(Self.thumb(.lamp, 28), for: .highlighted)
         slider.addTarget(self, action: #selector(sliderBegan), for: .touchDown)
         slider.addTarget(self, action: #selector(sliderMoved), for: .valueChanged)
         slider.addTarget(self, action: #selector(sliderEnded), for: [.touchUpInside, .touchUpOutside, .touchCancel])
-        for l in [timeLabel, remainLabel] {
-            l.font = .monospacedDigitSystemFont(ofSize: 13, weight: .semibold)
-            l.textColor = .white
-            l.text = "0:00"
-        }
-        let iconCfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
-        for (b, sym) in [(subsButton, "captions.bubble"), (audioButton, "waveform"), (speedButton, "gauge.with.dots.needle.67percent"), (fillButton, "arrow.up.left.and.arrow.down.right")] {
-            b.setImage(UIImage(systemName: sym, withConfiguration: iconCfg), for: .normal)
-            b.tintColor = .white
-            b.setTitleColor(.white, for: .normal)
-            b.titleLabel?.font = .systemFont(ofSize: 13, weight: .semibold)
-            b.widthAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
-            b.heightAnchor.constraint(equalToConstant: 40).isActive = true
-        }
-        fillButton.addTarget(self, action: #selector(toggleFill), for: .touchUpInside)
-        let row = UIStackView(arrangedSubviews: [timeLabel, slider, remainLabel])
-        row.axis = .horizontal
-        row.alignment = .center
-        row.spacing = 12
-        let buttons = UIStackView(arrangedSubviews: [UIView(), subsButton, audioButton, speedButton, fillButton])
-        buttons.axis = .horizontal
-        buttons.spacing = 6
-        let stack = UIStackView(arrangedSubviews: [row, buttons])
-        stack.axis = .vertical
-        stack.spacing = 4
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        panel.contentView.addSubview(stack)
+        remainLabel.font = .monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
+        remainLabel.textColor = .warmWhite
+        remainLabel.text = "--:--"
+        remainLabel.setContentHuggingPriority(.required, for: .horizontal)
+        let scrubRow = UIStackView(arrangedSubviews: [slider, remainLabel])
+        scrubRow.axis = .horizontal
+        scrubRow.alignment = .center
+        scrubRow.spacing = 16
 
-        spinner.color = .white
+        option(speedButton, "gauge.with.dots.needle.67percent", "Speed (1x)", action: nil)
+        option(episodesButton, "rectangle.stack", "Episodes", action: #selector(episodesTapped))
+        option(tracksButton, "captions.bubble", "Audio & Subtitles", action: nil)
+        option(nextButton, "forward.end", "Next Episode", action: #selector(nextTapped))
+        episodesButton.isHidden = episodes.isEmpty
+        nextButton.isHidden = !(config["hasNext"] as? Bool ?? false)
+        [UIView(), speedButton, episodesButton, tracksButton, nextButton, UIView()].forEach { optionsRow.addArrangedSubview($0) }
+        optionsRow.axis = .horizontal
+        optionsRow.alignment = .center
+        optionsRow.spacing = 14
+        optionsRow.distribution = .equalSpacing
+
+        let bottom = UIStackView(arrangedSubviews: [scrubRow, optionsRow])
+        bottom.axis = .vertical
+        bottom.spacing = 6
+        bottom.translatesAutoresizingMaskIntoConstraints = false
+        chrome.addSubview(bottom)
+
+        // the Episodes list slides in from the right
+        let panelGlass = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+        panelGlass.translatesAutoresizingMaskIntoConstraints = false
+        episodesPanel.translatesAutoresizingMaskIntoConstraints = false
+        episodesPanel.layer.cornerRadius = 22
+        episodesPanel.layer.cornerCurve = .continuous
+        episodesPanel.clipsToBounds = true
+        episodesPanel.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        episodesPanel.addSubview(panelGlass)
+        episodesTable.translatesAutoresizingMaskIntoConstraints = false
+        episodesTable.backgroundColor = .clear
+        episodesTable.separatorStyle = .none
+        episodesTable.dataSource = self
+        episodesTable.delegate = self
+        episodesTable.register(EpisodeCell.self, forCellReuseIdentifier: "ep")
+        episodesTable.rowHeight = 92
+        episodesPanel.addSubview(episodesTable)
+        view.addSubview(episodesPanel)
+
+        spinner.color = .warmWhite
         spinner.hidesWhenStopped = true
         spinner.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(spinner)
         spinner.startAnimating()
 
         errorLabel.font = .systemFont(ofSize: 16, weight: .semibold)
-        errorLabel.textColor = .white
+        errorLabel.textColor = .warmWhite
         errorLabel.numberOfLines = 0
         errorLabel.textAlignment = .center
         errorLabel.isHidden = true
@@ -657,27 +888,50 @@ final class CouchMPVPlayer: UIViewController {
         view.addSubview(errorLabel)
 
         let safe = view.safeAreaLayoutGuide
+        let trailing = episodesPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: 440)
+        episodesTrailing = trailing
+        landscapeRate = [rateStack.centerXAnchor.constraint(equalTo: view.centerXAnchor), rateStack.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+                         titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: rateStack.leadingAnchor, constant: -16).withPriority(.defaultHigh)]
+        portraitRate = [rateStack.centerXAnchor.constraint(equalTo: view.centerXAnchor), rateStack.topAnchor.constraint(equalTo: topBar.bottomAnchor, constant: 18)]
         NSLayoutConstraint.activate([
             chrome.leadingAnchor.constraint(equalTo: view.leadingAnchor), chrome.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             chrome.topAnchor.constraint(equalTo: view.topAnchor), chrome.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             shadeView.leadingAnchor.constraint(equalTo: chrome.leadingAnchor), shadeView.trailingAnchor.constraint(equalTo: chrome.trailingAnchor),
             shadeView.topAnchor.constraint(equalTo: chrome.topAnchor), shadeView.bottomAnchor.constraint(equalTo: chrome.bottomAnchor),
-            topBar.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 16),
-            topBar.trailingAnchor.constraint(lessThanOrEqualTo: safe.trailingAnchor, constant: -16),
-            topBar.topAnchor.constraint(equalTo: safe.topAnchor, constant: 10),
+            topBar.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 20),
+            topBar.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -12),
+            topBar.topAnchor.constraint(equalTo: safe.topAnchor, constant: 8),
+
+            brightnessBox.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 18),
+            brightnessBox.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            brightnessBox.widthAnchor.constraint(equalToConstant: 40),
+            brightnessBox.heightAnchor.constraint(equalToConstant: 200),
+            sun.centerXAnchor.constraint(equalTo: brightnessBox.centerXAnchor), sun.topAnchor.constraint(equalTo: brightnessBox.topAnchor),
+            brightness.centerXAnchor.constraint(equalTo: brightnessBox.centerXAnchor),
+            brightness.centerYAnchor.constraint(equalTo: brightnessBox.centerYAnchor, constant: 18),
+            brightness.widthAnchor.constraint(equalToConstant: 150),
+
             centre.centerXAnchor.constraint(equalTo: view.centerXAnchor), centre.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            panel.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 16),
-            panel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -16),
-            panel.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -10),
-            stack.leadingAnchor.constraint(equalTo: panel.contentView.leadingAnchor, constant: 18),
-            stack.trailingAnchor.constraint(equalTo: panel.contentView.trailingAnchor, constant: -10),
-            stack.topAnchor.constraint(equalTo: panel.contentView.topAnchor, constant: 10),
-            stack.bottomAnchor.constraint(equalTo: panel.contentView.bottomAnchor, constant: -6),
+
+            bottom.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 24),
+            bottom.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -24),
+            bottom.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -6),
+
+            episodesPanel.topAnchor.constraint(equalTo: safe.topAnchor, constant: 12),
+            episodesPanel.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -12),
+            episodesPanel.widthAnchor.constraint(equalToConstant: 400),
+            trailing,
+            panelGlass.leadingAnchor.constraint(equalTo: episodesPanel.leadingAnchor), panelGlass.trailingAnchor.constraint(equalTo: episodesPanel.trailingAnchor),
+            panelGlass.topAnchor.constraint(equalTo: episodesPanel.topAnchor), panelGlass.bottomAnchor.constraint(equalTo: episodesPanel.bottomAnchor),
+            episodesTable.leadingAnchor.constraint(equalTo: episodesPanel.leadingAnchor), episodesTable.trailingAnchor.constraint(equalTo: episodesPanel.trailingAnchor),
+            episodesTable.topAnchor.constraint(equalTo: episodesPanel.topAnchor, constant: 8), episodesTable.bottomAnchor.constraint(equalTo: episodesPanel.bottomAnchor),
+
             spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor), spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor),
             errorLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             errorLabel.topAnchor.constraint(equalTo: centre.bottomAnchor, constant: 28),
             errorLabel.widthAnchor.constraint(lessThanOrEqualTo: view.widthAnchor, multiplier: 0.8),
         ])
+        NSLayoutConstraint.activate(landscapeRate)
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
         let dbl = UITapGestureRecognizer(target: self, action: #selector(doubleTapped(_:)))
@@ -687,22 +941,31 @@ final class CouchMPVPlayer: UIViewController {
         let swipe = UISwipeGestureRecognizer(target: self, action: #selector(CouchMPVPlayer.swipedDown))
         swipe.direction = .down
         [tap, dbl, pinch, swipe].forEach { view.addGestureRecognizer($0) }
-        for g in [tap, dbl] { g.cancelsTouchesInView = false; g.delegate = self }
+        for g in [tap, dbl, swipe] { g.cancelsTouchesInView = false; g.delegate = self }
+        rebuildMenus()
+    }
+
+    private static func title(_ c: NSDictionary) -> String {
+        let t = c["title"] as? String ?? ""
+        let s = c["subtitle"] as? String ?? ""
+        if let label = c["episodeLabel"] as? String, !label.isEmpty {
+            return s.isEmpty ? "\(t)  \(label)" : "\(label) \u{201C}\(s)\u{201D}"
+        }
+        return t
     }
 
     private func updatePlayButton() {
-        playButton.setImage(UIImage(systemName: paused ? "play.fill" : "pause.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 32, weight: .semibold)), for: .normal)
+        playButton.setImage(UIImage(systemName: paused ? "play.fill" : "pause.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 52, weight: .bold)), for: .normal)
     }
 
     private func updateSpinner() {
         if buffering && errorLabel.isHidden { spinner.startAnimating() } else { spinner.stopAnimating() }
-        playButton.superview?.superview?.alpha = buffering ? 0 : 1
+        playButton.superview?.alpha = buffering ? 0 : 1
     }
 
     private func updateTimes() {
         guard !scrubbing else { return }
-        timeLabel.text = Self.fmt(pos)
-        remainLabel.text = duration > 0 ? "-" + Self.fmt(max(0, duration - pos)) : "--:--"
+        remainLabel.text = duration > 0 ? Self.fmt(max(0, duration - pos)) : "--:--"
     }
 
     private func showChrome() {
@@ -713,7 +976,7 @@ final class CouchMPVPlayer: UIViewController {
     }
 
     private func hideChrome() {
-        guard errorLabel.isHidden, !scrubbing else { return }
+        guard errorLabel.isHidden, !scrubbing, !episodesOpen else { return }
         chromeVisible = false
         UIView.animate(withDuration: 0.35) { self.chrome.alpha = 0 }
         setNeedsStatusBarAppearanceUpdate()
@@ -736,10 +999,10 @@ final class CouchMPVPlayer: UIViewController {
         return t >= 3600 ? String(format: "%d:%02d:%02d", t / 3600, (t % 3600) / 60, t % 60) : String(format: "%d:%02d", t / 60, t % 60)
     }
 
-    private static func thumb() -> UIImage {
-        let size = CGSize(width: 16, height: 16)
+    private static func thumb(_ color: UIColor, _ d: CGFloat) -> UIImage {
+        let size = CGSize(width: d, height: d)
         return UIGraphicsImageRenderer(size: size).image { ctx in
-            UIColor.white.setFill()
+            color.setFill()
             ctx.cgContext.fillEllipse(in: CGRect(origin: .zero, size: size))
         }
     }
@@ -755,10 +1018,98 @@ extension CouchMPVPlayer: UIGestureRecognizerDelegate {
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         var v = touch.view
         while let cur = v {
-            if cur is UIControl { return false }
+            if cur is UIControl || cur === episodesPanel { return false }
             v = cur.superview
         }
         return true
+    }
+}
+
+extension CouchMPVPlayer: UITableViewDataSource, UITableViewDelegate {
+    func tableView(_ t: UITableView, numberOfRowsInSection s: Int) -> Int { episodes.count }
+
+    func tableView(_ t: UITableView, cellForRowAt i: IndexPath) -> UITableViewCell {
+        let c = t.dequeueReusableCell(withIdentifier: "ep", for: i) as! EpisodeCell
+        c.show(episodes[i.row])
+        return c
+    }
+
+    func tableView(_ t: UITableView, didSelectRowAt i: IndexPath) {
+        t.deselectRow(at: i, animated: true)
+        let e = episodes[i.row]
+        guard let id = e["id"] as? String, (e["current"] as? Bool) != true else { return closeEpisodes() }
+        haptic(.medium)
+        NotificationCenter.default.post(name: Note.episode, object: nil, userInfo: ["id": id])
+    }
+}
+
+/// One row of the Episodes list: still, "3 · Title", length or progress.
+private final class EpisodeCell: UITableViewCell {
+    private let still = UIImageView()
+    private let name = UILabel()
+    private let detail = UILabel()
+    private let bar = UIProgressView(progressViewStyle: .bar)
+    private var task: URLSessionDataTask?
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        backgroundColor = .clear
+        selectionStyle = .none
+        still.contentMode = .scaleAspectFill
+        still.clipsToBounds = true
+        still.layer.cornerRadius = 8
+        still.backgroundColor = UIColor.white.withAlphaComponent(0.08)
+        name.font = .systemFont(ofSize: 15, weight: .semibold)
+        name.textColor = .warmWhite
+        detail.font = .systemFont(ofSize: 12)
+        detail.textColor = UIColor.white.withAlphaComponent(0.6)
+        detail.numberOfLines = 2
+        bar.progressTintColor = .lamp
+        bar.trackTintColor = UIColor.white.withAlphaComponent(0.15)
+        let text = UIStackView(arrangedSubviews: [name, detail, bar])
+        text.axis = .vertical
+        text.spacing = 4
+        let row = UIStackView(arrangedSubviews: [still, text])
+        row.spacing = 12
+        row.alignment = .center
+        row.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(row)
+        NSLayoutConstraint.activate([
+            still.widthAnchor.constraint(equalToConstant: 112), still.heightAnchor.constraint(equalToConstant: 63),
+            row.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 14),
+            row.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -14),
+            row.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func show(_ e: [String: Any]) {
+        let n = e["episode"] as? Int ?? 0
+        let cur = (e["current"] as? Bool) == true
+        name.text = "\(n) · \(e["title"] as? String ?? "Episode \(n)")"
+        name.textColor = cur ? .neon : .warmWhite
+        detail.text = e["overview"] as? String
+        let p = e["progress"] as? Double ?? 0
+        bar.isHidden = p <= 0 && !cur
+        bar.progress = Float(cur ? 1 : p)
+        bar.progressTintColor = cur ? .neon : .lamp
+        still.image = nil
+        task?.cancel()
+        if let s = e["thumbnail"] as? String, let url = URL(string: s) {
+            task = URLSession.shared.dataTask(with: url) { [weak self] d, _, _ in
+                guard let d = d, let img = UIImage(data: d) else { return }
+                DispatchQueue.main.async { self?.still.image = img }
+            }
+            task?.resume()
+        }
+    }
+}
+
+private extension NSLayoutConstraint {
+    func withPriority(_ p: UILayoutPriority) -> NSLayoutConstraint {
+        priority = p
+        return self
     }
 }
 

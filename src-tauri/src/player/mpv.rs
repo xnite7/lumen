@@ -551,17 +551,27 @@ mod zorder {
     //! bottom so the UI floats above it.
     use windows::core::BOOL;
     use windows::Win32::Foundation::{HWND, LPARAM};
+    use windows::Win32::Foundation::RECT;
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumChildWindows, GetClassNameW, GetParent, SetWindowPos, HWND_BOTTOM, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        EnumChildWindows, GetClassNameW, GetClientRect, GetParent, SetWindowPos, HWND_BOTTOM, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
     };
 
+    // Also stretches mpv's window to exactly fill ours. Without this it can
+    // keep a stale size after fullscreen or a DPI change: right width, wrong
+    // height, and "fill" crops the bottom off.
     unsafe extern "system" fn visit(child: HWND, parent: LPARAM) -> BOOL {
         let mut buf = [0u16; 64];
         let n = GetClassNameW(child, &mut buf);
         let class = String::from_utf16_lossy(&buf[..n.max(0) as usize]);
         let is_direct = GetParent(child).map(|p| p.0 as isize == parent.0).unwrap_or(false);
         if is_direct && class.to_ascii_lowercase().starts_with("mpv") {
-            let _ = SetWindowPos(child, Some(HWND_BOTTOM), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            let mut r = RECT::default();
+            let ph = HWND(parent.0 as *mut _);
+            if GetClientRect(ph, &mut r).is_ok() && r.right > 0 && r.bottom > 0 {
+                let _ = SetWindowPos(child, Some(HWND_BOTTOM), 0, 0, r.right - r.left, r.bottom - r.top, SWP_NOACTIVATE);
+            } else {
+                let _ = SetWindowPos(child, Some(HWND_BOTTOM), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            }
         }
         BOOL(1)
     }
@@ -574,6 +584,23 @@ mod zorder {
     }
 }
 
+
+/// The window changed size (fullscreen, maximise, DPI): make mpv's child
+/// window match it again. Done twice, because Windows settles the size a
+/// moment after the event.
+pub fn refit(window: &tauri::Window) {
+    #[cfg(target_os = "windows")]
+    if let Ok(h) = window.hwnd() {
+        let main = h.0 as i64;
+        zorder::send_mpv_to_back(main);
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(180));
+            zorder::send_mpv_to_back(main);
+        });
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = window;
+}
 
 /// mpv's error codes, in words a person can act on.
 fn friendly(e: &libmpv2::Error) -> String {

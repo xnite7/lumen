@@ -183,6 +183,10 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            #[cfg(desktop)]
+            if let tauri::WindowEvent::Resized(_) | tauri::WindowEvent::ScaleFactorChanged { .. } = event {
+                player::refit_video(window);
+            }
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 // Leave nothing behind: progress saved, Simkl told, torrent
                 // cache wiped, lights restored.
