@@ -1,7 +1,9 @@
 <script lang="ts">
+  import { together, setShared, steer } from "../lib/stores/together.svelte";
   // The player UI. On desktop the video itself is mpv, drawn underneath this
   // transparent page -- everything here is the glass floating over it.
-  import { api, img } from "../lib/api";
+  import { api, img, listen } from "../lib/api";
+  import { toast } from "../lib/stores/toast.svelte";
   import { app } from "../lib/stores/app.svelte";
   import { pb, close, cmd, nextVideo, playNext, playVideo, orderedVideos } from "../lib/stores/playback.svelte";
   import { progressOf, watchedIds } from "../lib/stores/library.svelte";
@@ -19,6 +21,31 @@
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let menu = $state<"" | "tracks" | "episodes" | "volume" | "more">("");
   let menuX = $state(0);
+  // Host: a guest with the remote paused / played / seeked
+  $effect(() => {
+    let un: (() => void) | undefined;
+    listen<{ name: string; action: string; pos?: number }>("together-cmd", (c) => {
+      if (c.action === "seek" && c.pos != null) {
+        if (native) cmd("seek", { to: c.pos });
+        else if (video) video.currentTime = c.pos;
+        toast(`${c.name} skipped to ${time(c.pos)}`, "info");
+      } else if (c.action === "pause" || c.action === "play") {
+        const want = c.action === "pause";
+        if (want !== st.paused) {
+          if (native) cmd("pause", { value: want });
+          else if (video) want ? video.pause() : video.play();
+          toast(`${c.name} ${want ? "paused" : "pressed play"}`, "info");
+        }
+      }
+    }).then((u) => (un = u));
+    return () => un?.();
+  });
+  // bars hidden = the reactions button goes too
+  $effect(() => {
+    document.documentElement.classList.toggle("chrome-hidden", chromeHidden || idleScreen);
+    return () => document.documentElement.classList.remove("chrome-hidden");
+  });
+
   // only the picture itself goes fullscreen on a double-click; the bars,
   // buttons, menus, text and cards never do
   function dblFull(e: MouseEvent) {
@@ -93,16 +120,19 @@
   });
 
   function toggle() {
+    steer(st.paused ? "play" : "pause");
     if (native) cmd("pause");
     else if (video) video.paused ? video.play() : video.pause();
     poke();
   }
   function seekTo(t: number) {
     t = Math.max(0, Math.min(st.duration || t, t));
+    steer("seek", t);
     if (native) cmd("seek", { to: t });
     else if (video) video.currentTime = t;
   }
   function seekBy(d: number) {
+    steer("seek", Math.max(0, (st.pos || 0) + d));
     if (native) cmd("seek", { to: d, relative: true });
     else if (video) video.currentTime += d;
     poke();
@@ -603,6 +633,11 @@
           </select>
           <Icon name="chevronDown" size={14} />
         </label>
+      {/if}
+      {#if together.hosting}
+        <button class="remote press" class:on={together.shared} onclick={() => setShared(!together.shared)} title={together.shared ? "Everyone can control playback" : "Only you control playback"}>
+          <Icon name="hand" size={15} />{together.shared ? "everyone has the remote" : "let everyone control"}
+        </button>
       {/if}
       {#each quality as q}
         {@const dolby = q.startsWith("Dolby ")}
@@ -1715,5 +1750,23 @@
     color: rgb(255 255 255 / 0.8);
     min-width: 44px;
     text-align: center;
+  }
+  .remote {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    background: rgb(0 0 0 / 0.35);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.3);
+    backdrop-filter: blur(8px);
+  }
+  .remote.on {
+    background: rgb(var(--neon-rgb) / 0.3);
+    box-shadow: inset 0 0 0 1px rgb(var(--neon-rgb) / 0.8);
   }
 </style>

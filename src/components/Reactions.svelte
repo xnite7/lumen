@@ -14,6 +14,7 @@
   let flying = $state<Fly[]>([]);
   let open = $state(false);
   let k = 0;
+  let lastSeen = 0;
   let since = 0;
   const shown = new Set<number>();
 
@@ -32,24 +33,55 @@
     const tick = async () => {
       try {
         const res = await api.social<{ reactions: any[]; last?: number }>("GET", `/v1/react/${r}?since=${since}`);
-        for (const x of res.reactions ?? []) {
-          since = Math.max(since, x.n);
-          if (shown.has(x.n) || x.who === social.me?.id) continue;
+        const fresh = (res.reactions ?? []).filter((x) => !shown.has(x.n) && x.who !== social.me?.id);
+        for (const x of res.reactions ?? []) since = Math.max(since, x.n);
+        // replay a batch with the gaps it was sent with, not all at once
+        const first = fresh.length ? Math.min(...fresh.map((x) => x.at)) : 0;
+        if (fresh.length) lastSeen = Date.now();
+        for (const x of fresh) {
           shown.add(x.n);
-          launch(x.emoji, x.name, x.avatar, false);
+          setTimeout(() => launch(x.emoji, x.name, x.avatar, false), Math.min(1500, x.at - first));
         }
       } catch {}
-      if (alive) setTimeout(tick, 1200);
+      // quick while emojis are flying, gentler when it's quiet (server costs)
+      if (alive) setTimeout(tick, Date.now() - lastSeen < 15000 ? 350 : 900);
     };
     tick();
     return () => (alive = false);
   });
 
+  // the open tray folds itself away after a few quiet seconds
+  let fold: ReturnType<typeof setTimeout> | undefined;
+  function nudge() {
+    clearTimeout(fold);
+    fold = setTimeout(() => (open = false), 5000);
+  }
+  $effect(() => {
+    if (open) nudge();
+    return () => clearTimeout(fold);
+  });
+
+  // sends go out one by one as you tap (queued, never dropped)
+  let queue: string[] = [];
+  let sending = false;
+  async function flush() {
+    if (sending || !room) return;
+    sending = true;
+    while (queue.length) {
+      const e = queue.shift()!;
+      await api.social("POST", `/v1/react/${room}`, { emoji: e }).catch(() => {});
+    }
+    sending = false;
+  }
+
   function send(e: string) {
     if (!room) return;
+    nudge();
     haptic("light");
     launch(e, "you", social.me?.avatar, true);
-    api.social("POST", `/v1/react/${room}`, { emoji: e }).catch(() => {});
+    lastSeen = Date.now();
+    queue.push(e);
+    flush();
   }
 </script>
 
@@ -140,6 +172,15 @@
   .tray:hover,
   .tray.open {
     opacity: 1;
+  }
+  /* the player's bars went away: so does this */
+  :global(html.chrome-hidden) .tray {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+  }
+  .tray {
+    transition: opacity 250ms ease, transform 250ms ease;
   }
   .em,
   .toggle {

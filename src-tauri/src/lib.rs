@@ -238,6 +238,8 @@ pub fn run() {
             commands::crew_ask_status,
             commands::crew_inbox,
             commands::crew_cancel_ask,
+            commands::crew_share_control,
+            commands::crew_room_cmd,
             commands::crew_answer,
             commands::crew_room,
             commands::crew_leave,

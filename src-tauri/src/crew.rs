@@ -196,6 +196,7 @@ fn send_frame(core: &Core, url: String, code: String) {
 /// Playback ended: leave the couch row.
 pub fn stopped(core: &Core) {
     *LAST.lock() = None;
+    SHARED.store(false, std::sync::atomic::Ordering::Relaxed);
     if HOSTING.swap(false, std::sync::atomic::Ordering::Relaxed) {
         let id = member_id(core);
         let _ = send(core, reqwest::Method::DELETE, &format!("/v1/room/{id}"), None);
@@ -236,6 +237,8 @@ pub async fn list(core: &Core) -> AppResult<Value> {
 // ------------------------------------------------------------ watch together
 
 static HOSTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// the host lets everyone in the room pause / play / seek
+pub static SHARED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static LAST_ROOM: Mutex<Option<Instant>> = Mutex::new(None);
 
 /// Fire-and-forget request to the crew server.
@@ -289,12 +292,22 @@ fn host_tick(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f64,
         "title": known.title,
         "pos": pos,
         "paused": paused,
+        "shared": SHARED.load(std::sync::atomic::Ordering::Relaxed),
     });
     let client = core.http.client();
+    let app = core.app.clone();
     tauri::async_runtime::spawn(async move {
         if let Ok(r) = client.put(format!("{url}/v1/room")).header("authorization", code).json(&body).timeout(Duration::from_secs(5)).send().await {
             if r.status().as_u16() == 404 {
                 HOSTING.store(false, std::sync::atomic::Ordering::Relaxed); // everyone left
+                return;
+            }
+            // guests steering (shared control): the player does what they asked
+            if let Ok(v) = r.json::<Value>().await {
+                use tauri::Emitter;
+                for c in v.get("cmds").and_then(|c| c.as_array()).into_iter().flatten() {
+                    let _ = app.emit("together-cmd", c);
+                }
             }
         }
     });
@@ -306,6 +319,10 @@ pub async fn ask(core: &Core, to: &str) -> AppResult<Value> {
 
 pub async fn ask_status(core: &Core, id: &str) -> AppResult<Value> {
     call(core, reqwest::Method::GET, &format!("/v1/ask/{id}"), None).await
+}
+
+pub async fn room_cmd(core: &Core, host: &str, action: &str, pos: Option<f64>) -> AppResult<Value> {
+    call(core, reqwest::Method::POST, &format!("/v1/room/{host}/cmd"), Some(json!({ "action": action, "pos": pos }))).await
 }
 
 pub async fn cancel_ask(core: &Core, id: &str) -> AppResult<Value> {

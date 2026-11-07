@@ -183,7 +183,9 @@ type Member = {
 /** "can I join your couch?" */
 type Ask = { id: string; from: string; fromName: string; fromAvatar?: string; to: string; at: number; status: "pending" | "accepted" | "declined" | "ended" };
 /** a host's playback, followed by the guests they let in */
-type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[] };
+type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[]; shared?: boolean; cmds?: Cmd[] };
+/** a guest steering the host's player (only when the host shares control) */
+type Cmd = { from: string; name: string; action: "pause" | "play" | "seek"; pos?: number; at: number };
 type React = { n: number; who: string; name: string; avatar?: string; emoji: string; at: number };
 /** one line of the crew's activity: a review, a rating, or "finished X" */
 type Act = { id: string; who: string; name: string; avatar?: string; kind: "review" | "rating" | "finished"; title: { id: string; type: string; name: string; poster?: string; background?: string; logo?: string }; rating?: number; text?: string; at: number };
@@ -423,9 +425,24 @@ export class Crew {
         title: str(b.title, 200),
         pos: num(b.pos),
         paused: !!b.paused,
+        shared: !!b.shared,
         at: Date.now(),
       });
-      return json({ guests: r.guests.map((g) => this.members.get(g)?.name ?? "someone") });
+      // hand the host whatever the guests asked for since last time
+      const cmds = r.cmds ?? [];
+      r.cmds = [];
+      return json({ guests: r.guests.map((g) => this.members.get(g)?.name ?? "someone"), cmds });
+    }
+    // a guest steering, when the host lets everyone control
+    m = p.match(/^\/v1\/room\/([A-Za-z0-9_-]{1,40})\/cmd$/);
+    if (m && req.method === "POST") {
+      const r = this.rooms.get(m[1]);
+      if (!r || !r.guests.includes(who.id)) return json({ error: "not in this room" }, 403);
+      if (!r.shared) return json({ error: "the host has the remote" }, 403);
+      const action = b?.action === "pause" || b?.action === "play" || b?.action === "seek" ? b.action : null;
+      if (!action) return json({ error: "bad command" }, 400);
+      r.cmds = [...(r.cmds ?? []).slice(-10), { from: who.id, name: who.name, action, pos: action === "seek" ? num(b.pos) : undefined, at: Date.now() }];
+      return json({ ok: true });
     }
     // reactions in watch together: anyone in the room sends, everyone polls
     m = p.match(/^\/v1\/react\/([A-Za-z0-9_-]{1,40})$/);
@@ -439,7 +456,7 @@ export class Crew {
         const emoji = REACTIONS.includes(b?.emoji) ? b.emoji : null;
         if (!emoji) return json({ error: "bad reaction" }, 400);
         const mine = r.reacts.filter((x) => x.who === who.id && now - x.at < 3000).length;
-        if (mine >= 6) return json({ ok: true }); // easy there
+        if (mine >= 20) return json({ ok: true }); // easy there
         r.reacts.push({ n: ++this.reactN, who: who.id, name: who.name, avatar: who.avatar, emoji, at: now });
         return json({ ok: true });
       }

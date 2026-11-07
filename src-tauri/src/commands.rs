@@ -956,6 +956,17 @@ pub async fn crew_ask(s: S<'_>, to: String) -> AppResult<Value> {
 pub async fn crew_ask_status(s: S<'_>, id: String) -> AppResult<Value> {
     crate::crew::ask_status(&s.core, &id).await
 }
+/// Host: let everyone in the room control playback (or take the remote back).
+#[tauri::command]
+pub fn crew_share_control(on: bool) {
+    crate::crew::SHARED.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[tauri::command]
+pub async fn crew_room_cmd(s: S<'_>, host: String, action: String, pos: Option<f64>) -> AppResult<Value> {
+    crate::crew::room_cmd(&s.core, &host, &action, pos).await
+}
+
 #[tauri::command]
 pub async fn crew_cancel_ask(s: S<'_>, id: String) -> AppResult<Value> {
     crate::crew::cancel_ask(&s.core, &id).await

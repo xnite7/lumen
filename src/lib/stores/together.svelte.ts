@@ -19,7 +19,29 @@ export const together = $state({
   following: null as null | { host: string; name: string },
   /** my own id while friends are on my couch (the room is mine) */
   hosting: null as null | string,
+  /** host: everyone can pause / play / seek */
+  shared: false,
+  /** guest: the host shared the remote */
+  canControl: false,
 });
+
+/** Host: hand everyone the remote (or take it back). */
+export function setShared(on: boolean) {
+  together.shared = on;
+  api.crewShareControl(on).catch(() => {});
+  toast(on ? "everyone on your couch can control playback" : "you've got the remote back", "ok");
+}
+
+// guest steering: for a few seconds after, the sync doesn't pull us back
+let steeredAt = 0;
+/** Guest with the remote: send pause / play / seek to the host. True if sent. */
+export function steer(action: "pause" | "play" | "seek", pos?: number): boolean {
+  const f = together.following;
+  if (!f || !together.canControl) return false;
+  steeredAt = Date.now();
+  api.crewRoomCmd(f.host, action, pos).catch(() => {});
+  return true;
+}
 
 let inboxTimer = 0;
 export function startTogether() {
@@ -124,13 +146,14 @@ async function follow(host: string, name: string) {
       return;
     }
     missing = 0;
+    together.canControl = !!r.shared;
     // they moved on to another episode: come along
     if (r.videoId !== pb.videoId && pb.meta && !pb.loading) {
       const v = orderedVideos(pb.meta).find((x) => x.id === r.videoId);
       if (v) await playVideo(v);
       return;
     }
-    if (pb.loading) return;
+    if (pb.loading || Date.now() - steeredAt < 3500) return;
     if (r.paused !== pb.state.paused) cmd("pause", { value: r.paused });
     const drift = r.now + 0.3 - pb.state.pos;
     if (Math.abs(drift) > 2.5) cmd("seek", { to: r.now + 0.3 });
@@ -140,6 +163,7 @@ async function follow(host: string, name: string) {
 function stop() {
   clearInterval(syncTimer);
   together.following = null;
+  together.canControl = false;
 }
 
 export async function leave() {

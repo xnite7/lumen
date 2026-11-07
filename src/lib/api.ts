@@ -307,6 +307,8 @@ export const api = {
   crewInvite: () => invoke<string | null>("crew_invite"),
   crewAsk: (to: string) => invoke<{ id: string }>("crew_ask", { to }),
   crewAskStatus: (id: string) => invoke<{ status: "pending" | "accepted" | "declined" | "ended" | "gone" }>("crew_ask_status", { id }),
+  crewShareControl: (on: boolean) => invoke<void>("crew_share_control", { on }),
+  crewRoomCmd: (host: string, action: "pause" | "play" | "seek", pos?: number) => invoke<void>("crew_room_cmd", { host, action, pos }),
   crewCancelAsk: (id: string) => invoke<void>("crew_cancel_ask", { id }),
   crewInbox: () => invoke<{ asks: CrewAsk[] }>("crew_inbox"),
   crewAnswer: (id: string, accept: boolean) => invoke<void>("crew_answer", { id, accept }),
@@ -365,6 +367,8 @@ export interface CrewRoom {
   now: number;
   paused: boolean;
   guests: string[];
+  /** the host lets everyone control playback */
+  shared?: boolean;
 }
 
 export interface CrewMember {
