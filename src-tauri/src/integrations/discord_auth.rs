@@ -68,18 +68,14 @@ pub async fn finish(core: &Core, url: &str) -> AppResult<Value> {
         return Err(AppError::msg("sign-in didn't match, try again"));
     }
     let client = core.http.client();
-    let mut form = vec![
+    let form = vec![
         ("client_id", CLIENT_ID.to_string()),
         ("grant_type", "authorization_code".to_string()),
         ("code", code.clone()),
         ("redirect_uri", p.redirect.clone()),
         ("code_verifier", p.verifier.clone()),
     ];
-    // With "Public Client" on, PKCE alone is enough. Otherwise the secret
-    // comes from the build (repo secret DISCORD_CLIENT_SECRET), never the source.
-    if let Some(secret) = option_env!("DISCORD_CLIENT_SECRET").filter(|s| !s.is_empty()) {
-        form.push(("client_secret", secret.to_string()));
-    }
+    // "Public Client" is on: PKCE alone is enough, no secret in the app.
     let tok: Value = client
         .post("https://discord.com/api/oauth2/token")
         .form(&form)
@@ -90,11 +86,17 @@ pub async fn finish(core: &Core, url: &str) -> AppResult<Value> {
         .json()
         .await
         .map_err(|e| AppError::msg(e.to_string()))?;
+    welcome(core, &tok).await
+}
+
+/// After any sign-in: keep the tokens, learn who you are.
+async fn welcome(core: &Core, tok: &Value) -> AppResult<Value> {
+    let client = core.http.client();
     let access = tok
         .get("access_token")
         .and_then(|v| v.as_str())
         .ok_or_else(|| AppError::msg(format!("Discord sign-in failed: {}", tok.get("error_description").or(tok.get("error")).and_then(|v| v.as_str()).unwrap_or("no token"))))?;
-    save_tokens(core, &tok)?;
+    save_tokens(core, tok)?;
     let me: Value = client
         .get("https://discord.com/api/users/@me")
         .bearer_auth(access)
@@ -121,6 +123,79 @@ pub async fn finish(core: &Core, url: &str) -> AppResult<Value> {
     Ok(user)
 }
 
+// ------------------------------------------------- the Discord desktop app
+//
+// Discord's local IPC can show the "authorize couch" prompt inside the
+// Discord app instead of a browser tab. Discord only allows that for the
+// app's testers (or once Discord approves the app), and the code it hands
+// back has to be exchanged with the client secret -- which lives on the crew
+// server, never in couch. Anything that doesn't work falls back to the browser.
+
+#[cfg(desktop)]
+pub async fn desktop_app(core: &Core) -> AppResult<Value> {
+    let code = tauri::async_runtime::spawn_blocking(ipc_authorize).await.map_err(|e| AppError::msg(e.to_string()))??;
+    let r = core
+        .http
+        .client()
+        .post(format!("{}/v1/discord/exchange", crate::crew::CREW_URL.trim_end_matches('/')))
+        .json(&json!({ "code": code, "redirect_uri": DESKTOP_REDIRECT }))
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|e| AppError::msg(e.to_string()))?;
+    let tok: Value = r.json().await.map_err(|e| AppError::msg(e.to_string()))?;
+    welcome(core, &tok).await
+}
+
+#[cfg(desktop)]
+fn ipc_authorize() -> AppResult<String> {
+    use std::io::{Read, Write};
+    let fail = |m: &str| AppError::msg(m.to_string());
+    #[cfg(windows)]
+    let mut pipe = (0..10)
+        .find_map(|i| std::fs::OpenOptions::new().read(true).write(true).open(format!(r"\\.\pipe\discord-ipc-{i}")).ok())
+        .ok_or_else(|| fail("Discord isn't open"))?;
+    #[cfg(unix)]
+    let mut pipe = {
+        let base = ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"].iter().find_map(|k| std::env::var(k).ok()).unwrap_or_else(|| "/tmp".into());
+        (0..10).find_map(|i| std::os::unix::net::UnixStream::connect(format!("{base}/discord-ipc-{i}")).ok()).ok_or_else(|| fail("Discord isn't open"))?
+    };
+    let send = |p: &mut dyn Write, op: u32, v: &Value| -> AppResult<()> {
+        let b = serde_json::to_vec(v)?;
+        let mut f = op.to_le_bytes().to_vec();
+        f.extend((b.len() as u32).to_le_bytes());
+        f.extend(b);
+        p.write_all(&f).map_err(|e| AppError::msg(e.to_string()))
+    };
+    let recv = |p: &mut dyn Read| -> AppResult<Value> {
+        let mut h = [0u8; 8];
+        p.read_exact(&mut h).map_err(|e| AppError::msg(e.to_string()))?;
+        let len = u32::from_le_bytes([h[4], h[5], h[6], h[7]]) as usize;
+        let mut b = vec![0u8; len.min(1 << 20)];
+        p.read_exact(&mut b).map_err(|e| AppError::msg(e.to_string()))?;
+        Ok(serde_json::from_slice(&b)?)
+    };
+    send(&mut pipe, 0, &json!({ "v": 1, "client_id": CLIENT_ID }))?;
+    let ready = recv(&mut pipe)?;
+    if ready.get("evt").and_then(|e| e.as_str()) != Some("READY") {
+        return Err(fail("Discord didn't answer"));
+    }
+    send(&mut pipe, 1, &json!({ "cmd": "AUTHORIZE", "nonce": token(16), "args": { "client_id": CLIENT_ID, "scopes": ["identify", "guilds"] } }))?;
+    // waits while you look at the prompt in Discord
+    for _ in 0..8 {
+        let v = recv(&mut pipe)?;
+        if v.get("cmd").and_then(|c| c.as_str()) != Some("AUTHORIZE") {
+            continue;
+        }
+        if v.get("evt").and_then(|e| e.as_str()) == Some("ERROR") {
+            return Err(fail(v.pointer("/data/message").and_then(|m| m.as_str()).unwrap_or("Discord said no")));
+        }
+        return v.pointer("/data/code").and_then(|c| c.as_str()).map(|c| c.to_string()).ok_or_else(|| fail("no code from Discord"));
+    }
+    Err(fail("Discord didn't answer"))
+}
+
+
 fn now() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
@@ -145,11 +220,24 @@ pub async fn access_token(core: &Core) -> Option<String> {
         return core.db.secret("discord_access");
     }
     let refresh = core.db.secret("discord_refresh")?;
-    let mut form = vec![("client_id", CLIENT_ID.to_string()), ("grant_type", "refresh_token".to_string()), ("refresh_token", refresh)];
-    if let Some(secret) = option_env!("DISCORD_CLIENT_SECRET").filter(|s| !s.is_empty()) {
-        form.push(("client_secret", secret.to_string()));
+    let form = vec![("client_id", CLIENT_ID.to_string()), ("grant_type", "refresh_token".to_string()), ("refresh_token", refresh)];
+    let mut tok: Value = core.http.client().post("https://discord.com/api/oauth2/token").form(&form).timeout(Duration::from_secs(15)).send().await.ok()?.json().await.ok()?;
+    // tokens from the desktop-app sign-in refresh through the crew server
+    if tok.get("access_token").is_none() {
+        let refresh = core.db.secret("discord_refresh")?;
+        tok = core
+            .http
+            .client()
+            .post(format!("{}/v1/discord/refresh", crate::crew::CREW_URL.trim_end_matches('/')))
+            .json(&json!({ "refresh_token": refresh }))
+            .timeout(Duration::from_secs(15))
+            .send()
+            .await
+            .ok()?
+            .json()
+            .await
+            .ok()?;
     }
-    let tok: Value = core.http.client().post("https://discord.com/api/oauth2/token").form(&form).timeout(Duration::from_secs(15)).send().await.ok()?.json().await.ok()?;
     tok.get("access_token")?;
     save_tokens(core, &tok).ok()?;
     core.db.secret("discord_access")

@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>midnite™ couch setup</title>
+<style>
+  :root {
+    --bg: #000;
+    --text: #f4eaf0;
+    --dim: #9c8a96;
+    --neon: #e0309a;
+    --lamp: #ffb25c;
+    --slab: #fff4ea;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; background: transparent; overflow: hidden; user-select: none; }
+  body {
+    font: 15px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  .win {
+    position: relative;
+    height: 100vh;
+    border-radius: 18px;
+    overflow: hidden;
+    background: var(--bg);
+    box-shadow: inset 0 0 0 1px rgb(244 234 240 / 0.09);
+    isolation: isolate;
+  }
+  /* the room: a neon sign somewhere behind you, a lamp on the floor */
+  .glow {
+    position: absolute; inset: -30%; z-index: -2;
+    background:
+      radial-gradient(40% 45% at 22% 38%, rgb(224 48 154 / 0.42), transparent 70%),
+      radial-gradient(35% 40% at 82% 92%, rgb(255 178 92 / 0.2), transparent 70%);
+    filter: blur(20px);
+    animation: breathe 7s ease-in-out infinite alternate;
+  }
+  @keyframes breathe { to { transform: translate(3%, -2%) scale(1.06); opacity: 0.85; } }
+  .grain {
+    position: absolute; inset: 0; z-index: -1; opacity: 0.08; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .drag { position: absolute; inset: 0 92px auto 0; height: 40px; }
+  .ctl { position: absolute; top: 0; right: 0; display: flex; }
+  .ctl button {
+    width: 46px; height: 32px; border: 0; background: transparent; color: rgb(255 255 255 / 0.75);
+    display: grid; place-items: center; cursor: default;
+  }
+  .ctl button:hover { background: rgb(255 255 255 / 0.1); color: #fff; }
+  .ctl .x:hover { background: #c42b1c; }
+
+  main {
+    position: absolute; inset: 0;
+    display: grid; grid-template-columns: 250px 1fr; align-items: center;
+    padding: 34px 44px 30px 30px;
+  }
+  .art { display: grid; place-items: center; height: 100%; }
+  .art img {
+    width: 200px;
+    filter: invert(1) drop-shadow(0 0 0 transparent);
+    transition: transform 600ms cubic-bezier(.2,.9,.2,1);
+  }
+  .busy .art img { animation: wobble 1.6s ease-in-out infinite; }
+  .done .art img { transform: scale(1.06) rotate(-3deg); }
+  @keyframes wobble { 0%,100% { transform: rotate(-2deg) translateY(0); } 50% { transform: rotate(2deg) translateY(-4px); } }
+
+  .copy { display: flex; flex-direction: column; gap: 6px; }
+  .eyebrow { font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: 0.04em; color: var(--dim); }
+  h1 { font-size: 52px; font-weight: 800; letter-spacing: -0.045em; line-height: 0.95; }
+  .line { font: 14px ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--dim); min-height: 20px; margin-top: 4px; }
+
+  .actions { display: flex; gap: 10px; margin-top: 26px; align-items: center; }
+  .btn {
+    height: 48px; padding: 0 26px; border: 0; border-radius: 13px; cursor: pointer;
+    font: 700 17px "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; letter-spacing: -0.01em;
+    display: inline-flex; align-items: center; gap: 10px;
+    transition: transform 160ms ease, filter 160ms ease, opacity 200ms ease;
+  }
+  .btn:active { transform: scale(0.97); }
+  .primary { background: var(--slab); color: #000; box-shadow: 0 12px 34px -12px rgb(255 178 92 / 0.6); }
+  .primary:hover { filter: brightness(1.04); }
+  .ghost { background: rgb(255 255 255 / 0.1); color: #fff; box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16); }
+  .ghost:hover { background: rgb(255 255 255 / 0.16); }
+
+  .progress { margin-top: 26px; display: none; }
+  .busy .progress { display: block; }
+  .busy .actions { display: none; }
+  .track { height: 4px; background: rgb(255 255 255 / 0.1); overflow: hidden; }
+  .fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--neon), var(--lamp)); box-shadow: 0 0 14px var(--neon); transition: width 400ms ease; }
+  .pct { margin-top: 10px; font: 12px ui-monospace, Consolas, monospace; color: var(--dim); display: flex; justify-content: space-between; }
+
+  .foot { position: absolute; left: 30px; bottom: 16px; font: 11px ui-monospace, Consolas, monospace; color: rgb(156 138 150 / 0.7); }
+  .err { color: #ff8a8a; }
+</style>
+</head>
+<body>
+<div class="win" id="win">
+  <div class="glow"></div>
+  <div class="grain"></div>
+  <div class="drag" data-tauri-drag-region></div>
+  <div class="ctl">
+    <button id="min" aria-label="Minimize"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5.5h10" stroke="currentColor" /></svg></button>
+    <button id="close" class="x" aria-label="Close"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M.5.5l9 9M9.5.5l-9 9" stroke="currentColor" /></svg></button>
+  </div>
+
+  <main data-tauri-drag-region>
+    <div class="art" data-tauri-drag-region><img src="mark.png" alt="" draggable="false" /></div>
+    <div class="copy">
+      <span class="eyebrow">midnite™</span>
+      <h1 id="title">couch</h1>
+      <p class="line" id="line">pull up a seat.</p>
+
+      <div class="actions" id="actions">
+        <button class="btn primary" id="go">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="currentColor" d="M7 4.6v14.8c0 .8.9 1.3 1.6.8l11.3-7.4a1 1 0 0 0 0-1.6L8.6 3.8C7.9 3.3 7 3.8 7 4.6Z" /></svg>
+          <span id="goLabel">Install</span>
+        </button>
+        <button class="btn ghost" id="open" hidden>Open couch</button>
+      </div>
+
+      <div class="progress">
+        <div class="track"><div class="fill" id="fill"></div></div>
+        <div class="pct"><span id="status">fluffing the cushions…</span><span id="pct">0%</span></div>
+      </div>
+    </div>
+  </main>
+  <p class="foot" id="foot">installs for you only · updates itself from now on</p>
+</div>
+
+<script>
+  const { invoke } = window.__TAURI__.core;
+  const { listen } = window.__TAURI__.event;
+  const win = window.__TAURI__.window.getCurrentWindow();
+  const $ = (id) => document.getElementById(id);
+
+  $("min").onclick = () => win.minimize();
+  $("close").onclick = () => win.close();
+
+  invoke("already_installed").then((yes) => {
+    if (yes) {
+      $("goLabel").textContent = "Reinstall";
+      $("open").hidden = false;
+      $("line").textContent = "you've got a seat already.";
+    }
+  });
+
+  const lines = ["fluffing the cushions…", "finding the remote…", "dimming the lights…", "making popcorn…", "warming up the projector…", "saving you a seat…"];
+  let pct = 0, tick, li = 0;
+
+  $("go").onclick = async () => {
+    $("win").classList.add("busy");
+    $("title").textContent = "couch";
+    $("line").textContent = "getting it ready.";
+    $("line").classList.remove("err");
+    pct = 0;
+    // the installer doesn't report progress: ease toward 94% and finish on "done"
+    tick = setInterval(() => {
+      pct += (94 - pct) * 0.06;
+      $("fill").style.width = pct + "%";
+      $("pct").textContent = Math.round(pct) + "%";
+    }, 200);
+    const lt = setInterval(() => ($("status").textContent = lines[++li % lines.length]), 1800);
+    const un = await listen("installed", (e) => {
+      clearInterval(tick); clearInterval(lt); un();
+      if (e.payload.ok) {
+        $("fill").style.width = "100%";
+        $("pct").textContent = "100%";
+        setTimeout(() => {
+          $("win").classList.remove("busy");
+          $("win").classList.add("done");
+          $("title").textContent = "you're in.";
+          $("line").textContent = "you're on the couch.";
+          $("go").hidden = true;
+          $("open").hidden = false;
+          $("open").className = "btn primary";
+          $("open").textContent = "Open couch";
+          $("foot").textContent = "sign in with Discord and get comfy";
+        }, 500);
+      } else {
+        $("win").classList.remove("busy");
+        $("line").textContent = "the tv got scared. try again?";
+        $("line").classList.add("err");
+      }
+    });
+    invoke("install").catch((err) => {
+      clearInterval(tick); clearInterval(lt); un();
+      $("win").classList.remove("busy");
+      $("line").textContent = String(err);
+      $("line").classList.add("err");
+    });
+  };
+  $("open").onclick = () => invoke("open_couch").catch((err) => { $("line").textContent = String(err); $("line").classList.add("err"); });
+</script>
+</body>
+</html>

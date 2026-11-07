@@ -7,6 +7,14 @@
 
   let { ondone }: { ondone?: () => void } = $props();
   let busy = $state(false);
+  // computer: Discord's own app asks first; the browser if it can't
+  let stage = $state<"app" | "browser" | "">("");
+
+  $effect(() => {
+    let u2: (() => void) | undefined;
+    listen<string>("discord-auth-stage", (st) => (stage = st as any)).then((u) => (u2 = u));
+    return () => u2?.();
+  });
 
   $effect(() => {
     let un: (() => void) | undefined;
@@ -41,7 +49,7 @@
 
 <button class="discord press" onclick={go} disabled={busy}>
   <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.6 5.3A17.6 17.6 0 0 0 15.3 4l-.5 1.1a16.4 16.4 0 0 0-5 0L9.3 4a17.6 17.6 0 0 0-4.3 1.3C2.3 9.3 1.6 13.2 1.9 17a17.7 17.7 0 0 0 5.4 2.7l1.1-1.8a11.4 11.4 0 0 1-1.8-.9l.4-.3a12.6 12.6 0 0 0 10.8 0l.4.3c-.6.3-1.2.6-1.8.9l1.1 1.8a17.6 17.6 0 0 0 5.4-2.7c.4-4.4-.7-8.3-3.3-11.7ZM8.7 14.7c-1 0-1.9-1-1.9-2.1s.8-2.1 1.9-2.1 1.9 1 1.9 2.1-.8 2.1-1.9 2.1Zm6.6 0c-1 0-1.9-1-1.9-2.1s.8-2.1 1.9-2.1 1.9 1 1.9 2.1-.8 2.1-1.9 2.1Z" /></svg>
-  {busy ? "waiting for Discord…" : "sign in with Discord"}
+  {busy ? (stage === "app" ? "check your Discord app…" : stage === "browser" ? "finish in your browser…" : "waiting for Discord…") : "sign in with Discord"}
 </button>
 
 <style>

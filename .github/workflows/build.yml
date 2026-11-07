@@ -6,9 +6,7 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
-# Discord sign-in (only needed if the Discord app isn't a "Public Client")
 env:
-  DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
   # service keys compiled into couch (Settings → Secrets and variables → Actions)
   COUCH_TMDB_KEY: ${{ secrets.COUCH_TMDB_KEY }}
   COUCH_TIDB_KEY: ${{ secrets.COUCH_TIDB_KEY }}
@@ -40,7 +38,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            setup
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Fetch libmpv
         shell: pwsh
@@ -61,10 +61,19 @@ jobs:
           '
       - name: Build installer
         run: npx tauri build
+      - name: Build couch setup (custom installer window)
+        shell: bash
+        run: |
+          exe=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe | head -1)
+          export COUCH_PAYLOAD="$PWD/$exe"
+          cargo build --release --manifest-path setup/Cargo.toml
+          mkdir -p dist-setup
+          cp setup/target/release/couch-setup.exe "dist-setup/couch-setup-$COUCH_VERSION.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: couch-Windows
           path: |
+            dist-setup/*.exe
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
           if-no-files-found: error

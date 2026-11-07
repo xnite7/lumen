@@ -860,6 +860,36 @@ pub fn crew_invite(s: S<'_>) -> Option<String> {
 /// the page hands to `discord_finish`.
 #[tauri::command]
 pub async fn discord_start(app: AppHandle, s: S<'_>) -> AppResult<()> {
+    // Computer: the Discord app's own prompt first; the browser if that
+    // can't happen (Discord closed, not a tester yet, ...).
+    #[cfg(desktop)]
+    {
+        let core = s.core.clone();
+        let h = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = h.emit("discord-auth-stage", "app");
+            match crate::integrations::discord_auth::desktop_app(&core).await {
+                Ok(_) => {
+                    let _ = h.emit("discord-auth", json!({ "ok": true }));
+                }
+                Err(e) => {
+                    log::info!("discord app sign-in unavailable ({e}); using the browser");
+                    let _ = h.emit("discord-auth-stage", "browser");
+                    if let Err(e) = discord_browser(h.clone(), core).await {
+                        let _ = h.emit("discord-auth", json!({ "ok": false, "error": e.to_string() }));
+                    }
+                }
+            }
+        });
+        return Ok(());
+    }
+    #[cfg(mobile)]
+    {
+        return discord_browser(app, s.core.clone()).await;
+    }
+}
+
+async fn discord_browser(app: AppHandle, core: crate::core::CoreRef) -> AppResult<()> {
     use crate::integrations::discord_auth as d;
     use tauri_plugin_opener::OpenerExt;
     #[cfg(desktop)]
@@ -868,7 +898,6 @@ pub async fn discord_start(app: AppHandle, s: S<'_>) -> AppResult<()> {
             .await
             .map_err(|e| AppError::msg(format!("port {} is busy ({e}); close other sign-ins and try again", d::DESKTOP_PORT)))?;
         let url = d::start(d::DESKTOP_REDIRECT);
-        let core = s.core.clone();
         let h = app.clone();
         tauri::async_runtime::spawn(async move {
             use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -901,7 +930,7 @@ pub async fn discord_start(app: AppHandle, s: S<'_>) -> AppResult<()> {
     }
     #[cfg(mobile)]
     {
-        let _ = &s;
+        let _ = &core;
         let url = d::start(d::MOBILE_REDIRECT);
         app.opener().open_url(url, None::<&str>).map_err(|e| AppError::msg(e.to_string()))?;
     }

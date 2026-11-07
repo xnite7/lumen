@@ -27,6 +27,33 @@ export interface Env {
   GH_TOKEN?: string;
   /** owner/repo holding the releases */
   GH_REPO?: string;
+  /** Discord client secret: only for sign-ins through the Discord app */
+  DISCORD_SECRET?: string;
+}
+
+const DISCORD_APP = "1568062298721886290";
+
+/** Sign-in through the Discord desktop app: its code needs the client
+ *  secret to become a token, and the secret lives here, not in the app. */
+async function discordToken(req: Request, env: Env, kind: "exchange" | "refresh"): Promise<Response> {
+  if (!env.DISCORD_SECRET) return json({ error: "desktop sign-in isn't set up" }, 501);
+  let b: any;
+  try {
+    b = await req.json();
+  } catch {
+    return json({ error: "bad json" }, 400);
+  }
+  const form = new URLSearchParams({ client_id: DISCORD_APP, client_secret: env.DISCORD_SECRET });
+  if (kind === "exchange") {
+    form.set("grant_type", "authorization_code");
+    form.set("code", String(b?.code ?? ""));
+    form.set("redirect_uri", String(b?.redirect_uri ?? ""));
+  } else {
+    form.set("grant_type", "refresh_token");
+    form.set("refresh_token", String(b?.refresh_token ?? ""));
+  }
+  const r = await fetch("https://discord.com/api/oauth2/token", { method: "POST", body: form, headers: { "content-type": "application/x-www-form-urlencoded" } });
+  return new Response(r.body, { status: r.status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 }
 
 // ------------------------------------------------------------- updates
@@ -180,6 +207,8 @@ export default {
     if (url.pathname === "/join") return joinPage(url);
     if (!url.pathname.startsWith("/v1/")) return json({ error: "not here" }, 404);
     if (req.method === "POST" && url.pathname === "/v1/auth") return auth(req, env);
+    if (req.method === "POST" && url.pathname === "/v1/discord/exchange") return discordToken(req, env, "exchange");
+    if (req.method === "POST" && url.pathname === "/v1/discord/refresh") return discordToken(req, env, "refresh");
     const who = await verify(env, req.headers.get("authorization"));
     if (!who) return json({ error: "sign in again" }, 401);
     if (url.pathname.startsWith("/v1/update/")) return updates(url, env);

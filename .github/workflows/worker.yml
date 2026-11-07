@@ -27,6 +27,7 @@ jobs:
           echo "${{ secrets.CREW_CODE }}" | npx wrangler secret put CREW_CODE || true
           echo "${{ secrets.DISCORD_GUILD_ID }}" | npx wrangler secret put GUILD_ID || true
           if [ -n "${{ secrets.GH_RELEASES_TOKEN }}" ]; then echo "${{ secrets.GH_RELEASES_TOKEN }}" | npx wrangler secret put GH_TOKEN || true; fi
+          if [ -n "${{ secrets.DISCORD_CLIENT_SECRET }}" ]; then echo "${{ secrets.DISCORD_CLIENT_SECRET }}" | npx wrangler secret put DISCORD_SECRET || true; fi
           npx wrangler deploy 2>&1 | tee deploy.log
           echo "### crew server" >> $GITHUB_STEP_SUMMARY
           grep -o 'https://[a-z0-9.-]*workers.dev' deploy.log | head -1 >> $GITHUB_STEP_SUMMARY
