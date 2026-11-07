@@ -7,3 +7,4 @@ src-tauri/gen/android
 src-tauri/mpv
 *.log
 .DS_Store
+dist-demo

@@ -75,6 +75,13 @@ const streams = [
 let emit: ((e: string, p: unknown) => void) | null = null;
 let polls = 0;
 const q = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
+// the hosted live preview (npm run demo): signed in, set up, phone layout on phones
+if (import.meta.env.VITE_DEMO) {
+  q.set("onboarded", "");
+  q.set("signed", "");
+  q.set("crew", "");
+  if (!q.has("platform") && /iPhone|iPad|Android/i.test(navigator.userAgent)) q.set("platform", "ios");
+}
 
 export async function mock(cmd: string, args: any): Promise<any> {
   if (!emit) emit = (await import("./api")).emitLocal;
