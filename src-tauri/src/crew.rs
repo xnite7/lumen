@@ -41,7 +41,7 @@ fn server(core: &Core) -> Option<(String, String)> {
     let session = core.db.secret("crew_session")?;
     let exp = core.db.get::<Value>("crew_session_exp").and_then(|v| v.as_u64()).unwrap_or(0);
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    (exp > now + 60).then(|| (CREW_URL.trim_end_matches('/').to_string(), format!("Bearer {session}")))
+    (exp > now + 25).then(|| (CREW_URL.trim_end_matches('/').to_string(), format!("Bearer {session}")))
 }
 
 /// Trade your Discord sign-in for a couch session (the server checks you're
@@ -64,6 +64,8 @@ pub async fn login(core: &Core) -> AppResult<()> {
     let v: Value = r.json().await.unwrap_or(Value::Null);
     if st == 403 {
         let _ = core.db.set("discord_member", &json!(false));
+        let _ = core.db.set_secret("crew_session", None);
+        core.emit("discord-gate", "outsider"); // kicked: lock the app now
         return Err(AppError::msg("not in the midnite server"));
     }
     let session = v.get("session").and_then(|s| s.as_str()).ok_or_else(|| AppError::msg(v.get("error").and_then(|e| e.as_str()).unwrap_or("the crew server said no").to_string()))?;
@@ -90,6 +92,20 @@ pub fn playing(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f6
     host_tick(core, known, meta, video_id, pos, paused);
     let Some((url, code)) = server(core) else { return };
     // gatekeeper mode: you're on the couch, but what you're watching is yours
+    // the session lapses every couple of minutes: earn a new one quietly
+    if server(core).is_none() {
+        static BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if !BUSY.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            let h = core.app.clone();
+            tauri::async_runtime::spawn(async move {
+                use tauri::Manager;
+                let c = h.state::<crate::state::AppState>().core.clone();
+                let _ = login(&c).await;
+                BUSY.store(false, std::sync::atomic::Ordering::Relaxed);
+            });
+        }
+        return;
+    }
     let gate = core.settings.read().integrations.crew_gatekeeper;
     let key = format!("{}|{}|{}|{gate}", known.title, known.episode.clone().unwrap_or_default(), paused);
     {

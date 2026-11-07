@@ -78,7 +78,9 @@ async function updates(url: URL, env: Env): Promise<Response> {
 }
 
 type Who = { id: string; name: string; avatar?: string };
-const SESSION_TTL = 7 * 86400;
+// short on purpose: a session is re-earned from Discord every couple of
+// minutes, so someone kicked from the server is out right away
+const SESSION_TTL = 120;
 const enc = new TextEncoder();
 const b64u = (b: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const unb64u = (s: string) => atob(s.replace(/-/g, "+").replace(/_/g, "/"));

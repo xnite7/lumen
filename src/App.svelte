@@ -48,6 +48,9 @@
     })();
     listen<string>("deeplink", handleLink);
     listen("library-changed", () => loadLibrary());
+    // kicked from the midnite server: lock the app right away
+    listen<string>("discord-gate", (g) => g === "outsider" && (gate = "outsider"));
+    setInterval(() => app.settings.general.onboarded && !ui.onboarding && checkGate(), 60_000);
     // Coming back to couch: ask Simkl what changed (one tiny request; the
     // real fetch only happens when something did).
     let lastSync = 0;

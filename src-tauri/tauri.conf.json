@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "midnite™ couch",
+        "title": "midnite\u2122 couch",
         "width": 1440,
         "height": 860,
         "minWidth": 960,
@@ -30,13 +30,22 @@
     ],
     "security": {
       "csp": null,
-      "assetProtocol": { "enable": true, "scope": [] }
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
     }
   },
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": ["nsis", "msi", "app", "dmg", "appimage"],
+    "targets": [
+      "nsis",
+      "msi",
+      "app",
+      "dmg",
+      "appimage"
+    ],
     "publisher": "xnite",
     "category": "Entertainment",
     "shortDescription": "A native streaming app for Stremio addons",
@@ -50,20 +59,49 @@
     ],
     "resources": {},
     "windows": {
-      "webviewInstallMode": { "type": "embedBootstrapper" },
-      "nsis": { "installMode": "currentUser", "displayLanguageSelector": false }
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false,
+        "template": "nsis/installer.nsi",
+        "headerImage": "nsis/header.bmp",
+        "sidebarImage": "nsis/sidebar.bmp",
+        "installerIcon": "icons/icon.ico"
+      }
     },
-    "iOS": { "minimumSystemVersion": "17.0" }
+    "iOS": {
+      "minimumSystemVersion": "17.0"
+    }
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBFODQzMTI3NjE4RTU3QTgKUldTb1Y0NWhKekdFRG5aNEUzdnRUcEhlUnRQNUtVcnVkTmdVamkrUVZuMk1hdy8zNmUzQ05KRloK",
-      "endpoints": ["https://midnite-couch.xnite7.workers.dev/v1/update/{{target}}/{{arch}}/{{current_version}}"],
-      "windows": { "installMode": "passive" }
+      "endpoints": [
+        "https://midnite-couch.xnite7.workers.dev/v1/update/{{target}}/{{arch}}/{{current_version}}"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     },
     "deep-link": {
-      "desktop": { "schemes": ["stremio", "couch", "lumen"] },
-      "mobile": [{ "scheme": ["couch", "lumen"], "appLink": false }]
+      "desktop": {
+        "schemes": [
+          "stremio",
+          "couch",
+          "lumen"
+        ]
+      },
+      "mobile": [
+        {
+          "scheme": [
+            "couch",
+            "lumen"
+          ],
+          "appLink": false
+        }
+      ]
     }
   }
 }
