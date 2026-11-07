@@ -26,6 +26,9 @@ export interface Env {
   CREW_CODE: string;
   /** the Discord server couch is for */
   GUILD_ID?: string;
+  /** who gets in: role ids (server-subscription roles + any you pick),
+   *  comma-separated. Unset = everyone in the server. */
+  ALLOWED_ROLES?: string;
   /** read-only GitHub token for the app's releases (updates) */
   GH_TOKEN?: string;
   /** owner/repo holding the releases */
@@ -157,6 +160,15 @@ async function auth(req: Request, env: Env): Promise<Response> {
     if (!g.ok) return json({ error: "couldn't check your servers" }, 401);
     const list: any[] = await g.json();
     if (!list.some((x) => x?.id === env.GUILD_ID)) return json({ error: "not in the server", notMember: true }, 403);
+    const roles = (env.ALLOWED_ROLES ?? "").split(/[\s,]+/).filter(Boolean);
+    if (roles.length) {
+      const mr = await fetch(`https://discord.com/api/users/@me/guilds/${env.GUILD_ID}/member`, { headers: h });
+      if (mr.status === 401 || mr.status === 403) return json({ error: "sign in again (couch needs to see your server roles)", reauth: true }, 401);
+      if (!mr.ok) return json({ error: "couldn't check your roles" }, 503);
+      const mem: any = await mr.json();
+      const has = (mem?.roles ?? []).some((r: string) => roles.includes(r));
+      if (!has) return json({ error: "no subscription", notMember: true }, 403);
+    }
   }
   const who: Who = {
     id: String(u.id),

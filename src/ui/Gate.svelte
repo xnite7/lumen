@@ -6,15 +6,21 @@
   import DiscordSignIn from "./DiscordSignIn.svelte";
   import mark from "../assets/brand/couch-mark.png";
   import banned from "../assets/sfx/banned.mp3";
+  import YouTube from "../components/YouTube.svelte";
 
-  let { state, recheck }: { state: "outsider" | "signin"; recheck: () => void } = $props();
+  // after the ban sound: the not-sigma song, on repeat
+  const SONG = "xy_NKN75Jhw";
+  let song = $state(false);
+
+  let { state: gate, recheck }: { state: "outsider" | "signin"; recheck: () => void } = $props();
 
   // kicked from the server (or never in it): the Growtopia ban sound
   $effect(() => {
-    if (state !== "outsider") return;
+    if (gate !== "outsider") return;
     const a = new Audio(banned);
     a.volume = 0.8;
-    const again = () => a.play().catch(() => {});
+    a.onended = () => (song = true);
+    const again = () => a.play().catch(() => (song = true));
     a.play().catch(() => window.addEventListener("pointerdown", again, { once: true }));
     return () => {
       window.removeEventListener("pointerdown", again);
@@ -29,14 +35,18 @@
   }
 </script>
 
-<div class="gate" role="dialog" aria-modal="true" aria-label={state === "outsider" ? "Not a member" : "Sign in"}>
-  {#if state === "outsider"}
+<div class="gate" role="dialog" aria-modal="true" aria-label={gate === "outsider" ? "Not a member" : "Sign in"}>
+  {#if gate === "outsider"}
     <div class="broken" aria-hidden="true">
       <img class="half l" src={mark} alt="" />
       <img class="half r" src={mark} alt="" />
       <span class="bit b1"></span><span class="bit b2"></span><span class="bit b3"></span>
     </div>
     <h1>sorry, you are not sigma.</h1>
+    <p class="dim">couch is for the midnite server's subscribers. Grab a subscription in the server, then come back.</p>
+    {#if song}
+      <div class="song" aria-hidden="true"><YouTube id={SONG} muted={false} loop /></div>
+    {/if}
     <button class="link" onclick={other}>use another Discord account</button>
   {:else}
     <img class="whole" src={mark} alt="" />
@@ -47,6 +57,17 @@
 </div>
 
 <style>
+  /* the song plays, the video stays out of sight */
+  .song {
+    position: fixed;
+    width: 4px;
+    height: 4px;
+    left: -10px;
+    bottom: -10px;
+    opacity: 0.01;
+    pointer-events: none;
+    overflow: hidden;
+  }
   .gate {
     position: fixed;
     inset: 0;

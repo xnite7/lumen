@@ -14,6 +14,8 @@ env:
   COUCH_AI_KEY: ${{ secrets.COUCH_AI_KEY }}
   # only members of this Discord server can use couch
   COUCH_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+  # who gets in: server-subscription roles + any role you pick (comma-separated ids)
+  COUCH_ROLES: ${{ secrets.ALLOWED_ROLE_IDS }}
   # every build is a new version, so the app knows to update
   COUCH_VERSION: 0.3.${{ github.run_number }}
 

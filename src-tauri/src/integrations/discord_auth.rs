@@ -20,6 +20,22 @@ pub const DESKTOP_PORT: u16 = 53682;
 pub const DESKTOP_REDIRECT: &str = "http://127.0.0.1:53682/discord";
 /// The Discord server couch is for (repo secret DISCORD_GUILD_ID). Unset = open to anyone.
 pub const GUILD_ID: Option<&str> = option_env!("COUCH_GUILD_ID");
+/// Who gets in (repo secret ALLOWED_ROLE_IDS): server-subscription roles
+/// plus any role picked by hand. Unset = everyone in the server.
+pub const ROLES: Option<&str> = option_env!("COUCH_ROLES");
+
+fn roles() -> Vec<&'static str> {
+    ROLES.unwrap_or("").split(|c: char| c == ',' || c.is_whitespace()).filter(|s| !s.is_empty()).collect()
+}
+
+/// Seeing your roles needs one more permission.
+fn scopes() -> &'static [&'static str] {
+    if roles().is_empty() {
+        &["identify", "guilds"]
+    } else {
+        &["identify", "guilds", "guilds.members.read"]
+    }
+}
 #[allow(dead_code)]
 pub const MOBILE_REDIRECT: &str = "couch://auth/discord";
 
@@ -43,7 +59,8 @@ pub fn start(redirect: &str) -> String {
     let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(verifier.as_bytes()));
     let state = token(24);
     let url = format!(
-        "https://discord.com/oauth2/authorize?response_type=code&client_id={CLIENT_ID}&scope=identify%20guilds&redirect_uri={}&state={state}&code_challenge={challenge}&code_challenge_method=S256&prompt=consent",
+        "https://discord.com/oauth2/authorize?response_type=code&client_id={CLIENT_ID}&scope={}&redirect_uri={}&state={state}&code_challenge={challenge}&code_challenge_method=S256&prompt=consent",
+        urlencoding::encode(&scopes().join(" ")),
         urlencoding::encode(redirect)
     );
     *PENDING.lock().unwrap() = Some(Pending { verifier, state, redirect: redirect.to_string() });
@@ -180,7 +197,7 @@ fn ipc_authorize() -> AppResult<String> {
     if ready.get("evt").and_then(|e| e.as_str()) != Some("READY") {
         return Err(fail("Discord didn't answer"));
     }
-    send(&mut pipe, 1, &json!({ "cmd": "AUTHORIZE", "nonce": token(16), "args": { "client_id": CLIENT_ID, "scopes": ["identify", "guilds"] } }))?;
+    send(&mut pipe, 1, &json!({ "cmd": "AUTHORIZE", "nonce": token(16), "args": { "client_id": CLIENT_ID, "scopes": scopes() } }))?;
     // waits while you look at the prompt in Discord
     for _ in 0..8 {
         let v = recv(&mut pipe)?;
@@ -250,9 +267,9 @@ pub async fn membership(core: &Core) -> &'static str {
     if user(core).is_none() {
         return "signin";
     }
-    let scopes = core.db.get::<Value>("discord_scopes").and_then(|v| v.as_str().map(|s| s.to_string())).unwrap_or_default();
-    if !scopes.split_whitespace().any(|s| s == "guilds") {
-        return "signin";
+    let granted = core.db.get::<Value>("discord_scopes").and_then(|v| v.as_str().map(|s| s.to_string())).unwrap_or_default();
+    if scopes().iter().any(|need| !granted.split_whitespace().any(|s| s == *need)) {
+        return "signin"; // signed in before roles mattered: one more knock
     }
     let Some(tok) = access_token(core).await else { return "signin" };
     let res = core.http.client().get("https://discord.com/api/users/@me/guilds").bearer_auth(&tok).timeout(Duration::from_secs(12)).send().await;
@@ -261,7 +278,25 @@ pub async fn membership(core: &Core) -> &'static str {
         return "signin";
     }
     let Ok(list) = res.json::<Value>().await else { return cached(core) };
-    let inside = list.as_array().map_or(false, |a| a.iter().any(|g| g.get("id").and_then(|i| i.as_str()) == Some(guild)));
+    let mut inside = list.as_array().map_or(false, |a| a.iter().any(|g| g.get("id").and_then(|i| i.as_str()) == Some(guild)));
+    // in the server, but does a subscription (or a picked role) let you in?
+    let want = roles();
+    if inside && !want.is_empty() {
+        let r = core
+            .http
+            .client()
+            .get(format!("https://discord.com/api/users/@me/guilds/{guild}/member"))
+            .bearer_auth(&tok)
+            .timeout(Duration::from_secs(12))
+            .send()
+            .await;
+        let Ok(r) = r else { return cached(core) };
+        if r.status().as_u16() == 429 {
+            return cached(core);
+        }
+        let Ok(m) = r.json::<Value>().await else { return cached(core) };
+        inside = m.get("roles").and_then(|r| r.as_array()).map_or(false, |rs| rs.iter().any(|x| x.as_str().map_or(false, |x| want.contains(&x))));
+    }
     let _ = core.db.set("discord_member", &json!(inside));
     if inside { "member" } else { "outsider" }
 }
