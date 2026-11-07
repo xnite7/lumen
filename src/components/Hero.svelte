@@ -265,9 +265,23 @@
 <style>
   .hero {
     position: relative;
+    z-index: 0;
     height: min(78vh, 52vw);
     min-height: 460px;
+  }
+  /* the picture runs on under the first row of posters, fading out there */
+  .hero:not(.inset) .stage {
+    bottom: -34vh;
+  }
+  .hero:not(.inset) .bg {
+    -webkit-mask-image: linear-gradient(180deg, #000 45%, rgb(0 0 0 / 0.55) 68%, transparent 100%);
+    mask-image: linear-gradient(180deg, #000 45%, rgb(0 0 0 / 0.55) 68%, transparent 100%);
+  }
+  .hero.inset {
     overflow: hidden;
+  }
+  .hero:not(.inset) .info {
+    bottom: 182px;
   }
   .stage {
     position: absolute;

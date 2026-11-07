@@ -94,5 +94,19 @@
     .trail {
       padding-right: calc(var(--win-controls, 0px) + 52px);
     }
+    /* line up with the top bar: same row, same height, where the logo sits */
+    .navbar {
+      height: calc(var(--safe-top) + 58px);
+      padding-top: calc(var(--safe-top) + 10px);
+      align-items: start;
+    }
+    .lead {
+      height: 48px;
+    }
+    .lead .orb {
+      width: 38px;
+      height: 38px;
+      margin-left: -2px;
+    }
   }
 </style>

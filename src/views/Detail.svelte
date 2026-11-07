@@ -58,6 +58,12 @@
     if (app.secrets.simkl_token) api.simklStatus(t, i).then((s) => (rating = s?.rating ?? null)).catch(() => {});
   });
 
+  const factLine = $derived.by(() => {
+    if (!m) return [];
+    const n = seasons.filter((x) => x > 0).length;
+    const len = m.type === "series" ? (n ? `${n} Season${n > 1 ? "s" : ""}` : "") : m.runtime || extra?.runtime ? runtime(m.runtime ?? extra?.runtime) : "";
+    return [m.type === "series" ? "Show" : "Movie", (extra?.genres ?? m.genres)?.[0] ?? "", year(m), len, extra?.certification ?? ""].filter(Boolean).map(String);
+  });
   const backdrop = $derived(extra?.backdrop ?? m?.background ?? m?.poster);
   const logo = $derived(extra?.logo ?? m?.logo);
   $effect(() => {
@@ -145,9 +151,6 @@
   </div>
 {:else if m}
   <NavBar title={m.name} showAfter={ui.phone ? 360 : 420} transparent={ui.scrollY < 300}>
-    {#snippet actions()}
-      <button class="orb glass press" onclick={doShare} aria-label="Share"><Icon name="share" size={19} /></button>
-    {/snippet}
   </NavBar>
   <article class="detail">
     <section class="hero">
@@ -163,11 +166,9 @@
         {:else}
           <h1 class="large-title">{m.name}</h1>
         {/if}
+        <!-- same line as the billboard: Show • Thriller • 2017 • 2 Seasons • 16+ -->
         <div class="facts">
-          {#if m.imdbRating}<span class="rating"><Icon name="star" size={12} fill /> {m.imdbRating}</span>{/if}
-          <span class="sub">{[m.type === "series" ? "Series" : "Film", year(m), m.runtime || extra?.runtime ? runtime(m.runtime ?? extra?.runtime) : "", seasons.filter((s) => s > 0).length ? `${seasons.filter((s) => s > 0).length} seasons` : ""].filter(Boolean).join(" · ")}</span>
-          {#if extra?.certification}<span class="chip small outline">{extra.certification}</span>{/if}
-          {#if (extra?.genres ?? m.genres)?.length}<span class="sub dim">{(extra?.genres ?? m.genres).slice(0, 3).join(" · ")}</span>{/if}
+          {#each factLine as f, n}{#if n}<span class="sep" aria-hidden="true"></span>{/if}<span>{f}</span>{/each}
         </div>
         <div class="actions">
           {#if primary}
@@ -183,11 +184,6 @@
             <button class="act press" onclick={() => { haptic("light"); setWatched(m, null, !(item?.state?.flaggedWatched)); }} aria-label="Mark watched">
               <span class="act-ic glass" class:lit={item?.state?.flaggedWatched}><Icon name={item?.state?.flaggedWatched ? "checkCircle" : "eye"} size={20} /></span><span class="act-l">{item?.state?.flaggedWatched ? "Watched" : "Mark watched"}</span>
             </button>
-            {#if trailerKey()}
-              <button class="act press" onclick={() => playTrailer()}>
-                <span class="act-ic glass"><Icon name="film" size={19} /></span><span class="act-l">Trailer</span>
-              </button>
-            {/if}
             <button class="act press" onclick={doShare} aria-label="Share">
               <span class="act-ic glass"><Icon name="share" size={19} /></span><span class="act-l">Share</span>
             </button>
@@ -405,7 +401,16 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 12px;
+    gap: 6px 10px;
+    font-size: 17px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .sep {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgb(var(--hi) / 0.45);
   }
   .rating {
     display: inline-flex;
@@ -427,8 +432,11 @@
   }
   .desc {
     margin: 0;
-    max-width: 66ch;
-    color: color-mix(in srgb, var(--text) 82%, transparent);
+    max-width: 56ch;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 500;
+    line-height: 1.42;
     user-select: text;
   }
   .actions {
@@ -817,5 +825,21 @@
     dd {
       margin-bottom: 10px;
     }
+  }
+  /* the billboard's Play: warm-white slab, bold black label */
+  .cta {
+    height: 52px;
+    padding: 0 30px 0 24px;
+    gap: 10px;
+    border-radius: 14px;
+    background: #fff4ea;
+    color: #000;
+    font-size: 19px;
+    font-weight: 700;
+    box-shadow: 0 10px 30px -12px rgb(var(--lo) / 0.8);
+  }
+  .cta :global(svg) {
+    width: 24px;
+    height: 24px;
   }
 </style>

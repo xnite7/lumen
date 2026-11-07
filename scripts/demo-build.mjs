@@ -24,15 +24,17 @@ await build({
 });
 
 let html = fs.readFileSync(path.join(out, "index.html"), "utf8");
+// styles first, from the stylesheets themselves (the JS may contain "<style>"
+// text, e.g. the Settings source the search index reads)
+html = html.replace(/<link rel="stylesheet" crossorigin href="([^"]+)">/g, (_, href) => `<style>${fs.readFileSync(path.join(out, href), "utf8")}</style>`);
+const styles = [...html.matchAll(/<style>[\s\S]*?<\/style>/g)].map((m) => m[0]).join("\n");
 html = html.replace(/<script type="module" crossorigin src="([^"]+)"><\/script>/g, (_, src) => {
   const js = fs.readFileSync(path.join(out, src), "utf8").replace(/<\/script/g, "<\\/script");
   return `<script type="module">${js}</script>`;
 });
-html = html.replace(/<link rel="stylesheet" crossorigin href="([^"]+)">/g, (_, href) => `<style>${fs.readFileSync(path.join(out, href), "utf8")}</style>`);
 // The artifact host wraps the page in its own document: hand it just the
 // title, styles, mount point and script.
 const title = html.match(/<title>.*?<\/title>/)?.[0] ?? "<title>couch preview</title>";
-const styles = [...html.matchAll(/<style>[\s\S]*?<\/style>/g)].map((m) => m[0]).join("\n");
 const scripts = [...html.matchAll(/<script type="module">[\s\S]*?<\/script>/g)].map((m) => m[0]).join("\n");
 html = `${title}\n<meta name="color-scheme" content="dark">\n<style>:root{color-scheme:dark}html,body{height:100%;background:#000}</style>\n${styles}\n<div id="app"></div>\n${scripts}\n`;
 const file = path.join(out, "couch-preview.html");

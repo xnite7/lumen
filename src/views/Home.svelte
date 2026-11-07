@@ -32,6 +32,7 @@
 
 <div class="home">
   <Hero {scrollY} />
+  <div class="below">
   <ContinueRow />
   <CouchRow />
   {#each rows as r (r.catalog.key)}
@@ -39,9 +40,20 @@
   {/each}
   <div class="pad"><BrowseRow /></div>
   <div class="end"></div>
+  </div>
 </div>
 
 <style>
+  /* the first row rides up over the bottom of the billboard */
+  .below {
+    position: relative;
+    z-index: 1;
+  }
+  @media (min-width: 760px) {
+    .below {
+      margin-top: -110px;
+    }
+  }
   .pad {
     padding: 0 var(--gutter);
     margin-top: var(--shelf-gap);
