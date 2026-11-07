@@ -20,6 +20,12 @@ class ShareArgs: Decodable {
     let url: String?
 }
 
+class ControlArgs: Decodable {
+    let action: String
+    let value: Double?
+    let flag: Bool?
+}
+
 class AuthArgs: Decodable {
     let url: String
 }
@@ -123,6 +129,19 @@ class CouchNativePlugin: Plugin, AVPlayerViewControllerDelegate {
             }
         }
         invoke.resolve()
+    }
+
+    // MARK: remote control of couch's player
+
+    @objc public func control(_ invoke: Invoke) throws {
+        let a = try invoke.parseArgs(ControlArgs.self)
+        var info: [String: Any] = ["action": a.action]
+        if let v = a.value { info["value"] = v }
+        if let f = a.flag { info["value"] = f }
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: Notification.Name("couch.player.control"), object: nil, userInfo: info)
+            invoke.resolve()
+        }
     }
 
     // MARK: system tab bar

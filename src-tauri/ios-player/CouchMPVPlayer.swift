@@ -30,6 +30,7 @@ private enum Note {
     static let episode = Notification.Name("couch.player.episode")
     static let next = Notification.Name("couch.player.next")
     static let load = Notification.Name("couch.player.load")
+    static let control = Notification.Name("couch.player.control")
 }
 
 /// couch's colours (match the app's tokens)
@@ -149,6 +150,7 @@ final class CouchMPVPlayer: UIViewController {
         NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(willEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(loadNew(_:)), name: Note.load, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(control(_:)), name: Note.control, object: nil)
         rating = config["rating"] as? Int ?? 0
         updateRating()
     }
@@ -353,7 +355,7 @@ final class CouchMPVPlayer: UIViewController {
     }
 
     private func report(force: Bool) {
-        if !force && abs(pos - lastReport) < 5 { return }
+        if !force && abs(pos - lastReport) < 1 { return }
         lastReport = pos
         NotificationCenter.default.post(name: Note.progress, object: nil, userInfo: ["pos": pos, "duration": duration, "paused": paused])
         if force { updateNowPlaying() }
@@ -469,6 +471,20 @@ final class CouchMPVPlayer: UIViewController {
         command(["set", "http-header-fields", h.map { "\($0.key): \($0.value.replacingOccurrences(of: ",", with: "\\,"))" }.joined(separator: ",")])
         load(url)
         updateNowPlaying()
+    }
+
+    /// Remote control from the page (watch together follows the host).
+    @objc private func control(_ n: Notification) {
+        guard let u = n.userInfo, let action = u["action"] as? String else { return }
+        switch action {
+        case "pause":
+            let want = (u["value"] as? Bool) ?? !paused
+            command(["set", "pause", want ? "yes" : "no"])
+        case "seek":
+            if let t = u["value"] as? Double { command(["seek", String(format: "%.3f", t), "absolute"]) }
+        default:
+            break
+        }
     }
 
     @objc private func rateTapped(_ b: UIButton) {

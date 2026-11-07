@@ -65,6 +65,8 @@ export interface NativePlay {
 /** AVPlayer, full screen: PiP, AirPlay, Now Playing, Live Activity. */
 export const nativePlay = (req: NativePlay) => call("play", req as any);
 export const nativeStop = () => call("stop");
+/** couch's iPhone player: pause/resume or jump (watch together) */
+export const nativeControl = (action: "pause" | "seek", opts: { value?: number; flag?: boolean } = {}) => call("control", { action, ...opts });
 
 export function onNative<T = any>(event: string, cb: (p: T) => void) {
   if (!ios()) return Promise.resolve(() => {});

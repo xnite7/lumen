@@ -9,7 +9,7 @@ import { loadLibrary, progressOf, watchedIds } from "./library.svelte";
 import { toast, errorText } from "./toast.svelte";
 import { parseCue, type Cue } from "../subs";
 import { isTauri } from "../api";
-import { nativePlay, onNative, haptic } from "../native";
+import { nativePlay, nativeControl, onNative, haptic } from "../native";
 
 export interface Segment {
   start: number;
@@ -80,7 +80,14 @@ export function initPlayback() {
   });
 
   // iPhone: the native player reports back here.
-  onNative<{ pos: number; duration: number; paused: boolean }>("progress", (p) => api.report(p.pos, p.duration, p.paused));
+  onNative<{ pos: number; duration: number; paused: boolean }>("progress", (p) => {
+    // the iPhone player's state, so watch together can follow along
+    pb.state.pos = p.pos;
+    pb.state.duration = p.duration;
+    pb.state.paused = p.paused;
+    if (pb.ios) pb.loading = false;
+    api.report(p.pos, p.duration, p.paused);
+  });
   onNative<{ pos: number; duration: number }>("closed", async (p) => {
     api.report(p.pos, p.duration, true);
     pb.ios = false;
@@ -328,6 +335,12 @@ export async function playVideo(n: Video) {
 }
 
 export function cmd(name: string, args?: Record<string, unknown>) {
+  // iPhone: couch's own player, driven through the native bridge
+  if (pb.ios) {
+    if (name === "pause") return nativeControl("pause", typeof args?.value === "boolean" ? { flag: args.value } : {});
+    if (name === "seek") return nativeControl("seek", { value: Number(args?.to ?? 0) });
+    return Promise.resolve();
+  }
   if (pb.mode !== "native") return Promise.resolve();
   return api.cmd(name, args).catch((e) => toast(errorText(e), "error"));
 }

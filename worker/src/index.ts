@@ -1,3 +1,4 @@
+// crew server: presence + watch together (ask / answer / room)
 // midnite™ couch crew server.
 //
 // One Durable Object holds who's on the couch right now, in memory only:

@@ -103,7 +103,7 @@ async function follow(host: string, name: string) {
   let missing = 0;
   syncTimer = window.setInterval(async () => {
     if (!together.following) return stop();
-    if (!pb.open) return leave();
+    if (!pb.open && !pb.ios) return leave();
     const r = (await api.crewRoom(host).catch(() => ({ room: null }))).room;
     if (!r) {
       if (++missing > 3) {
