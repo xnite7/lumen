@@ -63,10 +63,16 @@ pub async fn login(core: &Core) -> AppResult<()> {
     let st = r.status().as_u16();
     let v: Value = r.json().await.unwrap_or(Value::Null);
     if st == 403 {
-        let _ = core.db.set("discord_member", &json!(false));
         let _ = core.db.set_secret("crew_session", None);
-        core.emit("discord-gate", "outsider"); // kicked: lock the app now
-        return Err(AppError::msg("not in the midnite server"));
+        // the server needs to see your roles: sign in again ("one more knock")
+        if v.get("reauth").and_then(|r| r.as_bool()) == Some(true) {
+            let _ = core.db.set("discord_scopes", &json!(""));
+            core.emit("discord-gate", "signin");
+            return Err(AppError::msg("sign in with Discord again"));
+        }
+        let _ = core.db.set("discord_member", &json!(false));
+        core.emit("discord-gate", "outsider"); // kicked / no access role: lock the app now
+        return Err(AppError::msg("no access to couch"));
     }
     let session = v.get("session").and_then(|s| s.as_str()).ok_or_else(|| AppError::msg(v.get("error").and_then(|e| e.as_str()).unwrap_or("the crew server said no").to_string()))?;
     core.db.set_secret("crew_session", Some(session))?;

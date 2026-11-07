@@ -164,7 +164,9 @@ async function auth(req: Request, env: Env): Promise<Response> {
     const roles = (env.ALLOWED_ROLES ?? "").split(/[\s,]+/).filter(Boolean);
     if (roles.length) {
       const mr = await fetch(`https://discord.com/api/users/@me/guilds/${env.GUILD_ID}/member`, { headers: h });
-      if (mr.status === 401 || mr.status === 403) return json({ error: "sign in again (couch needs to see your server roles)", reauth: true }, 401);
+      // no permission to see roles = an old sign-in (or an old app): no way in
+      // until they sign in again; new apps show "one more knock", old ones lock
+      if (mr.status === 401 || mr.status === 403) return json({ error: "sign in again (couch needs to see your server roles)", reauth: true, notMember: true }, 403);
       if (!mr.ok) return json({ error: "couldn't check your roles" }, 503);
       const mem: any = await mr.json();
       const has = (mem?.roles ?? []).some((r: string) => roles.includes(r));
