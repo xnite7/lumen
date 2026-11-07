@@ -19,6 +19,7 @@
   import Toasts from "./components/Toasts.svelte";
   import JoinRequests from "./components/JoinRequests.svelte";
   import RateSheet from "./components/RateSheet.svelte";
+  import Reactions from "./components/Reactions.svelte";
   import { finish } from "./lib/stores/social.svelte";
   import Gate from "./ui/Gate.svelte";
   import UpdateBanner from "./components/UpdateBanner.svelte";
@@ -238,6 +239,7 @@
   {#if gate && !ui.onboarding}<Gate state={gate} recheck={checkGate} />{/if}
   <Toasts />
   <JoinRequests />
+  <Reactions />
   {#if finish.meta}
     {#key finish.meta.id}
       <RateSheet open={true} meta={finish.meta} finished onclose={() => (finish.meta = null)} />

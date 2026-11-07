@@ -8,6 +8,7 @@ import { pb, cmd, playVideo, orderedVideos } from "./playback.svelte";
 import { quickPlay } from "../quickplay";
 import { toast } from "./toast.svelte";
 import { haptic } from "../native";
+import { loadMe } from "./social.svelte";
 
 export const together = $state({
   /** people asking to join my couch */
@@ -16,6 +17,8 @@ export const together = $state({
   asking: null as null | { id: string; host: CrewMember },
   /** whose couch I'm on */
   following: null as null | { host: string; name: string },
+  /** my own id while friends are on my couch (the room is mine) */
+  hosting: null as null | string,
 });
 
 let inboxTimer = 0;
@@ -38,7 +41,10 @@ export async function answer(a: CrewAsk, accept: boolean) {
   together.inbox = together.inbox.filter((x) => x.id !== a.id);
   try {
     await api.crewAnswer(a.id, accept);
-    if (accept) toast(`${a.fromName} is on your couch`, "ok");
+    if (accept) {
+      toast(`${a.fromName} is on your couch`, "ok");
+      together.hosting = (await loadMe())?.id ?? null;
+    }
   } catch (e) {
     toast(String(e), "error");
   }

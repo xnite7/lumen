@@ -4,6 +4,7 @@
   import ContinueRow from "../components/ContinueRow.svelte";
   import Row from "../components/Row.svelte";
   import CouchRow from "../components/CouchRow.svelte";
+  import ActivityRow from "../components/ActivityRow.svelte";
   import BrowseRow from "../components/BrowseRow.svelte";
   import { catalogRows, curated, type RowSpec } from "../lib/rows";
 
@@ -35,6 +36,7 @@
   <div class="below">
   <ContinueRow />
   <CouchRow />
+  <ActivityRow />
   {#each rows as r (r.catalog.key)}
     <Row catalog={r.catalog} extra={r.extra} link={r.link} />
   {/each}

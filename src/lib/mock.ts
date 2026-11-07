@@ -272,6 +272,39 @@ export async function mock(cmd: string, args: any): Promise<any> {
     case "health":
     case "addons_health":
       return [];
+    case "discord_me":
+      return { id: "me", name: "sultan", avatar: undefined };
+    case "local_ratings":
+      return {};
+    case "share_link":
+      return `https://midnite-couch.xnite7.workers.dev/t/${args.kind}/${args.id}`;
+    case "simkl_episode_info":
+      return { "1:6": { runtime: 52, finale: 1 }, "1:10": { runtime: 61, finale: 2 } };
+    case "my_lists":
+      return { simkl: false };
+    case "simkl_custom_lists":
+      return { paid: false, lists: [] };
+    case "simkl_list_items":
+      return [];
+    case "crew_social": {
+      const p: string = args.path;
+      if (p === "/v1/favs") return { favs: [] };
+      if (p.startsWith("/v1/reviews/")) return { reviews: [] };
+      if (p.startsWith("/v1/react/")) return { reactions: [] };
+      if (p === "/v1/activity" && args.method === "GET") {
+        const now = Date.now();
+        const t = (i: number) => ({ id: metas[i].id, type: metas[i].type, name: metas[i].name, poster: metas[i].poster, background: metas[i].background, logo: (metas[i] as any).logo });
+        return {
+          feed: [
+            { id: "a1", who: "u1", name: "nora", kind: "review", title: t(1), rating: 9, text: "the last twenty minutes had me holding my breath. go in blind.", at: now - 1000 * 60 * 42 },
+            { id: "a2", who: "u2", name: "dex", kind: "rating", title: t(2), rating: 7, at: now - 1000 * 60 * 60 * 3 },
+            { id: "a3", who: "u3", name: "mika", kind: "finished", title: t(3), at: now - 1000 * 60 * 60 * 9 },
+            { id: "a4", who: "u1", name: "nora", kind: "review", title: t(4), rating: 6, text: "pretty to look at, forgot it by morning.", at: now - 1000 * 60 * 60 * 30 },
+          ],
+        };
+      }
+      return { ok: true };
+    }
     default:
       return null;
   }
