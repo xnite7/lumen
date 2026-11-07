@@ -720,12 +720,21 @@ pub async fn simkl_episode_info(s: S<'_>, id: String) -> AppResult<Value> {
 /// like the Hue ambilight does), as "#rrggbb"; None where it can't be read.
 #[tauri::command]
 pub fn scene_color(s: S<'_>) -> Option<String> {
+    #[cfg(not(desktop))]
+    {
+        let _ = s;
+        return None;
+    }
+    #[cfg(desktop)]
     static SAMPLER: std::sync::OnceLock<parking_lot::Mutex<crate::hue::sampler::Sampler>> = std::sync::OnceLock::new();
-    let m = SAMPLER.get_or_init(|| parking_lot::Mutex::new(crate::hue::sampler::Sampler::new(s.core.clone())));
-    let f = m.lock().grab()?;
-    let [r, g, b] = f.average();
-    let h = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
-    Some(format!("#{:02x}{:02x}{:02x}", h(r), h(g), h(b)))
+    #[cfg(desktop)]
+    {
+        let m = SAMPLER.get_or_init(|| parking_lot::Mutex::new(crate::hue::sampler::Sampler::new(s.core.clone())));
+        let f = m.lock().grab()?;
+        let [r, g, b] = f.average();
+        let h = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+        Some(format!("#{:02x}{:02x}{:02x}", h(r), h(g), h(b)))
+    }
 }
 
 /// Who you are on the couch (your Discord name and picture).
