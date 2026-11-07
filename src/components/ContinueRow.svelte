@@ -1,4 +1,6 @@
 <script lang="ts">
+  import RailArrows from "./RailArrows.svelte";
+  let rail: HTMLElement | undefined = $state();
   // Continue Watching, 16:9. Prefers Movie of the Night's horizontal poster
   // (a real wide crop with the title baked in); otherwise the backdrop with
   // the logo laid over it, so the layout never changes either way.
@@ -73,7 +75,8 @@
 {:else}
   <section class="row">
     <header><h2 class="title3">up next</h2></header>
-    <div class="rail scroll-x">
+    <div class="wrap">
+    <div class="rail scroll-x" bind:this={rail}>
       {#each lib.cw as it (it._id)}
         {@const wide = art[it._id]}
         {@const p = it.state.duration ? it.state.timeOffset / it.state.duration : 0}
@@ -93,14 +96,12 @@
               {#if it.logo}<img class="logo" src={img(it.logo)} alt={it.name} loading="lazy" />{:else}<span class="nm">{it.name}</span>{/if}
             {/if}
             <span class="play glass clear"><Icon name="play" size={18} /></span>
-            <div class="bar"><span style:width="{Math.max(4, p * 100)}%"></span></div>
           </div>
-          <div class="meta">
-            <span class="t">{it.name}</span>
-            <span class="s">{[episodeLabel(it.state.video_id), remaining(it.state.timeOffset / 1000, it.state.duration / 1000)].filter(Boolean).join("  ·  ")}</span>
-          </div>
+          <div class="bar" title={[episodeLabel(it.state.video_id), remaining(it.state.timeOffset / 1000, it.state.duration / 1000)].filter(Boolean).join("  ·  ")}><span style:width="{Math.max(3, p * 100)}%"></span></div>
         </button>
       {/each}
+    </div>
+    <RailArrows {rail} />
     </div>
   </section>
 {/if}
@@ -187,37 +188,21 @@
     opacity: 1;
     transform: none;
   }
-  /* Apple TV's thin inset progress, lit like a lamp */
+  /* under the picture: square, inset, dark gradient track, white fill */
+  .wrap {
+    position: relative;
+    --arrow-top: 6px;
+    --arrow-bottom: 16px;
+  }
   .bar {
-    position: absolute;
-    left: 12px;
-    right: 12px;
-    bottom: 10px;
+    margin: 8px 10px 0;
     height: 4px;
-    border-radius: 4px;
-    overflow: hidden;
-    background: rgb(var(--hi) / 0.24);
-    backdrop-filter: blur(6px);
+    background: linear-gradient(90deg, #4a4a4a, #1c1c1c);
   }
   .bar span {
     display: block;
     height: 100%;
-    border-radius: inherit;
-    background: var(--progress);
-    box-shadow: 0 0 10px rgb(var(--lamp-rgb) / 0.7);
-  }
-  .meta {
-    display: flex;
-    flex-direction: column;
-    padding: 9px 2px 0;
-  }
-  .t {
-    font-weight: 600;
-    font-size: var(--fs-foot);
-  }
-  .s {
-    font-size: var(--fs-caption);
-    color: var(--label-2);
+    background: #fff;
   }
   @media (max-width: 759px) {
     .row {

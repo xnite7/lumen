@@ -8,6 +8,8 @@ import { haptic } from "./native";
 
 export type Route =
   | { name: "home" }
+  | { name: "shows" }
+  | { name: "movies" }
   | { name: "search"; q?: string }
   | { name: "library" }
   | { name: "profile" }
@@ -24,11 +26,15 @@ export type Entry = Route & { _k?: number };
 let nextKey = 1;
 const keyed = (r: Route): Entry => ({ ...r, _k: nextKey++ });
 
-export const tabs = ["home", "search", "library", "couch", "profile"] as const;
+export const tabs = ["home", "shows", "movies", "search", "library", "couch", "profile"] as const;
 export type Tab = (typeof tabs)[number];
+/** the phone's tab bar: Shows and Movies live on wide screens only */
+export const phoneTabs: Tab[] = ["home", "search", "library", "couch", "profile"];
 
 const stacks: Record<Tab, Entry[]> = {
   home: [keyed({ name: "home" })],
+  shows: [keyed({ name: "shows" })],
+  movies: [keyed({ name: "movies" })],
   search: [keyed({ name: "search" })],
   library: [keyed({ name: "library" })],
   couch: [keyed({ name: "couch" })],

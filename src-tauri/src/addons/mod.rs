@@ -6,6 +6,7 @@
 //! cannot happen here. Results stream to the UI as each addon answers.
 
 pub mod builtin;
+pub mod curated;
 pub mod health;
 pub mod types;
 

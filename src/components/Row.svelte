@@ -7,9 +7,16 @@
   import { go } from "../lib/router.svelte";
   import Poster from "./Poster.svelte";
   import Icon from "./Icon.svelte";
+  import RailArrows from "./RailArrows.svelte";
   import { ui } from "../lib/ui.svelte";
 
-  let { catalog, title = "", ranked = false }: { catalog: CatalogRef; title?: string; ranked?: boolean } = $props();
+  let {
+    catalog,
+    title = "",
+    ranked = false,
+    extra = undefined,
+    link = true,
+  }: { catalog: CatalogRef; title?: string; ranked?: boolean; extra?: [string, string][]; link?: boolean } = $props();
 
   let host: HTMLElement | undefined = $state();
   let rail: HTMLElement | undefined = $state();
@@ -41,6 +48,7 @@
   }
 
   function defaultExtra(): [string, string][] {
+    if (extra) return extra;
     // Catalogs that require a choice (e.g. a genre with options) get the first.
     return catalog.extra.filter((e) => e.isRequired && e.options?.length).map((e) => [e.name, e.options![0]]);
   }
@@ -67,9 +75,6 @@
     if (rail.scrollLeft + rail.clientWidth > rail.scrollWidth - rail.clientWidth * 0.8) loadMore();
   }
 
-  function page(dir: number) {
-    rail?.scrollBy({ left: dir * rail.clientWidth * 0.85, behavior: "smooth" });
-  }
 
   $effect(() => {
     if (!host) return;
@@ -85,10 +90,14 @@
 {#if status !== "empty" && status !== "error"}
   <section class="row" bind:this={host} class:top10={isTop10}>
     <header>
-      <button class="title3 heading" onclick={() => go({ name: "discover", type: catalog.type, catalog: catalog.key })}>
-        {title || catalog.name}
-        <Icon name="forward" size={16} />
-      </button>
+      {#if link}
+        <button class="title3 heading" onclick={() => go({ name: "discover", type: catalog.type, catalog: catalog.key })}>
+          {title || catalog.name}
+          <Icon name="forward" size={16} />
+        </button>
+      {:else}
+        <h2 class="title3 heading">{title || catalog.name}</h2>
+      {/if}
       {#if catalog.adult && app.settings.general.hideAdult}
         <button class="chip press" onclick={() => (app.adultRevealed = !app.adultRevealed)}>
           <Icon name={hideAdult ? "eye" : "eyeOff"} size={13} />
@@ -99,23 +108,18 @@
       <span class="addon foot faint">{catalog.addonName}</span>
     </header>
     <div class="wrap">
-      <div class="rail scroll-x" bind:this={rail} onscroll={edges}>
+      <div class="rail scroll-x" bind:this={rail}>
         {#if status === "loading" || status === "idle"}
           {#each Array(8) as _}
             <div class="ghost skeleton"></div>
           {/each}
         {:else}
           {#each items as m, i (m.id)}
-            <Poster meta={m} rank={isTop10 ? i + 1 : 0} hidden={hideAdult} landscape={wide && !ui.phone} showTitle={app.settings.general.showTitlesUnderPosters} />
+            <Poster meta={m} rank={isTop10 ? i + 1 : 0} hidden={hideAdult} landscape={wide && !ui.phone} showTitle={false} />
           {/each}
         {/if}
       </div>
-      {#if canLeft}
-        <button class="arrow left glass press" onclick={() => page(-1)} aria-label="Scroll left"><Icon name="back" size={20} /></button>
-      {/if}
-      {#if canRight}
-        <button class="arrow right glass press" onclick={() => page(1)} aria-label="Scroll right"><Icon name="forward" size={20} /></button>
-      {/if}
+      <RailArrows {rail} onpage={edges} />
     </div>
   </section>
 {/if}
@@ -171,26 +175,6 @@
     width: var(--card-w);
     aspect-ratio: 2 / 3;
     border-radius: var(--poster-r);
-  }
-  .arrow {
-    position: absolute;
-    top: calc(50% - 34px);
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    opacity: 0;
-    transition: opacity var(--t-fast);
-  }
-  .wrap:hover .arrow {
-    opacity: 1;
-  }
-  .arrow.left {
-    left: calc(var(--gutter) - 22px);
-  }
-  .arrow.right {
-    right: calc(var(--gutter) - 22px);
   }
   @media (max-width: 759px) {
     .row {

@@ -1,26 +1,25 @@
 <script lang="ts">
-  import { api, listen, type CatalogRef } from "../lib/api";
-  import { app } from "../lib/stores/app.svelte";
+  import { listen } from "../lib/api";
   import Hero from "../components/Hero.svelte";
   import ContinueRow from "../components/ContinueRow.svelte";
   import Row from "../components/Row.svelte";
   import CouchRow from "../components/CouchRow.svelte";
   import BrowseRow from "../components/BrowseRow.svelte";
+  import { catalogRows, curated, type RowSpec } from "../lib/rows";
 
   let { scrollY = 0 }: { scrollY?: number } = $props();
-  let catalogs = $state<CatalogRef[]>([]);
+  let rows = $state<RowSpec[]>([]);
 
+  // your own lists first, then couch's picks, woven together
   async function load() {
-    const all = await api.catalogs();
-    const browsable = all.filter((c) => !c.extra.some((e) => e.isRequired && (e.name === "search" || !e.options?.length)));
-    const h = app.settings.home;
-    const hidden = new Set(h.hiddenRows);
-    const order = new Map(h.rowOrder.map((k, i) => [k, i]));
-    catalogs = browsable
-      .filter((c) => !hidden.has(c.key))
-      .map((c, i) => ({ c, i }))
-      .sort((a, b) => (order.get(a.c.key) ?? 1000 + a.i) - (order.get(b.c.key) ?? 1000 + b.i))
-      .map((x) => x.c);
+    const [mine, picks] = await Promise.all([catalogRows("home"), curated("all")]);
+    const out: RowSpec[] = [];
+    const a = mine.map((c) => ({ catalog: c })), b = [...picks];
+    while (a.length || b.length) {
+      if (a.length) out.push(a.shift()!);
+      if (b.length) out.push(b.shift()!);
+    }
+    rows = out;
   }
 
   $effect(() => {
@@ -29,24 +28,23 @@
     listen("addons-changed", load).then((u) => (un = u));
     return () => un?.();
   });
-
-  // Top 10 rows read better near the top; "Because you watched" right under.
 </script>
 
 <div class="home">
   <Hero {scrollY} />
   <ContinueRow />
   <CouchRow />
-  <div class="pad"><BrowseRow /></div>
-  {#each catalogs as c (c.key)}
-    <Row catalog={c} />
+  {#each rows as r (r.catalog.key)}
+    <Row catalog={r.catalog} extra={r.extra} link={r.link} />
   {/each}
+  <div class="pad"><BrowseRow /></div>
   <div class="end"></div>
 </div>
 
 <style>
   .pad {
     padding: 0 var(--gutter);
+    margin-top: var(--shelf-gap);
   }
   .end {
     height: 80px;

@@ -19,9 +19,9 @@
   import { greeting } from "../lib/stores/theme.svelte";
   import { tvFocus } from "../lib/tvfocus";
 
-  const hello = greeting();
 
-  let { scrollY = 0 }: { scrollY?: number } = $props();
+
+  let { scrollY = 0, kind = undefined }: { scrollY?: number; kind?: "series" | "movie" } = $props();
 
   let slides = $state<Meta[]>([]);
   let i = $state(0);
@@ -37,7 +37,7 @@
   const cur = $derived(slides[i]);
 
   $effect(() => {
-    api.hero().then((s) => (slides = (s ?? []).filter((m) => m.background || m.poster).slice(0, 10)));
+    api.hero().then((s) => (slides = (s ?? []).filter((m) => (m.background || m.poster) && (!kind || m.type === kind)).slice(0, 10)));
   });
 
   // Wide MOTN backdrops when available (nicer crops than metahub).
@@ -148,13 +148,18 @@
       haptic("selection");
     }
   }
+  // Netflix's line: kind • genre • year • length or seasons • rating
+  function line(m: Meta): string[] {
+    const seasons = new Set((m.videos ?? []).map((v) => v.season).filter((n) => n && n > 0)).size;
+    const len = m.type === "series" ? (seasons ? `${seasons} Season${seasons > 1 ? "s" : ""}` : "") : m.runtime ? runtime(m.runtime) : "";
+    return [m.type === "series" ? "Show" : "Movie", m.genres?.[0] ?? "", year(m), len, (m as any).certification ?? ""].filter(Boolean).map(String);
+  }
   const facts = (m: Meta) => [m.type === "series" ? "Series" : "Film", year(m), m.runtime ? runtime(m.runtime) : ""].filter(Boolean).join(" · ");
   const lift = $derived(Math.min(1, scrollY / 520));
 </script>
 
 {#if cur && ui.phone}
   <section class="hero-phone" aria-roledescription="carousel">
-    <p class="hello phone-hello">{hello}</p>
     <div class="glow" style:background-image="url({img(cur.poster ?? bg, 'w342')})"></div>
     <div class="track scroll-x" bind:this={track} onscroll={onTrack}>
       {#each slides as m, n (m.id)}
@@ -180,9 +185,6 @@
           </div>
         </article>
       {/each}
-    </div>
-    <div class="pdots" aria-hidden="true">
-      {#each slides as _, n}<span class:on={n === i}></span>{/each}
     </div>
   </section>
 {:else if cur}
@@ -212,17 +214,14 @@
       <div use:parallax={-0.35}>
       {#key cur.id}
         <div class="copy">
-          <p class="hello">{hello}</p>
           {#if cur.logo}
             <img class="logo" src={img(cur.logo)} alt={cur.name} />
           {:else}
             <h1 class="xl-title">{cur.name}</h1>
           {/if}
+          <!-- Show • Thriller • 2017 • 2 Seasons • 16+ -->
           <div class="facts">
-            {#if cur.imdbRating}<span class="rating"><Icon name="star" size={12} fill /> {cur.imdbRating}</span>{/if}
-            <span class="sub">{facts(cur)}</span>
-            {#if cur.certification}<span class="chip small outline">{cur.certification}</span>{/if}
-            {#if cur.genres?.length}<span class="sub dim">{cur.genres.slice(0, 3).join(" · ")}</span>{/if}
+            {#each line(cur) as f, n}{#if n}<span class="sep" aria-hidden="true"></span>{/if}<span>{f}</span>{/each}
           </div>
           {#if cur.description}<p class="desc clamp-3">{cur.description}</p>{/if}
         </div>
@@ -242,13 +241,6 @@
       </div>
     </div>
 
-    <div class="dots glass clear" role="tablist">
-      {#each slides as s, n (s.id)}
-        <button class="dot" class:on={n === i} onclick={() => pick(n)} role="tab" aria-selected={n === i} aria-label={s.name}>
-          {#if n === i}<span class="fill" class:run={!paused && !trailerOn}></span>{/if}
-        </button>
-      {/each}
-    </div>
   </section>
 {:else}
   <section class="hero empty" class:phone={ui.phone}>
@@ -358,7 +350,10 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 6px 12px;
+    gap: 6px 10px;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--white, #fff);
     transition: opacity var(--t-slow), transform var(--t-slow);
   }
   .rating {
@@ -372,16 +367,49 @@
   :global(:root:not([data-appearance="light"])) .info {
     text-shadow: 0 1px 14px rgb(var(--lo) / 0.55);
   }
+  .sep {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgb(var(--hi) / 0.45);
+  }
   .desc {
     margin: 0;
-    color: color-mix(in srgb, var(--text) 82%, transparent);
-    font-size: 15.5px;
-    max-width: 62ch;
+    color: var(--white, #fff);
+    font-size: 18px;
+    font-weight: 500;
+    line-height: 1.42;
+    max-width: 50ch;
     transition: opacity var(--t-slow), transform var(--t-slow);
   }
   .actions {
     display: flex;
+    align-items: center;
     gap: 10px;
+  }
+  /* Netflix's Play: a warm-white slab, bold black label, solid triangle */
+  .actions .play {
+    height: 52px;
+    padding: 0 30px 0 24px;
+    gap: 10px;
+    border-radius: 14px;
+    background: #fff4ea;
+    color: #000;
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    box-shadow: 0 10px 30px -12px rgb(var(--lo) / 0.8);
+  }
+  .actions .play :global(svg) {
+    width: 24px;
+    height: 24px;
+  }
+  .actions .more-info {
+    height: 52px;
+    padding: 0 22px;
+    border-radius: 14px;
+    font-size: 17px;
+    font-weight: 600;
   }
   .dots {
     position: absolute;

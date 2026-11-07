@@ -6,6 +6,7 @@
   import { scrolls } from "../lib/router.svelte";
   import { onScroll } from "../lib/ui.svelte";
   import Home from "../views/Home.svelte";
+  import Browse from "../views/Browse.svelte";
   import Discover from "../views/Discover.svelte";
   import Library from "../views/Library.svelte";
   import Search from "../views/Search.svelte";
@@ -61,6 +62,10 @@
   <div class="page">
     {#if route.name === "home"}
       <Home scrollY={y} />
+    {:else if route.name === "shows"}
+      <Browse kind="series" scrollY={y} />
+    {:else if route.name === "movies"}
+      <Browse kind="movie" scrollY={y} />
     {:else if route.name === "discover"}
       <Discover type={route.type} catalog={route.catalog} genre={route.genre} />
     {:else if route.name === "library"}

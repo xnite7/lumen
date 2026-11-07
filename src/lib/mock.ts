@@ -135,6 +135,17 @@ export async function mock(cmd: string, args: any): Promise<any> {
     }
     case "hero_items":
       return metas.slice(0, 6);
+    case "home_rows": {
+      const all = [
+        { id: "couch-hits", type: "series", name: "Hit Shows You Might Have Missed" },
+        { id: "couch-hits", type: "movie", name: "Hit Films You Might Have Missed" },
+        { id: "couch-season", type: "movie", name: "Cozy Nights In" },
+        { id: "couch-emmy", type: "series", name: "Emmy-Winning Series" },
+        { id: "couch-oscar", type: "movie", name: "Best Picture Winners" },
+        { id: "couch-morelike", type: "series", name: "More Like Night Swim", extra: [["seed", "tt1"]] },
+      ];
+      return all.filter((r) => args.scope === "all" || r.type === args.scope);
+    }
     case "continue_watching":
       return metas.slice(1, 6).map((m, i) => ({
         _id: m.id, name: m.name, type: m.type, poster: m.poster, background: m.background, logo: m.logo, removed: false, temp: true, _mtime: "",

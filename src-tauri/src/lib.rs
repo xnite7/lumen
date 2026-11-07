@@ -226,6 +226,7 @@ pub fn run() {
             commands::trailer_get,
             commands::person_get,
             commands::hero_items,
+            commands::home_rows,
             commands::art_get,
             commands::palette_get,
             commands::search_start,

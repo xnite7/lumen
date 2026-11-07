@@ -85,15 +85,19 @@
     {#if owned && !landscape}
       <span class="badge" title="In your library"><Icon name="check" size={13} /></span>
     {/if}
-    {#if landscape && meta.logo && loaded}
+    {#if landscape && loaded}
       <div class="lshade"></div>
-      <img class="llogo" src={img(meta.logo)} alt="" loading="lazy" />
+      {#if meta.logo}
+        <img class="llogo" src={img(meta.logo)} alt="" loading="lazy" />
+      {:else}
+        <span class="lname">{meta.name}</span>
+      {/if}
     {/if}
     {#if progress > 0}
       <div class="progress"><span style:width="{Math.max(4, progress * 100)}%"></span></div>
     {/if}
   </div>
-  {#if showTitle || landscape || meta.upNext}
+  {#if showTitle}
     <div class="label">
       <span class="name">{meta.name}</span>
       {#if subtitle || meta.upNext}<span class="sub">{subtitle || meta.upNext}</span>{/if}
@@ -212,22 +216,32 @@
     backdrop-filter: blur(8px);
     box-shadow: 0 2px 8px rgb(var(--lo) / 0.35);
   }
+  .lname {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 10px;
+    font-weight: 700;
+    font-size: 15px;
+    color: #fff;
+    text-shadow: 0 1px 8px rgb(0 0 0 / 0.7);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  /* square, inset, dark track with a white fill */
   .progress {
     position: absolute;
     left: 10px;
     right: 10px;
-    bottom: 10px;
-    height: 4px;
-    border-radius: 4px;
-    background: rgb(var(--hi) / 0.28);
-    overflow: hidden;
-    backdrop-filter: blur(6px);
+    bottom: 8px;
+    height: 3px;
+    background: linear-gradient(90deg, rgb(255 255 255 / 0.28), rgb(255 255 255 / 0.12));
   }
   .progress span {
     display: block;
     height: 100%;
-    background: var(--progress);
-    border-radius: inherit;
+    background: #fff;
   }
   .label {
     display: flex;

@@ -123,6 +123,7 @@ pub async fn handle(core: &Core, resource: &str, kind: &str, id: &str, extra: &[
                 "simkl-recs" => recommendations(core, kind, skip).await?,
                 "simkl-surprise" => surprise(core, kind).await?,
                 "motn-top" => motn::top(core, kind).await?,
+                c if c.starts_with("couch-") => super::curated::catalog(core, c, kind, get("seed"), skip).await?,
                 other => {
                     if let Some(def) = tmdb::CATALOGS.iter().find(|d| d.id == other) {
                         tmdb::catalog(core, def, kind, get("genre"), skip).await?

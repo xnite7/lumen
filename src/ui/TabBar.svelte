@@ -4,7 +4,7 @@
   // with a draggable pill. Wide screens: tvOS's top row of quiet text tabs;
   // the selected one sits on a warm-white pill.
   import Icon from "../components/Icon.svelte";
-  import { nav, selectTab, go, tabs, type Tab } from "../lib/router.svelte";
+  import { nav, selectTab, go, tabs, phoneTabs, type Tab } from "../lib/router.svelte";
   import { searchBar } from "../lib/search.svelte";
   import logo from "../assets/brand/couch-mark.png";
   import { ui } from "../lib/ui.svelte";
@@ -14,13 +14,15 @@
 
   const items: Record<Tab, { label: string; icon: string }> = {
     home: { label: "Home", icon: "home" },
+    shows: { label: "Shows", icon: "tv" },
+    movies: { label: "Movies", icon: "film" },
     search: { label: "Search", icon: "search" },
     library: { label: "Library", icon: "library" },
     couch: { label: "Couch", icon: "couch" },
     profile: { label: "Profile", icon: "personCircle" },
   };
 
-  const active = $derived(tabs.indexOf(nav.tab));
+  const active = $derived(phoneTabs.indexOf(nav.tab));
   let els: HTMLButtonElement[] = $state([]);
   let bar: HTMLElement | undefined = $state();
   let pill = $state({ x: 0, w: 0 });
@@ -30,10 +32,10 @@
   const initial = $derived(((user?.name || "") as string).trim().charAt(0).toUpperCase());
 
   // ---- iPhone app: Apple's own tab bar (Liquid Glass), not a web copy
-  const symbols: Record<Tab, string> = { home: "house.fill", search: "magnifyingglass", library: "books.vertical.fill", couch: "sofa.fill", profile: "person.crop.circle" };
+  const symbols: Record<Tab, string> = { shows: "tv", movies: "film", home: "house.fill", search: "magnifyingglass", library: "books.vertical.fill", couch: "sofa.fill", profile: "person.crop.circle" };
   let native = $state(false);
   const nativeTabs = $derived<NativeTab[]>(
-    tabs.map((t) => ({ id: t, title: items[t].label, symbol: symbols[t], search: t === "search", avatar: t === "profile" ? (user?.avatar ?? undefined) : undefined })),
+    phoneTabs.map((t) => ({ id: t, title: items[t].label, symbol: symbols[t], search: t === "search", avatar: t === "profile" ? (user?.avatar ?? undefined) : undefined })),
   );
   $effect(() => {
     if (!isTauri || app.platform !== "ios") return;
@@ -53,7 +55,7 @@
   });
 
   // ---- wide: logo · [search] Home Library Couch · avatar
-  const wideTabs: Tab[] = ["home", "library", "couch"];
+  const wideTabs: Tab[] = ["home", "shows", "movies", "library", "couch"];
   let field: HTMLInputElement | undefined = $state();
   let backTo: Tab = "home";
   let menuOpen = $state(false);
@@ -145,7 +147,7 @@
     if (!drag) return;
     const to = drag.over;
     drag = null;
-    if (to !== active) selectTab(tabs[to]);
+    if (to !== active) selectTab(phoneTabs[to]);
     else measure(active);
   }
 </script>
@@ -166,7 +168,7 @@
   style:view-transition-name="tabbar"
 >
   <span class="pill" style:transform="translateX({pill.x}px)" style:width="{pill.w}px"></span>
-  {#each tabs as t, i (t)}
+  {#each phoneTabs as t, i (t)}
     <button
       bind:this={els[i]}
       class="tab"

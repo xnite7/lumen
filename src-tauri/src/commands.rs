@@ -240,6 +240,12 @@ pub async fn person_get(s: S<'_>, name: String, tmdb_id: Option<u64>, adult: boo
     }
 }
 
+/// Curated Home rows ("all"), or the Shows / Movies tabs' ("series" / "movie").
+#[tauri::command]
+pub fn home_rows(s: S<'_>, scope: String) -> Vec<Value> {
+    crate::addons::curated::rows(&s.core, &scope)
+}
+
 #[tauri::command]
 pub async fn hero_items(s: S<'_>) -> AppResult<Vec<Value>> {
     // Simkl's trending data file needs no account, so this works signed out
