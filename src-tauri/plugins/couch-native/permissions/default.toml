@@ -2,4 +2,4 @@
 
 [default]
 description = "Everything couch's page uses: haptics, share, sign-in sheet, native player."
-permissions = ["allow-haptic", "allow-share", "allow-auth", "allow-endauth", "allow-play", "allow-stop", "allow-register-listener", "allow-remove-listener"]
+permissions = ["allow-haptic", "allow-share", "allow-auth", "allow-endauth", "allow-play", "allow-stop", "allow-tabbar", "allow-register-listener", "allow-remove-listener"]

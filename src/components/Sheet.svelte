@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ui } from "../lib/ui.svelte";
   // iOS 27 sheet. On phones it floats inset from the screen edges with the
   // device's corner radius and follows your finger -- a quick flick or a
   // long pull dismisses it; otherwise it springs back. On wide screens it's
@@ -80,6 +81,12 @@
       close();
     } else dy = 0;
   }
+
+  $effect(() => {
+    if (!open) return;
+    ui.sheets++;
+    return () => ui.sheets--;
+  });
 
   $effect(() => {
     if (open) {

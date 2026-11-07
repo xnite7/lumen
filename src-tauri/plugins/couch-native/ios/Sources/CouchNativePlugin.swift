@@ -72,6 +72,8 @@ class CouchNativePlugin: Plugin, AVPlayerViewControllerDelegate {
     private var mpvActive = false
     private var resumedPct = false
     private var observing = false
+    private weak var web: WKWebView?
+    private var tabBar: AnyObject?
 
     // MARK: 120 Hz
     //
@@ -80,6 +82,7 @@ class CouchNativePlugin: Plugin, AVPlayerViewControllerDelegate {
     // if this iOS has it, so nothing breaks when Apple renames it.
     override func load(webview: WKWebView) {
         super.load(webview: webview)
+        web = webview
         let prefs = webview.configuration.preferences
         let featuresSel = NSSelectorFromString("_features")
         let setSel = NSSelectorFromString("_setEnabled:forFeature:")
@@ -120,6 +123,29 @@ class CouchNativePlugin: Plugin, AVPlayerViewControllerDelegate {
             }
         }
         invoke.resolve()
+    }
+
+    // MARK: system tab bar
+
+    @objc public func tabbar(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(TabBarArgs.self)
+        DispatchQueue.main.async {
+            guard #available(iOS 18.0, *), let host = self.web?.window else {
+                invoke.resolve(["native": false])
+                return
+            }
+            let bar: NativeTabBar
+            if let b = self.tabBar as? NativeTabBar {
+                bar = b
+            } else {
+                bar = NativeTabBar()
+                bar.onTap = { [weak self] id in self?.trigger("tab", data: ["id": id]) }
+                bar.install(over: host)
+                self.tabBar = bar
+            }
+            bar.update(args)
+            invoke.resolve(["native": true])
+        }
     }
 
     // MARK: share sheet

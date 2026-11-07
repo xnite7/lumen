@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from "svelte";
   // Tabs, Apple TV style. Phone: a floating plum-glass capsule at the bottom
   // with a draggable pill. Wide screens: tvOS's top row of quiet text tabs;
   // the selected one sits on a warm-white pill.
@@ -8,7 +9,8 @@
   import logo from "../assets/brand/couch-mark.png";
   import { ui } from "../lib/ui.svelte";
   import { app } from "../lib/stores/app.svelte";
-  import { haptic } from "../lib/native";
+  import { haptic, nativeTabBar, onNative, type NativeTab } from "../lib/native";
+  import { isTauri } from "../lib/api";
 
   const items: Record<Tab, { label: string; icon: string }> = {
     home: { label: "Home", icon: "home" },
@@ -26,6 +28,29 @@
 
   const user = $derived(app.secrets.discordUser);
   const initial = $derived(((user?.name || "") as string).trim().charAt(0).toUpperCase());
+
+  // ---- iPhone app: Apple's own tab bar (Liquid Glass), not a web copy
+  const symbols: Record<Tab, string> = { home: "house.fill", search: "magnifyingglass", library: "books.vertical.fill", couch: "sofa.fill", profile: "person.crop.circle" };
+  let native = $state(false);
+  const nativeTabs = $derived<NativeTab[]>(
+    tabs.map((t) => ({ id: t, title: items[t].label, symbol: symbols[t], search: t === "search", avatar: t === "profile" ? (user?.avatar ?? undefined) : undefined })),
+  );
+  $effect(() => {
+    if (!isTauri || app.platform !== "ios") return;
+    let un: (() => void) | undefined;
+    untrack(() => nativeTabBar({ tabs: $state.snapshot(nativeTabs), selected: nav.tab, visible: true }).then((ok) => (native = ok)));
+    onNative<{ id: Tab }>("tab", ({ id }) => selectTab(id)).then((u) => (un = u));
+    return () => un?.();
+  });
+  $effect(() => {
+    if (native) nativeTabBar({ tabs: $state.snapshot(nativeTabs) });
+  });
+  $effect(() => {
+    if (native) nativeTabBar({ selected: nav.tab });
+  });
+  $effect(() => {
+    if (native) nativeTabBar({ visible: !app.playing && !ui.onboarding && ui.sheets === 0 });
+  });
 
   // ---- wide: logo · [search] Home Library Couch · avatar
   const wideTabs: Tab[] = ["home", "library", "couch"];
@@ -125,7 +150,9 @@
   }
 </script>
 
-{#if ui.phone}
+{#if native}
+  <!-- the system tab bar is drawn natively over the page -->
+{:else if ui.phone}
 <nav
   class="tabbar glass"
   class:mini={ui.minimized && ui.phone}

@@ -5,6 +5,8 @@ export const ui = $state({
   minimized: false,
   /** onboarding on screen */
   onboarding: false,
+  /** sheets open right now (the native tab bar steps aside for them) */
+  sheets: 0,
   /** width class: "phone" < 760px <= "wide" */
   phone: typeof window !== "undefined" ? window.innerWidth < 760 : false,
 });

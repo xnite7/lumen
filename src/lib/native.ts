@@ -72,3 +72,16 @@ export function onNative<T = any>(event: string, cb: (p: T) => void) {
 }
 
 export const isIOS = iosUI;
+
+export interface NativeTab {
+  id: string;
+  title: string;
+  symbol: string;
+  avatar?: string;
+  search?: boolean;
+}
+/** The system tab bar (Liquid Glass). Resolves false when it isn't available. */
+export async function nativeTabBar(o: { tabs?: NativeTab[]; selected?: string; visible?: boolean }): Promise<boolean> {
+  const r = await call<{ native: boolean }>("tabbar", o as any);
+  return !!r?.native;
+}
