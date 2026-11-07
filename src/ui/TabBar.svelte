@@ -189,7 +189,7 @@
     <img src={logo} alt="couch" />
   </button>
 
-  <nav class="links" aria-label="Tabs">
+  <nav class="links" class:searching={searchBar.open || !!searchBar.q} aria-label="Tabs">
     <form class="find" class:open={searchBar.open || !!searchBar.q} onsubmit={(e) => e.preventDefault()}>
       <button type="button" class="find-btn" onclick={() => (searchBar.open ? field?.focus() : openSearch())} aria-label="Search">
         <Icon name="search" size={18} />
@@ -383,6 +383,7 @@
   }
   .links {
     position: relative;
+    padding-left: 38px;
     display: flex;
     align-items: center;
     gap: 4px;
@@ -405,7 +406,13 @@
   /* the tab you're on: a soft lit pill, no bar behind the rest */
   .link {
     border-radius: var(--r-pill);
-    transition: color var(--t-fast) ease, background var(--t-med) ease, box-shadow var(--t-med) ease;
+    transition:
+      color var(--t-fast) ease,
+      background var(--t-med) ease,
+      box-shadow var(--t-med) ease,
+      opacity 220ms ease,
+      transform var(--t-slow) var(--glide),
+      filter 220ms ease;
   }
   .link:hover:not(.on) {
     background: rgb(var(--hi) / 0.06);
@@ -418,14 +425,30 @@
     backdrop-filter: blur(14px) saturate(1.4);
     -webkit-backdrop-filter: blur(14px) saturate(1.4);
   }
+  /* the search grows over the tabs, eating them as it opens */
   .find {
     position: absolute;
-    right: 100%;
+    left: 0;
+    top: 0;
+    z-index: 1;
+    width: 38px;
     display: flex;
     align-items: center;
     height: 38px;
     border-radius: var(--r-pill);
-    transition: background var(--t-med) ease, box-shadow var(--t-med) ease;
+    transition:
+      width var(--t-slow) var(--glide),
+      background var(--t-med) ease,
+      box-shadow var(--t-med) ease;
+  }
+  .searching .find {
+    width: max(100%, 360px);
+  }
+  .searching .link {
+    opacity: 0;
+    transform: translateX(18px) scale(0.92);
+    filter: blur(4px);
+    pointer-events: none;
   }
   .find-btn {
     display: grid;
@@ -434,6 +457,8 @@
     filter: drop-shadow(0 1px 8px rgb(var(--lo) / 0.9));
   }
   .find input {
+    flex: 1;
+    min-width: 0;
     width: 0;
     padding: 0;
     border: 0;
@@ -456,7 +481,6 @@
     padding-right: 4px;
   }
   .find.open input {
-    width: 220px;
     opacity: 1;
     padding-right: 12px;
   }
