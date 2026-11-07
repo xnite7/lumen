@@ -237,7 +237,7 @@
           <div class="facts">
             {#each line(cur) as f, n}{#if n}<span class="sep" aria-hidden="true"></span>{/if}<span>{f}</span>{/each}
           </div>
-          {#if cur.description}<p class="desc clamp-3">{cur.description}</p>{/if}
+          {#if cur.description}<div class="desc-wrap"><div class="desc-clip"><p class="desc clamp-3">{cur.description}</p></div></div>{/if}
         </div>
       {/key}
       </div>
@@ -358,10 +358,33 @@
       linear-gradient(0deg, rgb(0 0 0 / 0.7) 0%, transparent 45%),
       linear-gradient(90deg, rgb(0 0 0 / 0.75) 0%, rgb(0 0 0 / 0.35) 38%, transparent 62%);
   }
-  .info.quiet .copy .desc,
-  .info.quiet .facts {
+  /* trailer playing: the summary folds away so the title and the
+     kind · genre · year line settle right on top of Play */
+  .desc-wrap {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 700ms var(--glide), margin 700ms var(--glide);
+  }
+  .desc-clip {
+    min-height: 0;
+    overflow: hidden;
+  }
+  .info.quiet .desc-wrap {
+    grid-template-rows: 0fr;
+    margin-top: -14px;
+  }
+  .info.quiet .copy .desc {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
+  }
+  .logo,
+  .xl-title {
+    transform-origin: left bottom;
+    transition: transform 700ms var(--glide);
+  }
+  .info.quiet .logo,
+  .info.quiet .xl-title {
+    transform: scale(0.82);
   }
   .copy {
     display: flex;
