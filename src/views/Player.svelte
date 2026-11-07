@@ -329,8 +329,10 @@
     if (h >= 2000) tags.push("4K");
     else if (h >= 1000) tags.push("1080p");
     else if (h >= 700) tags.push("720p");
-    if (v.hdr) tags.push(v.gamma === "hlg" ? "HLG" : "HDR");
-    if (pb.stream?._couch?.hdr?.includes("DV")) tags.push("Dolby Vision");
+    const c: any = pb.stream?._couch ?? {};
+    if (c.hdr?.includes("DV")) tags.push("Dolby Vision");
+    else if (v.hdr || c.hdr?.length) tags.push(v.gamma === "hlg" ? "HLG" : c.hdr?.includes("HDR10+") ? "HDR10+" : "HDR10");
+    if (c.audio?.includes("Atmos")) tags.push("Dolby Atmos");
     return tags;
   });
 
@@ -457,7 +459,7 @@
         <button class="p-seek press" onclick={() => seekBy(pbs.seekSmall)} aria-label="Forward {pbs.seekSmall} seconds"><Icon name="skipF" size={34} /><span>{pbs.seekSmall}</span></button>
       </div>
       <div class="p-info">
-        <span class="p-show">{pb.meta?.name ?? ""}</span>
+        {#if isShow}<span class="p-show">{pb.meta?.name ?? ""}</span>{/if}
         {#if facts}<span class="p-facts">{facts}</span>{/if}
         <h2 class="p-title">{pb.episodeTitle || pb.meta?.name || ""}</h2>
         {#if blurb}<p class="p-desc">{blurb}</p>{/if}
@@ -535,7 +537,10 @@
           <Icon name="chevronDown" size={14} />
         </label>
       {/if}
-      {#each quality as q}<span class="chip">{q}</span>{/each}
+      {#each quality as q}
+        {@const dolby = q.startsWith("Dolby ")}
+        <span class="spec" class:dolby>{#if dolby}<b>DOLBY</b><i>{q.slice(6).toUpperCase()}</i>{:else}{q}{/if}</span>
+      {/each}
       {#if layout3d}<span class="chip">3D{tobiiOn() && app.settings.tobii.depth3d ? " · look around" : ""}</span>{/if}
     </div>
   </header>
@@ -553,7 +558,6 @@
             {/each}
           {/each}
         </div>
-        <div class="knob" style:left="{dragging && scrub ? (scrub.t / (st.duration || 1)) * 100 : progress}%"></div>
         {#if scrub}
           <div class="tip glass strong" style:left="{scrub.x}px">{time(scrub.t)}</div>
         {/if}
@@ -561,7 +565,8 @@
       <span class="remain tabular">{time(Math.max(0, (st.duration || 0) - (st.pos || 0)))}</span>
     </div>
 
-    <div class="bar glass strong">
+    <!-- paused: the big middle buttons take over, so the button bar goes -->
+    <div class="bar glass strong" class:gone={pausedScreen}>
       <button class="ic press" onclick={toggle} aria-label={st.paused ? "Play" : "Pause"}><Icon name={st.paused ? "play" : "pause"} size={22} /></button>
       <button class="ic press seekic" onclick={() => seekBy(-pbs.seekSmall)} aria-label="Back {pbs.seekSmall} seconds"><Icon name="skipB" size={22} /><span>{pbs.seekSmall}</span></button>
       <button class="ic press seekic" onclick={() => seekBy(pbs.seekSmall)} aria-label="Forward {pbs.seekSmall} seconds"><Icon name="skipF" size={22} /><span>{pbs.seekSmall}</span></button>
@@ -1091,14 +1096,14 @@
   .track {
     position: relative;
     width: 100%;
-    height: 5px;
-    border-radius: 5px;
+    height: 4px;
+    border-radius: 0;
     background: rgb(var(--hi) / 0.2);
     overflow: hidden;
     transition: height var(--t-fast) var(--spring);
   }
   .scrub:hover .track {
-    height: 9px;
+    height: 7px;
   }
   .buf {
     position: absolute;
@@ -1195,23 +1200,6 @@
   }
   .scrub-row .scrub {
     flex: 1;
-  }
-  .knob {
-    position: absolute;
-    top: 50%;
-    width: 14px;
-    height: 14px;
-    margin-left: -7px;
-    margin-top: -7px;
-    border-radius: 50%;
-    background: var(--lamp);
-    box-shadow: 0 0 0 4px rgb(var(--lamp-rgb) / 0.2), 0 0 14px rgb(var(--lamp-rgb) / 0.7);
-    transform: scale(0.8);
-    transition: transform var(--t-fast) var(--spring);
-    pointer-events: none;
-  }
-  .scrub:hover .knob {
-    transform: scale(1.1);
   }
   .done {
     background: var(--lamp) !important;
@@ -1586,5 +1574,43 @@
     line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+  /* spec labels: plain white, sharp, like the back of a Blu-ray box */
+  .spec {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    height: 24px;
+    padding: 0 8px;
+    align-items: center;
+    border: 1.5px solid rgb(255 255 255 / 0.85);
+    border-radius: 3px;
+    color: #fff;
+    font: 800 12px/1 "Inter", system-ui, sans-serif;
+    letter-spacing: 0.04em;
+    background: rgb(0 0 0 / 0.25);
+    backdrop-filter: blur(8px);
+  }
+  .spec.dolby b {
+    font-weight: 900;
+    letter-spacing: 0.08em;
+  }
+  .spec.dolby i {
+    font-style: normal;
+    font-weight: 400;
+    letter-spacing: 0.14em;
+  }
+  .track .done,
+  .track .buf,
+  .track .seg {
+    border-radius: 0 !important;
+  }
+  .bar.gone {
+    opacity: 0;
+    transform: translateY(10px);
+    pointer-events: none;
+  }
+  .bar {
+    transition: opacity var(--t-med) ease, transform var(--t-med) var(--glide);
   }
 </style>
