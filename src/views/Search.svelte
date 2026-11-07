@@ -11,6 +11,7 @@
   import Poster from "../components/Poster.svelte";
   import Icon from "../components/Icon.svelte";
   import Controls from "../components/Controls.svelte";
+  import { searchBar } from "../lib/search.svelte";
 
   let { q: initial = "" }: { q?: string } = $props();
   let q = $state("");
@@ -28,7 +29,6 @@
   $effect(() => {
     api.recents().then((r) => (recents = r ?? []));
     api.catalogs().then((c) => (catalogs = c.filter((x) => !x.extra.some((e) => e.isRequired && e.name === "search"))));
-    if (!ui.phone) requestAnimationFrame(() => input?.focus());
     let un: (() => void) | undefined;
     listen<any>("search", (c) => {
       if (c.reqId !== reqId) return;
@@ -43,6 +43,15 @@
       run(initial);
     }
     return () => un?.();
+  });
+
+  // wide: the field lives in the top bar
+  $effect(() => {
+    if (ui.phone) return;
+    const t = searchBar.q;
+    if (t === q) return;
+    q = t;
+    onInput();
   });
 
   function run(text: string) {
@@ -89,23 +98,12 @@
   );
   const hiddenAdult = $derived(groups.some((g) => g.catalog.adult) && app.settings.general.hideAdult && !app.adultRevealed);
 
-  // ------------------------------------------------------------- browse
-  // browse tiles: dusky late-night tones from the midnite palette, no rainbow
-  const tints = ["var(--surface-2)", "#3a1830", "#2a1a24", "#3b2416", "#241626", "#33152a", "#2d1d1a", "#1f1824", "#3a2014", "#281422"];
-  const typeLabel = (t: string) => (t === "movie" ? "Films" : t === "series" ? "Shows" : t === "tv" ? "Channels" : t.charAt(0).toUpperCase() + t.slice(1));
-  const browse = $derived(
-    catalogs
-      .filter((c) => !(c.adult && app.settings.general.hideAdult && !app.adultRevealed))
-      .filter((c) => !c.extra.some((e) => e.isRequired && !e.options?.length))
-      .slice(0, 12),
-  );
-  const genreSource = $derived(catalogs.find((c) => c.type === "movie" && c.extra.some((e) => e.name === "genre" && e.options?.length)));
-  const genres = $derived(genreSource?.extra.find((e) => e.name === "genre")?.options?.slice(0, 16) ?? []);
 </script>
 
 <NavBar title="Search" />
 
-<div class="search">
+<div class="search" class:wide={!ui.phone}>
+  {#if ui.phone}
   <h1 class="large-title">Search</h1>
 
   <form class="box" class:focused onsubmit={(e) => { e.preventDefault(); run(q); input?.blur(); }}>
@@ -124,6 +122,7 @@
     />
     {#if q}<button type="button" class="clear" onclick={clear} aria-label="Clear"><Icon name="close" size={11} /></button>{/if}
   </form>
+  {/if}
 
   {#if searching}
     <!-- top hits -->
@@ -181,42 +180,6 @@
         <div class="recent-list scroll-x">
           {#each recents as r}
             <button class="chip press" onclick={() => pick(r)}><Icon name="search" size={13} /> {r}</button>
-          {/each}
-        </div>
-      </section>
-    {/if}
-
-    {#if browse.length}
-      <section>
-        <h2 class="title3 sect-title">browse</h2>
-        <div class="tiles">
-          {#each browse as c, n (c.key)}
-            <button class="tile press" style:--t={tints[n % tints.length]} onclick={() => go({ name: "discover", type: c.type, catalog: c.key })}>
-              <span class="tile-name">{c.name}</span>
-              <span class="tile-sub">{typeLabel(c.type)} · {c.addonName}</span>
-            </button>
-          {/each}
-        </div>
-        {#if app.settings.integrations.aiEnabled}
-          <button class="vibe-card press" onclick={() => go({ name: "vibe" })}>
-            <span class="blobs" aria-hidden="true"></span>
-            <span class="vc-icon"><Icon name="sparkles" size={22} /></span>
-            <span class="vc-txt">
-              <span class="headline">Search by vibe</span>
-              <span class="foot">Describe a feeling. Picks come from your own taste.</span>
-            </span>
-            <Icon name="forward" size={17} />
-          </button>
-        {/if}
-      </section>
-    {/if}
-
-    {#if genres.length && genreSource}
-      <section>
-        <h2 class="title3 sect-title">Genres</h2>
-        <div class="genres">
-          {#each genres as g, n}
-            <button class="genre press" style:--t={tints[(n + 3) % tints.length]} onclick={() => go({ name: "discover", type: genreSource!.type, catalog: genreSource!.key, genre: g })}>{g}</button>
           {/each}
         </div>
       </section>
@@ -391,126 +354,11 @@
   .sect-title {
     margin-bottom: 12px;
   }
-  .tiles {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 12px;
-  }
-  .tile {
-    position: relative;
-    height: 104px;
-    border-radius: var(--r-md);
-    padding: 14px;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    text-align: left;
-    overflow: hidden;
-    color: var(--white);
-    background:
-      radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--t) 50%, white 0%), transparent 60%),
-      linear-gradient(150deg, color-mix(in srgb, var(--t) 82%, black 18%), color-mix(in srgb, var(--t) 45%, black 55%));
-    text-shadow: 0 1px 8px rgb(var(--lo) / 0.35);
-    box-shadow: inset 0 0.5px 0 rgb(var(--hi) / 0.3);
-  }
-  .tile-name {
-    font-size: var(--fs-head);
-    font-weight: 700;
-    letter-spacing: -0.02em;
-  }
-  .tile-sub {
-    font-size: var(--fs-caption);
-    font-weight: 500;
-    opacity: 0.92;
-  }
-  .vibe-card {
-    position: relative;
-    isolation: isolate;
-    overflow: hidden;
-    margin-top: 12px;
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 16px 18px 16px 16px;
-    border-radius: var(--r-md);
-    text-align: left;
-    color: var(--white);
-    background: var(--surface);
-  }
-  .vibe-card .blobs {
-    position: absolute;
-    inset: -60%;
-    z-index: -1;
-    background:
-      radial-gradient(30% 50% at 25% 50%, rgb(var(--neon-rgb) / 0.55), transparent),
-      radial-gradient(30% 55% at 70% 40%, rgb(var(--lamp-rgb) / 0.35), transparent),
-      radial-gradient(25% 50% at 50% 75%, #5a2348, transparent);
-    filter: blur(28px) saturate(1.3);
-    opacity: 0.85;
-    animation: drift 14s ease-in-out infinite alternate;
-  }
-  .vibe-card::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    background: linear-gradient(90deg, rgb(var(--lo) / 0.45), rgb(var(--lo) / 0.1));
-  }
-  @keyframes drift {
-    to {
-      transform: translate(10%, -6%) rotate(18deg);
-    }
-  }
-  .vc-icon {
-    flex: none;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    background: rgb(var(--hi) / 0.18);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-  }
-  .vc-txt {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .vc-txt .foot {
-    opacity: 0.85;
-  }
-  .genres {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .genre {
-    height: 38px;
-    padding: 0 16px;
-    border-radius: var(--r-pill);
-    font-weight: 600;
-    font-size: var(--fs-sub);
-    background: color-mix(in srgb, var(--t) 22%, transparent);
-    color: color-mix(in oklab, var(--t) 35%, var(--label));
-    box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--t) 40%, transparent);
-  }
   .tip {
     text-align: center;
     margin: 10px 0 0;
   }
   @media (max-width: 759px) {
-    .tiles {
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    .tile {
-      height: 92px;
-      padding: 12px;
-    }
     .grid {
       grid-template-columns: repeat(3, 1fr);
       gap: 16px 10px;

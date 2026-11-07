@@ -3,7 +3,9 @@
   // with a draggable pill. Wide screens: tvOS's top row of quiet text tabs;
   // the selected one sits on a warm-white pill.
   import Icon from "../components/Icon.svelte";
-  import { nav, selectTab, tabs, type Tab } from "../lib/router.svelte";
+  import { nav, selectTab, go, tabs, type Tab } from "../lib/router.svelte";
+  import { searchBar } from "../lib/search.svelte";
+  import logo from "../assets/brand/couch-mark.png";
   import { ui } from "../lib/ui.svelte";
   import { app } from "../lib/stores/app.svelte";
   import { haptic } from "../lib/native";
@@ -24,6 +26,65 @@
 
   const user = $derived(app.secrets.discordUser);
   const initial = $derived(((user?.name || "") as string).trim().charAt(0).toUpperCase());
+
+  // ---- wide: logo · [search] Home Library Couch · avatar
+  const wideTabs: Tab[] = ["home", "library", "couch"];
+  let field: HTMLInputElement | undefined = $state();
+  let backTo: Tab = "home";
+  let menuOpen = $state(false);
+
+  function openSearch() {
+    searchBar.open = true;
+    requestAnimationFrame(() => field?.focus());
+  }
+  function typed() {
+    // nothing happens until there's something to look for
+    if (searchBar.q.trim() && nav.tab !== "search") {
+      backTo = nav.tab;
+      selectTab("search");
+    } else if (!searchBar.q.trim() && nav.tab === "search") {
+      selectTab(backTo);
+    }
+  }
+  function closeSearch() {
+    if (searchBar.q) {
+      searchBar.q = "";
+      typed();
+    }
+    searchBar.open = false;
+    field?.blur();
+  }
+  function blurred() {
+    setTimeout(() => {
+      if (!searchBar.q.trim() && document.activeElement !== field) searchBar.open = false;
+    }, 120);
+  }
+  function wideTab(t: Tab) {
+    if (searchBar.q) closeSearch();
+    selectTab(t);
+  }
+  function account() {
+    menuOpen = false;
+    selectTab("profile");
+  }
+  function settings() {
+    menuOpen = false;
+    selectTab("profile");
+    go({ name: "settings" });
+  }
+  $effect(() => {
+    if (!menuOpen) return;
+    const off = (e: PointerEvent) => {
+      if (!(e.target as Element)?.closest?.(".me")) menuOpen = false;
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && (menuOpen = false);
+    window.addEventListener("pointerdown", off);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("pointerdown", off);
+      window.removeEventListener("keydown", esc);
+    };
+  });
 
   function measure(i: number) {
     const el = els[i];
@@ -64,6 +125,7 @@
   }
 </script>
 
+{#if ui.phone}
 <nav
   class="tabbar glass"
   class:mini={ui.minimized && ui.phone}
@@ -94,6 +156,50 @@
     </button>
   {/each}
 </nav>
+{:else}
+<div class="top" class:scrolled={ui.scrollY > 40} style:view-transition-name="tabbar">
+  <button class="brand" class:away={nav.stack.length > 1} onclick={() => wideTab("home")} aria-label="Home">
+    <img src={logo} alt="couch" />
+  </button>
+
+  <nav class="links" aria-label="Tabs">
+    <form class="find" class:open={searchBar.open || !!searchBar.q} onsubmit={(e) => e.preventDefault()}>
+      <button type="button" class="find-btn" onclick={() => (searchBar.open ? field?.focus() : openSearch())} aria-label="Search">
+        <Icon name="search" size={18} />
+      </button>
+      <input
+        bind:this={field}
+        bind:value={searchBar.q}
+        oninput={typed}
+        onblur={blurred}
+        onkeydown={(e) => e.key === "Escape" && closeSearch()}
+        placeholder="films, shows, people"
+        spellcheck="false"
+        autocomplete="off"
+        aria-label="Search"
+        tabindex={searchBar.open ? 0 : -1}
+      />
+      {#if searchBar.q}<button type="button" class="find-x" onclick={closeSearch} aria-label="Clear"><Icon name="close" size={11} /></button>{/if}
+    </form>
+    {#each wideTabs as t (t)}
+      <button class="link" class:on={nav.tab === t} aria-current={nav.tab === t ? "page" : undefined} onclick={() => wideTab(t)}>{items[t].label}</button>
+    {/each}
+  </nav>
+
+  <div class="me">
+    <button class="me-btn" class:on={nav.tab === "profile" || menuOpen} onclick={() => (menuOpen = !menuOpen)} aria-label="Account" aria-expanded={menuOpen}>
+      <span class="avatar big">{#if user?.avatar}<img src={user.avatar} alt="" />{:else if initial}{initial}{:else}<Icon name="personCircle" size={20} />{/if}</span>
+    </button>
+    {#if menuOpen}
+      <div class="menu glass strong" role="menu">
+        {#if user?.name}<div class="who"><span class="headline">{user.name}</span>{#if user.username}<span class="foot dim">@{user.username}</span>{/if}</div>{/if}
+        <button role="menuitem" onclick={account}><Icon name="personCircle" size={17} /> Account</button>
+        <button role="menuitem" onclick={settings}><Icon name="settings" size={17} /> Settings</button>
+      </div>
+    {/if}
+  </div>
+</div>
+{/if}
 
 <style>
   .tabbar {
@@ -197,47 +303,219 @@
     }
   }
 
-  /* wide: top centre, icon beside label */
-  @media (min-width: 760px) {
-    .tabbar {
-      left: 50%;
-      top: calc(var(--safe-top) + 10px);
-      transform: translateX(-50%);
+  /* wide: no island, just the words floating over the page */
+  .top {
+    position: fixed;
+    z-index: 60;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: calc(var(--safe-top) + 58px);
+    padding: calc(var(--safe-top) + 10px) calc(var(--gutter) + var(--win-controls, 0px)) 0 var(--gutter);
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    pointer-events: none;
+    transition: opacity var(--t-med) ease;
+  }
+  .top::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 -30px;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgb(var(--lo) / 0.75), rgb(var(--lo) / 0.35) 60%, transparent);
+    opacity: 0;
+    transition: opacity var(--t-med) ease;
+  }
+  .top.scrolled::before {
+    opacity: 1;
+  }
+  :global(html.playing) .top,
+  :global(html.onboarding) .top {
+    opacity: 0;
+  }
+  .top > * {
+    pointer-events: auto;
+  }
+  .brand {
+    justify-self: start;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    transition: opacity var(--t-med) ease, transform var(--t-med) var(--spring);
+  }
+  .brand img {
+    height: 30px;
+    width: auto;
+    /* the mark is black ink: flip it to light ink on the dark app */
+    filter: invert(1) drop-shadow(0 2px 10px rgb(var(--lo) / 0.8));
+  }
+  /* a pushed page puts its back button here */
+  .brand.away {
+    opacity: 0;
+    transform: scale(0.8);
+    pointer-events: none;
+  }
+  .links {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .link,
+  .find-btn {
+    height: 38px;
+    padding: 0 14px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: rgb(var(--hi) / 0.62);
+    text-shadow: 0 1px 12px rgb(var(--lo) / 0.9);
+    transition: color var(--t-fast) ease;
+  }
+  .link:hover,
+  .find-btn:hover {
+    color: var(--text);
+  }
+  .link.on {
+    position: relative;
+    color: var(--text);
+  }
+  .link.on::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 3px;
+    width: 4px;
+    height: 4px;
+    margin-left: -2px;
+    border-radius: 50%;
+    background: var(--lamp);
+    box-shadow: 0 0 8px var(--lamp);
+  }
+  /* the search grows leftwards from beside Home, so the tabs never move */
+  .find {
+    position: absolute;
+    right: 100%;
+    display: flex;
+    align-items: center;
+    height: 38px;
+    border-radius: var(--r-pill);
+    transition: background var(--t-med) ease, box-shadow var(--t-med) ease;
+  }
+  .find-btn {
+    display: grid;
+    place-items: center;
+    padding: 0 10px;
+    filter: drop-shadow(0 1px 8px rgb(var(--lo) / 0.9));
+  }
+  .find input {
+    width: 0;
+    padding: 0;
+    border: 0;
+    outline: none;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 15px;
+    opacity: 0;
+    transition: width var(--t-slow) var(--spring), opacity var(--t-med) ease, padding var(--t-med) ease;
+  }
+  .find.open {
+    background: rgb(var(--lo) / 0.45);
+    box-shadow: inset 0 0 0 1px rgb(var(--hi) / 0.14);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+  .find.open .find-btn {
+    color: var(--text);
+    padding-right: 4px;
+  }
+  .find.open input {
+    width: 220px;
+    opacity: 1;
+    padding-right: 12px;
+  }
+  .find input:focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+  .find input::placeholder {
+    color: rgb(var(--hi) / 0.4);
+  }
+  .find-x {
+    width: 22px;
+    height: 22px;
+    margin-right: 8px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: rgb(var(--hi) / 0.18);
+    color: var(--text);
+  }
+  .me {
+    justify-self: end;
+    position: relative;
+  }
+  .me-btn {
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    transition: box-shadow var(--t-fast) ease, transform var(--t-fast) var(--spring);
+  }
+  .me-btn:hover {
+    transform: scale(1.06);
+  }
+  .me-btn.on {
+    box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--lamp);
+  }
+  .avatar.big {
+    width: 34px;
+    height: 34px;
+    font-size: 15px;
+    box-shadow: 0 4px 14px -4px rgb(var(--lo) / 0.9);
+  }
+  .menu {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 10px);
+    min-width: 210px;
+    padding: 6px;
+    border-radius: var(--r-md);
+    display: flex;
+    flex-direction: column;
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    box-shadow: 0 20px 50px -16px rgb(var(--lo) / 0.95), inset 0 0 0 1px rgb(var(--hi) / 0.08);
+    transform-origin: top right;
+    animation: drop 220ms var(--spring) both;
+  }
+  @keyframes drop {
+    from {
+      opacity: 0;
+      transform: scale(0.92) translateY(-6px);
     }
-    .tab {
-      flex-direction: row;
-      gap: 7px;
-      height: 38px;
-      padding: 0 16px;
-      border-radius: var(--r-pill);
-      font-size: 14px;
-    }
-    .label {
-      font-size: 14px;
-      font-weight: 600;
-      letter-spacing: -0.01em;
-    }
-    .avatar {
-      width: 20px;
-      height: 20px;
-      font-size: 11px;
-    }
-    /* tvOS: the selected tab is a solid warm-white pill, dark text */
-    .pill {
-      background: var(--text);
-      box-shadow: 0 6px 18px -6px rgb(var(--lo) / 0.7);
-    }
-    .tab.on {
-      color: var(--bg);
-    }
-    .tab:not(.on) {
-      color: var(--label-2);
-    }
-    .tab:not(.on):hover {
-      color: var(--text);
-    }
-    .tab.on .avatar {
-      box-shadow: 0 0 0 2px var(--bg);
-    }
+  }
+  .who {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 12px 10px;
+    border-bottom: 1px solid rgb(var(--hi) / 0.08);
+    margin-bottom: 4px;
+  }
+  .menu button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 40px;
+    padding: 0 12px;
+    border-radius: var(--r-sm);
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text);
+    text-align: left;
+  }
+  .menu button:hover {
+    background: rgb(var(--hi) / 0.08);
   }
 </style>

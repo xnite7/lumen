@@ -92,7 +92,7 @@
       display: none;
     }
     .trail {
-      padding-right: var(--win-controls, 0px);
+      padding-right: calc(var(--win-controls, 0px) + 52px);
     }
   }
 </style>

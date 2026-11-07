@@ -5,6 +5,7 @@
   import ContinueRow from "../components/ContinueRow.svelte";
   import Row from "../components/Row.svelte";
   import CouchRow from "../components/CouchRow.svelte";
+  import BrowseRow from "../components/BrowseRow.svelte";
 
   let { scrollY = 0 }: { scrollY?: number } = $props();
   let catalogs = $state<CatalogRef[]>([]);
@@ -36,6 +37,7 @@
   <Hero {scrollY} />
   <ContinueRow />
   <CouchRow />
+  <div class="pad"><BrowseRow /></div>
   {#each catalogs as c (c.key)}
     <Row catalog={c} />
   {/each}
@@ -43,6 +45,9 @@
 </div>
 
 <style>
+  .pad {
+    padding: 0 var(--gutter);
+  }
   .end {
     height: 80px;
   }
