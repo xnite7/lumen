@@ -465,6 +465,8 @@ impl Mpv {
             "frame-back-step" => mpv.command("frame-back-step", &[]),
             "chapter" => mpv.command("add", &["chapter", &format!("{}", num("delta").unwrap_or(1.0) as i64)]),
             "screenshot" => mpv.command("screenshot", &["video"]),
+            // a still of the current frame (the couch row's card art)
+            "snap" => mpv.command("screenshot-to-file", &[a.get("path").and_then(|p| p.as_str()).unwrap_or(""), "video"]),
             "equalizer" => {
                 for k in ["brightness", "contrast", "saturation", "gamma"] {
                     if let Some(v) = num(k) {

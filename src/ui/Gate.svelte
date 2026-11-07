@@ -5,8 +5,22 @@
   import { refreshSecrets } from "../lib/stores/app.svelte";
   import DiscordSignIn from "./DiscordSignIn.svelte";
   import mark from "../assets/brand/couch-mark.png";
+  import banned from "../assets/sfx/banned.mp3";
 
   let { state, recheck }: { state: "outsider" | "signin"; recheck: () => void } = $props();
+
+  // kicked from the server (or never in it): the Growtopia ban sound
+  $effect(() => {
+    if (state !== "outsider") return;
+    const a = new Audio(banned);
+    a.volume = 0.8;
+    const again = () => a.play().catch(() => {});
+    a.play().catch(() => window.addEventListener("pointerdown", again, { once: true }));
+    return () => {
+      window.removeEventListener("pointerdown", again);
+      a.pause();
+    };
+  });
 
   async function other() {
     await api.discordLogout().catch(() => {});

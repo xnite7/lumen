@@ -19,6 +19,13 @@
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let menu = $state<"" | "tracks" | "episodes" | "volume" | "more">("");
   let menuX = $state(0);
+  // a click anywhere outside the open menu (and its buttons) closes it
+  function clickAway(e: PointerEvent) {
+    if (!menu) return;
+    const t = e.target as HTMLElement;
+    if (t.closest(".pop") || t.closest(".bar .ic")) return;
+    menu = "";
+  }
   function openMenu(m: typeof menu, e: MouseEvent) {
     if (menu === m) return void (menu = "");
     const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -376,6 +383,7 @@
     return () => (alive = false);
   });
 
+  const minimal = $derived(!!pbs.minimalPlayer);
   // Material's replay/forward glyphs carry the number for 5, 10 and 30
   const numbered = $derived([5, 10, 30].includes(pbs.seekSmall));
   const quality = $derived.by(() => {
@@ -443,7 +451,7 @@
   const buffered = $derived(st.duration ? Math.min(100, ((st.pos + st.cacheAhead) / st.duration) * 100) : 0);
 </script>
 
-<svelte:window onkeydown={onKey} onmousemove={poke} />
+<svelte:window onkeydown={onKey} onmousemove={poke} onpointerdown={clickAway} />
 
 <div class="player" class:hide-cursor={chromeHidden} class:native ondblclick={fullscreen} role="presentation" style:--scene={scene}>
   {#if pb.mode === "web" && pb.url}
@@ -507,13 +515,9 @@
 
   {#if pausedScreen && !idleScreen}
     <!-- paused: the episode up close, the season fanned on the right -->
-    <div class="paused" role="presentation">
+    <!-- click anywhere on the paused picture (not the episodes) to play -->
+    <div class="paused" role="presentation" onclick={(e) => !(e.target as HTMLElement).closest(".carousel, button, a") && toggle()}>
       <div class="p-shade"></div>
-      <div class="p-center">
-        <button class="p-seek press" onclick={() => seekBy(-pbs.seekSmall)} aria-label="Back {pbs.seekSmall} seconds">{#if numbered}<Icon name={"replay" + pbs.seekSmall} size={36} />{:else}<Icon name="skipB" size={34} /><span>{pbs.seekSmall}</span>{/if}</button>
-        <button class="p-play press" onclick={toggle} aria-label="Play"><Icon name="play" size={40} /></button>
-        <button class="p-seek press" onclick={() => seekBy(pbs.seekSmall)} aria-label="Forward {pbs.seekSmall} seconds">{#if numbered}<Icon name={"forward" + pbs.seekSmall} size={36} />{:else}<Icon name="skipF" size={34} /><span>{pbs.seekSmall}</span>{/if}</button>
-      </div>
       <div class="p-info">
         {#if isShow}<span class="p-show">{pb.meta?.name ?? ""}</span>{/if}
         {#if facts}<span class="p-facts">{facts}</span>{/if}
@@ -603,7 +607,7 @@
 
   <!-- bottom chrome -->
   <footer class="bottom" class:gone={chromeHidden || idleScreen}>
-    <div class="scrub-row">
+    {#snippet scrubber()}
       <div class="scrub" bind:this={bar} onpointerdown={barDown} onpointermove={barMove} onpointerup={barUp} onpointerleave={() => !dragging && (scrub = null)} role="slider" aria-label="Seek" aria-valuemin={0} aria-valuemax={st.duration} aria-valuenow={st.pos} tabindex="0">
         <div class="track">
           <div class="buf" style:width="{buffered}%"></div>
@@ -618,18 +622,31 @@
           <div class="tip glass strong" style:left="{scrub.x}px">{time(scrub.t)}</div>
         {/if}
       </div>
+    {/snippet}
+    {#if !minimal}
+    <div class="scrub-row">
+      {@render scrubber()}
       <span class="remain tabular">{time(Math.max(0, (st.duration || 0) - (st.pos || 0)))}</span>
     </div>
+    {/if}
 
-    <!-- paused: the big middle buttons take over, so the button bar goes -->
-    <div class="bar glass strong" class:gone={pausedScreen}>
+    <div class="bar glass strong" class:mini={minimal}>
       <button class="ic press" onclick={toggle} aria-label={st.paused ? "Play" : "Pause"}><Icon name={st.paused ? "play" : "pause"} size={22} /></button>
       <button class="ic press seekic" onclick={() => seekBy(-pbs.seekSmall)} aria-label="Back {pbs.seekSmall} seconds">{#if numbered}<Icon name={"replay" + pbs.seekSmall} size={24} />{:else}<Icon name="skipB" size={22} /><span>{pbs.seekSmall}</span>{/if}</button>
       <button class="ic press seekic" onclick={() => seekBy(pbs.seekSmall)} aria-label="Forward {pbs.seekSmall} seconds">{#if numbered}<Icon name={"forward" + pbs.seekSmall} size={24} />{:else}<Icon name="skipF" size={22} /><span>{pbs.seekSmall}</span>{/if}</button>
+      {#if minimal}
+        <!-- minimal player: the progress bar lives in the controls bar -->
+        <div class="mini-scrub">
+          <span class="tabular t">{time(st.pos || 0)}</span>
+          {@render scrubber()}
+          <span class="tabular t">-{time(Math.max(0, (st.duration || 0) - (st.pos || 0)))}</span>
+        </div>
+      {:else}
       <div class="now">
         <span class="now-show">{pb.meta?.name ?? ""}</span>
         {#if epShort}<span class="now-ep">{epShort} {pb.episodeTitle}</span>{/if}
       </div>
+      {/if}
       {#if next}<button class="ic press" onclick={playNext} aria-label="Next episode" title="Next episode"><Icon name="next" size={20} /></button>{/if}
       <button class="ic press" class:on={menu === "volume"} onclick={(e) => openMenu("volume", e)} aria-label="Volume"><Icon name={st.muted || st.volume === 0 ? "mute" : "volume"} size={21} /></button>
       {#if native}<button class="ic press" class:on={menu === "tracks"} onclick={(e) => openMenu("tracks", e)} aria-label="Audio and subtitles"><Icon name="subtitles" size={21} /></button>{/if}
@@ -1673,5 +1690,23 @@
   }
   .bar {
     transition: opacity var(--t-med) ease, transform var(--t-med) var(--glide);
+  }
+  .mini-scrub {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 14px;
+  }
+  .mini-scrub .scrub {
+    flex: 1;
+  }
+  .mini-scrub .t {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: rgb(255 255 255 / 0.8);
+    min-width: 44px;
+    text-align: center;
   }
 </style>

@@ -149,6 +149,8 @@ impl Default for General {
 #[serde(default, rename_all = "camelCase")]
 pub struct Playback {
     pub autoplay_next: bool,
+    /// Minimal player: the progress bar sits inside the controls bar.
+    pub minimal_player: bool,
     /// Seconds before the end at which the "Up next" card appears when no
     /// credits segment is known.
     pub next_card_secs: u32,
@@ -189,6 +191,7 @@ impl Default for Playback {
     fn default() -> Self {
         Self {
             autoplay_next: true,
+            minimal_player: false,
             next_card_secs: 35,
             binge_same_source: true,
             auto_skip_intro: false,

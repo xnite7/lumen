@@ -137,8 +137,59 @@ pub fn playing(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f6
         "duration": duration,
     });
     let client = core.http.client();
+    let (u2, c2) = (url.clone(), code.clone());
     tauri::async_runtime::spawn(async move {
         let _ = client.put(format!("{url}/v1/presence")).header("authorization", code).json(&body).timeout(Duration::from_secs(8)).send().await;
+    });
+    if !gate && !paused {
+        send_frame(core, u2, c2);
+    }
+}
+
+static LAST_FRAME: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// About once a minute while playing: a small still of the current frame,
+/// so the couch row shows the scene instead of the poster.
+fn send_frame(core: &Core, url: String, code: String) {
+    {
+        let mut last = LAST_FRAME.lock();
+        if last.map_or(false, |t| t.elapsed() < Duration::from_secs(60)) {
+            return;
+        }
+        *last = Some(Instant::now());
+    }
+    let app = core.app.clone();
+    let client = core.http.client();
+    tauri::async_runtime::spawn(async move {
+        use tauri::Manager;
+        let path = std::env::temp_dir().join("couch-frame.jpg");
+        let _ = std::fs::remove_file(&path);
+        let player = app.state::<crate::state::AppState>().player.clone();
+        if player.command("snap", &json!({ "path": path.to_string_lossy() })).is_err() {
+            return;
+        }
+        let img = tauri::async_runtime::spawn_blocking(move || -> Option<String> {
+            // mpv writes the file a moment after the command returns
+            for _ in 0..20 {
+                if path.metadata().map_or(false, |m| m.len() > 0) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(150));
+            }
+            std::thread::sleep(Duration::from_millis(150));
+            let im = image::open(&path).ok()?.thumbnail(560, 315).to_rgb8();
+            let mut out = Vec::new();
+            image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 70).encode_image(&im).ok()?;
+            let _ = std::fs::remove_file(&path);
+            use base64::Engine;
+            Some(format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(out)))
+        })
+        .await
+        .ok()
+        .flatten();
+        if let Some(img) = img {
+            let _ = client.put(format!("{url}/v1/frame")).header("authorization", code).json(&json!({ "img": img })).timeout(Duration::from_secs(10)).send().await;
+        }
     });
 }
 
@@ -275,7 +326,7 @@ pub async fn answer(core: &Core, id: &str, accept: bool) -> AppResult<Value> {
 }
 
 pub async fn social(core: &Core, method: &str, path: &str, body: Option<Value>) -> AppResult<Value> {
-    let ok = ["/v1/favs", "/v1/activity"].contains(&path) || path.starts_with("/v1/reviews/") || path.starts_with("/v1/react/");
+    let ok = ["/v1/favs", "/v1/activity"].contains(&path) || path.starts_with("/v1/reviews/") || path.starts_with("/v1/react/") || path.starts_with("/v1/frame/");
     if !ok || path.contains("..") {
         return Err(AppError::msg("not a social path"));
     }

@@ -283,6 +283,8 @@ export class Crew {
   members = new Map<string, Member>();
   asks = new Map<string, Ask>();
   rooms = new Map<string, Room>();
+  /** a still of what each person's watching right now (JPEG data URL) */
+  frames = new Map<string, { img: string; at: number }>();
   storage: DurableObjectStorage;
   reactN = 0;
   constructor(state: DurableObjectState, _env: Env) {
@@ -358,6 +360,7 @@ export class Crew {
     for (const [k, m] of this.members) if (now - m.at > STALE_MS) this.members.delete(k);
     for (const [k, a] of this.asks) if (now - a.at > ASK_TTL) this.asks.delete(k);
     for (const [k, r] of this.rooms) if (now - r.at > ROOM_TTL) this.rooms.delete(k);
+    for (const k of this.frames.keys()) if (!this.members.get(k)?.watching) this.frames.delete(k);
   }
 
   /** watch together: asking, answering, and the host's playback for guests */
@@ -371,8 +374,9 @@ export class Crew {
     if (req.method === "POST" && p === "/v1/ask") {
       const from = who.id, to = okId(b?.to);
       if (!from || !to || from === to) return json({ error: "bad ask" }, 400);
-      const me = this.members.get(from), them = this.members.get(to);
-      if (!me) return json({ error: "you're not on the couch" }, 400);
+      // you don't have to be watching anything yourself to ask
+      const me = this.members.get(from) ?? { name: who.name, avatar: who.avatar };
+      const them = this.members.get(to);
       if (!them?.watching) return json({ error: "they're not watching anything right now" }, 409);
       for (const a of this.asks.values()) if (a.from === from && a.to === to && a.status === "pending") return json({ id: a.id });
       const id = crypto.randomUUID();
@@ -466,8 +470,25 @@ export class Crew {
     }
 
     if (req.method === "GET" && url.pathname === "/v1/presence") {
-      const members = [...this.members.values()].sort((a, b) => b.at - a.at);
+      const members = [...this.members.values()].sort((a, b) => b.at - a.at).map((m) => ({ ...m, frameAt: this.frames.get(m.id)?.at }));
       return json({ members });
+    }
+    const fm = url.pathname.match(/^\/v1\/frame(?:\/([A-Za-z0-9_-]{1,40}))?$/);
+    if (fm && req.method === "GET" && fm[1]) {
+      return json({ img: this.frames.get(fm[1])?.img ?? null });
+    }
+    if (fm && req.method === "PUT" && !fm[1]) {
+      let b: any;
+      try {
+        b = await req.json();
+      } catch {
+        return json({ error: "bad json" }, 400);
+      }
+      const img = str(b?.img, 200_000);
+      if (!img || !img.startsWith("data:image/jpeg;base64,")) return json({ error: "bad frame" }, 400);
+      if (!this.members.get(who.id)?.watching) return json({ ok: false });
+      this.frames.set(who.id, { img, at: Date.now() });
+      return json({ ok: true });
     }
 
     if (req.method === "PUT" && url.pathname === "/v1/presence") {
@@ -507,6 +528,7 @@ export class Crew {
       if (m[1] !== who.id) return json({ error: "not yours" }, 403);
       this.members.delete(m[1]);
       this.rooms.delete(m[1]);
+      this.frames.delete(m[1]);
       return json({ ok: true });
     }
 

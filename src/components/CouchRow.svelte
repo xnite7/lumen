@@ -2,7 +2,7 @@
   // "On the couch": what the crew is watching right now, as Apple TV-style
   // landscape cards. Only shows up when someone's actually there.
   import { img, type CrewMember } from "../lib/api";
-  import { crew } from "../lib/stores/crew.svelte";
+  import { crew, frames } from "../lib/stores/crew.svelte";
   import { go } from "../lib/router.svelte";
   import { tvFocus } from "../lib/tvfocus";
   import { together, askToJoin, cancelAsk } from "../lib/stores/together.svelte";
@@ -29,7 +29,13 @@
         {@const withThem = together.following?.host === m.id}
         <div class="card" class:asking role="group" aria-label="{m.name}: {w.title}">
           <div class="art" use:tvFocus={{ max: 5 }}>
-            {#if w.background || w.poster}<img src={img(w.background ?? w.poster, "w780")} alt="" loading="lazy" class:tall={!w.background} />{/if}
+            <!-- the scene they're on right now; the poster stands at the side -->
+            {#if frames[m.id]}
+              <img class="frame" src={frames[m.id].img} alt="" />
+            {:else if w.background || w.poster}
+              <img src={img(w.background ?? w.poster, "w780")} alt="" loading="lazy" class:tall={!w.background} />
+            {/if}
+            {#if w.poster}<img class="side-poster" src={img(w.poster, "w342")} alt="" loading="lazy" />{/if}
             <div class="shade"></div>
             <span class="who"><span class="av">{#if m.avatar}<img src={m.avatar} alt="" />{:else}{m.name.charAt(0).toUpperCase()}{/if}</span>{m.name}</span>
             {#if m.paused}<span class="paused">paused</span>{/if}
@@ -110,6 +116,7 @@
   }
   .hover {
     position: absolute;
+    z-index: 3;
     inset: 0;
     display: flex;
     align-items: center;
@@ -191,6 +198,25 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+  .art img.frame {
+    animation: frame-in 600ms ease both;
+  }
+  @keyframes frame-in {
+    from {
+      opacity: 0;
+    }
+  }
+  .art img.side-poster {
+    position: absolute;
+    right: 12px;
+    bottom: 18px;
+    width: 22%;
+    height: auto;
+    aspect-ratio: 2 / 3;
+    border-radius: 6px;
+    z-index: 2;
+    box-shadow: 0 8px 22px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.12);
   }
   .art img.tall {
     object-position: center 20%;

@@ -28,6 +28,7 @@ export const DEFAULT_SETTINGS = {
   },
   playback: {
     autoplayNext: true,
+    minimalPlayer: false,
     nextCardSecs: 35,
     bingeSameSource: true,
     autoSkipIntro: false,

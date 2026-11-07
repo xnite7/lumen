@@ -373,4 +373,6 @@ export interface CrewMember {
   pos: number;
   duration: number;
   at: number;
+  /** when the still of their current frame was taken, if there is one */
+  frameAt?: number;
 }
