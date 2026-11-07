@@ -91,14 +91,16 @@
     .mid {
       display: none;
     }
-    .trail {
-      padding-right: calc(var(--win-controls, 0px) + 52px);
-    }
-    /* line up with the top bar: same row, same height, where the logo sits */
+    /* its own row UNDER the top bar: up there the window-drag strip and the
+       logo sat on top of it and ate the clicks */
     .navbar {
-      height: calc(var(--safe-top) + 58px);
-      padding-top: calc(var(--safe-top) + 10px);
+      z-index: 61;
+      height: calc(var(--safe-top) + 120px);
+      padding-top: calc(var(--safe-top) + 68px);
       align-items: start;
+    }
+    .trail {
+      padding-right: 0 !important;
     }
     .lead {
       height: 48px;
