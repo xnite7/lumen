@@ -19,6 +19,7 @@
   import NavBar from "../ui/NavBar.svelte";
   import { share, haptic } from "../lib/native";
   import { ui } from "../lib/ui.svelte";
+  import { trimLogo } from "../lib/trimlogo";
 
   let { type, id, hint, preview }: { type: string; id: string; hint?: string; preview?: any } = $props();
 
@@ -65,8 +66,10 @@
     const len = m.type === "series" ? (n ? `${n} Season${n > 1 ? "s" : ""}` : "") : m.runtime || extra?.runtime ? runtime(m.runtime ?? extra?.runtime) : "";
     return [m.type === "series" ? "Show" : "Movie", (extra?.genres ?? m.genres)?.[0] ?? "", year(m), len, extra?.certification ?? ""].filter(Boolean).map(String);
   });
-  const backdrop = $derived(extra?.backdrop ?? m?.background ?? m?.poster);
-  const logo = $derived(extra?.logo ?? m?.logo);
+  // The art the page opened with (the billboard's / the poster's) stays put;
+  // later loads only fill in what was missing, so nothing swaps after a second.
+  const backdrop = $derived(preview?.background ?? m?.background ?? extra?.backdrop ?? m?.poster);
+  const logo = $derived(preview?.logo ?? m?.logo ?? extra?.logo);
   $effect(() => {
     if (backdrop && isActive(page)) setAmbient(backdrop);
   });
@@ -170,7 +173,7 @@
       <div class="lamp-glow" aria-hidden="true"></div>
       <div class="info" use:parallax={-0.3}>
         {#if logo}
-          <img class="logo" src={img(logo)} alt={m.name} />
+          <img class="logo" src={img(logo)} alt={m.name} use:trimLogo />
         {:else}
           <h1 class="large-title">{m.name}</h1>
         {/if}

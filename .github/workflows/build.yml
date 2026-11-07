@@ -65,6 +65,8 @@ jobs:
         # pwsh, not bash: Git Bash's own `link` would shadow MSVC's linker
         shell: pwsh
         run: |
+          # Git's usr\bin (with its own link.exe) is on PATH here too: drop it so rustc finds MSVC's
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch '\\Git\\usr\\bin' }) -join ';'
           $exe = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
           $env:COUCH_PAYLOAD = $exe.FullName
           cargo build --release --manifest-path setup/Cargo.toml

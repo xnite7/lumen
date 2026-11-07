@@ -20,6 +20,7 @@
   import JoinRequests from "./components/JoinRequests.svelte";
   import Gate from "./ui/Gate.svelte";
   import UpdateBanner from "./components/UpdateBanner.svelte";
+  import { installRails } from "./lib/rails";
   import { startUpdates } from "./lib/stores/updates.svelte";
   import { refreshCrew } from "./lib/stores/crew.svelte";
   import Player from "./views/Player.svelte";
@@ -43,6 +44,7 @@
       loadLibrary();
       startCrew();
       startUpdates();
+      installRails();
       if (!app.settings.general.onboarded) ui.onboarding = true;
       else checkGate();
     })();

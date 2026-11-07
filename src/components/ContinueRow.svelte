@@ -76,7 +76,7 @@
   <section class="row">
     <header><h2 class="title3">up next</h2></header>
     <div class="wrap">
-    <div class="rail scroll-x" bind:this={rail}>
+    <div class="rail scroll-x" bind:this={rail} data-own-arrows>
       {#each lib.cw as it (it._id)}
         {@const wide = art[it._id]}
         {@const p = it.state.duration ? it.state.timeOffset / it.state.duration : 0}

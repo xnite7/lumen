@@ -72,11 +72,13 @@ function withTransition(update: () => void, kind: "push" | "pop" | "tab") {
   const html = document.documentElement;
   html.classList.toggle("vt-back", kind === "pop");
   html.classList.toggle("vt-tab", kind === "tab");
+  // a tagged artwork is about to grow into the next page
+  html.classList.toggle("vt-art", kind !== "pop" && !!document.querySelector('[style*="hero-art"]'));
   const t = doc.startViewTransition(async () => {
     update();
     await tick();
   });
-  t.finished.finally(() => html.classList.remove("vt-back", "vt-tab"));
+  t.finished.finally(() => html.classList.remove("vt-back", "vt-tab", "vt-art"));
 }
 
 const isTab = (n: string): n is Tab => (tabs as readonly string[]).includes(n);

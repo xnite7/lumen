@@ -788,15 +788,49 @@ html.vt-tab::view-transition-new(root) {
 @keyframes vt-fade-in {
   from { opacity: 0; filter: brightness(0.3); transform: scale(1.005); }
 }
+/* opening a title: the art grows into the page on one smooth, settling
+   curve (no spring overshoot to snap back at the end), the old picture
+   dissolves early, and the page around it just fades in place instead of
+   sliding against the moving art */
 ::view-transition-group(hero-art) {
-  animation-duration: var(--t-slow);
-  animation-timing-function: var(--spring);
+  animation-duration: calc(560ms * var(--motion));
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+::view-transition-image-pair(hero-art) {
+  isolation: isolate;
 }
 ::view-transition-old(hero-art),
 ::view-transition-new(hero-art) {
   height: 100%;
   object-fit: cover;
   overflow: clip;
+  animation-duration: calc(560ms * var(--motion));
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+::view-transition-old(hero-art) {
+  animation-name: vt-art-out;
+}
+::view-transition-new(hero-art) {
+  animation-name: vt-art-in;
+}
+@keyframes vt-art-out {
+  60%, to { opacity: 0; }
+}
+@keyframes vt-art-in {
+  from { opacity: 0.35; }
+  40%, to { opacity: 1; }
+}
+html.vt-art::view-transition-old(root) {
+  animation: vt-fade-plain-out calc(300ms * var(--motion)) ease both;
+}
+html.vt-art::view-transition-new(root) {
+  animation: vt-fade-plain-in calc(420ms * var(--motion)) ease both;
+}
+@keyframes vt-fade-plain-out {
+  to { opacity: 0; }
+}
+@keyframes vt-fade-plain-in {
+  from { opacity: 0; }
 }
 ::view-transition-group(tabbar),
 ::view-transition-group(navbar),
@@ -859,4 +893,53 @@ html.playing .night {
 /* Windows/Linux: room for the minimise / maximise / close buttons */
 html.winctl {
   --win-controls: 138px;
+}
+
+/* sideways rows on a computer (lib/rails.ts) */
+.rail-arrow {
+  position: absolute;
+  z-index: 6;
+  width: max(34px, calc(var(--gutter) - 6px));
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgb(0 0 0 / 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms ease, background 200ms ease;
+}
+.rail-arrow.l {
+  left: 0;
+  border-radius: 0 10px 10px 0;
+}
+.rail-arrow.r {
+  right: 0;
+  border-radius: 10px 0 0 10px;
+}
+.rail-hover > .rail-arrow.can {
+  opacity: 0.6;
+  pointer-events: auto;
+}
+.rail-hover > .rail-arrow.can:hover {
+  opacity: 1;
+  background: rgb(0 0 0 / 0.75);
+}
+.rail-arrow svg {
+  transition: transform 200ms ease;
+}
+.rail-arrow:hover svg {
+  transform: scale(1.2);
+}
+.scroll-x {
+  cursor: grab;
+}
+.scroll-x.rail-dragging {
+  cursor: grabbing;
+  scroll-snap-type: none !important;
+  scroll-behavior: auto !important;
+}
+.scroll-x.rail-dragging * {
+  pointer-events: none;
 }

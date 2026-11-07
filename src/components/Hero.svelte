@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { trimLogo } from "../lib/trimlogo";
   import { api, img, type Meta } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
   import { setAmbient } from "../lib/stores/ambient.svelte";
@@ -93,12 +94,15 @@
     };
   });
 
-  // Scrolled away: the trailer stops (no sound from a hero you can't see).
+  // Scroll down off the billboard: the trailer pauses and the still comes
+  // back; scroll back up and it carries on where it was.
+  let below = $state(false);
   $effect(() => {
-    if (scrollY > 380 && trailer) {
-      trailer = null;
-      trailerOn = false;
-    }
+    if (!below && scrollY > 160) below = true;
+    else if (below && scrollY < 90) below = false;
+  });
+  $effect(() => {
+    if (trailer) trailerOn = !below && trailerOn;
   });
 
   // A poster preview takes the stage: the billboard stops on its picture,
@@ -178,7 +182,7 @@
           <div class="card-shade"></div>
           <div class="card-info">
             {#if m.logo}
-              <img class="card-logo" src={img(m.logo)} alt={m.name} />
+              <img class="card-logo" src={img(m.logo)} alt={m.name} use:trimLogo />
             {:else}
               <h2 class="title1">{m.name}</h2>
             {/if}
@@ -212,7 +216,7 @@
           <img class="bg" src={img(bg, "original")} alt="" />
         {/key}
         {#if trailer}
-          <YouTube id={trailer} {muted} fill onplaying={() => (trailerOn = true)} onended={() => setTimeout(next, 2500)} />
+          <YouTube id={trailer} {muted} fill paused={below} onplaying={() => (trailerOn = true)} onended={() => setTimeout(next, 2500)} />
         {/if}
       </div>
       <div class="hero-shade"></div>
@@ -224,7 +228,7 @@
       {#key cur.id}
         <div class="copy">
           {#if cur.logo}
-            <img class="logo" src={img(cur.logo)} alt={cur.name} />
+            <img class="logo" src={img(cur.logo)} alt={cur.name} use:trimLogo />
           {:else}
             <h1 class="xl-title">{cur.name}</h1>
           {/if}

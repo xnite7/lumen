@@ -106,7 +106,7 @@
       {/if}
     </header>
     <div class="wrap">
-      <div class="rail scroll-x" bind:this={rail}>
+      <div class="rail scroll-x" bind:this={rail} data-own-arrows>
         {#if status === "loading" || status === "idle"}
           {#each Array(8) as _}
             <div class="ghost skeleton"></div>

@@ -7,9 +7,10 @@
     loop = false,
     start = 0,
     fill = false,
+    paused = false,
     onended,
     onplaying,
-  }: { id: string; muted?: boolean; loop?: boolean; start?: number; fill?: boolean; onended?: () => void; onplaying?: () => void } = $props();
+  }: { id: string; muted?: boolean; loop?: boolean; start?: number; fill?: boolean; paused?: boolean; onended?: () => void; onplaying?: () => void } = $props();
 
   let frame: HTMLIFrameElement | undefined = $state();
   let ready = $state(false);
@@ -33,6 +34,18 @@
     }
   });
 
+  // Held: the picture fades out first (so YouTube's own pause screen is never
+  // seen), then the video stops; let go, it plays and fades back once moving.
+  let hold: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    if (!ready) return;
+    clearTimeout(hold);
+    if (paused) {
+      playing = false;
+      hold = setTimeout(() => post("pauseVideo"), 450);
+    } else post("playVideo");
+  });
+
   function onMessage(e: MessageEvent) {
     if (!frame || e.source !== frame.contentWindow) return;
     let d: any;
@@ -45,6 +58,7 @@
     const st = d?.info?.playerState ?? (d?.event === "onStateChange" ? d.info : undefined);
     if (st === 1) {
       ready = true;
+      if (paused) return;
       playing = true;
       onplaying?.();
     }
@@ -82,7 +96,7 @@
     inset: 0;
     overflow: hidden;
     opacity: 0;
-    transition: opacity 700ms var(--ease-out);
+    transition: opacity 420ms var(--ease-out);
     pointer-events: none;
   }
   .yt.playing {
@@ -103,11 +117,12 @@
     top: -70px;
     left: 0;
   }
-  /* zoom scope (2.39:1) trailers so they fill instead of letterboxing */
+  /* zoom scope (2.39:1) trailers so they fill instead of letterboxing;
+     pulled up further so the black bar at the top (the worst one) is gone */
   .fill iframe {
     width: 135%;
     left: -17.5%;
     height: calc(135% + 140px);
-    top: calc(-17.5% - 70px);
+    top: calc(-26% - 70px);
   }
 </style>
