@@ -27,7 +27,7 @@
           <div class="art" use:tvFocus={{ max: 5 }}>
             {#if w.background || w.poster}<img src={img(w.background ?? w.poster, "w780")} alt="" loading="lazy" class:tall={!w.background} />{/if}
             <div class="shade"></div>
-            <span class="who"><span class="av">{m.name.charAt(0).toUpperCase()}</span>{m.name}</span>
+            <span class="who"><span class="av">{#if m.avatar}<img src={m.avatar} alt="" />{:else}{m.name.charAt(0).toUpperCase()}{/if}</span>{m.name}</span>
             {#if m.paused}<span class="paused">paused</span>{/if}
             <div class="bar"><span style:width="{Math.max(4, pct(m) * 100)}%"></span></div>
           </div>
@@ -124,7 +124,13 @@
     font-size: var(--fs-foot);
     color: var(--text);
   }
+  .av img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
   .av {
+    overflow: hidden;
     width: 24px;
     height: 24px;
     border-radius: 50%;

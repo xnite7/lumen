@@ -1,10 +1,10 @@
 //! The midnite crew: "on the couch" presence shared with friends through a
 //! tiny Cloudflare Worker (see /worker).
 //!
-//! Same rule as Discord: only titles Simkl knows are ever shared, using
-//! Simkl's own title and poster -- never a file name. Sharing is opt-in
-//! (Settings → The crew), and the server forgets you two minutes after the
-//! last heartbeat, so closing the app is enough to disappear.
+//! Always on: what you're playing (Simkl's title and poster when it knows
+//! it, otherwise the title's own metadata -- never a file name), under your
+//! Discord name and avatar. The server forgets you two minutes after the last
+//! heartbeat, so closing the app is enough to disappear.
 
 use crate::core::Core;
 use crate::discord::Known;
@@ -39,26 +39,21 @@ fn server(core: &Core) -> Option<(String, String)> {
     (!url.is_empty()).then_some((url, code))
 }
 
-fn name(core: &Core) -> String {
-    let n = core.settings.read().integrations.crew_name.trim().to_string();
-    if !n.is_empty() {
-        return n;
-    }
-    if let Some(n) = core.db.get::<Value>("discord_user").and_then(|u| u.get("name").and_then(|v| v.as_str()).map(|s| s.to_string())) {
-        return n;
-    }
-    core.db
-        .get::<Value>("stremio_user")
-        .and_then(|u| u.get("fullname").or_else(|| u.get("email")).and_then(|v| v.as_str()).map(|s| s.split('@').next().unwrap_or(s).to_string()))
-        .unwrap_or_else(|| "someone".into())
+/// Your Discord name and avatar are who you are on the couch.
+fn who(core: &Core) -> (String, Option<String>) {
+    let d = core.db.get::<Value>("discord_user");
+    let name = d
+        .as_ref()
+        .and_then(|u| u.get("name").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| "someone".into());
+    let avatar = d.as_ref().and_then(|u| u.get("avatar").and_then(|v| v.as_str()).map(|s| s.to_string()));
+    (name, avatar)
 }
 
 /// Called from the player tracker on every tick: sends when something
 /// changed, otherwise a heartbeat every 45 s.
 pub fn playing(core: &Core, known: &Known, meta: &Value, pos: f64, duration: f64, paused: bool) {
-    if !core.settings.read().integrations.crew_share {
-        return;
-    }
     let Some((url, code)) = server(core) else { return };
     let key = format!("{}|{}|{}", known.title, known.episode.clone().unwrap_or_default(), paused);
     {
@@ -70,9 +65,11 @@ pub fn playing(core: &Core, known: &Known, meta: &Value, pos: f64, duration: f64
         }
         *last = Some(Sent { at: Instant::now(), key });
     }
+    let (name, avatar) = who(core);
     let body = json!({
         "id": member_id(core),
-        "name": name(core),
+        "name": name,
+        "avatar": avatar,
         "watching": {
             "title": known.title,
             "year": known.year,

@@ -107,7 +107,7 @@ export const DEFAULT_SETTINGS = {
     discordAppId: "1568062298721886290",
     crewUrl: "",
     crewName: "",
-    crewShare: false,
+    crewShare: true,
   },
   hue: {
     enabled: false,

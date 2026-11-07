@@ -77,14 +77,6 @@
     {/if}
 
     <div class="groups">
-      <div class="group">
-        <Cell label="Share what I'm watching" hint="Only titles Simkl knows, with Simkl's own title and poster. Needs Simkl connected.">
-          <Controls kind="switch" bind:value={s.integrations.crewShare} onchange={saveSettings} />
-        </Cell>
-        <Cell label="Name on the couch" hint="What your friends see.">
-          <input class="field name" bind:value={s.integrations.crewName} onchange={saveSettings} placeholder={app.secrets.discordUser?.name ?? "you"} />
-        </Cell>
-      </div>
       {#if invite}
         <div class="group">
           <Cell label="Invite link" hint="Anyone with it can see who's on the couch. Share it in the server, not in public.">

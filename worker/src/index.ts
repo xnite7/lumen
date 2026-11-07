@@ -23,6 +23,7 @@ const MAX_MEMBERS = 64;
 type Member = {
   id: string;
   name: string;
+  avatar?: string;
   watching: Record<string, unknown> | null;
   paused: boolean;
   pos: number;
@@ -109,6 +110,7 @@ export class Crew {
       this.members.set(id, {
         id,
         name: str(b.name, 40) || "someone",
+        avatar: /^https:\/\/cdn\.discordapp\.com\//.test(str(b.avatar, 300)) ? str(b.avatar, 300) : undefined,
         watching: w && {
           title: str(w.title, 200),
           year: typeof w.year === "number" ? w.year : undefined,

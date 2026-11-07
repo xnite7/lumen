@@ -206,7 +206,7 @@
           </div>
         {:else if section === "integrations"}
           <div class="group">
-            <Cell label="Discord RPC" hint="Show what you're watching on your Discord profile. Only titles Simkl knows, with Simkl's own name and poster."><Controls kind="switch" bind:value={s.integrations.discordPresence} onchange={changed} /></Cell>
+            <Cell label="Discord RPC" hint="Show what you're watching on your Discord profile."><Controls kind="switch" bind:value={s.integrations.discordPresence} onchange={changed} /></Cell>
           </div>
         {:else if section === "hue"}
           <div class="group">

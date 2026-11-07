@@ -58,6 +58,7 @@ impl Settings {
         i.kinocheck_trailers = true;
         i.tidb_enabled = true;
         i.ai_enabled = true;
+        i.crew_share = true;
         self.home.hidden_rows.clear();
         self.home.row_order.clear();
     }

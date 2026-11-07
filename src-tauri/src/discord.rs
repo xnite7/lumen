@@ -27,9 +27,45 @@ pub struct Known {
     pub episode: Option<String>,
 }
 
+/// What to show for a session: Simkl's title and poster when Simkl knows it,
+/// otherwise the title's own metadata (name, year, poster).
+pub async fn identify(core: &Core, meta: &Value, video_id: &str, episode_title: Option<&str>, ident: Option<&Value>) -> Option<Known> {
+    if let Some(k) = from_simkl(core, meta, video_id, episode_title, ident).await {
+        return Some(k);
+    }
+    from_meta(meta, video_id, episode_title)
+}
+
+fn from_meta(meta: &Value, video_id: &str, episode_title: Option<&str>) -> Option<Known> {
+    let title = meta.get("name").and_then(|t| t.as_str()).filter(|t| !t.trim().is_empty())?.to_string();
+    let parts: Vec<&str> = video_id.split(':').collect();
+    let series = meta.get("type").and_then(|t| t.as_str()) == Some("series");
+    let episode = if series && parts.len() >= 3 {
+        let (s, e) = (parts[parts.len() - 2], parts[parts.len() - 1]);
+        Some(match episode_title.filter(|t| !t.trim().is_empty() && !t.starts_with("Episode ")) {
+            Some(t) => format!("S{s} · E{e} · {t}"),
+            None => format!("S{s} · E{e}"),
+        })
+    } else {
+        None
+    };
+    let year = meta
+        .get("year")
+        .and_then(|y| y.as_u64())
+        .or_else(|| meta.get("releaseInfo").and_then(|y| y.as_str()).and_then(|y| y.get(0..4)).and_then(|y| y.parse().ok()));
+    let id = parts.first().copied().unwrap_or("");
+    Some(Known {
+        title,
+        year,
+        poster: meta.get("poster").and_then(|p| p.as_str()).filter(|p| p.starts_with("http")).map(|p| p.to_string()),
+        link: id.starts_with("tt").then(|| format!("https://www.imdb.com/title/{id}/")),
+        episode,
+    })
+}
+
 /// Look a session up on Simkl. `ident` is the /search/file result for raw
 /// links (already Simkl data).
-pub async fn identify(core: &Core, meta: &Value, video_id: &str, episode_title: Option<&str>, ident: Option<&Value>) -> Option<Known> {
+async fn from_simkl(core: &Core, meta: &Value, video_id: &str, episode_title: Option<&str>, ident: Option<&Value>) -> Option<Known> {
     use crate::integrations::simkl;
     let kind = meta.get("type").and_then(|t| t.as_str()).unwrap_or("movie");
     let parts: Vec<&str> = video_id.split(':').collect();
@@ -52,13 +88,13 @@ pub async fn identify(core: &Core, meta: &Value, video_id: &str, episode_title: 
         } else if id == "tmdb" && parts.len() >= 2 {
             format!("tmdb={}&type={}", parts[1], if kind == "series" { "show" } else { "movie" })
         } else {
-            return None; // not a catalogued id: stay invisible
+            return None; // not a catalogued id: the meta fallback takes it
         };
         (q, s, e)
     };
 
     if !simkl::connected(core) {
-        return None; // signed out of Simkl: nothing to vouch for the title
+        return None; // not signed in to Simkl: the meta fallback takes it
     }
     let v = simkl::get(core, &format!("/search/id?{query}")).await.ok()?;
     let hit = v.as_array().and_then(|a| a.first()).or_else(|| v.as_object().map(|_| &v))?;

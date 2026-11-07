@@ -328,6 +328,7 @@ export function uid() {
 export interface CrewMember {
   id: string;
   name: string;
+  avatar?: string;
   watching: { title?: string; year?: number; poster?: string; background?: string; episode?: string; link?: string; metaId?: string; type?: string } | null;
   paused: boolean;
   pos: number;
