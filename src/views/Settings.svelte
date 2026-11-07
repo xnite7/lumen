@@ -100,6 +100,11 @@
   function toggleLang(list: string[], l: string) {
     return list.includes(l) ? list.filter((x) => x !== l) : [...list, l];
   }
+  // what Discord said last time couch tried (open? refused?)
+  let rpcStatus = $state("");
+  $effect(() => {
+    api.discordRpcStatus().then((r) => (rpcStatus = r)).catch(() => {});
+  });
 </script>
 
 <NavBar title={meta.label} />
@@ -208,7 +213,7 @@
           </div>
         {:else if section === "integrations"}
           <div class="group">
-            <Cell label="Discord RPC" hint="Show what you're watching on your Discord profile."><Controls kind="switch" bind:value={s.integrations.discordPresence} onchange={changed} /></Cell>
+            <Cell label="Discord RPC" hint={"Show what you're watching on your Discord profile." + (rpcStatus ? ` · ${rpcStatus}` : "")}><Controls kind="switch" bind:value={s.integrations.discordPresence} onchange={changed} /></Cell>
           </div>
         {:else if section === "hue"}
           <div class="group">

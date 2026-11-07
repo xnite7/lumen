@@ -184,15 +184,31 @@ mod imp {
                 }
                 let mut c = DiscordIpcClient::new(&app_id);
                 if c.connect().is_err() {
+                    *STATUS.lock() = "Discord isn't open".into();
                     continue; // Discord not running: try again later
                 }
                 client = Some((app_id.clone(), c));
             }
             let Some((_, c)) = client.as_mut() else { continue };
+            // Discord answers every command: read the answer (an unread pipe
+            // backs up and Discord drops us) and see whether it said no.
             let ok = match &msg {
-                Msg::Clear => c.clear_activity().is_ok(),
-                Msg::Show { known, pos, duration, paused } => c.set_activity(activity(known, *pos, *duration, *paused)).is_ok(),
+                Msg::Clear => c.clear_activity().is_ok() && answer(c).is_ok(),
+                Msg::Show { known, pos, duration, paused } => {
+                    match c.set_activity(activity(known, *pos, *duration, *paused, true)).map_err(|e| e.to_string()).and_then(|_| answer(c)) {
+                        Ok(()) => true,
+                        // rejected: the plain version (no links, no extras)
+                        Err(e) if e.starts_with("discord: ") => {
+                            *STATUS.lock() = e;
+                            c.set_activity(activity(known, *pos, *duration, *paused, false)).is_ok() && answer(c).is_ok()
+                        }
+                        Err(_) => false,
+                    }
+                }
             };
+            if ok && !STATUS.lock().starts_with("discord: ") {
+                *STATUS.lock() = "showing on your profile".into();
+            }
             if ok {
                 pending = None;
             } else {
@@ -202,18 +218,28 @@ mod imp {
         }
     }
 
-    fn activity(k: &Known, pos: f64, duration: f64, paused: bool) -> Activity<'_> {
+    /// What happened last (for Settings): connected or not, and any refusal.
+    pub static STATUS: parking_lot::Mutex<String> = parking_lot::Mutex::new(String::new());
+
+    fn answer(c: &mut DiscordIpcClient) -> Result<(), String> {
+        let (_, v) = c.recv().map_err(|e| e.to_string())?;
+        if v.get("evt").and_then(|e| e.as_str()) == Some("ERROR") {
+            let m = v.pointer("/data/message").and_then(|m| m.as_str()).unwrap_or("refused");
+            return Err(format!("discord: {m}"));
+        }
+        Ok(())
+    }
+
+    fn activity(k: &Known, pos: f64, duration: f64, paused: bool, rich: bool) -> Activity<'_> {
         let year = k.year.map(|y| y.to_string());
         let what = k.episode.clone().or(year).unwrap_or_else(|| "a film".into());
         let state = if paused { format!("on the couch · paused · {what}") } else { format!("on the couch · {what}") };
-        let mut a = Activity::new()
-            .activity_type(ActivityType::Watching)
-            .status_display_type(StatusDisplayType::Details)
-            .name("couch")
-            .details(k.title.clone())
-            .state(state);
-        if let Some(l) = &k.link {
-            a = a.details_url(l.clone()).buttons(vec![Button::new("View on Simkl", l.clone())]);
+        let mut a = Activity::new().activity_type(ActivityType::Watching).details(k.title.clone()).state(state);
+        if rich {
+            a = a.status_display_type(StatusDisplayType::Details);
+            if let Some(l) = &k.link {
+                a = a.details_url(l.clone()).buttons(vec![Button::new("View on Simkl", l.clone())]);
+            }
         }
         let logo = LOGO.lock().clone();
         let mut assets = Assets::new()
@@ -222,7 +248,7 @@ mod imp {
             .small_text("midnite™ couch");
         if let Some(p) = &k.poster {
             assets = assets.large_image(p.clone());
-            if let Some(l) = &k.link {
+            if let (true, Some(l)) = (rich, &k.link) {
                 assets = assets.large_url(l.clone());
             }
         }
@@ -233,6 +259,16 @@ mod imp {
         }
         a
     }
+}
+
+/// How Discord RPC is doing, for Settings.
+pub fn status() -> String {
+    #[cfg(desktop)]
+    {
+        return imp::STATUS.lock().clone();
+    }
+    #[cfg(not(desktop))]
+    String::new()
 }
 
 /// Tell Discord. A no-op when presence is off, no app id is set, or on iOS.

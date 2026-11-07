@@ -737,6 +737,11 @@ pub fn scene_color(s: S<'_>) -> Option<String> {
     }
 }
 
+#[tauri::command]
+pub fn discord_rpc_status() -> String {
+    crate::discord::status()
+}
+
 /// Who you are on the couch (your Discord name and picture).
 #[tauri::command]
 pub fn discord_me(s: S<'_>) -> Value {

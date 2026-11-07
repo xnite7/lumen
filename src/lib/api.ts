@@ -297,6 +297,7 @@ export const api = {
   updateInstall: () => invoke<void>("update_install"),
   episodeInfo: (id: string) => invoke<Record<string, { runtime?: number | null; finale?: number | null }>>("simkl_episode_info", { id }),
   sceneColor: () => invoke<string | null>("scene_color"),
+  discordRpcStatus: () => invoke<string>("discord_rpc_status"),
   discordMe: () => invoke<{ id: string; name: string; avatar?: string } | null>("discord_me"),
   discordMembership: () => invoke<"member" | "outsider" | "signin" | "unknown">("discord_membership"),
   netSpeed: (fresh = false) => invoke<number>("net_speed", { fresh }),
