@@ -18,6 +18,8 @@
   import PreviewCard from "./components/PreviewCard.svelte";
   import Toasts from "./components/Toasts.svelte";
   import JoinRequests from "./components/JoinRequests.svelte";
+  import RateSheet from "./components/RateSheet.svelte";
+  import { finish } from "./lib/stores/social.svelte";
   import Gate from "./ui/Gate.svelte";
   import UpdateBanner from "./components/UpdateBanner.svelte";
   import { installRails } from "./lib/rails";
@@ -113,6 +115,12 @@
           toast("you're on the couch.", "ok");
         })
         .catch((e) => toast(String(e), "warn"));
+      return;
+    }
+    // a shared title: couch://title/<type>/<id>
+    const t = u.match(/^couch:\/\/title\/(movie|series)\/([^/?#]+)/);
+    if (t) {
+      go({ name: "detail", type: t[1], id: decodeURIComponent(t[2]) });
       return;
     }
     if (u.startsWith("couch://crew")) {
@@ -230,6 +238,11 @@
   {#if gate && !ui.onboarding}<Gate state={gate} recheck={checkGate} />{/if}
   <Toasts />
   <JoinRequests />
+  {#if finish.meta}
+    {#key finish.meta.id}
+      <RateSheet open={true} meta={finish.meta} finished onclose={() => (finish.meta = null)} />
+    {/key}
+  {/if}
   <UpdateBanner />
 {/if}
 {#if splashing}<Splash ondone={() => (splashing = false)} />{/if}

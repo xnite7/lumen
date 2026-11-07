@@ -610,12 +610,127 @@ pub async fn simkl_device_poll(s: S<'_>) -> AppResult<bool> {
 
 #[tauri::command]
 pub async fn simkl_rate(s: S<'_>, kind: String, id: String, rating: Option<u8>) -> AppResult<()> {
-    simkl::rate(&s.core, &kind, &id, rating).await
+    // kept here too, so ratings work (and show in My Lists) without Simkl
+    let key = id.split(':').next().unwrap_or(&id).to_string();
+    let mut all = s.core.db.get::<serde_json::Map<String, Value>>("local_ratings").unwrap_or_default();
+    match rating {
+        Some(r) => all.insert(key, json!({ "rating": r, "at": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) })),
+        None => all.remove(&key),
+    };
+    let _ = s.core.db.set("local_ratings", &all);
+    if simkl::connected(&s.core) {
+        simkl::rate(&s.core, &kind, &id, rating).await?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn local_ratings(s: S<'_>) -> Value {
+    s.core.db.get::<Value>("local_ratings").unwrap_or_else(|| json!({}))
 }
 
 #[tauri::command]
 pub async fn simkl_item_status(s: S<'_>, kind: String, id: String) -> AppResult<Value> {
-    simkl::status_of(&s.core, &kind, &id).await
+    let v = simkl::status_of(&s.core, &kind, &id).await?;
+    if v.is_null() {
+        let key = id.split(':').next().unwrap_or(&id);
+        let r = s.core.db.get::<Value>("local_ratings").and_then(|m| m.pointer(&format!("/{key}/rating")).cloned());
+        return Ok(json!({ "watched": null, "rating": r }));
+    }
+    Ok(v)
+}
+
+/// My Lists from Simkl (Plan to Watch / Watching / Completed, both kinds),
+/// with your rating and dates on each. `simkl: false` = build it locally.
+#[tauri::command]
+pub fn my_lists(s: S<'_>) -> Value {
+    let core = &s.core;
+    if !simkl::connected(core) || !crate::integrations::simkl_sync::has_data(core) {
+        return json!({ "simkl": false });
+    }
+    let rows = |statuses: &[&str]| -> Vec<Value> {
+        let mut out = vec![];
+        for st in statuses {
+            for kind in ["movie", "series"] {
+                for e in crate::integrations::simkl_sync::list(core, st, kind) {
+                    if let Some(mut m) = simkl::to_meta(&e, None) {
+                        m["watchedAt"] = e.get("last_watched_at").cloned().unwrap_or(Value::Null);
+                        m["addedAt"] = e.get("added_to_watchlist_at").cloned().unwrap_or(Value::Null);
+                        m["ratedAt"] = e.get("user_rated_at").cloned().unwrap_or(Value::Null);
+                        m["episodes"] = json!([e.get("watched_episodes_count"), e.get("total_episodes_count")]);
+                        out.push(m);
+                    }
+                }
+            }
+        }
+        out
+    };
+    json!({
+        "simkl": true,
+        "paid": simkl::paid(core),
+        "plan": rows(&["plantowatch"]),
+        "watching": rows(&["watching", "hold"]),
+        "completed": rows(&["completed"]),
+    })
+}
+
+/// Your custom lists on Simkl (PRO / VIP; read-only in Simkl's API).
+#[tauri::command]
+pub async fn simkl_custom_lists(s: S<'_>) -> AppResult<Value> {
+    let core = &s.core;
+    if !simkl::paid(core) {
+        return Ok(json!({ "lists": [], "paid": false }));
+    }
+    let uid = core
+        .db
+        .get::<Value>("simkl_user")
+        .and_then(|u| u.pointer("/account/id").map(|v| v.to_string().trim_matches('"').to_string()))
+        .ok_or_else(|| crate::error::AppError::msg("Simkl account not loaded yet"))?;
+    let v = simkl::get(core, &format!("/lists/user/{uid}?limit=100&sort=updated")).await?;
+    if v.get("error").is_some() {
+        return Ok(json!({ "lists": [], "paid": false }));
+    }
+    Ok(json!({ "lists": v.get("lists").cloned().unwrap_or(json!([])), "paid": true }))
+}
+
+#[tauri::command]
+pub async fn simkl_list_items(s: S<'_>, id: u64) -> AppResult<Vec<Value>> {
+    let v = simkl::get(&s.core, &format!("/lists/{id}?limit=300")).await?;
+    Ok(v.get("items").and_then(|i| i.as_array()).into_iter().flatten().filter_map(|e| simkl::to_meta(e, None)).collect())
+}
+
+/// Favourites, reviews, the crew's activity and watch-together reactions
+/// live on the crew server (Simkl's API has none of them).
+#[tauri::command]
+pub async fn crew_social(s: S<'_>, method: String, path: String, body: Option<Value>) -> AppResult<Value> {
+    crate::crew::social(&s.core, &method, &path, body).await
+}
+
+/// Episode runtimes and finale markers from Simkl (empty without it).
+#[tauri::command]
+pub async fn simkl_episode_info(s: S<'_>, id: String) -> AppResult<Value> {
+    let imdb = id.split(':').next().unwrap_or(&id);
+    if !imdb.starts_with("tt") || simkl::client_id(&s.core).is_none() {
+        return Ok(json!({}));
+    }
+    Ok(simkl::episode_info(&s.core, imdb).await)
+}
+
+/// Who you are on the couch (your Discord name and picture).
+#[tauri::command]
+pub fn discord_me(s: S<'_>) -> Value {
+    s.core.db.get::<Value>("discord_user").unwrap_or(Value::Null)
+}
+
+#[tauri::command]
+pub fn share_link(kind: String, id: String, name: String) -> String {
+    format!(
+        "{}/t/{}/{}?n={}",
+        crate::crew::CREW_URL.trim_end_matches('/'),
+        if kind == "series" { "series" } else { "movie" },
+        urlencoding::encode(&id),
+        urlencoding::encode(&name)
+    )
 }
 
 // ------------------------------------------------------------------- AI

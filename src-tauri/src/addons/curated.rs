@@ -163,6 +163,11 @@ pub async fn catalog(core: &Core, id: &str, kind: &str, seed: Option<&str>, skip
         "couch-oscar" if skip == 0 => by_titles(core, "movie", OSCAR).await,
         "couch-morelike" if skip == 0 => {
             let Some(imdb) = seed else { return Ok(vec![]) };
+            // Simkl's "watched this, also watched" first; TMDB when it's thin
+            let s = not_seen(simkl::similar(core, imdb, kind).await, &seen);
+            if s.len() >= 8 {
+                return Ok(s);
+            }
             let Ok(Some(tid)) = tmdb::tmdb_id_for_imdb(core, imdb, tk).await else { return Ok(vec![]) };
             let rows = tmdb::get(core, &format!("/{tk}/{tid}/recommendations"), "", DAY)
                 .await

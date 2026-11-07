@@ -1,8 +1,11 @@
 // midnite™ couch crew server: presence + watch together (ask / answer / room).
 //
-// One Durable Object holds who's on the couch right now, in memory only:
-// nothing is written to disk, and anyone who stops sending heartbeats is
-// forgotten after two minutes.
+// One Durable Object holds who's on the couch right now, in memory only
+// (anyone who stops sending heartbeats is forgotten after two minutes).
+// The lasting part, kept in its storage: favourites, the crew's reviews and
+// ratings, and the activity feed (Simkl's API has none of these).
+//
+// Share links: /t/<type>/<id> opens the title in the app (couch://title/...).
 //
 // Who may use it: members of the midnite Discord server. The app sends its
 // Discord access token to /v1/auth once; this checks the server list with
@@ -180,7 +183,13 @@ type Member = {
 /** "can I join your couch?" */
 type Ask = { id: string; from: string; fromName: string; fromAvatar?: string; to: string; at: number; status: "pending" | "accepted" | "declined" };
 /** a host's playback, followed by the guests they let in */
-type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; pos: number; paused: boolean; at: number; guests: string[] };
+type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[] };
+type React = { n: number; who: string; name: string; avatar?: string; emoji: string; at: number };
+/** one line of the crew's activity: a review, a rating, or "finished X" */
+type Act = { id: string; who: string; name: string; avatar?: string; kind: "review" | "rating" | "finished"; title: { id: string; type: string; name: string; poster?: string; background?: string; logo?: string }; rating?: number; text?: string; at: number };
+type Fav = { id: string; type: string; name: string; poster?: string; at: number };
+const FEED_MAX = 150;
+const REACTIONS = ["😂", "😭", "😱", "🔥", "❤️", "👀", "💀", "🍿", "👏", "🤯"];
 const ASK_TTL = 120_000;
 const ROOM_TTL = 90_000;
 
@@ -205,6 +214,8 @@ export default {
     }
     if (url.pathname === "/") return new Response("on the couch.\n");
     if (url.pathname === "/join") return joinPage(url);
+    const share = url.pathname.match(/^\/t\/(movie|series)\/([A-Za-z0-9:._-]{1,100})$/);
+    if (share) return titlePage(share[1], share[2], url.searchParams.get("n") ?? "");
     if (!url.pathname.startsWith("/v1/")) return json({ error: "not here" }, 404);
     if (req.method === "POST" && url.pathname === "/v1/auth") return auth(req, env);
     if (req.method === "POST" && url.pathname === "/v1/discord/exchange") return discordToken(req, env, "exchange");
@@ -219,6 +230,35 @@ export default {
     return stub.fetch(fwd);
   },
 };
+
+// A shared title: opens couch right on its page (or says how to get couch).
+function titlePage(type: string, id: string, name: string) {
+  const deep = `couch://title/${type}/${encodeURIComponent(id)}`;
+  const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  const imdb = id.match(/^tt\d+/)?.[0];
+  const art = imdb ? `https://images.metahub.space/background/medium/${imdb}/img` : "";
+  const logoArt = imdb ? `https://images.metahub.space/logo/medium/${imdb}/img` : "";
+  const nm = name.slice(0, 120);
+  const html = `<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>${esc(nm || "midnite™ couch")}</title>
+<meta property="og:title" content="${esc(nm ? nm + " · on the couch" : "midnite™ couch")}">
+${art ? `<meta property="og:image" content="${esc(art)}"><meta name="twitter:card" content="summary_large_image">` : ""}
+<meta name="theme-color" content="#E0309A">
+<style>
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:#000 center/cover no-repeat;color:#F4EAF0;font:16px ui-monospace,SFMono-Regular,Consolas,monospace;text-align:center}
+body::before{content:"";position:fixed;inset:0;background:linear-gradient(transparent,#000 75%)}
+div{position:relative;padding:24px}
+.l{max-width:min(420px,80vw);max-height:140px;object-fit:contain}
+h1{font:800 34px system-ui,sans-serif;letter-spacing:-.03em;margin:0}
+a{display:inline-block;margin-top:26px;padding:13px 30px;border-radius:999px;background:#F4EAF0;color:#000;text-decoration:none;font:700 15px system-ui,sans-serif}
+p{color:#9C8A96;margin:18px 0 0}
+</style>
+<body style="${art ? `background-image:url('${esc(art)}')` : ""}">
+<div>${logoArt ? `<img class=l src="${esc(logoArt)}" alt="${esc(nm)}" onerror="this.outerHTML='<h1>${esc(esc(nm))}</h1>'">` : `<h1>${esc(nm)}</h1>`}
+<br><a href="${esc(deep)}">open in couch</a><p>no couch yet? ask in the midnite server.</p></div>
+<script>setTimeout(function(){location.href=${JSON.stringify(deep)}},350)</script>`;
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300", "referrer-policy": "no-referrer" } });
+}
 
 // The invite link friends tap in Discord: it hands the crew to the app.
 function joinPage(url: URL) {
@@ -243,7 +283,75 @@ export class Crew {
   members = new Map<string, Member>();
   asks = new Map<string, Ask>();
   rooms = new Map<string, Room>();
-  constructor(_state: DurableObjectState, _env: Env) {}
+  storage: DurableObjectStorage;
+  reactN = 0;
+  constructor(state: DurableObjectState, _env: Env) {
+    this.storage = state.storage;
+  }
+
+  /** the lasting part (kept in the Durable Object's storage): favourites,
+   *  reviews and ratings, and the crew's activity feed */
+  async social(req: Request, url: URL, b: any, who: Who): Promise<Response | null> {
+    const p = url.pathname;
+    const title = (t: any) => {
+      const id = str(t?.id, 100);
+      if (!id || !/^[A-Za-z0-9:._-]+$/.test(id)) return null;
+      return { id, type: str(t?.type, 20) ?? "movie", name: str(t?.name, 200) ?? id, poster: str(t?.poster, 500), background: str(t?.background, 500), logo: str(t?.logo, 500) };
+    };
+    if (p === "/v1/favs") {
+      const key = `favs:${who.id}`;
+      if (req.method === "GET") return json({ favs: (await this.storage.get<Fav[]>(key)) ?? [] });
+      if (req.method === "PUT") {
+        const favs: Fav[] = [];
+        for (const f of Array.isArray(b?.favs) ? b.favs.slice(0, 500) : []) {
+          const t = title(f);
+          if (t) favs.push({ id: t.id, type: t.type, name: t.name, poster: t.poster, at: num(f.at) || Date.now() });
+        }
+        await this.storage.put(key, favs);
+        return json({ ok: true });
+      }
+    }
+    if (p === "/v1/activity") {
+      if (req.method === "GET") return json({ feed: ((await this.storage.get<Act[]>("feed")) ?? []).slice(0, 60) });
+      if (req.method === "POST") {
+        const t = title(b?.title);
+        const kind = b?.kind === "review" || b?.kind === "rating" || b?.kind === "finished" ? b.kind : null;
+        if (!t || !kind) return json({ error: "bad activity" }, 400);
+        const rating = Math.max(0, Math.min(10, Math.round(num(b?.rating)))) || undefined;
+        const text = str(b?.text, 1200)?.trim() || undefined;
+        if (kind === "review" && !text && !rating) return json({ error: "empty review" }, 400);
+        const a: Act = { id: crypto.randomUUID(), who: who.id, name: who.name, avatar: who.avatar, kind: text ? "review" : kind, title: t, rating, text, at: Date.now() };
+        let feed = (await this.storage.get<Act[]>("feed")) ?? [];
+        // one line per person per title: a newer word replaces the older one
+        // (a bare "finished" doesn't replace a review)
+        const old = feed.find((x) => x.who === who.id && x.title.id === t.id);
+        if (old && kind === "finished" && old.kind !== "finished") return json({ ok: true });
+        feed = feed.filter((x) => !(x.who === who.id && x.title.id === t.id));
+        if (kind === "finished" && old?.rating) a.rating = old.rating;
+        feed.unshift(a);
+        await this.storage.put("feed", feed.slice(0, FEED_MAX));
+        if (a.kind !== "finished") {
+          const rk = `rev:${t.id}`;
+          const revs = ((await this.storage.get<Act[]>(rk)) ?? []).filter((x) => x.who !== who.id);
+          revs.unshift(a);
+          await this.storage.put(rk, revs.slice(0, 200));
+        }
+        return json({ ok: true, id: a.id });
+      }
+    }
+    const m = p.match(/^\/v1\/reviews\/([A-Za-z0-9:._-]{1,100})$/);
+    if (m) {
+      const rk = `rev:${m[1]}`;
+      if (req.method === "GET") return json({ reviews: (await this.storage.get<Act[]>(rk)) ?? [] });
+      if (req.method === "DELETE") {
+        await this.storage.put(rk, ((await this.storage.get<Act[]>(rk)) ?? []).filter((x) => x.who !== who.id));
+        const feed = (await this.storage.get<Act[]>("feed")) ?? [];
+        await this.storage.put("feed", feed.filter((x) => !(x.who === who.id && x.title.id === m[1] && x.kind !== "finished")));
+        return json({ ok: true });
+      }
+    }
+    return null;
+  }
 
   sweep() {
     const now = Date.now();
@@ -308,6 +416,25 @@ export class Crew {
         at: Date.now(),
       });
       return json({ guests: r.guests.map((g) => this.members.get(g)?.name ?? "someone") });
+    }
+    // reactions in watch together: anyone in the room sends, everyone polls
+    m = p.match(/^\/v1\/react\/([A-Za-z0-9_-]{1,40})$/);
+    if (m) {
+      const r = this.rooms.get(m[1]);
+      const inIt = r && (r.host === who.id || r.guests.includes(who.id));
+      if (!r || !inIt) return json({ reactions: [] });
+      const now = Date.now();
+      r.reacts = (r.reacts ?? []).filter((x) => now - x.at < 20_000);
+      if (req.method === "POST") {
+        const emoji = REACTIONS.includes(b?.emoji) ? b.emoji : null;
+        if (!emoji) return json({ error: "bad reaction" }, 400);
+        const mine = r.reacts.filter((x) => x.who === who.id && now - x.at < 3000).length;
+        if (mine >= 6) return json({ ok: true }); // easy there
+        r.reacts.push({ n: ++this.reactN, who: who.id, name: who.name, avatar: who.avatar, emoji, at: now });
+        return json({ ok: true });
+      }
+      const since = Number(url.searchParams.get("since") ?? 0) || 0;
+      return json({ reactions: r.reacts.filter((x) => x.n > since), last: this.reactN });
     }
     m = p.match(/^\/v1\/room\/([A-Za-z0-9_-]{1,40})(?:\/([A-Za-z0-9_-]{1,40}))?$/);
     if (m) {
@@ -393,6 +520,8 @@ export class Crew {
     }
     const t = this.together(req, url, body, who);
     if (t) return t;
+    const s2 = await this.social(req, url, body, who);
+    if (s2) return s2;
 
     return json({ error: "not here" }, 404);
   }

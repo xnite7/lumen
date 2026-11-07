@@ -20,6 +20,8 @@
   import { share, haptic } from "../lib/native";
   import { ui } from "../lib/ui.svelte";
   import { trimLogo } from "../lib/trimlogo";
+  import RateSheet from "../components/RateSheet.svelte";
+  import { social, loadMe, reviewsOf, postActivity, isFav, toggleFav, ago, ref, type Activity } from "../lib/stores/social.svelte";
 
   let { type, id, hint, preview }: { type: string; id: string; hint?: string; preview?: any } = $props();
 
@@ -32,10 +34,39 @@
   let rating = $state<number | null>(null);
   let hoverStar = $state(0);
   let descOpen = $state(false);
-  function doShare() {
+  // Share = a link that opens couch right on this page (for anyone with couch)
+  async function doShare() {
     const mm = meta ?? preview;
     if (!mm) return;
-    share({ title: mm.name, url: mm.id?.startsWith("tt") ? `https://www.imdb.com/title/${mm.id.split(":")[0]}/` : undefined });
+    try {
+      const url = await api.shareLink(mm.type, mm.id, mm.name);
+      await navigator.clipboard.writeText(url);
+      haptic("success" as any);
+      toast("link copied. anyone with couch opens it right here.", "ok");
+    } catch {
+      share({ title: mm.name, url: mm.id?.startsWith("tt") ? `https://www.imdb.com/title/${mm.id.split(":")[0]}/` : undefined });
+    }
+  }
+  // Simkl's episode runtimes + finale markers (season / series finale)
+  let epInfo = $state<Record<string, { runtime?: number | null; finale?: number | null }>>({});
+  $effect(() => {
+    const t = type, i = id;
+    epInfo = {};
+    if (t === "series") api.episodeInfo(i).then((r) => (epInfo = r)).catch(() => {});
+  });
+  const finaleName = ["", "Mid-season finale", "Season finale", "Series finale"];
+  let reviewOpen = $state(false);
+  let reviews = $state<Activity[]>([]);
+  const myReview = $derived(reviews.find((r) => r.who === social.me?.id));
+  const others = $derived(reviews.filter((r) => r.who !== social.me?.id && (r.text || r.rating)));
+  $effect(() => {
+    const i = id;
+    reviews = [];
+    loadMe();
+    reviewsOf(i).then((r) => (reviews = r));
+  });
+  function reviewClosed() {
+    reviewsOf(id).then((r) => (reviews = r));
   }
 
   const m = $derived(meta ?? (preview as Meta | undefined) ?? null);
@@ -57,7 +88,7 @@
       .catch((e) => (error = errorText(e)));
     if (!t || t === "other") return;
     api.enrich(t, i).then((e) => (extra = e)).catch(() => {});
-    if (app.secrets.simkl_token) api.simklStatus(t, i).then((s) => (rating = s?.rating ?? null)).catch(() => {});
+    api.simklStatus(t, i).then((s) => (rating = s?.rating ?? null)).catch(() => {});
   });
 
   const factLine = $derived.by(() => {
@@ -133,7 +164,8 @@
     try {
       await api.simklRate(m.type, m.id, n);
       rating = n;
-      toast(n ? `Rated ${m.name} ${n}/10 on Simkl` : "Rating removed", "ok");
+      toast(n ? `Rated ${m.name} ${n}/10${app.secrets.simkl_token ? " on Simkl" : ""}` : "Rating removed", "ok");
+      if (n) postActivity("rating", m, n);
     } catch (e) {
       toast(errorText(e), "error");
     }
@@ -195,6 +227,9 @@
             <button class="act press" onclick={() => { haptic("light"); setWatched(m, null, !(item?.state?.flaggedWatched)); }} aria-label="Mark watched">
               <span class="act-ic glass" class:lit={item?.state?.flaggedWatched}><Icon name={item?.state?.flaggedWatched ? "checkCircle" : "eye"} size={20} /></span><span class="act-l">{item?.state?.flaggedWatched ? "Watched" : "Mark watched"}</span>
             </button>
+            <button class="act press" onclick={() => { haptic("light"); toast(toggleFav(m) ? "added to favourites" : "removed from favourites", "ok"); }} aria-label="Favourite">
+              <span class="act-ic glass" class:fav={isFav(m.id)}><Icon name="heart" size={19} fill={isFav(m.id)} /></span><span class="act-l">Favourite</span>
+            </button>
             <button class="act press" onclick={doShare} aria-label="Share">
               <span class="act-ic glass"><Icon name="share" size={19} /></span><span class="act-l">Share</span>
             </button>
@@ -206,7 +241,7 @@
             <p class="desc" class:clamp-3={!descOpen && ui.phone}>{m.description ?? extra?.overview}</p>
           </button>
         {/if}
-        {#if app.secrets.simkl_token && seenIt}
+        {#if seenIt}
           <div class="stars" role="radiogroup" tabindex="-1" aria-label="Your rating" onmouseleave={() => (hoverStar = 0)}>
             <span class="foot dim">Your rating</span>
             {#each Array(10) as _, n}
@@ -219,6 +254,9 @@
               ><Icon name="star" size={16} fill={(hoverStar || rating || 0) > n} /></button>
             {/each}
           </div>
+          <button class="review-btn press" onclick={() => (reviewOpen = true)}>
+            <Icon name="pencil" size={15} />{myReview?.text ? "Edit your review" : "Write a review"}
+          </button>
         {/if}
       </div>
     </section>
@@ -238,6 +276,7 @@
             {@const p = progressOf(id, v.id)}
             {@const seen = watched.has(v.id)}
             {@const future = v.released && new Date(v.released).getTime() > Date.now()}
+            {@const info = epInfo[`${v.season}:${v.episode ?? v.number}`]}
             <div class="ep" class:future>
               <button class="thumb press" use:tvFocus={{ max: 5 }} onclick={() => !future && openStreams(v)} aria-label="Play {v.title ?? v.name}">
                 {#if v.thumbnail}<img src={img(v.thumbnail)} alt="" loading="lazy" />{/if}
@@ -252,10 +291,30 @@
                     <Icon name="check" size={15} />
                   </button>
                 </div>
-                <span class="foot faint">{future ? "Airs " : ""}{v.released ? new Date(v.released).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : ""}{(v as any).runtime ? ` · ${runtime((v as any).runtime)}` : ""}</span>
+                <span class="foot faint">{future ? "Airs " : ""}{v.released ? new Date(v.released).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : ""}{(v as any).runtime || info?.runtime ? ` · ${runtime((v as any).runtime ?? info?.runtime)}` : ""}</span>
+                {#if info?.finale}<span class="finale f{info.finale}">{finaleName[info.finale]}</span>{/if}
                 {#if v.overview || v.description}<p class="foot dim clamp-3">{v.overview ?? v.description}</p>{/if}
               </div>
             </div>
+          {/each}
+        </div>
+      </section>
+    {/if}
+
+    {#if others.length || myReview?.text}
+      <section class="block">
+        <header class="block-h"><h2 class="title2">On the couch</h2></header>
+        <div class="reviews">
+          {#each [...(myReview?.text ? [myReview] : []), ...others] as r (r.id)}
+            <article class="rv">
+              <div class="rv-who">
+                {#if r.avatar}<img src={r.avatar} alt="" />{:else}<span class="ph">{r.name.slice(0, 1)}</span>{/if}
+                <span class="headline">{r.who === social.me?.id ? "you" : r.name}</span>
+                {#if r.rating}<span class="rv-score"><Icon name="star" size={12} fill /> {r.rating}/10</span>{/if}
+                <span class="foot faint">{ago(r.at)}</span>
+              </div>
+              {#if r.text}<p class="rv-text">{r.text}</p>{/if}
+            </article>
           {/each}
         </div>
       </section>
@@ -336,7 +395,10 @@
       </section>
     {/if}
     <div style="height: 80px"></div>
-  </article>
+    {#if reviewOpen}
+    <RateSheet bind:open={reviewOpen} meta={ref(m)} bind:rating text={myReview?.text ?? ""} onclose={reviewClosed} />
+  {/if}
+</article>
 
   <StreamsSheet bind:open={sheetOpen} meta={m} video={sheetVideo} />
 {/if}
@@ -492,6 +554,83 @@
     display: flex;
     align-items: center;
     gap: 1px;
+  }
+  .finale {
+    align-self: flex-start;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font: 700 10.5px system-ui, sans-serif;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: rgb(255 178 92 / 0.16);
+    color: #ffb25c;
+  }
+  .finale.f3 {
+    background: rgb(224 48 154 / 0.2);
+    color: #ff6fc0;
+  }
+  .review-btn {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: -6px;
+    padding: 7px 13px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--label);
+    background: rgb(255 255 255 / 0.08);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+  }
+  .review-btn:hover {
+    background: rgb(255 255 255 / 0.14);
+  }
+  .act-ic.fav {
+    color: #ff5a8a;
+  }
+  .reviews {
+    padding: 0 var(--gutter);
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+    gap: 14px;
+  }
+  .rv {
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: rgb(255 255 255 / 0.05);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+  }
+  .rv-who {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .rv-who img,
+  .rv-who .ph {
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    object-fit: cover;
+    display: grid;
+    place-items: center;
+    background: var(--fill);
+    font-weight: 700;
+  }
+  .rv-score {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--rating);
+    font: 600 12px ui-monospace, monospace;
+  }
+  .rv-who .foot {
+    margin-left: auto;
+  }
+  .rv-text {
+    margin: 10px 0 0;
+    white-space: pre-wrap;
+    line-height: 1.45;
   }
   .stars .foot {
     margin-right: 8px;

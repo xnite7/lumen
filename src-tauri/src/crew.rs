@@ -274,6 +274,21 @@ pub async fn answer(core: &Core, id: &str, accept: bool) -> AppResult<Value> {
     Ok(v)
 }
 
+pub async fn social(core: &Core, method: &str, path: &str, body: Option<Value>) -> AppResult<Value> {
+    let ok = ["/v1/favs", "/v1/activity"].contains(&path) || path.starts_with("/v1/reviews/") || path.starts_with("/v1/react/");
+    if !ok || path.contains("..") {
+        return Err(AppError::msg("not a social path"));
+    }
+    login(core).await?;
+    let m = match method {
+        "POST" => reqwest::Method::POST,
+        "PUT" => reqwest::Method::PUT,
+        "DELETE" => reqwest::Method::DELETE,
+        _ => reqwest::Method::GET,
+    };
+    call(core, m, path, body).await
+}
+
 pub async fn room(core: &Core, host: &str) -> AppResult<Value> {
     call(core, reqwest::Method::GET, &format!("/v1/room/{host}"), None).await
 }

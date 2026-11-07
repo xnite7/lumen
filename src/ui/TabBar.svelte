@@ -17,7 +17,7 @@
     shows: { label: "Shows", icon: "tv" },
     movies: { label: "Movies", icon: "film" },
     search: { label: "Search", icon: "search" },
-    library: { label: "Library", icon: "library" },
+    library: { label: "My Lists", icon: "library" },
     couch: { label: "Couch", icon: "couch" },
     profile: { label: "Profile", icon: "personCircle" },
   };

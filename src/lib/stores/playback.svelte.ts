@@ -3,6 +3,7 @@
 // skip segments, up-next).
 
 import { api, listen, type Meta, type PlayerState, type Stream, type Track, type Video } from "../api";
+import { askAfterFinish } from "./social.svelte";
 import { app } from "./app.svelte";
 import { setAmbient } from "./ambient.svelte";
 import { loadLibrary, progressOf, watchedIds } from "./library.svelte";
@@ -90,6 +91,7 @@ export function initPlayback() {
   });
   onNative<{ pos: number; duration: number }>("closed", async (p) => {
     api.report(p.pos, p.duration, true);
+    checkFinished(p.pos, p.duration);
     pb.ios = false;
     await api.stop().catch(() => {});
     loadLibrary().catch(() => {});
@@ -267,7 +269,19 @@ export async function play(meta: Meta, stream: Stream, videoId: string, opts: { 
   }
 }
 
+/** Got to the end of a film, or of a show's last episode: ask to rate it. */
+function checkFinished(pos = pb.state.pos, dur = pb.state.duration) {
+  const m = pb.meta;
+  if (!m || !dur || pos / dur < 0.9) return;
+  if (m.type === "series") {
+    const eps = orderedVideos(m).filter((v) => (v.season ?? 0) > 0);
+    if (!eps.length || eps[eps.length - 1].id !== pb.videoId) return;
+  }
+  askAfterFinish(m);
+}
+
 export async function close() {
+  checkFinished();
   pb.open = false;
   app.playing = false;
   document.documentElement.classList.remove("playing");

@@ -331,7 +331,7 @@ pub fn inner(e: &Value) -> &Value {
 pub fn is_show(e: &Value) -> bool {
     e.get("show").is_some()
         || e.get("anime").map_or(false, |a| a.get("anime_type").and_then(|t| t.as_str()) != Some("movie"))
-        || matches!(inner(e).get("type").and_then(|t| t.as_str()), Some("tv") | Some("anime"))
+        || matches!(inner(e).get("type").and_then(|t| t.as_str()), Some("tv") | Some("show") | Some("anime"))
 }
 
 pub fn metahub(imdb: &str, kind: &str) -> String {
@@ -644,4 +644,49 @@ pub async fn genre_trending(core: &Core, kind: &str, genre: &str) -> AppResult<V
             }))
         })
         .collect())
+}
+
+// ------------------------------------------------- public title data
+// (client id only, no account: these work for everyone)
+
+async fn public(core: &Core, path: &str, ttl: Duration) -> AppResult<Value> {
+    core.http.get_json_cached(&url(core, path)?, ttl, Duration::from_secs(10)).await
+}
+
+/// Simkl's own id for an IMDb id.
+pub async fn sid(core: &Core, imdb: &str) -> Option<u64> {
+    let v = public(core, &format!("/search/id?imdb={}", urlencoding::encode(imdb)), Duration::from_secs(86_400 * 30)).await.ok()?;
+    let first = v.as_array().and_then(|a| a.first()).cloned().unwrap_or(v);
+    first.pointer("/ids/simkl").or_else(|| first.pointer("/ids/simkl_id")).and_then(|x| x.as_u64().or_else(|| x.as_str()?.parse().ok()))
+}
+
+/// "People who watched this also watched" + same-genre picks, as metas.
+pub async fn similar(core: &Core, imdb: &str, kind: &str) -> Vec<Value> {
+    let Some(id) = sid(core, imdb).await else { return vec![] };
+    let path = if kind == "series" { format!("/tv/{id}?extended=full") } else { format!("/movies/{id}?extended=full") };
+    let Ok(v) = public(core, &path, Duration::from_secs(86_400)).await else { return vec![] };
+    let mut seen = std::collections::HashSet::new();
+    ["users_recommendations", "similar"]
+        .iter()
+        .flat_map(|k| v.get(*k).and_then(|a| a.as_array()).cloned().unwrap_or_default())
+        .filter_map(|e| to_meta(&e, Some(kind)))
+        .filter(|m| m["id"].as_str() != Some(imdb) && seen.insert(m["id"].to_string()))
+        .collect()
+}
+
+/// Per-episode runtime and finale markers: "S:E" -> { runtime, finale }
+/// (finale: 1 mid-season, 2 season, 3 series).
+pub async fn episode_info(core: &Core, imdb: &str) -> Value {
+    let Some(id) = sid(core, imdb).await else { return json!({}) };
+    let Ok(v) = public(core, &format!("/tv/episodes/{id}"), Duration::from_secs(43_200)).await else { return json!({}) };
+    let mut out = serde_json::Map::new();
+    for e in v.as_array().into_iter().flatten() {
+        let (Some(s), Some(n)) = (e.get("season").and_then(|x| x.as_u64()), e.get("episode").and_then(|x| x.as_u64())) else { continue };
+        let runtime = e.get("runtime").and_then(|x| x.as_u64());
+        let finale = e.get("finale_type").and_then(|x| x.as_u64());
+        if runtime.is_some() || finale.is_some() {
+            out.insert(format!("{s}:{n}"), json!({ "runtime": runtime, "finale": finale }));
+        }
+    }
+    Value::Object(out)
 }
