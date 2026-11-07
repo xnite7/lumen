@@ -10,7 +10,7 @@ import { connectionMbps, rank, needMbps } from "./autopick";
 import { toast } from "./stores/toast.svelte";
 import { openDetail } from "./open";
 
-function gather(type: string, id: string, ms = 9000): Promise<Stream[]> {
+export function gather(type: string, id: string, ms = 9000): Promise<Stream[]> {
   return new Promise((resolve) => {
     const reqId = uid();
     let got: Stream[] = [];

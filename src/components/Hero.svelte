@@ -63,9 +63,8 @@
   $effect(() => {
     if (bg && scrollY < 300 && isActive(page)) setAmbient(bg);
   });
-  $effect(() => {
-    for (const m of slides) checkRelease(m);
-  });
+  // only the slide on screen gets looked at (it may cost a stream search)
+  $effect(() => checkRelease(cur));
 
   function schedule() {
     clearTimeout(rotate);

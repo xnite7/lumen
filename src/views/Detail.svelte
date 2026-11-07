@@ -20,6 +20,7 @@
   import { share, haptic } from "../lib/native";
   import { ui } from "../lib/ui.svelte";
   import { trimLogo } from "../lib/trimlogo";
+  import { checkRelease, isUnreleased, releaseNote } from "../lib/release.svelte";
   import RateSheet from "../components/RateSheet.svelte";
   import { social, loadMe, reviewsOf, postActivity, isFav, toggleFav, ago, ref, type Activity } from "../lib/stores/social.svelte";
 
@@ -56,8 +57,6 @@
   });
   const finaleName = ["", "Mid-season finale", "Season finale", "Series finale"];
   let reviewOpen = $state(false);
-  const unreleased = $derived(!!extra?.unreleased);
-  const relNote = $derived(extra?.homeRelease && new Date(extra.homeRelease).getTime() > Date.now() ? "on digital " + new Date(extra.homeRelease).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "not out to watch yet");
   let reviews = $state<Activity[]>([]);
   const myReview = $derived(reviews.find((r) => r.who === social.me?.id));
   const others = $derived(reviews.filter((r) => r.who !== social.me?.id && (r.text || r.rating)));
@@ -72,6 +71,10 @@
   }
 
   const m = $derived(meta ?? (preview as Meta | undefined) ?? null);
+  // dimmed only when couch finds no streams for a too-new title (leaks count)
+  $effect(() => checkRelease(m));
+  const unreleased = $derived(isUnreleased(m?.id));
+  const relNote = $derived(releaseNote(m?.id));
 
   $effect(() => {
     const t = type, i = id;
