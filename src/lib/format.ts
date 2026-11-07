@@ -23,13 +23,16 @@ export function bytes(n?: number) {
 
 export function runtime(r?: string | number) {
   if (r == null || r === "") return "";
+  if (typeof r === "string" && !/^\s*\d+\s*(min|m)?\s*$/i.test(r)) return r; // already "1h 34m"
   const m = typeof r === "number" ? r : parseInt(String(r), 10);
   if (!m || isNaN(m)) return String(r);
   return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
 }
 
 export function year(m: { releaseInfo?: string; released?: string }) {
-  return m.releaseInfo || (m.released ? m.released.slice(0, 4) : "");
+  const y = m.releaseInfo || (m.released ? m.released.slice(0, 4) : "");
+  // a show that's still running: "2024–" reads as "2024–now"
+  return /[-–]\s*$/.test(y) ? y.replace(/\s*[-–]\s*$/, "–now") : y;
 }
 
 export function episodeLabel(videoId?: string) {

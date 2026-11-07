@@ -125,13 +125,15 @@
     right: 100%;
     bottom: -0.08em;
     margin-right: -0.12em;
-    font-family: var(--font-display);
-    font-weight: 800;
-    font-size: calc(var(--card-w) * 0.98);
-    line-height: 1;
-    letter-spacing: -0.08em;
-    color: transparent;
-    -webkit-text-stroke: 2px color-mix(in srgb, var(--text) 55%, transparent);
+    font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+    font-weight: 900;
+    font-style: normal;
+    font-size: calc(var(--card-w) * 0.95);
+    line-height: 0.8;
+    letter-spacing: -0.06em;
+    color: #050405;
+    -webkit-text-stroke: 3px rgb(244 234 240 / 0.42);
+    paint-order: stroke fill;
     pointer-events: none;
   }
   .art {

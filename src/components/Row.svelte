@@ -104,8 +104,6 @@
           {hideAdult ? "Show" : "Hide"}
         </button>
       {/if}
-      <span class="kind foot faint">{catalog.type === "series" ? "Shows" : catalog.type === "movie" ? "Films" : catalog.type}</span>
-      <span class="addon foot faint">{catalog.addonName}</span>
     </header>
     <div class="wrap">
       <div class="rail scroll-x" bind:this={rail}>

@@ -74,6 +74,8 @@
   const seasons = $derived([...new Set(videos.map((v) => v.season ?? 0))].sort((a, b) => (a || 999) - (b || 999)));
   const watched = $derived(watchedIds(id));
   const item = $derived(itemOf(id));
+  // rating (and reviewing) only once you've actually watched it
+  const seenIt = $derived(rating != null || !!item?.state?.flaggedWatched || watched.size > 0 || ((item?.state as any)?.timesWatched ?? 0) > 0);
   void lib;
 
   $effect(() => {
@@ -195,7 +197,7 @@
             <p class="desc" class:clamp-3={!descOpen && ui.phone}>{m.description ?? extra?.overview}</p>
           </button>
         {/if}
-        {#if app.secrets.simkl_token}
+        {#if app.secrets.simkl_token && seenIt}
           <div class="stars" role="radiogroup" tabindex="-1" aria-label="Your rating" onmouseleave={() => (hoverStar = 0)}>
             <span class="foot dim">Your rating</span>
             {#each Array(10) as _, n}
@@ -638,18 +640,19 @@
     padding: 4px var(--gutter) 12px;
   }
   .person {
-    width: 112px;
+    width: 128px;
     flex: none;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    text-align: center;
+    align-items: flex-start;
+    text-align: left;
     gap: 2px;
   }
+  /* portrait cards, like a cast sheet */
   .face {
-    width: 96px;
-    height: 96px;
-    border-radius: 50%;
+    width: 128px;
+    aspect-ratio: 2 / 3;
+    border-radius: 10px;
     overflow: hidden;
     background: rgb(var(--hi) / 0.08);
     display: grid;

@@ -23,7 +23,7 @@
 
 <div class="couch">
   <h1 class="large-title">couch</h1>
-  <p class="lede dim">the midnite crew, live.</p>
+  <p class="lede dim">See what your friends from the server are watching right now. Hover someone's card to ask to join and watch in sync.</p>
 
   {#if !crew.loaded}
     <div class="state"><img src={wobble} alt="" /><p class="bump-text">finding the remote…</p></div>
@@ -34,7 +34,7 @@
     {#if live.length}
       <CouchRow big />
     {:else}
-      <div class="state"><img src={boil} alt="" /><p class="bump-text">nobody's on the couch. save them a seat.</p></div>
+      <div class="state"><img src={boil} alt="" /><p class="bump-text">nobody's on the couch.</p></div>
     {/if}
     {#if idle.length}
       <p class="foot dim around">around: {idle.map((m) => m.name).join(", ")}</p>
@@ -60,9 +60,10 @@
     padding: 0 var(--gutter);
   }
   .lede {
-    margin: 4px 0 20px;
-    font-family: var(--font-bump);
-    font-size: 14px;
+    margin: 6px 0 22px;
+    max-width: 62ch;
+    font-size: 15px;
+    line-height: 1.45;
   }
   .quiet {
     padding: 48px var(--gutter);
@@ -79,6 +80,7 @@
     width: min(240px, 56vw);
     height: auto;
     opacity: 0.85;
+    margin-bottom: 18px;
   }
   .state p {
     margin: 0;

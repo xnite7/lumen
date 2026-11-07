@@ -7,12 +7,14 @@
   import Icon from "./Icon.svelte";
 
   const placeholders = [
-    "what's the vibe today?",
-    "cry all night tonight",
-    "something that ruins me a little",
-    "a cinematography masterpiece",
-    "slow, gorgeous, nothing happens",
-    "something mean and funny",
+    "a heist movie that's actually smart",
+    "something cozy for a rainy night",
+    "a show like succession but funnier",
+    "short horror, under 90 minutes",
+    "anime for someone who doesn't watch anime",
+    "a true story that sounds made up",
+    "feel-good movie to watch with my mom",
+    "mind-bending sci-fi with a good ending",
   ];
   let ph = $state(0);
   let q = $state("");
@@ -254,5 +256,11 @@
     .picks {
       grid-template-columns: 1fr;
     }
+  }
+  /* the glow belongs to the bar, not the text box inside it */
+  input:focus,
+  input:focus-visible {
+    outline: none;
+    box-shadow: none;
   }
 </style>

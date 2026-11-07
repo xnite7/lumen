@@ -855,3 +855,8 @@ html.playing .night {
   font-weight: 700;
   letter-spacing: -0.02em;
 }
+
+/* Windows/Linux: room for the minimise / maximise / close buttons */
+html.winctl {
+  --win-controls: 138px;
+}

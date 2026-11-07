@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 const SIMKL_ROWS: &[(&str, &str, &[&str])] = &[
     ("simkl-upnext", "Up Next", &["series"]),
     ("simkl-new", "New Episodes", &["series"]),
-    ("simkl-watching", "Watching on Simkl", &["series"]),
+    ("simkl-watching", "Continue Watching", &["series"]),
     ("simkl-plantowatch", "Plan to Watch", &["movie", "series"]),
     ("simkl-recs", "Because You Watched", &["movie", "series"]),
     ("simkl-surprise", "Surprise Me", &["movie", "series"]),

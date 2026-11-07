@@ -269,7 +269,8 @@ fn models() -> Vec<&'static str> {
     if let Some(m) = option_env!("COUCH_AI_MODEL").filter(|m| !m.is_empty()) {
         v.push(m);
     }
-    v.extend(["gemini-flash-latest", "gemini-2.5-flash"]);
+    // when one is swamped ("high demand"), the next one usually isn't
+    v.extend(["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite"]);
     v
 }
 
@@ -292,12 +293,12 @@ async fn chat(core: &Core, messages: &[Value], tools: Option<&Value>, json_out: 
         let send = || core.http.client().post(AI_URL).bearer_auth(&key).timeout(Duration::from_secs(90)).json(&body).send();
         let mut res = send().await?;
         // free tiers rate-limit: a few spaced retries
-        for attempt in 1..4 {
+        for attempt in 1..3 {
             let st = res.status().as_u16();
             if st != 429 && st < 500 {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis((800.0 * 2.2f64.powi(attempt - 1)) as u64)).await;
+            tokio::time::sleep(Duration::from_millis((900.0 * 2.0f64.powi(attempt - 1)) as u64)).await;
             res = send().await?;
         }
         let st = res.status();
@@ -306,8 +307,10 @@ async fn chat(core: &Core, messages: &[Value], tools: Option<&Value>, json_out: 
             return data.pointer("/choices/0/message").cloned().ok_or_else(|| AppError::msg("Empty answer"));
         }
         let t = res.text().await.unwrap_or_default();
-        if st.as_u16() == 429 {
-            return Err(AppError::msg("The smart bar is busy right now, try again in a minute"));
+        // overloaded or rate-limited: try the next model before giving up
+        if matches!(st.as_u16(), 429 | 500 | 502 | 503 | 504) {
+            last_err = format!("{st}");
+            continue;
         }
         // unknown model: try the next one
         if st.as_u16() == 404 || (st.as_u16() == 400 && t.to_lowercase().contains("model")) {
@@ -316,7 +319,11 @@ async fn chat(core: &Core, messages: &[Value], tools: Option<&Value>, json_out: 
         }
         return Err(AppError::msg(format!("Smart bar error {st}: {}", t.chars().take(200).collect::<String>())));
     }
-    Err(AppError::msg(format!("The smart bar couldn't reach a model ({last_err})")))
+    Err(AppError::msg(if last_err.starts_with("429") || last_err.starts_with("503") {
+        "the smart bar's a bit swamped right now. give it a minute and ask again.".to_string()
+    } else {
+        format!("the smart bar couldn't think straight ({last_err}). try again?")
+    }))
 }
 
 fn parse_json(text: &str) -> AppResult<Value> {
