@@ -2,6 +2,7 @@
 // app is in front; nothing happens at all until a crew link is set up.
 
 import { api, type CrewMember } from "../api";
+import { startTogether } from "./together.svelte";
 
 export const crew = $state({ setup: false, members: [] as CrewMember[], error: "", loaded: false });
 
@@ -20,6 +21,7 @@ export async function refreshCrew() {
 
 export function startCrew() {
   if (timer) return;
+  startTogether();
   refreshCrew();
   timer = window.setInterval(() => document.visibilityState === "visible" && crew.setup && refreshCrew(), 45_000);
 }

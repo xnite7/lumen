@@ -78,6 +78,9 @@ const streams = [
 
 let emit: ((e: string, p: unknown) => void) | null = null;
 let polls = 0;
+let askPolls = 0;
+let knocked = false;
+const bootAt = Date.now();
 const q = typeof location !== "undefined" ? new URLSearchParams(location.search) : new URLSearchParams();
 // the hosted live preview (npm run demo): signed in, set up, phone layout on phones
 if (import.meta.env.VITE_DEMO) {
@@ -248,6 +251,22 @@ export async function mock(cmd: string, args: any): Promise<any> {
             ],
           }
         : { setup: false, members: [] };
+    // watch together (preview): asks get accepted after a few seconds, and
+    // hazza knocks once, ten seconds in
+    case "crew_ask":
+      askPolls = 0;
+      return { id: "ask-1" };
+    case "crew_ask_status":
+      return { status: ++askPolls >= 2 ? "accepted" : "pending" };
+    case "crew_inbox":
+      return { asks: !knocked && Date.now() - bootAt > 10_000 ? [{ id: "ask-2", from: "b", fromName: "hazza", at: Date.now() }] : [] };
+    case "crew_answer":
+      knocked = true;
+      return null;
+    case "crew_room":
+      return { room: { host: args.host, metaId: metas[3].id, type: "series", videoId: metas[3].id + ":1:4", title: "Night Swim", pos: 900, now: 900, paused: false, guests: ["me"] } };
+    case "crew_leave":
+      return null;
     case "crew_invite":
       return q.has("crew") ? "https://midnite-couch.example.workers.dev/join?c=xxxx" : null;
     case "health":

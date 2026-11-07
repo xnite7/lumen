@@ -108,6 +108,7 @@ export const DEFAULT_SETTINGS = {
     crewUrl: "",
     crewName: "",
     crewShare: true,
+    crewGatekeeper: false,
   },
   hue: {
     enabled: false,

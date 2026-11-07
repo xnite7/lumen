@@ -296,6 +296,12 @@ export const api = {
   crewList: () => invoke<{ setup: boolean; members: CrewMember[] }>("crew_list"),
   crewJoin: (url: string, code: string) => invoke<{ setup: boolean; members: CrewMember[] }>("crew_join", { url, code }),
   crewInvite: () => invoke<string | null>("crew_invite"),
+  crewAsk: (to: string) => invoke<{ id: string }>("crew_ask", { to }),
+  crewAskStatus: (id: string) => invoke<{ status: "pending" | "accepted" | "declined" | "gone" }>("crew_ask_status", { id }),
+  crewInbox: () => invoke<{ asks: CrewAsk[] }>("crew_inbox"),
+  crewAnswer: (id: string, accept: boolean) => invoke<void>("crew_answer", { id, accept }),
+  crewRoom: (host: string) => invoke<{ room: CrewRoom | null }>("crew_room", { host }),
+  crewLeave: (host: string) => invoke<void>("crew_leave", { host }),
   simklSync: () => invoke<boolean>("simkl_sync"),
   simklOAuthStart: () => invoke<void>("simkl_oauth_start"),
   simklOAuthFinish: (url: string) => invoke<void>("simkl_oauth_finish", { url }),
@@ -323,6 +329,26 @@ export const api = {
 
 export function uid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
+
+export interface CrewAsk {
+  id: string;
+  from: string;
+  fromName: string;
+  fromAvatar?: string;
+  at: number;
+}
+export interface CrewRoom {
+  host: string;
+  metaId: string;
+  type: string;
+  videoId: string;
+  title?: string;
+  pos: number;
+  /** where the host is right now (server clock) */
+  now: number;
+  paused: boolean;
+  guests: string[];
 }
 
 export interface CrewMember {

@@ -77,6 +77,11 @@
     {/if}
 
     <div class="groups">
+      <div class="group">
+        <Cell label="Gatekeeper mode" hint="Friends see you're on the couch, not what you're watching. Nobody can ask to join.">
+          <Controls kind="switch" bind:value={s.integrations.crewGatekeeper} onchange={saveSettings} />
+        </Cell>
+      </div>
       {#if invite}
         <div class="group">
           <Cell label="Invite link" hint="Anyone with it can see who's on the couch. Share it in the server, not in public.">

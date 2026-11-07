@@ -32,7 +32,7 @@ function gather(type: string, id: string, ms = 9000): Promise<Stream[]> {
   });
 }
 
-export async function quickPlay(base: Meta, from?: HTMLElement | null): Promise<void> {
+export async function quickPlay(base: Meta, from?: HTMLElement | null, opts: { videoId?: string; startAt?: number } = {}): Promise<void> {
   const s = app.settings.streams;
   let meta: Meta = base;
   try {
@@ -43,7 +43,13 @@ export async function quickPlay(base: Meta, from?: HTMLElement | null): Promise<
   let videoId = meta.id;
   let episodeTitle: string | undefined;
   let runtime: any = meta.runtime;
-  if (meta.type === "series") {
+  if (opts.videoId && opts.videoId !== meta.id) {
+    // a specific episode (watching along with someone)
+    const v = orderedVideos(meta).find((x) => x.id === opts.videoId);
+    videoId = opts.videoId;
+    episodeTitle = v ? v.title || v.name || `Episode ${v.episode ?? v.number}` : undefined;
+    runtime = (v as any)?.runtime ?? runtime;
+  } else if (meta.type === "series" && !opts.videoId) {
     const list = orderedVideos(meta).filter((v) => (v.season ?? 0) > 0);
     const at = itemOf(meta.id)?.state?.video_id;
     const v = list.find((x) => x.id === at) ?? list[0];
@@ -66,5 +72,5 @@ export async function quickPlay(base: Meta, from?: HTMLElement | null): Promise<
     toast("couldn't find a stream for that one", "error");
     return openDetail(base, from);
   }
-  await play(meta, order[0], videoId, { episodeTitle, queue: order.slice(1) });
+  await play(meta, order[0], videoId, { episodeTitle, queue: order.slice(1), startAt: opts.startAt });
 }

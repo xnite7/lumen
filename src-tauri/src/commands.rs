@@ -783,6 +783,32 @@ pub async fn crew_list(s: S<'_>) -> AppResult<Value> {
     crate::crew::list(&s.core).await
 }
 
+/// Watch together: ask to join someone's couch, and the rest of the dance.
+#[tauri::command]
+pub async fn crew_ask(s: S<'_>, to: String) -> AppResult<Value> {
+    crate::crew::ask(&s.core, &to).await
+}
+#[tauri::command]
+pub async fn crew_ask_status(s: S<'_>, id: String) -> AppResult<Value> {
+    crate::crew::ask_status(&s.core, &id).await
+}
+#[tauri::command]
+pub async fn crew_inbox(s: S<'_>) -> AppResult<Value> {
+    crate::crew::inbox(&s.core).await
+}
+#[tauri::command]
+pub async fn crew_answer(s: S<'_>, id: String, accept: bool) -> AppResult<Value> {
+    crate::crew::answer(&s.core, &id, accept).await
+}
+#[tauri::command]
+pub async fn crew_room(s: S<'_>, host: String) -> AppResult<Value> {
+    crate::crew::room(&s.core, &host).await
+}
+#[tauri::command]
+pub async fn crew_leave(s: S<'_>, host: String) -> AppResult<Value> {
+    crate::crew::leave(&s.core, &host).await
+}
+
 /// Join with a crew server URL and code (parsed from an invite link).
 #[tauri::command]
 pub async fn crew_join(s: S<'_>, url: String, code: String) -> AppResult<Value> {

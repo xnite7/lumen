@@ -161,7 +161,7 @@ pub fn spawn_tracker(player: Arc<Player>) {
                 continue;
             }
             if let Some(known) = s.known.as_ref() {
-                crate::crew::playing(core, known, &s.req.meta, s.pos, s.duration, s.user_paused);
+                crate::crew::playing(core, known, &s.req.meta, &s.req.video_id, s.pos, s.duration, s.user_paused);
             }
             if let Some(known) = s.known.clone() {
                 let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);

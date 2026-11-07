@@ -5,6 +5,8 @@
   import { crew } from "../lib/stores/crew.svelte";
   import { go } from "../lib/router.svelte";
   import { tvFocus } from "../lib/tvfocus";
+  import { together, askToJoin, cancelAsk } from "../lib/stores/together.svelte";
+  import Icon from "./Icon.svelte";
 
   let { big = false }: { big?: boolean } = $props();
 
@@ -23,19 +25,33 @@
     <div class="rail scroll-x">
       {#each live as m (m.id)}
         {@const w = m.watching!}
-        <button class="card press" onclick={() => open(m)}>
+        {@const asking = together.asking?.host.id === m.id}
+        {@const withThem = together.following?.host === m.id}
+        <div class="card" class:asking role="group" aria-label="{m.name}: {w.title}">
           <div class="art" use:tvFocus={{ max: 5 }}>
             {#if w.background || w.poster}<img src={img(w.background ?? w.poster, "w780")} alt="" loading="lazy" class:tall={!w.background} />{/if}
             <div class="shade"></div>
             <span class="who"><span class="av">{#if m.avatar}<img src={m.avatar} alt="" />{:else}{m.name.charAt(0).toUpperCase()}{/if}</span>{m.name}</span>
             {#if m.paused}<span class="paused">paused</span>{/if}
             <div class="bar"><span style:width="{Math.max(4, pct(m) * 100)}%"></span></div>
+            <!-- hover: join their couch, or read about what they're watching -->
+            <div class="hover">
+              {#if withThem}
+                <span class="tag"><Icon name="couch" size={16} /> watching together</span>
+              {:else if asking}
+                <span class="tag"><span class="spin"></span> asking {m.name}…</span>
+                <button class="hbtn ghost press" onclick={cancelAsk}>Cancel</button>
+              {:else}
+                <button class="hbtn press" onclick={() => askToJoin(m)} disabled={!!together.asking}><Icon name="couch" size={17} /> Ask to join</button>
+              {/if}
+              <button class="hbtn ghost press" onclick={() => open(m)}><Icon name="info" size={16} /> More info</button>
+            </div>
           </div>
           <div class="meta">
             <span class="t">{w.title}</span>
             <span class="s">{w.episode ?? w.year ?? ""}</span>
           </div>
-        </button>
+        </div>
       {/each}
     </div>
   </section>
@@ -91,6 +107,77 @@
   }
   .big .card {
     width: min(100%, 420px);
+  }
+  .hover {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+    background: rgb(0 0 0 / 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    opacity: 0;
+    transition: opacity 200ms ease;
+  }
+  .card:hover .hover,
+  .card:focus-within .hover,
+  .card.asking .hover {
+    opacity: 1;
+  }
+  .hbtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 38px;
+    padding: 0 16px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 700;
+    background: #fff4ea;
+    color: #000;
+  }
+  .hbtn:disabled {
+    opacity: 0.5;
+  }
+  .hbtn.ghost {
+    background: rgb(255 255 255 / 0.14);
+    color: #fff;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.2);
+  }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 14px;
+    color: #fff;
+  }
+  .spin {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  @media (pointer: coarse) {
+    /* phones: the buttons sit along the bottom, always there */
+    .hover {
+      opacity: 1;
+      inset: auto 0 0 0;
+      justify-content: flex-start;
+      background: linear-gradient(0deg, rgb(0 0 0 / 0.7), transparent);
+      backdrop-filter: none;
+    }
   }
   .art {
     position: relative;

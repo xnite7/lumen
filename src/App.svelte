@@ -17,6 +17,7 @@
   import Stack from "./ui/Stack.svelte";
   import PreviewCard from "./components/PreviewCard.svelte";
   import Toasts from "./components/Toasts.svelte";
+  import JoinRequests from "./components/JoinRequests.svelte";
   import Player from "./views/Player.svelte";
   import Splash from "./ui/Splash.svelte";
   import { installTvNav } from "./lib/tvfocus";
@@ -193,6 +194,7 @@
     <Onboarding ondone={() => (ui.onboarding = false)} />
   {/if}
   <Toasts />
+  <JoinRequests />
 {/if}
 {#if splashing}<Splash ondone={() => (splashing = false)} />{/if}
 

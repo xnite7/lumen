@@ -31,6 +31,13 @@ type Member = {
   at: number;
 };
 
+/** "can I join your couch?" */
+type Ask = { id: string; from: string; fromName: string; fromAvatar?: string; to: string; at: number; status: "pending" | "accepted" | "declined" };
+/** a host's playback, followed by the guests they let in */
+type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; pos: number; paused: boolean; at: number; guests: string[] };
+const ASK_TTL = 120_000;
+const ROOM_TTL = 90_000;
+
 const json = (v: unknown, status = 200) =>
   new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 
@@ -80,11 +87,91 @@ p{color:#9C8A96;margin:18px 24px 0}
 
 export class Crew {
   members = new Map<string, Member>();
+  asks = new Map<string, Ask>();
+  rooms = new Map<string, Room>();
   constructor(_state: DurableObjectState, _env: Env) {}
 
   sweep() {
     const now = Date.now();
     for (const [k, m] of this.members) if (now - m.at > STALE_MS) this.members.delete(k);
+    for (const [k, a] of this.asks) if (now - a.at > ASK_TTL) this.asks.delete(k);
+    for (const [k, r] of this.rooms) if (now - r.at > ROOM_TTL) this.rooms.delete(k);
+  }
+
+  /** watch together: asking, answering, and the host's playback for guests */
+  together(req: Request, url: URL, b: any): Response | null {
+    const okId = (v: unknown) => {
+      const id = str(v, 40);
+      return id && /^[A-Za-z0-9_-]+$/.test(id) ? id : null;
+    };
+    const p = url.pathname;
+    // ask to join someone's couch
+    if (req.method === "POST" && p === "/v1/ask") {
+      const from = okId(b?.from), to = okId(b?.to);
+      if (!from || !to || from === to) return json({ error: "bad ask" }, 400);
+      const me = this.members.get(from), them = this.members.get(to);
+      if (!me) return json({ error: "you're not on the couch" }, 400);
+      if (!them?.watching) return json({ error: "they're not watching anything right now" }, 409);
+      for (const a of this.asks.values()) if (a.from === from && a.to === to && a.status === "pending") return json({ id: a.id });
+      const id = crypto.randomUUID();
+      this.asks.set(id, { id, from, fromName: me.name, fromAvatar: me.avatar, to, at: Date.now(), status: "pending" });
+      return json({ id });
+    }
+    let m = p.match(/^\/v1\/inbox\/([A-Za-z0-9_-]{1,40})$/);
+    if (req.method === "GET" && m) {
+      const asks = [...this.asks.values()].filter((a) => a.to === m![1] && a.status === "pending");
+      return json({ asks });
+    }
+    m = p.match(/^\/v1\/ask\/([0-9a-f-]{36})$/);
+    if (m) {
+      const a = this.asks.get(m[1]);
+      if (!a) return json({ status: "gone" });
+      if (req.method === "GET") return json({ status: a.status });
+      if (req.method === "POST") {
+        if (b?.me !== a.to) return json({ error: "not yours" }, 403);
+        a.status = b?.accept ? "accepted" : "declined";
+        a.at = Date.now();
+        if (a.status === "accepted") {
+          const host = this.members.get(a.to);
+          const r = this.rooms.get(a.to) ?? { host: a.to, metaId: str(host?.watching?.metaId, 100) ?? "", type: str(host?.watching?.type, 20) ?? "", videoId: "", pos: host?.pos ?? 0, paused: !!host?.paused, at: Date.now(), guests: [] };
+          if (!r.guests.includes(a.from)) r.guests.push(a.from);
+          this.rooms.set(a.to, r);
+        }
+        return json({ ok: true });
+      }
+    }
+    // the host's player reports here about once a second while it has guests
+    if (req.method === "PUT" && p === "/v1/room") {
+      const host = okId(b?.host);
+      const r = host && this.rooms.get(host);
+      if (!r || !r.guests.length) return json({ error: "no room" }, 404);
+      Object.assign(r, {
+        metaId: str(b.metaId, 100) ?? r.metaId,
+        type: str(b.type, 20) ?? r.type,
+        videoId: str(b.videoId, 200) ?? r.videoId,
+        title: str(b.title, 200),
+        pos: num(b.pos),
+        paused: !!b.paused,
+        at: Date.now(),
+      });
+      return json({ guests: r.guests.map((g) => this.members.get(g)?.name ?? "someone") });
+    }
+    m = p.match(/^\/v1\/room\/([A-Za-z0-9_-]{1,40})(?:\/([A-Za-z0-9_-]{1,40}))?$/);
+    if (m) {
+      const r = this.rooms.get(m[1]);
+      if (req.method === "GET") {
+        if (!r || !r.videoId) return json({ room: null });
+        // where the host is right now, by the server's clock
+        const now = r.paused ? r.pos : r.pos + (Date.now() - r.at) / 1000;
+        return json({ room: { ...r, now } });
+      }
+      if (req.method === "DELETE") {
+        if (r && m[2]) r.guests = r.guests.filter((g) => g !== m![2]);
+        else this.rooms.delete(m[1]);
+        return json({ ok: true });
+      }
+    }
+    return null;
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -110,7 +197,7 @@ export class Crew {
       this.members.set(id, {
         id,
         name: str(b.name, 40) || "someone",
-        avatar: /^https:\/\/cdn\.discordapp\.com\//.test(str(b.avatar, 300)) ? str(b.avatar, 300) : undefined,
+        avatar: /^https:\/\/cdn\.discordapp\.com\//.test(str(b.avatar, 300) ?? "") ? str(b.avatar, 300) : undefined,
         watching: w && {
           title: str(w.title, 200),
           year: typeof w.year === "number" ? w.year : undefined,
@@ -132,8 +219,20 @@ export class Crew {
     const m = url.pathname.match(/^\/v1\/presence\/([A-Za-z0-9_-]{1,40})$/);
     if (req.method === "DELETE" && m) {
       this.members.delete(m[1]);
+      this.rooms.delete(m[1]);
       return json({ ok: true });
     }
+
+    let body: any = null;
+    if (req.method === "POST" || req.method === "PUT") {
+      try {
+        body = await req.json();
+      } catch {
+        return json({ error: "bad json" }, 400);
+      }
+    }
+    const t = this.together(req, url, body);
+    if (t) return t;
 
     return json({ error: "not here" }, 404);
   }

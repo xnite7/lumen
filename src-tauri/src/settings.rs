@@ -346,6 +346,9 @@ pub struct Integrations {
     pub crew_name: String,
     /// Share what you're watching with the crew (Simkl-known titles only).
     pub crew_share: bool,
+    /// Gatekeeper mode: friends see you on the couch, not what you watch.
+    #[serde(default)]
+    pub crew_gatekeeper: bool,
 }
 
 impl Default for Integrations {
@@ -369,7 +372,8 @@ impl Default for Integrations {
             discord_app_id: "1568062298721886290".into(),
             crew_url: String::new(),
             crew_name: String::new(),
-            crew_share: false,
+            crew_share: true,
+            crew_gatekeeper: false,
         }
     }
 }
