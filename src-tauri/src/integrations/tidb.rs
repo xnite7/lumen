@@ -5,7 +5,9 @@ use crate::error::AppResult;
 use serde_json::{json, Value};
 use std::time::Duration;
 
-const API: &str = "https://api.theintrodb.org/v3";
+/// v4 (v3 stops on 18 Jan 2027). Same query and segment shape for reading;
+/// it also accepts imdb_id / tmdb_id and answers with the matching tvdb_id.
+const API: &str = "https://api.theintrodb.org/v4";
 
 /// `video_id` is Stremio's: `tt123` for a film, `tt123:1:4` for S1E4.
 pub async fn segments(core: &Core, video_id: &str, duration_ms: Option<u64>) -> AppResult<Value> {
