@@ -25,7 +25,7 @@ mod entertainment {
     }
 }
 #[cfg(desktop)]
-mod sampler;
+pub(crate) mod sampler;
 
 use crate::core::CoreRef;
 use crate::error::{AppError, AppResult};

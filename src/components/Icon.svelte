@@ -1,6 +1,11 @@
 <script lang="ts">
-  // A small symbol set drawn on a 24px grid with round 1.8 strokes, in the
-  // spirit of SF Symbols. Filled variants where iOS uses them.
+  // Icons: Material Symbols Rounded (src/lib/icons.gen.ts, made by
+  // scripts/gen-icons.py), outline by default, filled with `fill`. The
+  // hand-drawn paths below only remain for couch's own marks (couch,
+  // Discord) and anything the set doesn't have.
+  import { ICONS } from "../lib/icons.gen";
+  // forward = the replay arrow, mirrored
+  const MIRROR = new Set(["skipF"]);
   let { name, size = 22, fill = false, class: cls = "" }: { name: string; size?: number; fill?: boolean; class?: string } = $props();
 
   const P: Record<string, string> = {
@@ -82,6 +87,11 @@
   const isFill = $derived(fill || filled.has(name));
 </script>
 
+{#if ICONS[name]}
+  <svg class={cls} width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style:transform={MIRROR.has(name) ? "scaleX(-1)" : undefined}>
+    {@html (isFill && ICONS[name][1]) || ICONS[name][0]}
+  </svg>
+{:else}
 <svg
   class={cls}
   width={size}
@@ -93,3 +103,4 @@
   stroke-linecap="round"
   stroke-linejoin="round"
   aria-hidden="true"><path {d} /></svg>
+{/if}

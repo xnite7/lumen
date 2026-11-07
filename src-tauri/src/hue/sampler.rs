@@ -16,6 +16,26 @@ pub struct Frame {
 }
 
 impl Frame {
+    /// The scene's colour overall (saturated pixels count more), for the
+    /// player's chameleon progress bar.
+    pub fn average(&self) -> [f32; 3] {
+        let mut acc = [0f32; 3];
+        let mut wsum = 0f32;
+        for p in &self.px {
+            let max = p[0].max(p[1]).max(p[2]);
+            let min = p[0].min(p[1]).min(p[2]);
+            let w = 0.05 + (max - min) * 3.0 + max * 0.2;
+            for k in 0..3 {
+                acc[k] += p[k] * w;
+            }
+            wsum += w;
+        }
+        if wsum <= 0.0 {
+            return [0.0; 3];
+        }
+        [acc[0] / wsum, acc[1] / wsum, acc[2] / wsum]
+    }
+
     /// Colour for a light at Hue position (x: -1 left .. 1 right,
     /// z: -1 floor .. 1 ceiling).
     pub fn region_color(&self, x: f32, z: f32, sat_boost: f32) -> [f32; 3] {

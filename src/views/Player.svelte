@@ -322,6 +322,62 @@
     poke();
   }
 
+  // Chameleon progress bar: it takes the picture's overall colour, a little
+  // brighter and more vivid. Windows reads the window (like the Hue
+  // ambilight); the in-app video is sampled straight off its frames.
+  let scene = $state<string | undefined>(undefined);
+  function vivid(hex: string) {
+    const n = parseInt(hex.slice(1), 16);
+    let r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+    let h = 0;
+    if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h = (h * 60 + 360) % 360;
+    const l0 = (max + min) / 2;
+    const s0 = d ? d / (1 - Math.abs(2 * l0 - 1)) : 0;
+    // a grey scene stays a soft warm white instead of turning muddy
+    if (s0 < 0.08) return "hsl(30 30% 88%)";
+    const s = Math.min(1, s0 * 1.35 + 0.15);
+    const l = Math.min(0.74, Math.max(0.55, l0 * 1.25 + 0.12));
+    return `hsl(${Math.round(h)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%)`;
+  }
+  let sampleCanvas: HTMLCanvasElement | null = null;
+  function sampleVideo(): string | null {
+    if (!video || video.readyState < 2) return null;
+    try {
+      sampleCanvas ??= document.createElement("canvas");
+      sampleCanvas.width = 32;
+      sampleCanvas.height = 18;
+      const g = sampleCanvas.getContext("2d", { willReadFrequently: true })!;
+      g.drawImage(video, 0, 0, 32, 18);
+      const d = g.getImageData(0, 0, 32, 18).data;
+      let r = 0, gg = 0, b = 0, w = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]);
+        const k = 0.05 + ((mx - mn) / 255) * 3 + (mx / 255) * 0.2;
+        r += d[i] * k; gg += d[i + 1] * k; b += d[i + 2] * k; w += k;
+      }
+      const hx = (v: number) => Math.round(v / w).toString(16).padStart(2, "0");
+      return `#${hx(r)}${hx(gg)}${hx(b)}`;
+    } catch {
+      return null; // cross-origin frames can't be read
+    }
+  }
+  $effect(() => {
+    if (!pb.open) return;
+    let alive = true;
+    const tick = async () => {
+      if (!alive) return;
+      const hex = native ? await api.sceneColor().catch(() => null) : sampleVideo();
+      if (hex) scene = vivid(hex);
+      setTimeout(tick, 700);
+    };
+    tick();
+    return () => (alive = false);
+  });
+
+  // Material's replay/forward glyphs carry the number for 5, 10 and 30
+  const numbered = $derived([5, 10, 30].includes(pbs.seekSmall));
   const quality = $derived.by(() => {
     const v = st.video;
     const h = v.height || 0;
@@ -389,7 +445,7 @@
 
 <svelte:window onkeydown={onKey} onmousemove={poke} />
 
-<div class="player" class:hide-cursor={chromeHidden} class:native ondblclick={fullscreen} role="presentation">
+<div class="player" class:hide-cursor={chromeHidden} class:native ondblclick={fullscreen} role="presentation" style:--scene={scene}>
   {#if pb.mode === "web" && pb.url}
     <!-- svelte-ignore a11y_media_has_caption -->
     <video bind:this={video} src={pb.url} autoplay playsinline onclick={toggle}></video>
@@ -454,9 +510,9 @@
     <div class="paused" role="presentation">
       <div class="p-shade"></div>
       <div class="p-center">
-        <button class="p-seek press" onclick={() => seekBy(-pbs.seekSmall)} aria-label="Back {pbs.seekSmall} seconds"><Icon name="skipB" size={34} /><span>{pbs.seekSmall}</span></button>
+        <button class="p-seek press" onclick={() => seekBy(-pbs.seekSmall)} aria-label="Back {pbs.seekSmall} seconds">{#if numbered}<Icon name={"replay" + pbs.seekSmall} size={36} />{:else}<Icon name="skipB" size={34} /><span>{pbs.seekSmall}</span>{/if}</button>
         <button class="p-play press" onclick={toggle} aria-label="Play"><Icon name="play" size={40} /></button>
-        <button class="p-seek press" onclick={() => seekBy(pbs.seekSmall)} aria-label="Forward {pbs.seekSmall} seconds"><Icon name="skipF" size={34} /><span>{pbs.seekSmall}</span></button>
+        <button class="p-seek press" onclick={() => seekBy(pbs.seekSmall)} aria-label="Forward {pbs.seekSmall} seconds">{#if numbered}<Icon name={"forward" + pbs.seekSmall} size={36} />{:else}<Icon name="skipF" size={34} /><span>{pbs.seekSmall}</span>{/if}</button>
       </div>
       <div class="p-info">
         {#if isShow}<span class="p-show">{pb.meta?.name ?? ""}</span>{/if}
@@ -568,8 +624,8 @@
     <!-- paused: the big middle buttons take over, so the button bar goes -->
     <div class="bar glass strong" class:gone={pausedScreen}>
       <button class="ic press" onclick={toggle} aria-label={st.paused ? "Play" : "Pause"}><Icon name={st.paused ? "play" : "pause"} size={22} /></button>
-      <button class="ic press seekic" onclick={() => seekBy(-pbs.seekSmall)} aria-label="Back {pbs.seekSmall} seconds"><Icon name="skipB" size={22} /><span>{pbs.seekSmall}</span></button>
-      <button class="ic press seekic" onclick={() => seekBy(pbs.seekSmall)} aria-label="Forward {pbs.seekSmall} seconds"><Icon name="skipF" size={22} /><span>{pbs.seekSmall}</span></button>
+      <button class="ic press seekic" onclick={() => seekBy(-pbs.seekSmall)} aria-label="Back {pbs.seekSmall} seconds">{#if numbered}<Icon name={"replay" + pbs.seekSmall} size={24} />{:else}<Icon name="skipB" size={22} /><span>{pbs.seekSmall}</span>{/if}</button>
+      <button class="ic press seekic" onclick={() => seekBy(pbs.seekSmall)} aria-label="Forward {pbs.seekSmall} seconds">{#if numbered}<Icon name={"forward" + pbs.seekSmall} size={24} />{:else}<Icon name="skipF" size={22} /><span>{pbs.seekSmall}</span>{/if}</button>
       <div class="now">
         <span class="now-show">{pb.meta?.name ?? ""}</span>
         {#if epShort}<span class="now-ep">{epShort} {pb.episodeTitle}</span>{/if}
@@ -1202,7 +1258,12 @@
     flex: 1;
   }
   .done {
-    background: var(--lamp) !important;
+    background: var(--scene, var(--lamp)) !important;
+    transition: background-color 900ms ease, width 120ms linear;
+  }
+  .scrub:hover .done,
+  .scrub:focus-within .done {
+    box-shadow: 0 0 14px var(--scene, rgb(var(--lamp-rgb) / 0.6)) !important;
   }
   .remain {
     font-size: 14px;

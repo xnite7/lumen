@@ -293,6 +293,7 @@ pub fn run() {
             commands::crew_social,
             commands::share_link,
             commands::discord_me,
+            commands::scene_color,
             commands::simkl_episode_info,
             commands::ai_vibe,
             commands::ai_prompts,
