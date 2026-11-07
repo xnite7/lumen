@@ -292,6 +292,8 @@ export const api = {
   discordStart: () => invoke<void>("discord_start"),
   discordFinish: (url: string) => invoke<{ id: string; name: string; avatar?: string }>("discord_finish", { url }),
   discordLogout: () => invoke<void>("discord_logout"),
+  updateCheck: () => invoke<{ current: string; available: string | null; notes?: string }>("update_check"),
+  updateInstall: () => invoke<void>("update_install"),
   discordMembership: () => invoke<"member" | "outsider" | "signin" | "unknown">("discord_membership"),
   netSpeed: (fresh = false) => invoke<number>("net_speed", { fresh }),
   crewList: () => invoke<{ setup: boolean; members: CrewMember[] }>("crew_list"),

@@ -112,6 +112,8 @@ pub struct General {
     pub time_aware: bool,
     /// Experimental features (eye tracking, Philips Hue) switched on.
     pub experimental: bool,
+    /// Install new versions of couch by itself.
+    pub auto_update: bool,
 }
 
 impl Default for General {
@@ -138,6 +140,7 @@ impl Default for General {
             sound: false,
             time_aware: true,
             experimental: false,
+            auto_update: true,
         }
     }
 }

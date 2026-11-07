@@ -23,6 +23,58 @@ export interface Env {
   CREW_CODE: string;
   /** the Discord server couch is for */
   GUILD_ID?: string;
+  /** read-only GitHub token for the app's releases (updates) */
+  GH_TOKEN?: string;
+  /** owner/repo holding the releases */
+  GH_REPO?: string;
+}
+
+// ------------------------------------------------------------- updates
+// The app asks /v1/update/<target>/<arch>/<current>; this reads the newest
+// GitHub release's latest.json and answers with it when it's newer (204
+// otherwise). Installers stream through /v1/update/file/<name>, so the repo
+// stays private and only server members get builds.
+
+const newer = (a: string, b: string) => {
+  const pa = a.split(".").map(Number), pb = b.split(".").map(Number);
+  for (let i = 0; i < 3; i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
+  return false;
+};
+
+async function gh(env: Env, path: string, accept = "application/vnd.github+json") {
+  return fetch(`https://api.github.com/repos/${env.GH_REPO || "xnite7/lumen"}${path}`, {
+    headers: { authorization: `Bearer ${env.GH_TOKEN}`, accept, "user-agent": "midnite-couch" },
+    redirect: "manual",
+  });
+}
+
+/** an asset's bytes: GitHub answers with a redirect to signed storage */
+async function asset(env: Env, id: number) {
+  const r = await gh(env, `/releases/assets/${id}`, "application/octet-stream");
+  const to = r.headers.get("location");
+  return to ? fetch(to) : r;
+}
+
+async function updates(url: URL, env: Env): Promise<Response> {
+  if (!env.GH_TOKEN) return new Response(null, { status: 204 });
+  const rel = await gh(env, "/releases/latest");
+  if (!rel.ok) return new Response(null, { status: 204 });
+  const r: any = await rel.json();
+  const assets: any[] = r.assets ?? [];
+  const file = url.pathname.match(/^\/v1\/update\/file\/([^/]+)$/);
+  if (file) {
+    const a = assets.find((x) => x.name === decodeURIComponent(file[1]));
+    if (!a) return json({ error: "not here" }, 404);
+    const bin = await asset(env, a.id);
+    return new Response(bin.body, { headers: { "content-type": "application/octet-stream", "content-length": String(a.size) } });
+  }
+  const m = url.pathname.match(/^\/v1\/update\/([^/]+)\/([^/]+)\/([^/]+)$/);
+  if (!m) return json({ error: "not here" }, 404);
+  const manifest = assets.find((x) => x.name === "latest.json");
+  if (!manifest) return new Response(null, { status: 204 });
+  const latest: any = await (await asset(env, manifest.id)).json();
+  if (!newer(String(latest.version ?? "0"), m[3])) return new Response(null, { status: 204 });
+  return json(latest);
 }
 
 type Who = { id: string; name: string; avatar?: string };
@@ -128,6 +180,7 @@ export default {
     if (req.method === "POST" && url.pathname === "/v1/auth") return auth(req, env);
     const who = await verify(env, req.headers.get("authorization"));
     if (!who) return json({ error: "sign in again" }, 401);
+    if (url.pathname.startsWith("/v1/update/")) return updates(url, env);
     // the Durable Object trusts this header; set it here, never from the client
     const fwd = new Request(req);
     fwd.headers.set("x-who", JSON.stringify(who));

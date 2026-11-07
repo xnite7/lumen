@@ -19,6 +19,8 @@
   import Toasts from "./components/Toasts.svelte";
   import JoinRequests from "./components/JoinRequests.svelte";
   import Gate from "./ui/Gate.svelte";
+  import UpdateBanner from "./components/UpdateBanner.svelte";
+  import { startUpdates } from "./lib/stores/updates.svelte";
   import { refreshCrew } from "./lib/stores/crew.svelte";
   import Player from "./views/Player.svelte";
   import Splash from "./ui/Splash.svelte";
@@ -40,6 +42,7 @@
       initPlayback();
       loadLibrary();
       startCrew();
+      startUpdates();
       if (!app.settings.general.onboarded) ui.onboarding = true;
       else checkGate();
     })();
@@ -222,6 +225,7 @@
   {#if gate && !ui.onboarding}<Gate state={gate} recheck={checkGate} />{/if}
   <Toasts />
   <JoinRequests />
+  <UpdateBanner />
 {/if}
 {#if splashing}<Splash ondone={() => (splashing = false)} />{/if}
 

@@ -35,6 +35,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis", "msi", "app", "dmg", "appimage"],
     "publisher": "xnite",
     "category": "Entertainment",
@@ -55,6 +56,11 @@
     "iOS": { "minimumSystemVersion": "17.0" }
   },
   "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDBFODQzMTI3NjE4RTU3QTgKUldTb1Y0NWhKekdFRG5aNEUzdnRUcEhlUnRQNUtVcnVkTmdVamkrUVZuMk1hdy8zNmUzQ05KRloK",
+      "endpoints": ["https://midnite-couch.xnite7.workers.dev/v1/update/{{target}}/{{arch}}/{{current_version}}"],
+      "windows": { "installMode": "passive" }
+    },
     "deep-link": {
       "desktop": { "schemes": ["stremio", "couch", "lumen"] },
       "mobile": [{ "scheme": ["couch", "lumen"], "appLink": false }]

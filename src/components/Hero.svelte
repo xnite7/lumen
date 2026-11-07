@@ -273,8 +273,21 @@
   .hero.inset {
     overflow: hidden;
   }
+  /* the words sit in the flow, so a short window grows the billboard
+     instead of pushing the title up under the top bar */
+  .hero:not(.inset) {
+    height: auto;
+    min-height: max(460px, min(78vh, 52vw));
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: calc(var(--safe-top) + 92px) 0 182px;
+  }
   .hero:not(.inset) .info {
-    bottom: 182px;
+    position: relative;
+    left: auto;
+    bottom: auto;
+    margin-left: var(--gutter);
   }
   .stage {
     position: absolute;

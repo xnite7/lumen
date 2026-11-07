@@ -242,6 +242,18 @@ pub async fn person_get(s: S<'_>, name: String, tmdb_id: Option<u64>, adult: boo
     }
 }
 
+/// Is there a newer couch? { current, available, notes }
+#[tauri::command]
+pub async fn update_check(app: AppHandle, s: S<'_>) -> AppResult<Value> {
+    crate::updates::check(&app, &s.core).await
+}
+
+/// Download and install the newer couch, then restart.
+#[tauri::command]
+pub async fn update_install(app: AppHandle, s: S<'_>) -> AppResult<()> {
+    crate::updates::install(&app, &s.core).await
+}
+
 /// Curated Home rows ("all"), or the Shows / Movies tabs' ("series" / "movie").
 #[tauri::command]
 pub fn home_rows(s: S<'_>, scope: String) -> Vec<Value> {

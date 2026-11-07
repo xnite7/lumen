@@ -51,6 +51,7 @@ libmpv2 = "6"
 discord-rich-presence = "1.1"
 tauri-plugin-single-instance = { version = "2.5", features = ["deep-link"] }
 tauri-plugin-window-state = "2.5"
+tauri-plugin-updater = "2"
 libloading = "0.8"
 webrtc-dtls = "0.12"
 webrtc-util = { version = "0.11", default-features = false, features = ["conn"] }

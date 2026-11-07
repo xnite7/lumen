@@ -11,6 +11,7 @@
   import { go } from "../lib/router.svelte";
   import SecretField from "../components/SecretField.svelte";
   import subPic from "../assets/sub-preview.webp";
+  import { updates, checkForUpdates, installUpdate } from "../lib/stores/updates.svelte";
   import Icon from "../components/Icon.svelte";
   import NavBar from "../ui/NavBar.svelte";
   import DiscordSignIn from "../ui/DiscordSignIn.svelte";
@@ -318,6 +319,18 @@
           {/if}
         {:else if section === "about"}
           <p class="dim lead">Version {app.version}. Built for one person.</p>
+          {#if app.platform === "windows" || app.platform === "linux"}
+            <div class="group">
+              <Cell label="Auto-update" hint="New versions install by themselves, never in the middle of something you're watching."><Controls kind="switch" bind:value={s.general.autoUpdate} onchange={changed} /></Cell>
+              <Cell label="Updates" hint={updates.installing ? `installing ${updates.available}…` : updates.available ? `couch ${updates.available} is ready` : "you're on the newest couch"}>
+                {#if updates.available && !updates.installing}
+                  <button class="btn small primary press" onclick={installUpdate}>Update now</button>
+                {:else}
+                  <button class="btn small tinted press" onclick={() => checkForUpdates(true)} disabled={updates.checking || updates.installing}>{updates.checking ? "checking…" : "Check"}</button>
+                {/if}
+              </Cell>
+            </div>
+          {/if}
           <div class="group">
             <Cell label="Playback engine" hint={app.native ? "mpv, rendered natively under the interface" : "System video player"} />
             <Cell label="Keyboard" hint="Space play/pause · ←/→ seek · ↑/↓ volume · F fullscreen · M mute · S subtitles · P picture in picture · Esc back" />

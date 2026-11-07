@@ -22,6 +22,7 @@ export const DEFAULT_SETTINGS = {
     onboarded: false,
     neon: "lit" as "soft" | "lit" | "loud",
     sound: true,
+    autoUpdate: true,
     timeAware: true,
     experimental: false,
   },

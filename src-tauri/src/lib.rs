@@ -11,6 +11,7 @@ mod images;
 mod integrations;
 mod library;
 mod migrate;
+mod updates;
 mod player;
 mod relay;
 mod settings;
@@ -58,6 +59,7 @@ pub fn run() {
                 }
             }
         }));
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
         builder = builder.plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(tauri_plugin_window_state::StateFlags::all() & !tauri_plugin_window_state::StateFlags::VISIBLE)
@@ -228,6 +230,8 @@ pub fn run() {
             commands::person_get,
             commands::hero_items,
             commands::home_rows,
+            commands::update_check,
+            commands::update_install,
             commands::discord_membership,
             commands::crew_ask,
             commands::crew_ask_status,
