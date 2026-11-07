@@ -22,9 +22,9 @@ export function needMbps(st: Stream, runtime?: string | number): number {
   return NEED[p?.res ?? "Unknown"] ?? 8;
 }
 
-export async function connectionMbps(): Promise<number> {
+export async function connectionMbps(fresh = false): Promise<number> {
   try {
-    return await api.netSpeed();
+    return await api.netSpeed(fresh);
   } catch {
     return 25; // unknown: assume a decent home connection
   }

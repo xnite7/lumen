@@ -4,9 +4,9 @@
 
 import { api, listen, uid, type Meta, type Stream } from "./api";
 import { app } from "./stores/app.svelte";
-import { play, orderedVideos } from "./stores/playback.svelte";
+import { play, orderedVideos, pb } from "./stores/playback.svelte";
 import { itemOf } from "./stores/library.svelte";
-import { connectionMbps, rank } from "./autopick";
+import { connectionMbps, rank, needMbps } from "./autopick";
 import { toast } from "./stores/toast.svelte";
 import { openDetail } from "./open";
 
@@ -34,6 +34,11 @@ function gather(type: string, id: string, ms = 9000): Promise<Stream[]> {
 
 export async function quickPlay(base: Meta, from?: HTMLElement | null, opts: { videoId?: string; startAt?: number } = {}): Promise<void> {
   const s = app.settings.streams;
+  // straight into the player's loading screen while couch finds the stream
+  pb.meta = base;
+  pb.error = "";
+  pb.loading = true;
+  pb.open = true;
   let meta: Meta = base;
   try {
     meta = await api.meta(base.type, base.id, base._addon);
@@ -69,8 +74,35 @@ export async function quickPlay(base: Meta, from?: HTMLElement | null, opts: { v
   });
   const order = rank(ok, mbps, runtime, app.platform === "ios");
   if (!order.length) {
+    pb.open = false;
+    pb.loading = false;
     toast("couldn't find a stream for that one", "error");
     return openDetail(base, from);
   }
   await play(meta, order[0], videoId, { episodeTitle, queue: order.slice(1), startAt: opts.startAt });
+  watchForBetter(meta, videoId, order, runtime, episodeTitle);
+}
+
+// ------------------------------------------------- better picture later
+// Started on a slow connection? Every few minutes couch checks again, and if
+// the Wi-Fi can now keep up with a better stream it switches over at the
+// same moment.
+let upgradeTimer = 0;
+function watchForBetter(meta: Meta, videoId: string, order: Stream[], runtime: any, episodeTitle?: string) {
+  clearInterval(upgradeTimer);
+  const best = (order[0]?._couch?.resRank ?? 0);
+  const top = Math.max(...order.map((x) => x._couch?.resRank ?? 0));
+  if (best >= top) return; // already the best there is
+  upgradeTimer = window.setInterval(async () => {
+    if (!pb.open || pb.videoId !== videoId) return clearInterval(upgradeTimer);
+    if (pb.loading || pb.state.paused || pb.state.pos < 60) return;
+    const cur = pb.stream?._couch?.resRank ?? 0;
+    const mbps = await connectionMbps(true);
+    const better = order.find((x) => (x._couch?.resRank ?? 0) > cur && x._couch?.kind !== "torrent" && needMbps(x, runtime) <= mbps * 0.7);
+    if (!better || !pb.open || pb.videoId !== videoId) return;
+    const at = pb.state.pos;
+    toast(`your connection got better — switching to ${better._couch?.res ?? "a better stream"}`, "ok");
+    await play(meta, better, videoId, { episodeTitle, queue: order.filter((x) => x !== better), startAt: at });
+    if ((better._couch?.resRank ?? 0) >= top) clearInterval(upgradeTimer);
+  }, 6 * 60 * 1000);
 }

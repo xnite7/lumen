@@ -8,6 +8,7 @@
   import { app } from "../lib/stores/app.svelte";
   import { inLibrary, toggleLibrary, setWatched, loadLibrary } from "../lib/stores/library.svelte";
   import { openDetail } from "../lib/open";
+  import { quickPlay } from "../lib/quickplay";
   import { year, runtime } from "../lib/format";
   import YouTube from "./YouTube.svelte";
   import Icon from "./Icon.svelte";
@@ -123,7 +124,7 @@
       <div class="clip">
       <div class="body" bind:offsetHeight={bodyH}>
         <div class="actions">
-          <button class="btn primary small press" onclick={() => openDetail(meta, card)}><Icon name="play" size={15} /> Watch</button>
+          <button class="btn primary small press" onclick={() => { const m = meta; closePreview(0, false); app.settings.streams.autoplayBest ? quickPlay(m, card) : openDetail(m, card); }}><Icon name="play" size={15} /> Watch</button>
           <button class="btn tinted icon small press" onclick={() => toggleLibrary(meta)} aria-label={owned ? "Remove from library" : "Add to library"} title={owned ? "In your library" : "Add to library"}>
             <Icon name={owned ? "check" : "plus"} size={17} />
           </button>

@@ -179,7 +179,7 @@
             <Cell label="Largest file" hint={s.streams.maxSizeGb ? `${s.streams.maxSizeGb} GB` : "No limit"}>
               <div style="width:200px"><Controls kind="slider" bind:value={s.streams.maxSizeGb} min={0} max={100} step={1} onchange={changed} label="Max size" /></div>
             </Cell>
-            <Cell label="Pick the stream for me" hint="couch checks how fast your connection is and plays the best stream it can keep up with. If one won't start, the next plays by itself."><Controls kind="switch" bind:value={s.streams.autoplayBest} onchange={changed} /></Cell>
+            <Cell label="Pick my own stream" hint="Off: couch plays the best stream your connection can keep up with, switches up when your Wi-Fi gets better, and moves on if one won't start. On: you choose from the list every time."><Controls kind="switch" value={!s.streams.autoplayBest} onchange={() => { s.streams.autoplayBest = !s.streams.autoplayBest; changed(); }} /></Cell>
           </div>
         {:else if section === "accounts"}
           {#if app.platform === "windows"}

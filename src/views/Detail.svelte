@@ -13,6 +13,7 @@
   import { openDetail } from "../lib/open";
   import { year, runtime, episodeLabel } from "../lib/format";
   import StreamsSheet from "../components/StreamsSheet.svelte";
+  import { quickPlay } from "../lib/quickplay";
   import Poster from "../components/Poster.svelte";
   import Icon from "../components/Icon.svelte";
   import NavBar from "../ui/NavBar.svelte";
@@ -105,6 +106,11 @@
   });
 
   function openStreams(v: Video | null) {
+    // couch picks the stream (by your connection); the list only if you asked for it
+    if (app.settings.streams.autoplayBest && m) {
+      quickPlay(m, null, { videoId: v?.id });
+      return;
+    }
     sheetVideo = v;
     sheetOpen = true;
   }
