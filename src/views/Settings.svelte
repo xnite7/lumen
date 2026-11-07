@@ -10,6 +10,7 @@
   import Item from "../ui/Item.svelte";
   import { go } from "../lib/router.svelte";
   import SecretField from "../components/SecretField.svelte";
+  import subPic from "../assets/sub-preview.webp";
   import Icon from "../components/Icon.svelte";
   import NavBar from "../ui/NavBar.svelte";
   import DiscordSignIn from "../ui/DiscordSignIn.svelte";
@@ -138,9 +139,9 @@
           <p class="foot faint note">Engine changes apply to the next video you open.</p>
           {/if}
         {:else if section === "subtitles"}
-          <div class="preview-sub">
+          <div class="preview-sub" style:--pic="url({subPic})">
             <span class="cue" style:font-size="{28 * s.subtitles.size}px" style:font-weight={s.subtitles.weight} style:color={s.subtitles.color} data-bg={s.subtitles.background} style:--bg-o={s.subtitles.bgOpacity} style:--blur="{s.subtitles.blur}px">
-              {#if s.subtitles.styleSdh && !s.subtitles.hideSdh}<em>(soft static)</em> {/if}The porch light's been on all summer.
+              {#if s.subtitles.styleSdh && !s.subtitles.hideSdh}<em>(soft static)</em>&nbsp;{/if}The porch light's been on all summer.
             </span>
           </div>
           <div class="group">
@@ -425,14 +426,14 @@
     box-shadow: 0 0 10px #32d74b;
   }
   .preview-sub {
-    height: 150px;
+    height: 200px;
     border-radius: var(--r-lg);
     margin-bottom: 18px;
     display: flex;
     align-items: flex-end;
     justify-content: center;
     padding-bottom: 22px;
-    background: linear-gradient(135deg, var(--ambient-1), var(--ambient-2) 60%, var(--ambient-3));
+    background: #1a0e06 var(--pic) center 28% / cover no-repeat;
     overflow: hidden;
   }
   .cue {
