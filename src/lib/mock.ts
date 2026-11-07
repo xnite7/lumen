@@ -197,7 +197,7 @@ export async function mock(cmd: string, args: any): Promise<any> {
       return new Promise((r) => setTimeout(() => r({ read: "You want to feel it in your chest: quiet grief, gorgeous light, nobody explaining anything.", picks: metas.slice(0, 3).map((m) => ({ ...m, year: m.releaseInfo, why: "Slow, sunlit and devastating in the way your top-rated dramas are." })) }), 700));
     case "vibe_prompts":
     case "ai_prompts":
-      return { prompts: [{ label: "cry all night tonight", q: "cry all night tonight" }, { label: "slow, gorgeous, nothing happens", q: "slow, gorgeous" }, { label: "saltburn + ethel cain had a baby", q: "saltburn + ethel cain" }] };
+      return { prompts: [{ label: "cry all night tonight", q: "cry all night tonight" }, { label: "slow, gorgeous, nothing happens", q: "slow, gorgeous" }, { label: "grown-up superhero, nothing cringe", q: "a superhero series that is not cringe or for kids" }] };
     case "palette_get":
       return { colors: [[255, 194, 46], [119, 185, 228], [228, 115, 106]], average: [80, 70, 60], dark: true };
     case "art_get":

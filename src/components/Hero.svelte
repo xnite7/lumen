@@ -52,15 +52,8 @@
     api.hero().then((s) => (slides = pick(s)));
   });
 
-  // Wide MOTN backdrops when available (nicer crops than metahub).
-  $effect(() => {
-    const m = cur;
-    if (!m || art[m.id] !== undefined || !m.id.startsWith("tt")) return;
-    art[m.id] = "";
-    api.art(m.id).then((a) => {
-      if (a?.backdrop) art[m.id] = a.backdrop;
-    }).catch(() => {});
-  });
+  // (Movie of the Night art is kept for Continue Watching: its free quota
+  // is shared by everyone, and the billboard rotates through too many titles.)
 
   const bg = $derived(cur ? art[cur.id] || cur.background || cur.poster : undefined);
 

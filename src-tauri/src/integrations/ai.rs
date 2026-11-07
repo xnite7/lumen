@@ -1,9 +1,11 @@
-//! Vibe search: answer a MOOD from your own Simkl ratings.
+//! The smart bar: ask for anything ("a superhero film that isn't cringe or
+//! for kids") and get picks that answer THAT first, ordered by your taste.
 //!
-//! Ported from the worker's /ai routes with the same prompts and the same
-//! taste-profile construction, so answers read the way you tuned them. The
-//! difference: the Anthropic key stays on this machine and is sent straight
-//! to Anthropic, so there's no shared secret and no public URL to leak.
+//! The model works with tools: it reads a short summary of your taste (built
+//! once from your Simkl ratings and cached), can pull the full rating
+//! history when it needs specifics, searches TMDB, finds titles similar to
+//! one it has in mind, and checks what you've already seen. Without Simkl it
+//! simply answers the request.
 
 use super::{simkl, tmdb};
 use crate::core::Core;
@@ -16,6 +18,8 @@ use std::time::{Duration, Instant};
 
 struct Profile {
     text: String,
+    /// the model's own short read of this taste, made once per change
+    summary: Option<String>,
     exclude: HashSet<String>,
     rated: usize,
     sig: String,
@@ -34,77 +38,51 @@ const BANDS: &[(u8, u8, &str)] = &[
     (1, 4, "1-4/10 — ACTIVELY DISLIKED. Strong negative signal; steer away from what these share"),
 ];
 
-const SCALE_NOTE: &str = "HOW TO READ THESE RATINGS — this is not a linear 1-10 scale.
-This user rates exponentially. Approximate weight = 2^(rating-5):
-  10 -> 32x   9 -> 16x   8 -> 8x   7 -> 4x   6 -> 2x   5 -> 1x (indifference)
-A single 10 outweighs eight 7s. A 7 is NOT a recommendation, it is a shrug.
-Ratings of 1-4 are active dislike and carry strong NEGATIVE weight — what those
-titles have in common is as informative as what the 10s have in common.";
+const SCALE_NOTE: &str = "HOW TO READ THESE RATINGS: weigh the top of the scale much more than the
+middle. A 10 or 9 says far more about this person than a 7, and a 7 is closer
+to a shrug than a recommendation. Ratings of 1-4 are active dislike: what
+those titles share is as informative as what the favourites share.";
 
-const VIBE_INSTRUCTIONS: &str = r#"You recommend films and TV to ONE person whose complete rating history follows.
-Your job is not to match genres. It is to understand them.
+const SUMMARY_INSTRUCTIONS: &str = r#"Below is one person's full film and TV rating history. Write a taste
+summary another recommender will rely on. Find what actually predicts whether
+they love something: register, tone, pacing, how dark or earnest, what they
+forgive and what they punish. Subject matter (vampires, heists, space) is
+almost never the reason, so don't lead with it, and don't build a pattern on
+fewer than four highly rated titles.
 
-Work in this order. Do not skip the first step.
+Return JSON: {"summary": "120-200 words, second person", "loves": [6-10 short
+axes], "avoids": [3-6 short axes], "canon": [their 10-15 most defining titles
+with years]}"#;
 
-1. THE REQUEST IS A HARD FILTER, NOT A HINT. Decide what they asked for rules
-   IN and what it rules OUT, and write that into "constraint" before anything
-   else. A title that fails the literal request is disqualified however well it
-   fits their taste. Taste decides the ORDER of what qualifies. It never
-   overrides the ask, and it never quietly widens it.
+const BAR_INSTRUCTIONS: &str = r#"You are couch's smart bar. Someone typed a request for something to watch.
 
-2. DERIVE THE AXES — the things that actually predict whether they will love
-   something. The right shape of axis: "rewards formal audacity over plot",
-   "punishes sentimentality", "loves a film that fully commits to a bit",
-   "wants texture and atmosphere more than story", "forgives a mess if it is a
-   specific mess". Genre labels are the shallow read; derive what sits
-   underneath. Titles that share a genre but sit in different rating bands are
-   where the real signal is.
+1. THE REQUEST COMES FIRST. Work out exactly what they're asking for,
+   including what they mean but didn't spell out: "a superhero thing that
+   isn't cringe or for kids" means grown-up, subversive, adult superhero
+   stories (think The Boys, Watchmen), not family Marvel. Read negations and
+   slang the way a friend would. Anything that fails the request is out, no
+   matter how well it fits their taste.
+2. THEN THEIR TASTE decides the order (when there is a taste profile). Use
+   get_taste_details when you need specifics. Never recommend anything they've
+   already rated, dropped or put on their watchlist: use check_seen.
+3. USE THE TOOLS to find real, existing titles: search_titles to check a
+   title and its year, find_similar to expand from a title that fits, discover
+   to browse a genre and era. Prefer titles you have confirmed exist.
+4. Answer with JSON only:
+   {"read": "one line on what they actually want", "picks": [{"title": "",
+   "year": 2019, "type": "movie|series", "why": "one or two sentences"}]}
+   Exactly 5 picks, best first (only the top 3 are shown; 4 and 5 are spares).
+   Each "why" connects the pick to the request and, if there's a taste
+   profile, to something specific they rated. Talk to them as "you", in their
+   register."#;
 
-SUBJECT MATTER IS NOT TASTE. This is the single most common way to get this
-wrong, so treat it as a rule and not advice. Vampires, boxing, heists, WWII,
-space, chess — that is what a film is ABOUT, and what a film is about is almost
-never why this person liked it. If two gothic horrors sit in the top band, the
-finding is NOT "likes vampires"; it is whatever those two share with the REST
-of the canon — a register, a rhythm, a kind of excess, a specific joke. Check
-the base rates before generalising from any cluster: a motif in three titles
-out of two hundred is noise no matter how highly those three are rated. If you
-cannot find four high-band titles supporting a pattern, it is not a pattern.
+const PROMPT_INSTRUCTIONS: &str = r#"From this person's taste summary, write 3 chips they'd tap on a smart bar
+to find something to watch right now. Each is a mood or a vibe in their own
+words, never a bare title or genre name: "a light comedy?", "cry all night
+tonight", "a cinematography masterpiece". Make the three different: one close
+to what they love, one at an edge of their taste, one a swing. Lowercase.
 
-Then answer the mood they gave you. Rules:
-- Exactly 5 picks, STRICTLY ordered best-fit first. Only the top 3 are ever
-  shown — the other two exist solely as replacements for any that cannot be
-  linked. So put everything into the first three and treat 4 and 5 as spares;
-  do not pad the top of the list with safe choices to hold something back.
-- NEVER recommend anything that appears anywhere in their history below.
-- No obvious canon they have plainly already seen. If it is the first thing
-  anyone would name for this mood, it is the wrong pick.
-- Do not let one loud corner of their history colour every answer. If the picks
-  cluster on a single subject, era or sensibility, that is your imagination
-  failing, not a read of them — throw the list out and rebuild it.
-- Every "why" must cite SPECIFIC ratings of theirs by name ("you gave X a 10
-  and bounced off Y, so..."). A "why" that would work for anyone is a failure.
-  A "why" whose whole argument is a shared subject — "another vampire one" —
-  is also a failure, and is the exact mistake this prompt exists to prevent.
-- Deep cuts are welcome; obscurity for its own sake is not. It has to fit.
-- Address them as "you". Match their register — if the request is blunt or
-  crude, do not answer it like a press release.
-
-"read" is one sentence naming what they are actually in the mood for,
-including the part they did not say out loud."#;
-
-const PROMPT_INSTRUCTIONS: &str = r#"The rating history below is one person's. Predict what they are about to
-want to watch, and write chips they would actually tap.
-
-Return exactly 3. Each is a MOOD or a vibe, never a title and never a genre
-name. They should sound like a person, not a menu:
-  "a light comedy?"  ·  "cry all night tonight"  ·  "a cinematography masterpiece"
-  "saltburn + ethel cain had a baby"
-
-Make the three genuinely different from each other — one safe and close to
-what they already love, one that pushes at an edge of their taste, one that is
-a swing. Draw on what they rate highly, and lean into specificity: a chip that
-names a texture, a feeling or an unexpected pairing beats a category every time.
-Lowercase, no trailing punctuation except a question mark where it fits."#;
+Return JSON: {"prompts": [{"label": "2-7 words", "q": "the fuller request"}]}"#;
 
 fn esc(s: &str) -> String {
     s.replace(['\r', '\n', '|'], " ").trim().to_string()
@@ -253,7 +231,7 @@ async fn build_profile(core: &Core) -> AppResult<Profile> {
         }
         out.push(String::new());
     }
-    Ok(Profile { text: out.join("\n"), exclude, rated: rated.len(), sig, at: Instant::now() })
+    Ok(Profile { text: out.join("\n"), summary: None, exclude, rated: rated.len(), sig, at: Instant::now() })
 }
 
 async fn profile(core: &Core) -> AppResult<(String, HashSet<String>, usize)> {
@@ -284,57 +262,265 @@ const AI_URL: &str = match option_env!("COUCH_AI_URL") {
     Some(u) => u,
     None => "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
 };
-const AI_MODEL: &str = match option_env!("COUCH_AI_MODEL") {
-    Some(m) => m,
-    None => "gemini-2.5-flash",
-};
+/// Tried in order: a pinned model if the build names one, then Google's
+/// "latest flash" alias, then a known model, so a retired name never breaks it.
+fn models() -> Vec<&'static str> {
+    let mut v = vec![];
+    if let Some(m) = option_env!("COUCH_AI_MODEL").filter(|m| !m.is_empty()) {
+        v.push(m);
+    }
+    v.extend(["gemini-flash-latest", "gemini-2.5-flash"]);
+    v
+}
 
 pub fn available(core: &Core) -> bool {
     core.key("ai").is_some()
 }
 
-async fn ask(core: &Core, profile: &str, instructions: &str, user: &str, schema: Value, max_tokens: u32, _effort: &str) -> AppResult<Value> {
+/// One chat turn. Returns the assistant message (content and/or tool calls).
+async fn chat(core: &Core, messages: &[Value], tools: Option<&Value>, json_out: bool) -> AppResult<Value> {
     let key = core.key("ai").ok_or_else(|| AppError::msg("The smart bar isn't set up in this build"))?;
-    let system = format!(
-        "{instructions}\n\nAnswer with JSON only, matching this JSON Schema exactly:\n{}\n\n{profile}",
-        serde_json::to_string(&schema).unwrap_or_default()
-    );
-    let body = json!({
-        "model": AI_MODEL,
-        "max_tokens": max_tokens.max(2048),
-        "response_format": { "type": "json_object" },
-        "messages": [
-            { "role": "system", "content": system },
-            { "role": "user", "content": user }
-        ]
-    });
-    let send = || core.http.client().post(AI_URL).bearer_auth(&key).timeout(Duration::from_secs(90)).json(&body).send();
-    let mut res = send().await?;
-    // free tiers rate-limit: a few spaced retries
-    for attempt in 1..4 {
-        let st = res.status().as_u16();
-        if st != 429 && st < 500 {
-            break;
+    let mut last_err = String::new();
+    for model in models() {
+        let mut body = json!({ "model": model, "messages": messages, "max_tokens": 4096 });
+        if let Some(t) = tools {
+            body["tools"] = t.clone();
         }
-        tokio::time::sleep(Duration::from_millis((700.0 * 2.2f64.powi(attempt - 1)) as u64)).await;
-        res = send().await?;
-    }
-    if !res.status().is_success() {
+        if json_out {
+            body["response_format"] = json!({ "type": "json_object" });
+        }
+        let send = || core.http.client().post(AI_URL).bearer_auth(&key).timeout(Duration::from_secs(90)).json(&body).send();
+        let mut res = send().await?;
+        // free tiers rate-limit: a few spaced retries
+        for attempt in 1..4 {
+            let st = res.status().as_u16();
+            if st != 429 && st < 500 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis((800.0 * 2.2f64.powi(attempt - 1)) as u64)).await;
+            res = send().await?;
+        }
         let st = res.status();
+        if st.is_success() {
+            let data: Value = res.json().await?;
+            return data.pointer("/choices/0/message").cloned().ok_or_else(|| AppError::msg("Empty answer"));
+        }
+        let t = res.text().await.unwrap_or_default();
         if st.as_u16() == 429 {
             return Err(AppError::msg("The smart bar is busy right now, try again in a minute"));
         }
-        let t = res.text().await.unwrap_or_default();
+        // unknown model: try the next one
+        if st.as_u16() == 404 || (st.as_u16() == 400 && t.to_lowercase().contains("model")) {
+            last_err = format!("{st}");
+            continue;
+        }
         return Err(AppError::msg(format!("Smart bar error {st}: {}", t.chars().take(200).collect::<String>())));
     }
-    let data: Value = res.json().await?;
-    let text = data
-        .pointer("/choices/0/message/content")
-        .and_then(|t| t.as_str())
-        .ok_or_else(|| AppError::msg("Empty answer"))?;
-    // some models wrap JSON in a code fence
+    Err(AppError::msg(format!("The smart bar couldn't reach a model ({last_err})")))
+}
+
+fn parse_json(text: &str) -> AppResult<Value> {
     let t = text.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+    // tolerate prose around the object
+    let t = match (t.find('{'), t.rfind('}')) {
+        (Some(a), Some(b)) if b > a => &t[a..=b],
+        _ => t,
+    };
     Ok(serde_json::from_str(t)?)
+}
+
+/// Your taste in a paragraph, made once from your ratings and cached until
+/// they change.
+async fn taste(core: &Core) -> Option<(String, String, HashSet<String>)> {
+    if !simkl::connected(core) {
+        return None;
+    }
+    let (text, exclude, rated) = profile(core).await.ok()?;
+    if rated < 5 {
+        return None;
+    }
+    if let Some(s) = PROFILE.lock().as_ref().and_then(|p| p.summary.clone()) {
+        return Some((s, text, exclude));
+    }
+    let msgs = vec![json!({ "role": "system", "content": SUMMARY_INSTRUCTIONS }), json!({ "role": "user", "content": text })];
+    let m = chat(core, &msgs, None, true).await.ok()?;
+    let v = parse_json(m.get("content")?.as_str()?).ok()?;
+    let list = |k: &str| v.get(k).and_then(|a| a.as_array()).map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join("; ")).unwrap_or_default();
+    let summary = format!(
+        "{}\nLoves: {}\nAvoids: {}\nTheir canon: {}",
+        v.get("summary").and_then(|s| s.as_str()).unwrap_or(""),
+        list("loves"),
+        list("avoids"),
+        list("canon")
+    );
+    if let Some(p) = PROFILE.lock().as_mut() {
+        p.summary = Some(summary.clone());
+    }
+    Some((summary, text, exclude))
+}
+
+fn tool_defs(with_taste: bool) -> Value {
+    let mut t = vec![
+        json!({ "type": "function", "function": {
+            "name": "search_titles",
+            "description": "Search TMDB for films or shows by title. Returns real titles with year, genres, rating and a short overview.",
+            "parameters": { "type": "object", "properties": {
+                "query": { "type": "string" },
+                "type": { "type": "string", "enum": ["movie", "series"] },
+                "year": { "type": "integer" }
+            }, "required": ["query", "type"] }
+        }}),
+        json!({ "type": "function", "function": {
+            "name": "find_similar",
+            "description": "Titles TMDB recommends for people who liked the given title.",
+            "parameters": { "type": "object", "properties": {
+                "title": { "type": "string" },
+                "type": { "type": "string", "enum": ["movie", "series"] },
+                "year": { "type": "integer" }
+            }, "required": ["title", "type"] }
+        }}),
+        json!({ "type": "function", "function": {
+            "name": "discover",
+            "description": "Browse well-rated titles by genre and era.",
+            "parameters": { "type": "object", "properties": {
+                "type": { "type": "string", "enum": ["movie", "series"] },
+                "genres": { "type": "array", "items": { "type": "string" }, "description": "Movie genres: Action, Adventure, Animation, Comedy, Crime, Documentary, Drama, Family, Fantasy, History, Horror, Music, Mystery, Romance, Science Fiction, Thriller, War, Western. Show genres: Action & Adventure, Animation, Comedy, Crime, Documentary, Drama, Family, Kids, Mystery, Reality, Sci-Fi & Fantasy, War & Politics, Western." },
+                "exclude_genres": { "type": "array", "items": { "type": "string" } },
+                "year_from": { "type": "integer" },
+                "year_to": { "type": "integer" },
+                "sort": { "type": "string", "enum": ["popular", "acclaimed", "newest"] }
+            }, "required": ["type"] }
+        }}),
+    ];
+    if with_taste {
+        t.push(json!({ "type": "function", "function": {
+            "name": "get_taste_details",
+            "description": "Their full rating history by band (10s, 9s ... dislikes, dropped, watchlist). Use when the summary isn't specific enough.",
+            "parameters": { "type": "object", "properties": {} }
+        }}));
+        t.push(json!({ "type": "function", "function": {
+            "name": "check_seen",
+            "description": "Which of these titles they have already rated, dropped or put on their watchlist.",
+            "parameters": { "type": "object", "properties": {
+                "titles": { "type": "array", "items": { "type": "string" } }
+            }, "required": ["titles"] }
+        }}));
+    }
+    Value::Array(t)
+}
+
+fn brief(rows: &[Value], tk: &str, n: usize) -> Value {
+    let genres = if tk == "tv" { tmdb::TV_GENRES } else { tmdb::MOVIE_GENRES };
+    Value::Array(
+        rows.iter()
+            .take(n)
+            .map(|r| {
+                let g: Vec<&str> = r
+                    .get("genre_ids")
+                    .and_then(|g| g.as_array())
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|id| id.as_u64())
+                    .filter_map(|id| genres.iter().find(|(_, gid)| *gid as u64 == id).map(|(n, _)| *n))
+                    .collect();
+                json!({
+                    "title": r.get("title").or_else(|| r.get("name")),
+                    "year": r.get("release_date").or_else(|| r.get("first_air_date")).and_then(|d| d.as_str()).and_then(|d| d.get(0..4)),
+                    "genres": g,
+                    "rating": r.get("vote_average"),
+                    "overview": r.get("overview").and_then(|o| o.as_str()).map(|o| o.chars().take(220).collect::<String>()),
+                })
+            })
+            .collect(),
+    )
+}
+
+async fn tmdb_rows(core: &Core, path: &str, params: &str) -> Vec<Value> {
+    tmdb::get(core, path, params, Duration::from_secs(86_400))
+        .await
+        .ok()
+        .and_then(|v| v.get("results").and_then(|r| r.as_array()).cloned())
+        .unwrap_or_default()
+}
+
+async fn run_tool(core: &Core, name: &str, args: &Value, full: &str, seen_titles: &HashSet<String>) -> Value {
+    let kind = args.get("type").and_then(|t| t.as_str()).unwrap_or("movie");
+    let tk = tmdb::kind_of(kind);
+    let year_key = if tk == "tv" { "first_air_date_year" } else { "year" };
+    match name {
+        "search_titles" => {
+            let mut p = format!("&query={}", urlencoding::encode(args.get("query").and_then(|q| q.as_str()).unwrap_or("")));
+            if let Some(y) = args.get("year").and_then(|y| y.as_i64()) {
+                p.push_str(&format!("&{year_key}={y}"));
+            }
+            brief(&tmdb_rows(core, &format!("/search/{tk}"), &p).await, tk, 6)
+        }
+        "find_similar" => {
+            let mut p = format!("&query={}", urlencoding::encode(args.get("title").and_then(|q| q.as_str()).unwrap_or("")));
+            if let Some(y) = args.get("year").and_then(|y| y.as_i64()) {
+                p.push_str(&format!("&{year_key}={y}"));
+            }
+            let Some(id) = tmdb_rows(core, &format!("/search/{tk}"), &p).await.first().and_then(|r| r.get("id")).and_then(|i| i.as_u64()) else {
+                return json!({ "error": "title not found" });
+            };
+            brief(&tmdb_rows(core, &format!("/{tk}/{id}/recommendations"), "").await, tk, 12)
+        }
+        "discover" => {
+            let genres = if tk == "tv" { tmdb::TV_GENRES } else { tmdb::MOVIE_GENRES };
+            let ids = |k: &str| {
+                args.get(k)
+                    .and_then(|g| g.as_array())
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|g| g.as_str())
+                    .filter_map(|g| genres.iter().find(|(n, _)| n.eq_ignore_ascii_case(g)).map(|(_, id)| id.to_string()))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            };
+            let date = if tk == "tv" { "first_air_date" } else { "primary_release_date" };
+            let sort = match args.get("sort").and_then(|s| s.as_str()) {
+                Some("acclaimed") => "&sort_by=vote_average.desc&vote_count.gte=500",
+                Some("newest") => "&sort_by=primary_release_date.desc&vote_count.gte=50",
+                _ => "&sort_by=popularity.desc&vote_count.gte=200",
+            };
+            let mut p = sort.to_string();
+            let (g, x) = (ids("genres"), ids("exclude_genres"));
+            if !g.is_empty() {
+                p.push_str(&format!("&with_genres={g}"));
+            }
+            if !x.is_empty() {
+                p.push_str(&format!("&without_genres={x}"));
+            }
+            if let Some(y) = args.get("year_from").and_then(|y| y.as_i64()) {
+                p.push_str(&format!("&{date}.gte={y}-01-01"));
+            }
+            if let Some(y) = args.get("year_to").and_then(|y| y.as_i64()) {
+                p.push_str(&format!("&{date}.lte={y}-12-31"));
+            }
+            brief(&tmdb_rows(core, &format!("/discover/{tk}"), &p).await, tk, 15)
+        }
+        "get_taste_details" => json!(full.chars().take(60_000).collect::<String>()),
+        "check_seen" => {
+            let hits: Vec<&str> = args
+                .get("titles")
+                .and_then(|t| t.as_array())
+                .into_iter()
+                .flatten()
+                .filter_map(|t| t.as_str())
+                .filter(|t| seen_titles.contains(&t.to_lowercase()))
+                .collect();
+            json!({ "already_seen": hits })
+        }
+        _ => json!({ "error": "no such tool" }),
+    }
+}
+
+/// Lowercased titles from the rating history, for check_seen.
+fn seen_titles(full: &str) -> HashSet<String> {
+    full.lines()
+        .filter_map(|l| l.strip_prefix("- "))
+        .map(|l| l.split(" (").next().unwrap_or(l).split(" [").next().unwrap_or(l).trim().to_lowercase())
+        .collect()
 }
 
 async fn resolve(core: &Core, title: &str, year: Option<i64>, kind: &str) -> Option<Value> {
@@ -358,34 +544,43 @@ async fn resolve(core: &Core, title: &str, year: Option<i64>, kind: &str) -> Opt
 }
 
 pub async fn vibe(core: &Core, q: &str) -> AppResult<Value> {
-    if !simkl::connected(core) {
-        return Err(AppError::msg("Vibe search reads your Simkl ratings — connect Simkl first"));
+    let t = taste(core).await;
+    let (summary, full, exclude) = match &t {
+        Some((s, f, e)) => (Some(s.clone()), f.clone(), e.clone()),
+        None => (None, String::new(), HashSet::new()),
+    };
+    let seen = seen_titles(&full);
+    let tools = tool_defs(summary.is_some());
+    let user = match &summary {
+        Some(s) => format!("Request: {q}\n\nTheir taste (summary; get_taste_details has the full history):\n{s}"),
+        None => format!("Request: {q}\n\nNo taste profile for this person: answer the request as well as you can."),
+    };
+    let mut msgs = vec![json!({ "role": "system", "content": BAR_INSTRUCTIONS }), json!({ "role": "user", "content": user })];
+    let mut answer: Option<Value> = None;
+    for round in 0..6 {
+        let last = round == 5;
+        let m = chat(core, &msgs, if last { None } else { Some(&tools) }, last).await?;
+        let calls = m.get("tool_calls").and_then(|c| c.as_array()).cloned().unwrap_or_default();
+        if calls.is_empty() {
+            if let Some(c) = m.get("content").and_then(|c| c.as_str()) {
+                answer = parse_json(c).ok();
+            }
+            if answer.is_some() || last {
+                break;
+            }
+            msgs.push(m.clone());
+            msgs.push(json!({ "role": "user", "content": "Now give the final answer as the JSON object only." }));
+            continue;
+        }
+        msgs.push(m.clone());
+        for c in calls {
+            let name = c.pointer("/function/name").and_then(|n| n.as_str()).unwrap_or("");
+            let args: Value = c.pointer("/function/arguments").and_then(|a| a.as_str()).and_then(|a| serde_json::from_str(a).ok()).unwrap_or(json!({}));
+            let out = run_tool(core, name, &args, &full, &seen).await;
+            msgs.push(json!({ "role": "tool", "tool_call_id": c.get("id"), "name": name, "content": out.to_string() }));
+        }
     }
-    let (text, exclude, rated) = profile(core).await?;
-    if rated < 5 {
-        return Ok(json!({ "read": "Not enough ratings on Simkl yet for this to know you.", "picks": [] }));
-    }
-    let schema = json!({
-        "type": "object",
-        "properties": {
-            "constraint": { "type": "string", "description": "What the request rules IN and OUT, decided before any title is chosen. One line." },
-            "read": { "type": "string", "description": "One sentence on what they are ACTUALLY in the mood for, in their own register." },
-            "picks": { "type": "array", "maxItems": 5, "items": {
-                "type": "object",
-                "properties": {
-                    "title": { "type": "string" },
-                    "year": { "type": "integer" },
-                    "type": { "type": "string", "enum": ["movie", "series"] },
-                    "why": { "type": "string", "description": "One or two sentences citing SPECIFIC ratings of theirs." }
-                },
-                "required": ["title", "year", "type", "why"],
-                "additionalProperties": false
-            }}
-        },
-        "required": ["constraint", "read", "picks"],
-        "additionalProperties": false
-    });
-    let parsed = ask(core, &text, VIBE_INSTRUCTIONS, &format!("Tonight's mood: {q}"), schema, 12000, "high").await?;
+    let parsed = answer.ok_or_else(|| AppError::msg("The smart bar lost its train of thought, try again"))?;
     let mut picks = Vec::new();
     for p in parsed.get("picks").and_then(|p| p.as_array()).into_iter().flatten() {
         if picks.len() >= 3 {
@@ -400,32 +595,16 @@ pub async fn vibe(core: &Core, q: &str) -> AppResult<Value> {
         meta["why"] = p["why"].clone();
         picks.push(meta);
     }
-    log::info!("vibe constraint: {}", parsed.get("constraint").and_then(|c| c.as_str()).unwrap_or(""));
     Ok(json!({ "read": parsed.get("read"), "picks": picks }))
 }
 
 pub async fn prompts(core: &Core) -> AppResult<Value> {
-    if !simkl::connected(core) || !available(core) {
+    if !available(core) {
         return Ok(json!({ "prompts": [] }));
     }
-    let (text, _, rated) = profile(core).await?;
-    if rated < 5 {
-        return Ok(json!({ "prompts": [] }));
-    }
-    let schema = json!({
-        "type": "object",
-        "properties": { "prompts": { "type": "array", "items": {
-            "type": "object",
-            "properties": {
-                "label": { "type": "string", "description": "Short, lowercase, 2-7 words. What goes on the chip." },
-                "q": { "type": "string", "description": "The fuller query this chip should submit." }
-            },
-            "required": ["label", "q"],
-            "additionalProperties": false
-        }}},
-        "required": ["prompts"],
-        "additionalProperties": false
-    });
-    let parsed = ask(core, &text, PROMPT_INSTRUCTIONS, "Give me three chips for right now.", schema, 6000, "medium").await?;
-    Ok(json!({ "prompts": parsed.get("prompts").and_then(|p| p.as_array()).map(|p| p.iter().take(3).cloned().collect::<Vec<_>>()) }))
+    let Some((summary, _, _)) = taste(core).await else { return Ok(json!({ "prompts": [] })) };
+    let msgs = vec![json!({ "role": "system", "content": PROMPT_INSTRUCTIONS }), json!({ "role": "user", "content": summary })];
+    let m = chat(core, &msgs, None, true).await?;
+    let v = parse_json(m.get("content").and_then(|c| c.as_str()).unwrap_or("{}"))?;
+    Ok(json!({ "prompts": v.get("prompts").and_then(|p| p.as_array()).map(|p| p.iter().take(3).cloned().collect::<Vec<_>>()) }))
 }
