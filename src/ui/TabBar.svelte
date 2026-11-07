@@ -402,23 +402,22 @@
   .find-btn:hover {
     color: var(--text);
   }
+  /* the tab you're on: a soft lit pill, no bar behind the rest */
+  .link {
+    border-radius: var(--r-pill);
+    transition: color var(--t-fast) ease, background var(--t-med) ease, box-shadow var(--t-med) ease;
+  }
+  .link:hover:not(.on) {
+    background: rgb(var(--hi) / 0.06);
+  }
   .link.on {
-    position: relative;
     color: var(--text);
+    text-shadow: none;
+    background: rgb(var(--hi) / 0.16);
+    box-shadow: inset 0 0 0 0.5px rgb(var(--hi) / 0.2), 0 6px 20px -8px rgb(var(--lo) / 0.8);
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
   }
-  .link.on::after {
-    content: "";
-    position: absolute;
-    left: 50%;
-    bottom: 3px;
-    width: 4px;
-    height: 4px;
-    margin-left: -2px;
-    border-radius: 50%;
-    background: var(--lamp);
-    box-shadow: 0 0 8px var(--lamp);
-  }
-  /* the search grows leftwards from beside Home, so the tabs never move */
   .find {
     position: absolute;
     right: 100%;

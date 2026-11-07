@@ -148,7 +148,7 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
   /* ----------------------------------------------------------- layout */
-  --gutter: clamp(20px, 3.4vw, 60px);
+  --gutter: clamp(30px, 5.1vw, 90px);
   --bar-h: 56px;
   --tab-h: 62px;
   --card-w: clamp(132px, 9.4vw, 172px);

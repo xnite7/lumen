@@ -7,6 +7,7 @@
   const page = pageCtx();
   import { inLibrary, toggleLibrary } from "../lib/stores/library.svelte";
   import { openDetail } from "../lib/open";
+  import { quickPlay } from "../lib/quickplay";
   import { year, runtime } from "../lib/format";
   import YouTube from "./YouTube.svelte";
   import { preview } from "../lib/stores/preview.svelte";
@@ -114,6 +115,19 @@
     }
   });
 
+  // Play starts the film (or your next episode) right here
+  let starting = $state("");
+  async function playNow(m: Meta) {
+    if (starting) return;
+    haptic("medium");
+    starting = m.id;
+    try {
+      await quickPlay(m, el);
+    } finally {
+      starting = "";
+    }
+  }
+
   function next() {
     if (slides.length) i = (i + 1) % slides.length;
   }
@@ -157,7 +171,8 @@
             {/if}
             <p class="foot facts-line">{[facts(m), m.genres?.slice(0, 2).join(", ")].filter(Boolean).join(" · ")}</p>
             <div class="card-actions">
-              <button class="btn primary press grow" onclick={() => openDetail(m)}><Icon name="play" size={16} /> Play</button>
+              <button class="btn primary press grow" onclick={() => playNow(m)} disabled={starting === m.id}>{#if starting === m.id}<span class="spin"></span>{:else}<Icon name="play" size={16} />{/if} Play</button>
+              <button class="btn icon glass press" onclick={() => openDetail(m)} aria-label="More info"><Icon name="info" size={18} /></button>
               <button class="btn icon glass press" onclick={() => { haptic("light"); toggleLibrary(m); }} aria-label={inLibrary(m.id) ? "In your list" : "Add to your list"}>
                 <Icon name={inLibrary(m.id) ? "check" : "plus"} size={20} />
               </button>
@@ -214,7 +229,8 @@
       {/key}
       </div>
       <div class="actions">
-        <button class="btn lg primary press play" use:tvFocus={{ tilt: false }} onclick={() => openDetail(cur, el)}><Icon name="play" size={18} /> Play</button>
+        <button class="btn lg primary press play" use:tvFocus={{ tilt: false }} onclick={() => playNow(cur)} disabled={starting === cur.id}>{#if starting === cur.id}<span class="spin"></span>{:else}<Icon name="play" size={18} />{/if} Play</button>
+        <button class="btn lg glass press more-info" use:tvFocus={{ tilt: false }} onclick={() => openDetail(cur, el)}><Icon name="info" size={18} /> More info</button>
         <button class="btn lg icon glass press" use:tvFocus={{ tilt: false }} onclick={() => toggleLibrary(cur)} aria-label={owned ? "In your list" : "Add to your list"} title={owned ? "In your list" : "Add to your list"}>
           <Icon name={owned ? "check" : "plus"} size={21} />
         </button>
@@ -528,5 +544,18 @@
   .pdots span.on {
     width: 18px;
     background: var(--label);
+  }
+  .spin {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>
