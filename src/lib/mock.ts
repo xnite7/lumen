@@ -141,7 +141,7 @@ export async function mock(cmd: string, args: any): Promise<any> {
       return [...list, ...list].map((m, i) => ({ ...m, id: m.id + (i >= list.length ? "b" : "") }));
     }
     case "hero_items":
-      return metas.slice(0, 6);
+      return metas.slice(0, 6).map((m, i) => ({ ...m, trendRank: i + 1, watchingNow: [25613, 4120, 980, 310, 77, 12][i] }));
     case "home_rows": {
       const all = [
         { id: "couch-hits", type: "series", name: "Hit Shows You Might Have Missed" },

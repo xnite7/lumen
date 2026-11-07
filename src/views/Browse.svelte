@@ -50,7 +50,9 @@
       ...theirs.map((c) => ({ catalog: { ...c, key: `${c.key}#${g}` }, title: `${c.name} · ${g}`, extra: [["genre", g]] as [string, string][], link: false })),
     ];
     const pop = mine.find((c) => c.id === "tmdb-popular") ?? mine[0];
-    heroItems = pop ? await api.catalog(pop, [["genre", g]]).catch(() => []) : [];
+    // Simkl's own trending for the genre first, TMDB's popular as a fallback
+    const sim = await api.genreTrending(kind, g).catch(() => [] as Meta[]);
+    heroItems = sim.length ? sim : pop ? await api.catalog(pop, [["genre", g]]).catch(() => []) : [];
   }
 
   function choose(g: string) {

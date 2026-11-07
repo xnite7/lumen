@@ -254,6 +254,12 @@ pub async fn update_install(app: AppHandle, s: S<'_>) -> AppResult<()> {
     crate::updates::install(&app, &s.core).await
 }
 
+/// Simkl's trending for one genre (genre pages' billboard).
+#[tauri::command]
+pub async fn genre_trending(s: S<'_>, kind: String, genre: String) -> AppResult<Vec<Value>> {
+    crate::integrations::simkl::genre_trending(&s.core, &kind, &genre).await
+}
+
 /// Curated Home rows ("all"), or the Shows / Movies tabs' ("series" / "movie").
 #[tauri::command]
 pub fn home_rows(s: S<'_>, scope: String) -> Vec<Value> {

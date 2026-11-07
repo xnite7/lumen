@@ -153,6 +153,8 @@
       haptic("selection");
     }
   }
+  const fmtCount = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n));
+
   // Netflix's line: kind • genre • year • length or seasons • rating
   function line(m: Meta): string[] {
     const seasons = new Set((m.videos ?? []).map((v) => v.season).filter((n) => n && n > 0)).size;
@@ -225,6 +227,16 @@
             <img class="logo" src={img(cur.logo)} alt={cur.name} />
           {:else}
             <h1 class="xl-title">{cur.name}</h1>
+          {/if}
+          {#if (cur as any).trendRank && (cur as any).trendRank <= 10}
+            <!-- Simkl's trending: "#2 in Shows this week" -->
+            <div class="trend">
+              <span class="top">TOP<b>10</b></span>
+              <span>#{(cur as any).trendRank} in {cur.type === "series" ? "Shows" : "Movies"} this week</span>
+              {#if (cur as any).watchingNow > 0}<span class="watching">· {fmtCount((cur as any).watchingNow)} watching</span>{/if}
+            </div>
+          {:else if (cur as any).watchingNow > 0}
+            <div class="trend"><span class="watching">{fmtCount((cur as any).watchingNow)} watching on Simkl</span></div>
           {/if}
           <!-- Show • Thriller • 2017 • 2 Seasons • 16+ -->
           <div class="facts">
@@ -445,6 +457,36 @@
   }
   :global(:root:not([data-appearance="light"])) .info {
     text-shadow: 0 1px 14px rgb(var(--lo) / 0.55);
+  }
+  .trend {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: -4px;
+  }
+  .trend .top {
+    display: inline-grid;
+    place-items: center;
+    width: 30px;
+    height: 32px;
+    border-radius: 3px;
+    font-size: 8px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0.04em;
+    color: #000;
+    background: var(--lamp);
+  }
+  .trend .top b {
+    font-size: 14px;
+    letter-spacing: -0.02em;
+  }
+  .trend .watching {
+    font-weight: 500;
+    color: rgb(255 255 255 / 0.75);
   }
   .sep {
     width: 4px;

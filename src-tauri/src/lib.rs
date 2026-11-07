@@ -230,6 +230,7 @@ pub fn run() {
             commands::person_get,
             commands::hero_items,
             commands::home_rows,
+            commands::genre_trending,
             commands::update_check,
             commands::update_install,
             commands::discord_membership,

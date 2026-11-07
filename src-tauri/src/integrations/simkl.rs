@@ -12,6 +12,12 @@ use std::time::Duration;
 
 pub const API: &str = "https://api.simkl.com";
 const APP: &str = "couch";
+/// The real version on every request (Simkl asks apps to identify themselves).
+pub const VERSION: &str = match option_env!("COUCH_VERSION") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
+pub const UA: &str = concat!("midnite-couch (+https://github.com/xnite7)");
 
 /// couch's AUTH V2 app ("Mobile, desktop & browser apps"). Client ids are
 /// public by design; PKCE protects the sign-in. Overridable in secrets.
@@ -46,7 +52,7 @@ pub fn connected(core: &Core) -> bool {
 fn url(core: &Core, path: &str) -> AppResult<String> {
     let cid = client_id(core).ok_or_else(|| AppError::msg("Simkl client id missing"))?;
     let sep = if path.contains('?') { '&' } else { '?' };
-    Ok(format!("{API}{path}{sep}client_id={}&app-name={APP}&app-version=1.0", urlencoding::encode(&cid)))
+    Ok(format!("{API}{path}{sep}client_id={}&app-name={APP}&app-version={VERSION}", urlencoding::encode(&cid)))
 }
 
 fn req(core: &Core, method: reqwest::Method, path: &str) -> AppResult<reqwest::RequestBuilder> {
@@ -56,7 +62,7 @@ fn req(core: &Core, method: reqwest::Method, path: &str) -> AppResult<reqwest::R
         .client()
         .request(method, url(core, path)?)
         .header("simkl-api-key", cid)
-        .header("User-Agent", "couch/1.0")
+        .header("User-Agent", format!("{UA} couch/{VERSION}"))
         .header("Content-Type", "application/json")
         .timeout(Duration::from_secs(12));
     if let Some(t) = token(core) {
@@ -195,7 +201,7 @@ pub async fn device_start(core: &Core) -> AppResult<Value> {
         .http
         .client()
         .post(format!("{API}/oauth2/device"))
-        .header("User-Agent", "couch/1.0")
+        .header("User-Agent", format!("{UA} couch/{VERSION}"))
         .form(&[("client_id", v2_id(core).as_str()), ("scope", SCOPE)])
         .timeout(Duration::from_secs(12))
         .send()
@@ -238,7 +244,7 @@ async fn token_request(core: &Core, form: &[(&str, &str)]) -> AppResult<Value> {
         .http
         .client()
         .post(format!("{API}/oauth2/token"))
-        .header("User-Agent", "couch/1.0")
+        .header("User-Agent", format!("{UA} couch/{VERSION}"))
         .form(form)
         .timeout(Duration::from_secs(15))
         .send()
@@ -301,7 +307,7 @@ pub async fn logout(core: &Core) -> AppResult<()> {
             .http
             .client()
             .post(format!("{API}/oauth2/revoke"))
-            .header("User-Agent", "couch/1.0")
+            .header("User-Agent", format!("{UA} couch/{VERSION}"))
             .form(&[("client_id", v2_id(core).as_str()), ("token", rt.as_str())])
             .timeout(Duration::from_secs(8))
             .send()
@@ -535,14 +541,17 @@ pub async fn status_of(core: &Core, kind: &str, id: &str) -> AppResult<Value> {
 /// Trending this week on Simkl, for the hero. Uses Simkl's pre-built data
 /// file (CDN, no key or token needed, refreshed daily) instead of the API.
 pub async fn trending(core: &Core) -> AppResult<Vec<Value>> {
-    let u = format!("https://data.simkl.in/discover/trending/week_100.json?client_id={}&app-name={APP}&app-version=1.0", urlencoding::encode(&v2_id(core)));
+    let u = format!("https://data.simkl.in/discover/trending/week_100.json?client_id={}&app-name={APP}&app-version={VERSION}", urlencoding::encode(&v2_id(core)));
     let d: Value = core.http.get_json_cached(&u, Duration::from_secs(3600 * 6), Duration::from_secs(12)).await?;
     let (v, tv) = (d.get("movies").cloned().unwrap_or(Value::Null), d.get("tv").cloned().unwrap_or(Value::Null));
     let mut out = Vec::new();
     let take = |arr: &Value, kind: &str, out: &mut Vec<Value>| {
-        for e in arr.as_array().into_iter().flatten().take(10) {
+        for (n, e) in arr.as_array().into_iter().flatten().take(10).enumerate() {
             let Some(imdb) = e.pointer("/ids/imdb").and_then(|i| i.as_str()) else { continue };
             out.push(json!({
+                // "#2 in Shows this week", and how many people are watching it now
+                "trendRank": n + 1,
+                "watchingNow": e.get("watching").and_then(|w| w.as_u64()).or_else(|| e.pointer("/metadata/watching").and_then(|w| w.as_u64())),
                 "id": imdb,
                 "type": kind,
                 "name": e.get("title"),
@@ -588,4 +597,51 @@ pub fn paid(core: &Core) -> bool {
         .get::<Value>("simkl_user")
         .and_then(|u| u.pointer("/account/type").and_then(|t| t.as_str()).map(|t| t.to_ascii_lowercase()))
         .map_or(false, |t| t == "pro" || t == "vip")
+}
+
+/// Trending in one genre this month (Simkl's per-genre files), for the
+/// Shows / Movies genre pages. `genre` is the display name (TMDB's), matched
+/// to Simkl's slugs loosely: "Sci-Fi & Fantasy" finds "science-fiction".
+pub async fn genre_trending(core: &Core, kind: &str, genre: &str) -> AppResult<Vec<Value>> {
+    let t = if kind == "series" { "tv" } else { "movies" };
+    let q = |path: &str| format!("https://data.simkl.in/discover/trending/{t}/genre/{path}?client_id={}&app-name={APP}&app-version={VERSION}", urlencoding::encode(&v2_id(core)));
+    let idx: Value = core.http.get_json_cached(&q("index.json"), Duration::from_secs(86_400), Duration::from_secs(12)).await?;
+    let norm = |s: &str| s.to_lowercase().replace("sci-fi", "science fiction").replace(['&', '-'], " ");
+    let want = norm(genre);
+    let words: Vec<&str> = want.split_whitespace().filter(|w| w.len() > 2).collect();
+    let slug = idx
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|g| g.get("slug").and_then(|s| s.as_str()) != Some("erotica"))
+        .find(|g| {
+            let n = norm(g.get("name").and_then(|n| n.as_str()).unwrap_or(""));
+            n == want || words.iter().any(|w| n.contains(w))
+        })
+        .and_then(|g| g.get("slug").and_then(|s| s.as_str()).map(|s| s.to_string()));
+    let Some(slug) = slug else { return Ok(vec![]) };
+    let d: Value = core.http.get_json_cached(&q(&format!("{slug}_month_500.json")), Duration::from_secs(3600 * 6), Duration::from_secs(15)).await?;
+    let rows = d.as_array().cloned().or_else(|| d.get(t).and_then(|a| a.as_array()).cloned()).unwrap_or_default();
+    Ok(rows
+        .iter()
+        .take(12)
+        .filter_map(|e| {
+            let imdb = e.pointer("/ids/imdb").and_then(|i| i.as_str())?;
+            Some(json!({
+                "id": imdb,
+                "type": kind,
+                "name": e.get("title"),
+                "description": e.get("overview"),
+                "releaseInfo": e.get("release_date").and_then(|d| d.as_str()).and_then(|d| d.rsplit('/').next()).map(|y| y.get(0..4).unwrap_or(y).to_string()),
+                "genres": e.get("genres"),
+                "runtime": e.get("runtime"),
+                "background": e.get("fanart").and_then(|f| f.as_str()).map(|f| format!("https://simkl.in/fanart/{f}_medium.jpg")).unwrap_or_else(|| metahub(imdb, "background")),
+                "poster": metahub(imdb, "poster"),
+                "logo": metahub(imdb, "logo"),
+                "trailer": e.get("trailer"),
+                "certification": e.get("certification"),
+                "watchingNow": e.get("watching"),
+            }))
+        })
+        .collect())
 }

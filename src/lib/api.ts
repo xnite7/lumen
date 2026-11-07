@@ -242,6 +242,7 @@ export const api = {
   trailer: (kind: string, id: string) => invoke<string | null>("trailer_get", { kind, id }),
   person: (name: string, tmdbId?: number, adult = false) => invoke<any>("person_get", { name, tmdbId, adult }),
   hero: () => invoke<Meta[]>("hero_items"),
+  genreTrending: (kind: string, genre: string) => invoke<Meta[]>("genre_trending", { kind, genre }),
   art: (imdb: string) => invoke<{ backdrop?: string; poster?: string }>("art_get", { imdb }),
   palette: (url: string) => invoke<{ colors: [number, number, number][]; average: [number, number, number]; dark: boolean }>("palette_get", { url }),
   streams: (kind: string, id: string, reqId: string) => invoke<void>("streams_fetch", { kind, id, reqId }),

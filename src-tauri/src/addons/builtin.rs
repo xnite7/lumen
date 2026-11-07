@@ -208,7 +208,7 @@ async fn new_episodes(core: &Core, skip: u32) -> AppResult<Vec<Value>> {
     let now = chrono_now();
     let mut hits: Vec<(i64, Value)> = vec![];
     for file in ["tv", "anime"] {
-        let u = format!("https://data.simkl.in/calendar/v2/{file}.json?client_id={}&app-name=couch&app-version=1.0", urlencoding::encode(&cid));
+        let u = format!("https://data.simkl.in/calendar/v2/{file}.json?client_id={}&app-name=couch&app-version={}", urlencoding::encode(&cid), simkl::VERSION);
         let Ok(cal) = core.http.get_json_cached::<Value>(&u, std::time::Duration::from_secs(3600 * 3), std::time::Duration::from_secs(12)).await else { continue };
         for c in cal.as_array().into_iter().flatten() {
             let Some(id) = c.pointer("/ids/simkl_id").map(|i| i.to_string()) else { continue };
