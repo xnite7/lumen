@@ -62,13 +62,14 @@ jobs:
       - name: Build installer
         run: npx tauri build
       - name: Build couch setup (custom installer window)
-        shell: bash
+        # pwsh, not bash: Git Bash's own `link` would shadow MSVC's linker
+        shell: pwsh
         run: |
-          exe=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe | head -1)
-          export COUCH_PAYLOAD="$PWD/$exe"
+          $exe = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          $env:COUCH_PAYLOAD = $exe.FullName
           cargo build --release --manifest-path setup/Cargo.toml
-          mkdir -p dist-setup
-          cp setup/target/release/couch-setup.exe "dist-setup/couch-setup-$COUCH_VERSION.exe"
+          New-Item -ItemType Directory -Force dist-setup | Out-Null
+          Copy-Item setup/target/release/couch-setup.exe "dist-setup/couch-setup-$env:COUCH_VERSION.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: couch-Windows
