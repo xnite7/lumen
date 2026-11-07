@@ -28,7 +28,9 @@ function art(name: string, c: readonly string[], w: number, h: number) {
 }
 
 function logo(name: string) {
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='600' height='160'><text x='0' y='120' font-family='Georgia, serif' font-style='italic' font-weight='700' font-size='104' fill='white'>${name}</text></svg>`;
+  // sized to the name, so long titles aren't clipped
+  const w = Math.round(name.length * 58 + 20);
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='160' viewBox='0 0 ${w} 160'><text x='0' y='120' font-family='Georgia, serif' font-style='italic' font-weight='700' font-size='104' fill='white' textLength='${w - 20}' lengthAdjust='spacingAndGlyphs'>${name}</text></svg>`;
   return "data:image/svg+xml;utf8," + encodeURIComponent(svg);
 }
 
