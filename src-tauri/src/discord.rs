@@ -14,6 +14,9 @@
 use crate::core::Core;
 use serde_json::Value;
 
+/// Where friends get couch (the RPC "Get couch" button).
+const GET_COUCH: &str = "https://www.launchpass.com/midnite/couch";
+
 /// couch's Discord application (its name is what friends see).
 const DEFAULT_APP_ID: &str = "1568062298721886290";
 
@@ -132,7 +135,7 @@ pub enum Msg {
 
 #[cfg(desktop)]
 mod imp {
-    use super::{Known, Msg};
+    use super::{Known, Msg, GET_COUCH};
     use discord_rich_presence::activity::{Activity, ActivityType, Assets, Button, StatusDisplayType, Timestamps};
     use discord_rich_presence::{DiscordIpc, DiscordIpcClient};
     use once_cell::sync::OnceCell;
@@ -237,9 +240,14 @@ mod imp {
         let mut a = Activity::new().activity_type(ActivityType::Watching).details(k.title.clone()).state(state);
         if rich {
             a = a.status_display_type(StatusDisplayType::Details);
+            // two buttons on your Discord profile: the title, and how to get couch
+            let mut btns = vec![];
             if let Some(l) = &k.link {
-                a = a.details_url(l.clone()).buttons(vec![Button::new("View on Simkl", l.clone())]);
+                a = a.details_url(l.clone());
+                btns.push(Button::new("View on Simkl", l.clone()));
             }
+            btns.push(Button::new("Get couch", GET_COUCH.to_string()));
+            a = a.buttons(btns);
         }
         let logo = LOGO.lock().clone();
         let mut assets = Assets::new()
