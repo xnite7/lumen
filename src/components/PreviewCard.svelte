@@ -32,6 +32,21 @@
     if (!m || (m.description && (m.releaseInfo || (m as any).year))) return;
     api.meta(m.type, m.id.split(":")[0], (m as any)._addon).then((r) => preview.meta?.id === m.id && (full = r)).catch(() => {});
   });
+  // one mute for every preview, remembered: sound on until you mute one
+  const MUTE_KEY = "couch.previewMuted";
+  function previewMuted() {
+    try {
+      return localStorage.getItem(MUTE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  }
+  function setPreviewMuted(on: boolean) {
+    muted = on;
+    try {
+      localStorage.setItem(MUTE_KEY, on ? "1" : "0");
+    } catch {}
+  }
   const meta = $derived.by(() => {
     const m = preview.meta;
     if (!m || !full) return m;
@@ -70,7 +85,7 @@
     clip = null;
     trailerOn = false;
     grown = false;
-    muted = app.settings.general.previewMuted;
+    muted = previewMuted();
     if (!m) return;
     // two frames: lay out at the poster's size first, then grow
     requestAnimationFrame(() => requestAnimationFrame(() => preview.token === token && (grown = true)));
@@ -137,9 +152,9 @@
           tabindex="0"
           onclick={(e) => {
             e.stopPropagation();
-            muted = !muted;
+            setPreviewMuted(!muted);
           }}
-          onkeydown={(e) => e.key === "Enter" && (muted = !muted)}
+          onkeydown={(e) => e.key === "Enter" && setPreviewMuted(!muted)}
           aria-label={muted ? "Unmute" : "Mute"}
         >
           <Icon name={muted ? "mute" : "volume"} size={16} />
