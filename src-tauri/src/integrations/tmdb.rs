@@ -369,11 +369,15 @@ pub async fn trailer(core: &Core, stremio_type: &str, id: &str) -> AppResult<Opt
         let v = get(core, &format!("/{kind}/{tid}/videos"), "", DAY).await?;
         let list = v.get("results").and_then(|r| r.as_array()).cloned().unwrap_or_default();
         let yt: Vec<&Value> = list.iter().filter(|x| x.get("site").and_then(|s| s.as_str()) == Some("YouTube")).collect();
+        // billboard / previews: a teaser (short, sets the mood, gives little
+        // away) beats a full trailer; official ones first
+        let is = |x: &&&Value, t: &str, official: bool| x.get("type").and_then(|v| v.as_str()) == Some(t) && (!official || x.get("official").and_then(|o| o.as_bool()) == Some(true));
         let pick = yt
             .iter()
-            .find(|x| x.get("type").and_then(|t| t.as_str()) == Some("Trailer") && x.get("official").and_then(|o| o.as_bool()) == Some(true))
-            .or_else(|| yt.iter().find(|x| x.get("type").and_then(|t| t.as_str()) == Some("Trailer")))
-            .or_else(|| yt.iter().find(|x| x.get("type").and_then(|t| t.as_str()) == Some("Teaser")))
+            .find(|x| is(x, "Teaser", true))
+            .or_else(|| yt.iter().find(|x| is(x, "Teaser", false)))
+            .or_else(|| yt.iter().find(|x| is(x, "Trailer", true)))
+            .or_else(|| yt.iter().find(|x| is(x, "Trailer", false)))
             .or_else(|| yt.first());
         if let Some(k) = pick.and_then(|p| p.get("key")).and_then(|k| k.as_str()) {
             return Ok(Some(k.to_string()));

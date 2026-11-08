@@ -91,7 +91,7 @@
           muted = app.settings.general.heroMuted;
           return;
         }
-        const k = m.trailer ?? m.trailers?.[0]?.source ?? (m.id.startsWith("tt") ? await api.trailer(m.type, m.id) : null);
+        const k = (m.id.startsWith("tt") ? await api.trailer(m.type, m.id).catch(() => null) : null) ?? m.trailer ?? m.trailers?.[0]?.source ?? null;
         if (k && cur?.id === m.id) {
           trailer = k;
           muted = app.settings.general.heroMuted;

@@ -80,16 +80,13 @@
         if (preview.token === token && c) clip = c;
       }).catch(() => {});
     }
-    const own = m.trailerStreams?.[0]?.ytId ?? m.trailers?.find((t) => t.type === "Trailer")?.source ?? m.trailers?.[0]?.source;
-    if (own) {
-      trailer = own;
-      return;
-    }
+    // teaser first (api.trailer prefers them); the title's own trailer if none
+    const own = m.trailerStreams?.[0]?.ytId ?? m.trailers?.find((t) => t.type === "Teaser")?.source ?? m.trailers?.[0]?.source ?? null;
     if (m.id.startsWith("tt")) {
       api.trailer(m.type, m.id).then((k) => {
-        if (preview.token === token) trailer = k;
-      });
-    }
+        if (preview.token === token) trailer = k ?? own;
+      }).catch(() => preview.token === token && (trailer = own));
+    } else trailer = own;
   });
 
   const owned = $derived(meta ? inLibrary(meta.id) : false);
