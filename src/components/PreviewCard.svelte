@@ -99,8 +99,8 @@
     const own = m.trailerStreams?.[0]?.ytId ?? m.trailers?.find((t) => t.type === "Teaser")?.source ?? m.trailers?.[0]?.source ?? null;
     if (m.id.startsWith("tt")) {
       api.trailer(m.type, m.id).then((k) => {
-        if (preview.token === token) trailer = k ?? own;
-      }).catch(() => preview.token === token && (trailer = own));
+        if (preview.token === token) trailer = k;
+      }).catch(() => {});
     } else trailer = own;
   });
 

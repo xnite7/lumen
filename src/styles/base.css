@@ -964,6 +964,14 @@ html.winctl {
   pointer-events: none;
 }
 
+/* wide: a page with a back button gets its own row for it under the top bar,
+   so the page's title starts below it instead of under the arrow */
+@media (min-width: 761px) {
+  .page:has(.navbar .lead .orb) {
+    --bar-h: 108px;
+  }
+}
+
 /* a picture that couldn't load anywhere (lib/fallback.ts): couch's own
    placeholder, never a broken-image icon */
 .img-ph {

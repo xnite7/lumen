@@ -38,11 +38,11 @@
   <ContinueRow />
   <CouchRow />
   <ActivityRow />
-  <ServicesRow />
   {#each rows as r (r.catalog.key)}
     <Row catalog={r.catalog} extra={r.extra} link={r.link} />
   {/each}
   <div class="pad"><BrowseRow /></div>
+  <ServicesRow />
   <div class="end"></div>
   </div>
 </div>

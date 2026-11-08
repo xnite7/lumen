@@ -362,18 +362,25 @@ pub async fn enrich(core: &Core, stremio_type: &str, id: &str) -> AppResult<Valu
 }
 
 /// Best trailer for a hover card or the hero: a YouTube key.
-/// Is this YouTube video wider than tall? (YouTube's oEmbed gives the
-/// player's size: Shorts come back taller than wide.) Unknown counts as yes.
+/// Is this a normal (wide) YouTube video, not a Short? YouTube answers
+/// /shorts/<id> itself for a Short and redirects to /watch for anything
+/// else. Remembered per video; unknown counts as fine.
 async fn landscape(core: &Core, key: &str) -> bool {
-    let u = format!("https://www.youtube.com/oembed?format=json&url={}", urlencoding::encode(&format!("https://www.youtube.com/watch?v={key}")));
-    match core.http.get_json_cached::<Value>(&u, DAY * 30, T).await {
-        Ok(v) => {
-            let w = v.get("width").and_then(|x| x.as_f64()).unwrap_or(16.0);
-            let h = v.get("height").and_then(|x| x.as_f64()).unwrap_or(9.0);
-            w >= h
-        }
-        Err(_) => true,
+    static SEEN: once_cell::sync::Lazy<parking_lot::Mutex<std::collections::HashMap<String, bool>>> = once_cell::sync::Lazy::new(Default::default);
+    if let Some(v) = SEEN.lock().get(key) {
+        return *v;
     }
+    let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).timeout(T).build();
+    let ok = match client {
+        Ok(c) => match c.head(format!("https://www.youtube.com/shorts/{key}")).header("user-agent", crate::http::UA).send().await {
+            Ok(r) => !r.status().is_success(), // 200 = it's a Short
+            Err(_) => true,
+        },
+        Err(_) => true,
+    };
+    let _ = core;
+    SEEN.lock().insert(key.to_string(), ok);
+    ok
 }
 
 /// The big streaming services, with TMDB's own logos (for the Home row).
@@ -420,11 +427,11 @@ pub async fn trailer(core: &Core, stremio_type: &str, id: &str) -> AppResult<Opt
             ["short", "vertical", "tiktok", "reel", "#", "9x16", "9:16"].iter().any(|w| n.contains(w))
         };
         let mut order: Vec<&Value> = yt.iter().copied().filter(|x| !looks_vertical(x) && x.get("size").and_then(|s| s.as_u64()).unwrap_or(1080) >= 720).collect();
+        // official uploads only: TMDB's unofficial ones are often fan edits,
+        // memes or re-uploads (KinoCheck below covers titles with none)
         let rank = |x: &Value| match (ty(x).as_str(), official(x)) {
             ("Teaser", true) => 0,
-            ("Teaser", false) => 1,
-            ("Trailer", true) => 2,
-            ("Trailer", false) => 3,
+            ("Trailer", true) => 1,
             _ => 9,
         };
         order.retain(|x| rank(x) < 9);

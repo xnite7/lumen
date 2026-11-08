@@ -2,6 +2,7 @@
   // One streaming service's page: its logo, then what's on it (shows or
   // films), most popular first, loading more as you scroll.
   import { api, type Meta } from "../lib/api";
+  import { untrack } from "svelte";
   import { serviceCatalog } from "../lib/services";
   import Poster from "../components/Poster.svelte";
   import Controls from "../components/Controls.svelte";
@@ -26,7 +27,10 @@
     try {
       const cat = serviceCatalog(id, kind, label);
       const r = await api.catalog(cat, items.length ? [["skip", String(items.length)]] : []);
-      if (my !== seq) return;
+      if (my !== seq) {
+        loading = false;
+        return;
+      }
       const seen = new Set(items.map((m) => m.id));
       const fresh = r.filter((m) => !seen.has(m.id));
       items = [...items, ...fresh];
@@ -40,11 +44,15 @@
   $effect(() => {
     void kind;
     void id;
-    page(true);
+    // only kind / id restart the list (not the list's own loading state)
+    untrack(() => {
+      loading = false;
+      page(true);
+    });
   });
   $effect(() => {
     if (!sentinel) return;
-    const io = new IntersectionObserver((e) => e[0].isIntersecting && page(false), { rootMargin: "800px" });
+    const io = new IntersectionObserver((e) => e[0].isIntersecting && untrack(() => page(false)), { rootMargin: "800px" });
     io.observe(sentinel);
     return () => io.disconnect();
   });

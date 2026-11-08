@@ -101,7 +101,9 @@
         if (!m || scrollY > 200) return;
         // the billboard is cinematic: teaser (trailer if none). Scene clips are
         // for the previews.
-        const k = (m.id.startsWith("tt") ? await api.trailer(m.type, m.id).catch(() => null) : null) ?? m.trailer ?? m.trailers?.[0]?.source ?? null;
+        // IMDb titles: only couch's checked pick (official, wide, no Shorts);
+        // the title's own trailer field only for titles couch can't look up
+        const k = m.id.startsWith("tt") ? await api.trailer(m.type, m.id).catch(() => null) : (m.trailer ?? m.trailers?.[0]?.source ?? null);
         if (k && cur?.id === m.id) {
           trailer = k;
           muted = savedMute();
