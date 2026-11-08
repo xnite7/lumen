@@ -233,7 +233,10 @@ impl Mpv {
                                 ("volume", PropertyData::Double(v)) => s.volume = v,
                                 ("mute", PropertyData::Flag(b)) => s.muted = b,
                                 ("speed", PropertyData::Double(v)) => s.speed = v,
-                                ("aid", PropertyData::Str(v)) => s.aid = v.to_string(),
+                                ("aid", PropertyData::Str(v)) => {
+                                    s.aid = v.to_string();
+                                    force = true;
+                                }
                                 ("sid", PropertyData::Str(v)) => {
                                     s.sid = v.to_string();
                                     force = true;

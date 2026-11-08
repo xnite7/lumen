@@ -316,6 +316,9 @@
   const audio = $derived(pb.tracks.filter((t) => t.type === "audio"));
   const subs = $derived(pb.tracks.filter((t) => t.type === "sub"));
   const subsOn = $derived(st.sid && st.sid !== "no" && st.sid !== "false");
+  // the live mpv choice wins; the track list's own flag is only a snapshot
+  // from when the video opened
+  const isOn = (t: { id: any; selected?: boolean }, cur: string) => (/^\d+$/.test(cur ?? "") ? String(t.id) === cur : !!t.selected);
 
   function trackName(t: any) {
     const parts = [t.title, lang(t.lang)].filter((x, i, a) => x && a.indexOf(x) === i);
@@ -711,14 +714,14 @@
             <div class="col">
               <h4 class="headline">Audio</h4>
               {#each audio as t (t.id)}
-                <button class="opt" class:sel={t.selected} onclick={() => cmd("aid", { value: t.id })}>{trackName(t)}</button>
+                <button class="opt" class:sel={isOn(t, st.aid)} onclick={() => cmd("aid", { value: t.id })}>{trackName(t)}</button>
               {/each}
             </div>
             <div class="col alt">
               <h4 class="headline">Subtitles</h4>
               <button class="opt" class:sel={!subsOn} onclick={() => cmd("sid", { value: "no" })}>Off</button>
               {#each subs as t (t.id)}
-                <button class="opt" class:sel={t.selected} onclick={() => cmd("sid", { value: t.id })}>{trackName(t)}{#if t.external}<span class="faint"> · addon</span>{/if}</button>
+                <button class="opt" class:sel={subsOn && isOn(t, st.sid)} onclick={() => cmd("sid", { value: t.id })}>{trackName(t)}{#if t.external}<span class="faint"> · addon</span>{/if}</button>
               {/each}
               {#if subsOn}
                 <div class="delay">
