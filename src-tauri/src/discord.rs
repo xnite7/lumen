@@ -15,7 +15,7 @@ use crate::core::Core;
 use serde_json::Value;
 
 /// Where friends get couch (the RPC "Get couch" button).
-const GET_COUCH: &str = "https://www.launchpass.com/midnite/couch";
+const GET_COUCH: &str = "https://ko-fi.com/s/782662b7b5";
 
 /// couch's Discord application (its name is what friends see).
 const DEFAULT_APP_ID: &str = "1568062298721886290";

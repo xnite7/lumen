@@ -80,8 +80,8 @@ a{color:var(--lamp)}
 <section id="subs"><h2><span>5.</span>Subscriptions and access</h2>
 <p>A subscription buys a role in the midnite Discord server. That role is what lets you into couch.</p>
 <ul>
-<li>Subscriptions are sold and billed through <a href="https://www.launchpass.com" rel="noopener">LaunchPass</a>, which gives you the subscriber role in the midnite server when you pay and removes it when your subscription ends. Payment, renewal, cancellation and refunds are handled by LaunchPass and follow its terms; you manage or cancel your subscription in your LaunchPass account.</li>
-<li>We never see or store your card details; LaunchPass and its payment processor do.</li>
+<li>Access is sold through <a href="https://ko-fi.com/s/782662b7b5" rel="noopener">Ko-fi</a>, which gives you the access role in the midnite server when you pay and removes it when your access ends. Payment, renewal, cancellation and refunds are handled by Ko-fi and its payment processor (PayPal or Stripe) and follow their terms.</li>
+<li>We never see or store your card details; Ko-fi and its payment processor do.</li>
 <li>When your subscription ends or the role is removed, your access ends too. Your ratings on Simkl stay on Simkl.</li>
 <li>Access is a perk of the subscription, not a purchase of any content. We may change features, prices or the roles that grant access, with notice in the server where we can.</li>
 </ul>
