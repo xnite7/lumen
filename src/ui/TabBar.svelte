@@ -219,8 +219,8 @@
   <div class="me">
     <!-- a new couch is ready: tap to update now -->
     {#if updates.available}
-      <button class="upd press" onclick={installUpdate} title="couch {updates.available} is ready. click to update" aria-label="Update couch to {updates.available}">
-        <Icon name="download" size={15} />
+      <button class="upd press" onclick={installUpdate} title="couch {updates.available} is ready" aria-label="Update couch to {updates.available}">
+        <span class="dot"></span>update
       </button>
     {/if}
     <button class="me-btn" class:on={nav.tab === "profile" || menuOpen} onclick={() => (menuOpen = !menuOpen)} aria-label="Account" aria-expanded={menuOpen}>
@@ -526,24 +526,34 @@
     right: 29px;
     z-index: 61;
   }
+  /* quiet glass pill: a small lit dot and the word, nothing shouting */
   .upd {
-    width: 30px;
     height: 30px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    color: #fff;
-    background: var(--neon);
-    box-shadow: 0 0 0 3px rgb(var(--neon-rgb) / 0.25), 0 0 16px rgb(var(--neon-rgb) / 0.7);
-    animation: upd-pulse 2.2s ease-in-out infinite;
+    padding: 0 12px 0 10px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: rgb(255 255 255 / 0.88);
+    background: rgb(255 255 255 / 0.07);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.12);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: background 160ms ease, color 160ms ease;
   }
   .upd:hover {
-    transform: scale(1.08);
+    background: rgb(255 255 255 / 0.13);
+    color: #fff;
   }
-  @keyframes upd-pulse {
-    50% {
-      box-shadow: 0 0 0 6px rgb(var(--neon-rgb) / 0.12), 0 0 22px rgb(var(--neon-rgb) / 0.9);
-    }
+  .upd .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--neon);
+    box-shadow: 0 0 8px var(--neon);
   }
   .me-btn {
     display: grid;
