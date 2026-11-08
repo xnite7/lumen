@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
   import { tvFocus } from "../lib/tvfocus";
   import { api, img, type Meta, type Video } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
@@ -58,6 +59,11 @@
   });
   const finaleName = ["", "Mid-season finale", "Season finale", "Series finale"];
   let reviewOpen = $state(false);
+  let logoFailed = $state(false);
+  $effect(() => {
+    void logo;
+    logoFailed = false;
+  });
   const spoilerFree = $derived(!!app.settings.playback.blurUnwatched);
   let reviews = $state<Activity[]>([]);
   const myReview = $derived(reviews.find((r) => r.who === social.me?.id));
@@ -209,15 +215,15 @@
            into this page, so the vignette never pops in at the end -->
       <div class="art-stack" style:view-transition-name="hero-art">
         {#if backdrop}
-          <img class="bg" src={img(backdrop, "original")} alt="" use:parallax={1} />
+          <img class="bg" src={img(backdrop, "original")} alt="" use:parallax={1} use:fallback={[imdbArt(m.id, "background")]} />
         {/if}
         <div class="hero-shade"></div>
         <div class="hero-vignette"></div>
         <div class="lamp-glow" aria-hidden="true"></div>
       </div>
       <div class="info" use:parallax={-0.3} style:view-transition-name="hero-info">
-        {#if logo}
-          <img class="logo" src={img(logo)} alt={m.name} use:trimLogo />
+        {#if logo && !logoFailed}
+          <img class="logo" src={img(logo)} alt={m.name} use:trimLogo use:fallback={{ alts: [imdbArt(m.id, "logo")], onfail: () => (logoFailed = true) }} />
         {:else}
           <h1 class="large-title">{m.name}</h1>
         {/if}
@@ -297,7 +303,8 @@
             <div class="ep" class:future class:hide>
               <div class="thumb-wrap">
                 <button class="thumb press" use:tvFocus={{ max: 5 }} onclick={() => !future && openStreams(v)} aria-label="Play {v.title ?? v.name}">
-                  {#if v.thumbnail}<img src={img(v.thumbnail)} alt="" loading="lazy" />{/if}
+                  <!-- the episode's still, IMDb's, then the show's own art; else couch's placeholder -->
+                  <img src={img(v.thumbnail ?? imdbEpisode(m.id, v.season, v.episode ?? v.number) ?? undefined)} alt="" loading="lazy" use:fallback={[imdbEpisode(m.id, v.season, v.episode ?? v.number), backdrop ? img(backdrop, "w780") : null]} />
                   <span class="num">{v.episode ?? v.number}</span>
                   {#if !future}<span class="play glass clear"><Icon name="play" size={16} /></span>{/if}
                 </button>
@@ -346,8 +353,9 @@
         <div class="cast scroll-x">
           {#each cast as c}
             <button class="person press" onclick={() => go({ name: "person", person: c.name, tmdbId: c.id, adult: !!m.adult || !m.id.startsWith("tt") })}>
-              <div class="face">
-                {#if c.profile}<img src={img(c.profile)} alt="" loading="lazy" />{:else}<span>{c.name?.split(" ").map((x: string) => x[0]).slice(0, 2).join("")}</span>{/if}
+              <div class="face" class:img-ph={!c.profile}>
+                <span class="initials">{c.name?.split(" ").map((x: string) => x[0]).slice(0, 2).join("")}</span>
+                {#if c.profile}<img src={img(c.profile)} alt="" loading="lazy" use:fallback={[]} />{/if}
               </div>
               <span class="nm">{c.name}</span>
               {#if c.character}<span class="ch">{c.character}</span>{/if}
@@ -364,7 +372,7 @@
           {#each extra.videos as v (v.key)}
             <button class="vid press" onclick={() => playTrailer(v.key, v.name)}>
               <div class="vthumb">
-                <img src={img(`https://i.ytimg.com/vi/${v.key}/hqdefault.jpg`)} alt="" loading="lazy" />
+                <img src={img(`https://i.ytimg.com/vi/${v.key}/hqdefault.jpg`)} alt="" loading="lazy" use:fallback={{ alts: [backdrop ? img(backdrop, "w780") : null], minWidth: 120 }} />
                 <span class="play glass clear"><Icon name="play" size={16} /></span>
               </div>
               <span class="nm clamp-2">{v.name}</span>
@@ -879,6 +887,23 @@
     margin-bottom: 8px;
     box-shadow: inset 0 0 0 1px rgb(var(--hi) / 0.1);
     transition: transform var(--t-med) var(--spring);
+  }
+  .face {
+    position: relative;
+  }
+  .face img {
+    position: absolute;
+    inset: 0;
+    object-fit: cover;
+  }
+  .initials {
+    font-size: 28px;
+    letter-spacing: -0.02em;
+    color: rgb(var(--hi) / 0.45);
+  }
+  /* no photo: a soft gradient + their initials (no mark behind) */
+  .face:global(.img-ph) {
+    background: radial-gradient(80% 70% at 50% 30%, rgb(224 48 154 / 0.22), transparent 70%), linear-gradient(160deg, #1d1220, #0b070a) !important;
   }
   .person:hover .face {
     transform: scale(1.05);

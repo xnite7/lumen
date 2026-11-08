@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
   import { img, type Meta } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
   import { openPreview, closePreview, preview, hoverDelay } from "../lib/stores/preview.svelte";
@@ -72,10 +73,10 @@
   {/if}
   <div class="art" class:loaded use:tvFocus={{ max: landscape ? 5 : 8 }}>
     {#if src && !failed}
-      <img {src} alt="" loading="lazy" decoding="async" onload={() => (loaded = true)} onerror={() => (failed = true)} draggable="false" />
+      <img {src} alt="" loading="lazy" decoding="async" onload={() => (loaded = true)} use:fallback={{ alts: [imdbArt(meta.id, landscape ? "background" : "poster")], onfail: () => (failed = true) }} draggable="false" />
     {/if}
     {#if !loaded || failed}
-      <div class="fallback" class:skeleton={!failed}>
+      <div class="fallback" class:skeleton={!failed} class:img-ph={failed}>
         {#if failed}<span>{meta.name}</span>{/if}
       </div>
     {/if}
@@ -88,7 +89,7 @@
     {#if landscape && loaded}
       <div class="lshade"></div>
       {#if meta.logo}
-        <img class="llogo" src={img(meta.logo)} alt="" loading="lazy" />
+        <img class="llogo" src={img(meta.logo)} alt="" loading="lazy" use:fallback={[imdbArt(meta.id, "logo")]} />
       {:else}
         <span class="lname">{meta.name}</span>
       {/if}

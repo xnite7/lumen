@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
   import { checkRelease, isUnreleased, releaseNote } from "../lib/release.svelte";
   import { toast } from "../lib/stores/toast.svelte";
   import { trimLogo } from "../lib/trimlogo";
@@ -181,7 +182,7 @@
       {#each slides as m, n (m.id)}
         <article class="card" class:on={n === i} use:pressMenu={() => posterMenu(m)}>
           <button class="art" onclick={() => openDetail(m)} aria-label={m.name}>
-            <img src={img(m.poster ?? m.background, "w780")} alt="" />
+            <img src={img(m.poster ?? m.background, "w780")} alt="" use:fallback={[imdbArt(m.id, "poster")]} />
           </button>
           <div class="card-shade"></div>
           <div class="card-info">
@@ -217,7 +218,7 @@
     <div class="stage">
       <div class="pane" use:parallax={1}>
         {#key cur.id}
-          <img class="bg" src={img(bg, "original")} alt="" />
+          <img class="bg" src={img(bg, "original")} alt="" use:fallback={[imdbArt(cur.id, "background")]} />
         {/key}
         {#if trailer}
           <YouTube id={trailer} {muted} fill paused={below} onplaying={() => (trailerOn = true)} onended={() => setTimeout(next, 2500)} />

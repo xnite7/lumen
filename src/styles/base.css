@@ -953,3 +953,20 @@ html.winctl {
 .scroll-x.rail-dragging * {
   pointer-events: none;
 }
+
+/* a picture that couldn't load anywhere (lib/fallback.ts): couch's own
+   placeholder, never a broken-image icon */
+.img-ph {
+  background:
+    url("../assets/brand/ph-mark.png") center / 34% auto no-repeat,
+    radial-gradient(80% 90% at 30% 20%, rgb(224 48 154 / 0.18), transparent 70%),
+    linear-gradient(160deg, #1b1119, #0b070a) !important;
+}
+.img-ph::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+  border-radius: inherit;
+}

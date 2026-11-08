@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
   import RailArrows from "./RailArrows.svelte";
   let rail: HTMLElement | undefined = $state();
   // Continue Watching, 16:9. Prefers Movie of the Night's horizontal poster
@@ -91,9 +92,9 @@
             {#if wide}
               <img src={img(wide)} alt="" loading="lazy" />
             {:else}
-              <img src={img(it.background ?? it.poster, "w780")} alt="" loading="lazy" />
+              <img src={img(it.background ?? it.poster, "w780")} alt="" loading="lazy" use:fallback={[imdbArt(it._id, "background")]} />
               <div class="shade"></div>
-              {#if it.logo}<img class="logo" src={img(it.logo)} alt={it.name} loading="lazy" />{:else}<span class="nm">{it.name}</span>{/if}
+              {#if it.logo}<img class="logo" src={img(it.logo)} alt={it.name} loading="lazy" use:fallback={[imdbArt(it._id, "logo")]} />{:else}<span class="nm">{it.name}</span>{/if}
             {/if}
             <span class="play glass clear"><Icon name="play" size={18} /></span>
           </div>
