@@ -41,6 +41,8 @@ export async function curated(scope: "all" | "series" | "movie"): Promise<RowSpe
 
 /** your own rows (Simkl lists, Top 10) belong on Home */
 const personal = (c: CatalogRef) => c.builtin && /^(simkl-(upnext|new|watching|plantowatch)|motn-top)$/.test(c.id);
+/** Simkl's Up Next + Watching live inside couch's own Continue Watching row */
+const folded = (c: CatalogRef) => c.builtin && /^simkl-(upnext|watching)$/.test(c.id);
 
 export async function catalogRows(where: "home" | "series" | "movie"): Promise<CatalogRef[]> {
   const all = await api.catalogs();
@@ -50,6 +52,7 @@ export async function catalogRows(where: "home" | "series" | "movie"): Promise<C
   const order = new Map(h.rowOrder.map((k, i) => [k, i]));
   return browsable
     .filter((c) => !hidden.has(c.key))
+    .filter((c) => !folded(c))
     .filter((c) => (where === "home" ? personal(c) : c.type === where && !personal(c)))
     .map((c, i) => ({ c, i }))
     .sort((a, b) => (order.get(a.c.key) ?? 1000 + a.i) - (order.get(b.c.key) ?? 1000 + b.i))

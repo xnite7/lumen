@@ -503,7 +503,13 @@
     border-radius: 50%;
     background: rgb(var(--hi) / 0.45);
   }
+  /* never more than 3 lines; the rest is cut with an ellipsis */
   .desc {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
     margin: 0;
     color: var(--white, #fff);
     font-size: 18px;

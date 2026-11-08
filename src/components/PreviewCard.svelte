@@ -21,7 +21,21 @@
   let grown = $state(false);
   let bodyH = $state(190);
 
-  const meta = $derived(preview.meta);
+  // Up Next (and other bare) cards only carry a name and pictures: fetch the
+  // rest (year, rating, genres, story) so every preview looks the same
+  let full = $state<Meta | null>(null);
+  $effect(() => {
+    const m = preview.meta;
+    full = null;
+    if (!m || (m.description && (m.releaseInfo || (m as any).year))) return;
+    api.meta(m.type, m.id.split(":")[0], (m as any)._addon).then((r) => preview.meta?.id === m.id && (full = r)).catch(() => {});
+  });
+  const meta = $derived.by(() => {
+    const m = preview.meta;
+    if (!m || !full) return m;
+    const own = Object.fromEntries(Object.entries(m).filter(([, v]) => v != null && v !== ""));
+    return { ...full, ...own } as Meta;
+  });
   $effect(() => checkRelease(meta));
 
   // Where it ends up: half again as wide as the poster (within reason), its

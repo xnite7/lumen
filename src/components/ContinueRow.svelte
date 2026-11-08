@@ -47,6 +47,29 @@
     }
   });
 
+  // One row for everything you're in the middle of: what you paused in couch,
+  // then Simkl's "next episode is out" shows, then the rest you're watching.
+  type Item = LibraryItem & { _label?: string; _simkl?: boolean };
+  let fromSimkl = $state<Item[]>([]);
+  $effect(() => {
+    void lib.cw.length;
+    if (!app.secrets.simkl_token) return;
+    api.catalogs().then(async (cats) => {
+      const pick = (id: string) => cats.find((c) => c.builtin && c.id === id && c.type === "series");
+      const lists = await Promise.all(["simkl-upnext", "simkl-watching"].map((id) => (pick(id) ? api.catalog(pick(id)!, []).catch(() => []) : Promise.resolve([]))));
+      const seen = new Set<string>();
+      fromSimkl = lists.flat().filter((m) => !seen.has(m.id) && seen.add(m.id)).slice(0, 20).map((m: any) => ({
+        _id: m.id, type: m.type, name: m.name, poster: m.poster, background: m.background, logo: m.logo,
+        removed: false, temp: false, _mtime: "", _simkl: true, _label: m.upNext ?? "",
+        state: { timeOffset: 0, duration: 0, flaggedWatched: 0, timesWatched: 0, video_id: m.nextVideo },
+      }) as Item);
+    }).catch(() => {});
+  });
+  const items = $derived.by((): Item[] => {
+    const have = new Set(lib.cw.map((i) => i._id.split(":")[0]));
+    return [...(lib.cw as Item[]), ...fromSimkl.filter((i) => !have.has(i._id))];
+  });
+
   function asMeta(it: LibraryItem): Meta {
     return { id: it._id, type: it.type, name: it.name, poster: it.poster, background: it.background, logo: it.logo };
   }
@@ -68,17 +91,17 @@
   }
 </script>
 
-{#if !lib.cw.length}
+{#if !items.length}
   <section class="row">
-    <header><h2 class="title3">up next</h2></header>
+    <header><h2 class="title3">continue watching</h2></header>
     <p class="bump-text empty">nothing yet. get comfy.</p>
   </section>
 {:else}
   <section class="row">
-    <header><h2 class="title3">up next</h2></header>
+    <header><h2 class="title3">continue watching</h2></header>
     <div class="wrap">
     <div class="rail scroll-x" bind:this={rail} data-own-arrows>
-      {#each lib.cw as it (it._id)}
+      {#each items as it (it._id)}
         {@const wide = art[it._id]}
         {@const p = it.state.duration ? it.state.timeOffset / it.state.duration : 0}
         <button
@@ -98,7 +121,11 @@
             {/if}
             <span class="play glass clear"><Icon name="play" size={18} /></span>
           </div>
-          <div class="bar" title={[episodeLabel(it.state.video_id), remaining(it.state.timeOffset / 1000, it.state.duration / 1000)].filter(Boolean).join("  ·  ")}><span style:width="{Math.max(3, p * 100)}%"></span></div>
+          {#if it._simkl}
+            {#if it._label}<span class="next-ep">{it._label}</span>{/if}
+          {:else}
+            <div class="bar" title={[episodeLabel(it.state.video_id), remaining(it.state.timeOffset / 1000, it.state.duration / 1000)].filter(Boolean).join("  ·  ")}><span style:width="{Math.max(3, p * 100)}%"></span></div>
+          {/if}
         </button>
       {/each}
     </div>
@@ -194,6 +221,17 @@
     position: relative;
     --arrow-top: 6px;
     --arrow-bottom: 16px;
+  }
+  .next-ep {
+    display: block;
+    margin: 8px 2px 0;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--label-2);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   /* 60% of the card's width, centred under it */
   .bar {

@@ -188,6 +188,10 @@ async fn up_next(core: &Core, skip: u32) -> AppResult<Vec<Value>> {
                         _ => String::new(),
                     };
                     m["upNext"] = json!([label, n.get("title").and_then(|t| t.as_str()).unwrap_or("").to_string()].iter().filter(|x| !x.is_empty()).cloned().collect::<Vec<_>>().join(" · "));
+                    // the episode to play straight away ("tt…:S:E")
+                    if let (Some(s), Some(ep), Some(id)) = (s, ep, m.get("id").and_then(|i| i.as_str()).map(|i| i.to_string())) {
+                        m["nextVideo"] = json!(format!("{id}:{s}:{ep}"));
+                    }
                 }
                 Some(m)
             })
