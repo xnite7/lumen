@@ -84,13 +84,8 @@
       dwell = setTimeout(async () => {
         const m = cur;
         if (!m || scrollY > 200) return;
-        // the most watched scene from it first, the trailer if there's none
-        const c = m.id.startsWith("tt") ? await api.clipUrl(m.id).catch(() => null) : null;
-        if (c && cur?.id === m.id) {
-          clip = c;
-          muted = app.settings.general.heroMuted;
-          return;
-        }
+        // the billboard is cinematic: teaser (trailer if none). Scene clips are
+        // for the previews.
         const k = (m.id.startsWith("tt") ? await api.trailer(m.type, m.id).catch(() => null) : null) ?? m.trailer ?? m.trailers?.[0]?.source ?? null;
         if (k && cur?.id === m.id) {
           trailer = k;
