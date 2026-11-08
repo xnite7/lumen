@@ -170,15 +170,50 @@ final class CouchMPVPlayer: UIViewController {
         let scale = metalLayer.contentsScale
         metalLayer.drawableSize = CGSize(width: view.bounds.width * scale, height: view.bounds.height * scale)
         CATransaction.commit()
+        // mpv (MPVKit's MoltenVK output) only reads the layer size when its
+        // video output starts, so after a rotation it kept drawing the old
+        // shape, cropped into a corner. Restart the video output once the
+        // size settles (audio and position carry on).
+        let px = metalLayer.drawableSize
+        if px.width > 1, px.height > 1, px != renderedSize {
+            let first = renderedSize == .zero
+            renderedSize = px
+            if !first {
+                resizeWork?.cancel()
+                let w = DispatchWorkItem { [weak self] in
+                    guard let self = self, self.mpv != nil, self.hadVideo else { return }
+                    self.set("vid", "no")
+                    self.set("vid", "auto")
+                }
+                resizeWork = w
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: w)
+            }
+        }
+    }
+
+    // titles and constraints change BEFORE the layout pass, so the bottom
+    // options are measured with their labels (they came out clipped, icons
+    // pushed out, when this happened after layout)
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
         let portrait = view.bounds.height > view.bounds.width
+        guard portrait != laidOutPortrait else { return }
+        laidOutPortrait = portrait
         NSLayoutConstraint.deactivate(portrait ? landscapeRate : portraitRate)
         NSLayoutConstraint.activate(portrait ? portraitRate : landscapeRate)
         // labels drop off the bottom options when there isn't room for them
         for b in [speedButton, episodesButton, tracksButton, nextButton] {
             b.configuration?.title = portrait ? nil : b.accessibilityLabel
+            b.invalidateIntrinsicContentSize()
         }
         updateSpeedTitle()
+        speedButton.invalidateIntrinsicContentSize()
+        optionsRow.setNeedsLayout()
     }
+    private var laidOutPortrait: Bool?
+    private var renderedSize = CGSize.zero
+    private var hadVideo = false
+    private var resizeWork: DispatchWorkItem?
 
     deinit {
         NotificationCenter.default.removeObserver(self)
@@ -312,6 +347,7 @@ final class CouchMPVPlayer: UIViewController {
                     }
                 case MPV_EVENT_FILE_LOADED:
                     DispatchQueue.main.async {
+                        self.hadVideo = true
                         self.buffering = false
                         self.updateSpinner()
                         self.rebuildMenus()
@@ -547,14 +583,14 @@ final class CouchMPVPlayer: UIViewController {
             episodesTable.scrollToRow(at: IndexPath(row: i, section: 0), at: .middle, animated: false)
         }
         episodesTrailing?.constant = 0
-        UIView.animate(withDuration: 0.45, delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0) { self.view.layoutIfNeeded() }
+        UIView.animate(withDuration: 0.45, delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0) { self.episodesPanel.alpha = 1; self.view.layoutIfNeeded() }
     }
 
     private func closeEpisodes() {
         guard episodesOpen else { return }
         episodesOpen = false
-        episodesTrailing?.constant = 440
-        UIView.animate(withDuration: 0.3) { self.view.layoutIfNeeded() }
+        episodesTrailing?.constant = 520
+        UIView.animate(withDuration: 0.3) { self.view.layoutIfNeeded() } completion: { _ in if !self.episodesOpen { self.episodesPanel.alpha = 0 } }
         scheduleHide()
     }
 
@@ -904,7 +940,8 @@ final class CouchMPVPlayer: UIViewController {
         view.addSubview(errorLabel)
 
         let safe = view.safeAreaLayoutGuide
-        let trailing = episodesPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: 440)
+        let trailing = episodesPanel.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: 520)
+        episodesPanel.alpha = 0
         episodesTrailing = trailing
         landscapeRate = [rateStack.centerXAnchor.constraint(equalTo: view.centerXAnchor), rateStack.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
                          titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: rateStack.leadingAnchor, constant: -16).withPriority(.defaultHigh)]

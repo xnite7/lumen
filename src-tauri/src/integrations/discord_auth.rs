@@ -269,21 +269,26 @@ pub async fn membership(core: &Core) -> &'static str {
         return "signin"; // signed in before roles mattered: one more knock
     }
     let Some(tok) = access_token(core).await else { return "signin" };
-    let res = core.http.client().get("https://discord.com/api/users/@me/guilds").bearer_auth(&tok).timeout(Duration::from_secs(12)).send().await;
-    let Ok(res) = res else { return cached(core) };
-    if res.status().as_u16() == 401 {
-        return "signin";
-    }
-    let Ok(list) = res.json::<Value>().await else { return cached(core) };
-    let mut inside = list.as_array().map_or(false, |a| a.iter().any(|g| g.get("id").and_then(|i| i.as_str()) == Some(guild)));
-    // in the server, but does a subscription (or a picked role) let you in?
-    // The crew server's bot can see roles; ask it.
-    if inside && !roles().is_empty() {
+    // roles in play: the crew server's bot checks server + role in one go.
+    // (Asking Discord for the server list here as well, seconds apart with the
+    // same sign-in, got rate-limited, and that read as "not in the server".)
+    let inside = if !roles().is_empty() {
         match crate::crew::access(core, &tok).await {
-            Some(ok) => inside = ok,
+            Some(ok) => ok,
             None => return cached(core),
         }
-    }
+    } else {
+        let res = core.http.client().get("https://discord.com/api/users/@me/guilds").bearer_auth(&tok).timeout(Duration::from_secs(12)).send().await;
+        let Ok(res) = res else { return cached(core) };
+        match res.status().as_u16() {
+            200 => {}
+            401 => return "signin",
+            _ => return cached(core), // rate-limited or Discord hiccup: not a verdict
+        }
+        let Ok(list) = res.json::<Value>().await else { return cached(core) };
+        let Some(a) = list.as_array() else { return cached(core) };
+        a.iter().any(|g| g.get("id").and_then(|i| i.as_str()) == Some(guild))
+    };
     let _ = core.db.set("discord_member", &json!(inside));
     if inside { "member" } else { "outsider" }
 }

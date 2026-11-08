@@ -159,21 +159,27 @@ async function auth(req: Request, env: Env): Promise<Response> {
   if (!token) return json({ error: "no token" }, 400);
   const h = { authorization: `Bearer ${token}` };
   const me = await fetch("https://discord.com/api/users/@me", { headers: h });
+  if (me.status === 429 || me.status >= 500) return json({ error: "discord is busy, try again" }, 503);
   if (!me.ok) return json({ error: "discord didn't recognise that sign-in" }, 401);
   const u: any = await me.json();
   if (env.GUILD_ID) {
-    const g = await fetch("https://discord.com/api/users/@me/guilds", { headers: h });
-    if (!g.ok) return json({ error: "couldn't check your servers" }, 401);
-    const list: any[] = await g.json();
-    if (!list.some((x) => x?.id === env.GUILD_ID)) return json({ error: "not in the server", notMember: true }, 403);
     const roles = (env.ALLOWED_ROLES ?? "").split(/[\s,]+/).filter(Boolean);
     if (roles.length && env.DISCORD_BOT_TOKEN) {
+      // the bot sees membership AND roles in one call; the user's own server
+      // list isn't needed (and is heavily rate-limited by Discord)
       const br = await fetch(`https://discord.com/api/guilds/${env.GUILD_ID}/members/${u.id}`, { headers: { authorization: `Bot ${env.DISCORD_BOT_TOKEN}` } });
       if (br.status === 404) return json({ error: "not in the server", notMember: true }, 403);
       if (!br.ok) return json({ error: "couldn't check your roles" }, 503);
       const mem: any = await br.json();
       if (!(mem?.roles ?? []).some((r: string) => roles.includes(r))) return json({ error: "no subscription", notMember: true }, 403);
-    } else if (roles.length) {
+    } else {
+      const g = await fetch("https://discord.com/api/users/@me/guilds", { headers: h });
+      if (!g.ok) return json({ error: "couldn't check your servers" }, 503);
+      const list: any = await g.json();
+      if (!Array.isArray(list)) return json({ error: "couldn't check your servers" }, 503);
+      if (!list.some((x: any) => x?.id === env.GUILD_ID)) return json({ error: "not in the server", notMember: true }, 403);
+    }
+    if (roles.length && !env.DISCORD_BOT_TOKEN) {
       const mr = await fetch(`https://discord.com/api/users/@me/guilds/${env.GUILD_ID}/member`, { headers: h });
       // no permission to see roles = an old sign-in (or an old app): no way in
       // until they sign in again; new apps show "one more knock", old ones lock
