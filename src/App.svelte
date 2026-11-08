@@ -97,6 +97,24 @@
   }
   let previewGate = false;
 
+  // Into the player: the room's lights go down (the page sinks back, blurs and
+  // dims) while the player swims up out of a soft blur. ~0.7 s, then the
+  // page underneath is put away.
+  let enteringPlayer = $state(false);
+  let wasOpen = false;
+  $effect(() => {
+    const open = pb.open;
+    if (open && !wasOpen) {
+      enteringPlayer = true;
+      document.documentElement.classList.add("entering-player");
+      setTimeout(() => {
+        enteringPlayer = false;
+        document.documentElement.classList.remove("entering-player");
+      }, 720);
+    }
+    wasOpen = open;
+  });
+
   // TV-style arrow-key / controller focus on desktop
   $effect(() => {
     if (!app.ready || ui.phone || app.platform === "ios") return;
@@ -240,7 +258,7 @@
   <div class="night" aria-hidden="true"></div>
   <div class="grain" aria-hidden="true"></div>
 
-  <Stack hidden={pb.open} />
+  <Stack hidden={pb.open && !enteringPlayer} />
 
   {#if ui.phone}<div class="edge-bottom" aria-hidden="true"></div>{/if}
   <TabBar />

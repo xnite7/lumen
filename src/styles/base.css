@@ -972,6 +972,39 @@ html.winctl {
   }
 }
 
+/* ---------------------------------------------------- into the player */
+/* the page sinks back into the dark... */
+html.entering-player .stack {
+  animation: lights-down calc(620ms * var(--motion)) cubic-bezier(0.4, 0, 0.2, 1) both;
+  transform-origin: 50% 40%;
+}
+@keyframes lights-down {
+  to {
+    transform: scale(0.94);
+    filter: blur(10px) brightness(0.25) saturate(0.8);
+    opacity: 0.6;
+  }
+}
+/* ...while the player rises out of a soft, bright blur */
+.player {
+  animation: player-in calc(700ms * var(--motion)) cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes player-in {
+  0% {
+    opacity: 0;
+    transform: scale(1.09);
+    filter: blur(18px) brightness(1.5);
+  }
+  45% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
 /* a picture that couldn't load anywhere (lib/fallback.ts): couch's own
    placeholder, never a broken-image icon */
 .img-ph {
