@@ -63,7 +63,9 @@ re!(RBLURAY, r"(?i)\b(blu-?ray|bdrip|brrip|bdremux)\b");
 re!(RWEBDL, r"(?i)\bweb[- .]?dl\b");
 re!(RWEBRIP, r"(?i)\bweb-?rip\b");
 re!(RHDTV, r"(?i)\bhdtv\b");
-re!(RCAM, r"(?i)\b(cam|camrip|hdcam|ts|telesync|hdts|tc|telecine)\b");
+re!(RCAM, r"(?i)\b(cam|ts|tc|scr)\b");
+// unmistakable theatre recordings / screeners, whatever else the name says
+re!(RCAMSURE, r"(?i)\b(cam-?rip|hq-?cam|hd-?cam|ts-?rip|hd-?ts|telesync|hd-?tc|telecine|pre-?dvd|pdvd|dvd-?scr|screener)\b");
 re!(RVIDEXT, r"(?i)\.(mkv|mp4|avi|m4v|ts|mov|webm|wmv)$");
 re!(R3D, r"(?i)\b(3d|sbs|h-?sbs|f-?sbs|half[ ._-]?sbs|full[ ._-]?sbs|side[ ._-]?by[ ._-]?side|h-?ou|f-?ou|half[ ._-]?ou|full[ ._-]?ou|over[ ._-]?under|h-?tab)\b|3д");
 re!(ROU, r"(?i)\b(h-?ou|f-?ou|half[ ._-]?ou|full[ ._-]?ou|h-?tab|tab|over[ ._-]?under|top[ ._-]?(and[ ._-]?)?bottom|3d[ ._-]ou)\b");
@@ -171,7 +173,7 @@ pub fn parse(s: &Value) -> Parsed {
         None
     };
 
-    p.cam = RCAM.is_match(&t) && p.source.is_none();
+    p.cam = RCAMSURE.is_match(&t) || (RCAM.is_match(&t) && p.source.is_none());
     p.three_d = R3D.is_match(&t);
     // most 3D releases are half side-by-side; over-under says so
     let mvc = RMVC.is_match(&t) && !ROU.is_match(&t) && !t.to_lowercase().contains("sbs") && !t.to_lowercase().contains("sidebyside");

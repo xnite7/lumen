@@ -414,9 +414,12 @@ pub async fn trailer(core: &Core, stremio_type: &str, id: &str) -> AppResult<Opt
     let kind = kind_of(stremio_type);
     let tid = if id.starts_with("tt") { tmdb_id_for_imdb(core, id, kind).await? } else { None };
     if let Some(tid) = tid {
-        let v = get(core, &format!("/{kind}/{tid}/videos"), "", DAY).await?;
+        // English uploads only (no-language ones too): a German or Spanish
+        // dub used to win when it was the only "official teaser"
+        let v = get(core, &format!("/{kind}/{tid}/videos"), "&language=en-US&include_video_language=en,null", DAY).await?;
         let list = v.get("results").and_then(|r| r.as_array()).cloned().unwrap_or_default();
-        let yt: Vec<&Value> = list.iter().filter(|x| x.get("site").and_then(|s| s.as_str()) == Some("YouTube")).collect();
+        let english = |x: &Value| matches!(x.get("iso_639_1").and_then(|l| l.as_str()), None | Some("en") | Some("xx"));
+        let yt: Vec<&Value> = list.iter().filter(|x| x.get("site").and_then(|s| s.as_str()) == Some("YouTube") && english(x)).collect();
         // billboard / previews: a teaser (short, sets the mood, gives little
         // away) beats a full trailer; official ones first. Never a vertical
         // phone cut (Shorts / TikTok versions) or a random featurette.
@@ -446,7 +449,8 @@ pub async fn trailer(core: &Core, stremio_type: &str, id: &str) -> AppResult<Opt
     // KinoCheck: free, keyed by IMDb id, official trailers only.
     if id.starts_with("tt") && core.settings.read().integrations.kinocheck_trailers {
         let path = if kind == "tv" { "shows" } else { "movies" };
-        let u = format!("https://api.kinocheck.com/{path}?imdb_id={id}");
+        // KinoCheck is German and answers in German unless asked
+        let u = format!("https://api.kinocheck.com/{path}?imdb_id={id}&language=en");
         if let Ok(v) = core.http.get_json_cached::<Value>(&u, DAY * 7, T).await {
             if let Some(k) = v.pointer("/trailer/youtube_video_id").and_then(|k| k.as_str()) {
                 return Ok(Some(k.to_string()));

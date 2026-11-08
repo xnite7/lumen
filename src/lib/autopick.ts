@@ -46,8 +46,12 @@ export function rank(streams: Stream[], mbps: number, runtime?: string | number,
   const ok = streams.filter((s) => s._couch?.kind !== "external" && s._couch?.kind !== "youtube" && !(s._couch?.threeD && !s._couch?.threeDLayout));
   const budget = mbps * 0.7;
   const instant = (s: Stream) => s._couch?.cached !== false && (s._couch?.kind === "debrid" || s._couch?.kind === "http");
-  const fits = ok.filter((s) => needMbps(s, runtime) <= budget && !s._couch?.threeD);
-  const rest = ok.filter((s) => !fits.includes(s));
+  // cam / telesync recordings never get picked over a real release; they
+  // only come last, as a fallback when nothing else exists
+  const cams = ok.filter((s) => s._couch?.cam);
+  const real = ok.filter((s) => !s._couch?.cam);
+  const fits = real.filter((s) => needMbps(s, runtime) <= budget && !s._couch?.threeD);
+  const rest = real.filter((s) => !fits.includes(s));
   // on iPhone, at the same resolution, a picture-in-picture friendly file wins
   const pip = (s: Stream) => (ios && pipFriendly(s) ? 1 : 0);
   const byScore = (a: Stream, b: Stream) =>
@@ -57,5 +61,6 @@ export function rank(streams: Stream[], mbps: number, runtime?: string | number,
     (b._couch?.score ?? 0) - (a._couch?.score ?? 0);
   fits.sort(byScore);
   rest.sort((a, b) => (instant(b) ? 1 : 0) - (instant(a) ? 1 : 0) || needMbps(a, runtime) - needMbps(b, runtime));
-  return [...fits, ...rest];
+  cams.sort((a, b) => (b._couch?.score ?? 0) - (a._couch?.score ?? 0));
+  return [...fits, ...rest, ...cams];
 }
