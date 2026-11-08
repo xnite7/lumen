@@ -209,8 +209,6 @@
           <h3 class="group-head">Simkl</h3>
           <div class="group">
             <SimklConnect />
-            <Cell label="Scrobble what you watch"><Controls kind="switch" bind:value={s.integrations.simklScrobble} onchange={changed} /></Cell>
-            <Cell label="Library is your Plan to Watch"><Controls kind="switch" bind:value={s.integrations.simklSyncWatchlist} onchange={changed} /></Cell>
           </div>
         {:else if section === "integrations"}
           <div class="group">

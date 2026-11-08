@@ -41,6 +41,9 @@ impl Settings {
         g.show_titles_under_posters = false;
         g.top_ten_ranks = true;
         g.hide_adult = true; // adult content lives in midnite afterdark
+        // Simkl: what you watch and your list always sync (no switches)
+        self.integrations.simkl_scrobble = true;
+        self.integrations.simkl_sync_watchlist = true;
         let p = &mut self.playback;
         p.show_skip_buttons = true;
         p.auto_skip_intro = true;
