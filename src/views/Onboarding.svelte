@@ -20,8 +20,9 @@
   let { start = 0, ondone }: { start?: number; ondone?: () => void } = $props();
 
   const desktop = app.platform === "windows" || app.platform === "browser";
-  type Step = "welcome" | "signin" | "simkl" | "mood" | "done";
-  const steps: Step[] = ["welcome", "signin", "simkl", "mood", "done"];
+  type Step = "welcome" | "signin" | "simkl" | "done";
+  // neon, film grain and "later = cozier" are always on: no mood step
+  const steps: Step[] = ["welcome", "signin", "simkl", "done"];
 
   let i = $state(untrack(() => start));
   let dir = $state(1);
@@ -65,19 +66,6 @@
     for (let k = 0; k < Math.max(src.length, n * 5); k++) out[k % n].push(src[k % Math.max(1, src.length)] ?? "");
     return out;
   });
-
-  // ----------------------------------------------------------------- mood
-  const NEON = [
-    { v: "soft", label: "soft", hint: "a lamp in the corner" },
-    { v: "lit", label: "lit", hint: "the sign is on" },
-    { v: "loud", label: "loud", hint: "full neon" },
-  ] as const;
-  function setLook(fn: () => void) {
-    haptic("selection");
-    fn();
-    applyCurrent();
-    saveSettings();
-  }
 
   // --------------------------------------------------------------- addons
   let addons = $state<AddonDescriptor[]>([]);
@@ -213,32 +201,6 @@
         <div class="body narrow">
           <div class="group">
             <SimklConnect />
-          </div>
-        </div>
-        <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>continue</button></div>
-      {:else if step === "mood"}
-        <div class="head">
-          <span class="badge"><Icon name="sparkles" size={28} /></span>
-          <h1 class="large-title">set the mood</h1>
-          <p class="callout dim">How bright is the neon in your room? Change it any time in Settings.</p>
-        </div>
-        <div class="body narrow">
-          <div class="moods">
-            {#each NEON as n (n.v)}
-              <button class="mood press" class:on={app.settings.general.neon === n.v} data-neon={n.v} onclick={() => setLook(() => (app.settings.general.neon = n.v))}>
-                <span class="mood-sign"><Logo size={54} lit /></span>
-                <span class="headline">{n.label}</span>
-                <span class="caption dim">{n.hint}</span>
-              </button>
-            {/each}
-          </div>
-          <div class="group">
-            <Item label="Film grain" detail="A whisper of old-TV texture">
-              <button class="mini-switch" class:on={app.settings.general.grain} aria-label="Film grain" onclick={() => setLook(() => (app.settings.general.grain = !app.settings.general.grain))}><span></span></button>
-            </Item>
-            <Item label="Later = cozier" detail="After midnight the room gets warmer and dimmer">
-              <button class="mini-switch" class:on={app.settings.general.timeAware} aria-label="Later is cozier" onclick={() => setLook(() => (app.settings.general.timeAware = !app.settings.general.timeAware))}><span></span></button>
-            </Item>
           </div>
         </div>
         <div class="foot-actions"><button class="btn lg block primary press" onclick={next}>continue</button></div>
