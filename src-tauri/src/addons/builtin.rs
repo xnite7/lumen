@@ -16,7 +16,8 @@ const SIMKL_ROWS: &[(&str, &str, &[&str])] = &[
     ("simkl-upnext", "Up Next", &["series"]),
     ("simkl-new", "New Episodes", &["series"]),
     ("simkl-watching", "Continue Watching", &["series"]),
-    ("simkl-plantowatch", "Plan to Watch", &["movie", "series"]),
+    // one row, films and shows together
+    ("simkl-plantowatch", "Plan to Watch", &["all"]),
     ("simkl-recs", "Because You Watched", &["movie", "series"]),
     ("simkl-surprise", "Surprise Me", &["movie", "series"]),
     ("motn-top", "Top 10 Today", &["movie", "series"]),
@@ -161,6 +162,13 @@ async fn simkl_list(core: &Core, status: &str, kind: &str, skip: u32) -> AppResu
     }
     if !simkl_sync::has_data(core) {
         let _ = simkl_sync::sync(core).await;
+    }
+    if kind == "all" {
+        // films and shows in one list, most recently touched first
+        let mut rows: Vec<Value> = ["movie", "series"].iter().flat_map(|k| simkl_sync::list(core, status, k)).collect();
+        let ts = |e: &Value| e.get("last_watched_at").or_else(|| e.get("added_to_watchlist_at")).and_then(|t| t.as_str()).unwrap_or("").to_string();
+        rows.sort_by_key(|e| std::cmp::Reverse(ts(e)));
+        return Ok(dedupe(rows.iter().filter_map(|r| simkl::to_meta(r, None)).collect()));
     }
     Ok(dedupe(simkl_sync::list(core, status, kind).iter().filter_map(|r| simkl::to_meta(r, Some(kind))).collect()))
 }
