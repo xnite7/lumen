@@ -96,8 +96,14 @@ export function initPlayback() {
     await api.stop().catch(() => {});
     loadLibrary().catch(() => {});
   });
-  onNative("ended", () => {
-    if (app.settings.playback.autoplayNext && nextVideo()) playNext();
+  onNative<{ idle?: number }>("ended", (p) => {
+    if (app.settings.playback.autoplayNext) autoNext(p?.idle != null ? p.idle * 1000 : undefined);
+  });
+  // "are u still on the couch?" answered on the iPhone player ("i'm done"
+  // closes the player itself)
+  onNative<{ stay: boolean }>("still", ({ stay }) => {
+    still.ask = false;
+    if (stay) keepWatching();
   });
   // the player's own buttons: rating, the Episodes list, Next Episode
   onNative<{ value: number }>("rate", async ({ value }) => {
@@ -112,10 +118,14 @@ export function initPlayback() {
     }
   });
   onNative<{ id: string }>("episode", ({ id }) => {
+    markActive();
     const v = pb.meta ? orderedVideos(pb.meta).find((x) => x.id === id) : null;
     if (v) playVideo(v);
   });
-  onNative("next", () => playNext());
+  onNative("next", () => {
+    markActive();
+    playNext();
+  });
   onNative<{ url: string }>("failed", ({ url }) => {
     pb.ios = false;
     if (tryNext()) return;
@@ -281,6 +291,8 @@ function checkFinished(pos = pb.state.pos, dur = pb.state.duration) {
 }
 
 export async function close() {
+  still.ask = false;
+  autoStreak = 0;
   checkFinished();
   pb.open = false;
   app.playing = false;
@@ -317,6 +329,49 @@ export function nextVideo(): Video | null {
   // Don't offer episodes that haven't aired yet.
   if (n.released && new Date(n.released).getTime() > Date.now()) return null;
   return n;
+}
+
+// ------------------------------------------- "are u still on the couch?"
+// Netflix-style: after 3 episodes in a row that started by themselves with
+// nobody touching anything (or 90 min of no input), ask before the next one
+// instead of playing to an empty room.
+const STILL_STREAK = 2; // two auto-started already → asking before the third
+const STILL_IDLE_MS = 90 * 60_000;
+let autoStreak = 0;
+let lastAuto = 0;
+let lastActive = Date.now();
+export const still = $state({ ask: false });
+
+/** someone's there: any tap, click, key or scroll in the player */
+export function markActive() {
+  lastActive = Date.now();
+}
+
+/** the episode ended (or the up-next countdown ran out): next one, or ask */
+export function autoNext(idleMs?: number) {
+  if (still.ask || !nextVideo()) return;
+  // Apple's own player (the AVPlayer path) can't ask or report touches
+  if (pb.ios && idleMs == null) return void playNext();
+  const now = Date.now();
+  const idle = idleMs ?? now - lastActive;
+  if (now - idle > lastAuto) autoStreak = 0; // touched since the last auto-advance
+  if (autoStreak >= STILL_STREAK || idle >= STILL_IDLE_MS) {
+    still.ask = true;
+    if (pb.ios) nativeControl("still").catch(() => {});
+    else cmd("pause", { value: true });
+    return;
+  }
+  autoStreak++;
+  lastAuto = now;
+  playNext();
+}
+
+/** "still here" */
+export function keepWatching() {
+  still.ask = false;
+  autoStreak = 0;
+  lastActive = lastAuto = Date.now();
+  playNext();
 }
 
 export async function playNext() {

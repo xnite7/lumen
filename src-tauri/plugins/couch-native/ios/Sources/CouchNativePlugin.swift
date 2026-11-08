@@ -413,8 +413,11 @@ class CouchNativePlugin: Plugin, AVPlayerViewControllerDelegate {
             self.trigger("progress", data: ["pos": pos, "duration": dur, "paused": paused])
             self.updateActivity(paused: paused, position: pos, duration: dur)
         }
-        nc.addObserver(forName: Notification.Name("couch.player.ended"), object: nil, queue: .main) { [weak self] _ in
-            self?.trigger("ended", data: [:] as JSObject)
+        nc.addObserver(forName: Notification.Name("couch.player.ended"), object: nil, queue: .main) { [weak self] n in
+            self?.trigger("ended", data: ["idle": n.userInfo?["idle"] as? Double ?? 0])
+        }
+        nc.addObserver(forName: Notification.Name("couch.player.still"), object: nil, queue: .main) { [weak self] n in
+            self?.trigger("still", data: ["stay": n.userInfo?["stay"] as? Bool ?? false])
         }
         nc.addObserver(forName: Notification.Name("couch.player.failed"), object: nil, queue: .main) { [weak self] n in
             self?.trigger("failed", data: ["message": n.userInfo?["message"] as? String ?? ""])

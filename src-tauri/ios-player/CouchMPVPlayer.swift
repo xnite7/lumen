@@ -214,6 +214,27 @@ final class CouchMPVPlayer: UIViewController {
     private var renderedSize = CGSize.zero
     private var hadVideo = false
     private var resizeWork: DispatchWorkItem?
+    private var lastTouch = Date()
+
+    /// "are u still on the couch?" after a run of episodes nobody touched
+    private func askStill() {
+        guard presentedViewController == nil else { return }
+        command(["set", "pause", "yes"])
+        showChrome()
+        let a = UIAlertController(title: "are u still on the couch?", message: "the next episode is waiting", preferredStyle: .alert)
+        a.overrideUserInterfaceStyle = .dark
+        a.view.tintColor = .lamp
+        a.addAction(UIAlertAction(title: "still here", style: .default) { [weak self] _ in
+            self?.lastTouch = Date()
+            NotificationCenter.default.post(name: Notification.Name("couch.player.still"), object: nil, userInfo: ["stay": true])
+        })
+        a.addAction(UIAlertAction(title: "i'm done", style: .cancel) { [weak self] _ in
+            NotificationCenter.default.post(name: Notification.Name("couch.player.still"), object: nil, userInfo: ["stay": false])
+            self?.close()
+        })
+        a.preferredAction = a.actions.first
+        present(a, animated: true)
+    }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
@@ -383,7 +404,7 @@ final class CouchMPVPlayer: UIViewController {
         case "eof-reached":
             if f == true {
                 report(force: true)
-                NotificationCenter.default.post(name: Note.ended, object: nil)
+                NotificationCenter.default.post(name: Note.ended, object: nil, userInfo: ["idle": Date().timeIntervalSince(self.lastTouch)])
             }
         default:
             break
@@ -518,6 +539,8 @@ final class CouchMPVPlayer: UIViewController {
             command(["set", "pause", want ? "yes" : "no"])
         case "seek":
             if let t = u["value"] as? Double { command(["seek", String(format: "%.3f", t), "absolute"]) }
+        case "still":
+            askStill()
         default:
             break
         }
@@ -1069,6 +1092,7 @@ final class CouchMPVPlayer: UIViewController {
 extension CouchMPVPlayer: UIGestureRecognizerDelegate {
     // taps on buttons and the scrubber belong to them, not to show/hide
     func gestureRecognizer(_ g: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        lastTouch = Date() // any touch = still on the couch
         var v = touch.view
         while let cur = v {
             if cur is UIControl || cur === episodesPanel { return false }

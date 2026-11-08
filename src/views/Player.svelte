@@ -5,7 +5,7 @@
   import { api, img, listen } from "../lib/api";
   import { toast } from "../lib/stores/toast.svelte";
   import { app } from "../lib/stores/app.svelte";
-  import { pb, close, cmd, nextVideo, playNext, playVideo, orderedVideos } from "../lib/stores/playback.svelte";
+  import { pb, close, cmd, nextVideo, playNext, playVideo, orderedVideos, autoNext, keepWatching, markActive, still } from "../lib/stores/playback.svelte";
   import { progressOf, watchedIds } from "../lib/stores/library.svelte";
   import EpisodeCarousel from "../components/player/EpisodeCarousel.svelte";
   import EpisodesPopover from "../components/player/EpisodesPopover.svelte";
@@ -285,7 +285,7 @@
   }
   const creditsStart = $derived(pb.segments?.credits?.[0]?.start);
   const showUpNext = $derived(
-    !!next && !upNextDismissed && st.duration > 60 && (creditsStart ? st.pos >= creditsStart : st.duration - st.pos <= pbs.nextCardSecs),
+    !!next && !upNextDismissed && !still.ask && st.duration > 60 && (creditsStart ? st.pos >= creditsStart : st.duration - st.pos <= pbs.nextCardSecs),
   );
   $effect(() => {
     void pb.videoId;
@@ -303,13 +303,20 @@
       countdown -= 1;
       if (countdown <= 0) {
         clearInterval(cdTimer);
-        playNext();
+        autoNext();
       }
     }, 1000);
     return () => clearInterval(cdTimer);
   });
   $effect(() => {
-    if (st.ended && next && pbs.autoplayNext && !upNextDismissed) playNext();
+    if (st.ended && next && pbs.autoplayNext && !upNextDismissed && !still.ask) autoNext();
+  });
+
+  // anyone touching anything counts as "still on the couch"
+  $effect(() => {
+    const evs = ["pointerdown", "keydown", "wheel", "pointermove"] as const;
+    evs.forEach((e) => window.addEventListener(e, markActive, { passive: true }));
+    return () => evs.forEach((e) => window.removeEventListener(e, markActive));
   });
 
   // ----------------------------------------------------------------- tracks
@@ -579,6 +586,21 @@
         {#if epShort}<span class="r-ep">{epShort}</span>{/if}
         {#if pb.episodeTitle}<span class="r-name">{pb.episodeTitle}</span>{/if}
         {#if blurb}<p class="r-desc">{blurb}</p>{/if}
+      </div>
+    </div>
+  {/if}
+
+  <!-- are u still on the couch? -->
+  {#if still.ask && !pb.ios}
+    <div class="still-wrap" role="dialog" aria-label="Are you still on the couch?">
+      <div class="still glass strong">
+        <Icon name="couch" size={40} />
+        <h2 class="title2">are u still on the couch?</h2>
+        {#if next}<p class="foot dim">{episodeLabel(next.id)} · {next.title || next.name || `Episode ${next.episode}`} is up next</p>{/if}
+        <div class="row">
+          <button class="btn primary press" onclick={keepWatching}>still here</button>
+          <button class="btn tinted press" onclick={close}>i'm done</button>
+        </div>
       </div>
     </div>
   {/if}
@@ -1108,6 +1130,45 @@
     from {
       opacity: 0;
       transform: translateX(20px) scale(0.9);
+    }
+  }
+  .still-wrap {
+    position: absolute;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    background: rgb(0 0 0 / 0.55);
+    backdrop-filter: blur(14px);
+    animation: still-in calc(420ms * var(--motion)) cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .still {
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    text-align: center;
+    padding: 30px 34px 26px;
+    border-radius: 26px;
+    max-width: min(420px, 88vw);
+    color: var(--neon, #ff4fb8);
+  }
+  .still h2 {
+    margin: 4px 0 0;
+    color: var(--label);
+    font-family: ui-monospace, monospace;
+    text-transform: lowercase;
+  }
+  .still p {
+    margin: 0 0 8px;
+  }
+  .still .row {
+    display: flex;
+    gap: 10px;
+  }
+  @keyframes still-in {
+    from {
+      opacity: 0;
+      transform: scale(1.04);
     }
   }
   .upnext {
