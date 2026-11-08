@@ -842,10 +842,20 @@ html.vt-art::view-transition-new(root) {
 @keyframes vt-fade-plain-in {
   from { opacity: 0; }
 }
+/* the top bar never moves and always sits above the page while it changes
+   (not under the opening title, popping on top a moment later); its dark
+   backdrop crossfades instead of vanishing */
 ::view-transition-group(tabbar),
 ::view-transition-group(navbar),
 ::view-transition-group(titlebar) {
-  animation: none;
+  animation-name: none;
+  animation-duration: calc(380ms * var(--motion));
+  z-index: 100;
+}
+::view-transition-old(tabbar),
+::view-transition-new(tabbar) {
+  animation-duration: calc(380ms * var(--motion));
+  animation-timing-function: ease;
 }
 
 @media (prefers-reduced-motion: reduce) {

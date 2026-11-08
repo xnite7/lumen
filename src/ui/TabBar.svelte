@@ -363,6 +363,7 @@
     /* clear over the billboard, fading to solid black as the page scrolls */
     background: linear-gradient(180deg, #000 0%, #000 calc(var(--fade) * 72%), rgb(0 0 0 / calc(var(--fade) * 0.6)) 86%, transparent);
     opacity: var(--fade);
+    transition: opacity 380ms ease;
   }
   :global(html.playing) .top,
   :global(html.onboarding) .top {
