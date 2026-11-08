@@ -194,9 +194,11 @@
     --arrow-top: 6px;
     --arrow-bottom: 16px;
   }
+  /* 60% of the card's width, centred under it */
   .bar {
-    margin: 8px 10px 0;
-    height: 4px;
+    width: 60%;
+    margin: 8px auto 0;
+    height: 3px;
     background: linear-gradient(90deg, #4a4a4a, #1c1c1c);
   }
   .bar span {

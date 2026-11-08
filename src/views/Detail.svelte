@@ -58,6 +58,7 @@
   });
   const finaleName = ["", "Mid-season finale", "Season finale", "Series finale"];
   let reviewOpen = $state(false);
+  const spoilerFree = $derived(!!app.settings.playback.blurUnwatched);
   let reviews = $state<Activity[]>([]);
   const myReview = $derived(reviews.find((r) => r.who === social.me?.id));
   const others = $derived(reviews.filter((r) => r.who !== social.me?.id && (r.text || r.rating)));
@@ -204,13 +205,17 @@
   </NavBar>
   <article class="detail">
     <section class="hero">
-      {#if backdrop}
-        <img class="bg" src={img(backdrop, "original")} alt="" style:view-transition-name="hero-art" use:parallax={1} />
-      {/if}
-      <div class="hero-shade"></div>
-      <div class="hero-vignette"></div>
-      <div class="lamp-glow" aria-hidden="true"></div>
-      <div class="info" use:parallax={-0.3}>
+      <!-- the picture AND its darkening travel together when a poster opens
+           into this page, so the vignette never pops in at the end -->
+      <div class="art-stack" style:view-transition-name="hero-art">
+        {#if backdrop}
+          <img class="bg" src={img(backdrop, "original")} alt="" use:parallax={1} />
+        {/if}
+        <div class="hero-shade"></div>
+        <div class="hero-vignette"></div>
+        <div class="lamp-glow" aria-hidden="true"></div>
+      </div>
+      <div class="info" use:parallax={-0.3} style:view-transition-name="hero-info">
         {#if logo}
           <img class="logo" src={img(logo)} alt={m.name} use:trimLogo />
         {:else}
@@ -288,19 +293,23 @@
             {@const seen = watched.has(v.id)}
             {@const future = v.released && new Date(v.released).getTime() > Date.now()}
             {@const info = epInfo[`${v.season}:${v.episode ?? v.number}`]}
-            <div class="ep" class:future>
-              <button class="thumb press" use:tvFocus={{ max: 5 }} onclick={() => !future && openStreams(v)} aria-label="Play {v.title ?? v.name}">
-                {#if v.thumbnail}<img src={img(v.thumbnail)} alt="" loading="lazy" />{/if}
-                <span class="num">{v.episode ?? v.number}</span>
-                {#if !future}<span class="play glass clear"><Icon name="play" size={16} /></span>{/if}
-                {#if p > 0}<div class="bar"><span style:width="{p * 100}%"></span></div>{/if}
-              </button>
+            {@const hide = spoilerFree && !seen && p <= 0 && !future}
+            <div class="ep" class:future class:hide>
+              <div class="thumb-wrap">
+                <button class="thumb press" use:tvFocus={{ max: 5 }} onclick={() => !future && openStreams(v)} aria-label="Play {v.title ?? v.name}">
+                  {#if v.thumbnail}<img src={img(v.thumbnail)} alt="" loading="lazy" />{/if}
+                  <span class="num">{v.episode ?? v.number}</span>
+                  {#if !future}<span class="play glass clear"><Icon name="play" size={16} /></span>{/if}
+                </button>
+                <!-- watched tick: top right of the picture -->
+                <button class="seen" class:on={seen} onclick={() => setWatched(m, v.id, !seen)} aria-label={seen ? "Mark unwatched" : "Mark watched"} title={seen ? "Watched" : "Mark watched"}>
+                  <Icon name="check" size={15} />
+                </button>
+              </div>
+              {#if p > 0}<div class="bar"><span style:width="{p * 100}%"></span></div>{/if}
               <div class="ep-txt">
                 <div class="ep-h">
                   <span class="headline clamp-2">{v.title || v.name || `Episode ${v.episode}`}</span>
-                  <button class="seen" class:on={seen} onclick={() => setWatched(m, v.id, !seen)} aria-label={seen ? "Mark unwatched" : "Mark watched"} title={seen ? "Watched" : "Mark watched"}>
-                    <Icon name="check" size={15} />
-                  </button>
                 </div>
                 <span class="foot faint">{future ? "Airs " : ""}{v.released ? new Date(v.released).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : ""}{(v as any).runtime || info?.runtime ? ` · ${runtime((v as any).runtime ?? info?.runtime)}` : ""}</span>
                 {#if info?.finale}<span class="finale f{info.finale}">{finaleName[info.finale]}</span>{/if}
@@ -432,6 +441,10 @@
     height: 100%;
     object-fit: cover;
     object-position: center 20%;
+  }
+  .art-stack {
+    position: absolute;
+    inset: 0;
   }
   /* Apple TV's dark rising from the bottom, in plum */
   .hero-shade {
@@ -755,15 +768,45 @@
   .vid:hover .play {
     opacity: 1;
   }
+  /* progress: under the picture, 60% of its width, centred */
   .bar {
-    position: absolute;
-    left: 10px;
-    right: 10px;
-    bottom: 9px;
-    height: 4px;
-    border-radius: 4px;
+    position: relative;
+    width: 60%;
+    margin: -4px auto 0;
+    height: 3px;
+    border-radius: 3px;
     overflow: hidden;
-    background: rgb(var(--hi) / 0.25);
+    background: rgb(var(--hi) / 0.18);
+  }
+  .thumb-wrap {
+    position: relative;
+  }
+  .thumb-wrap .seen {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    color: var(--white);
+    background: rgb(0 0 0 / 0.45);
+    backdrop-filter: blur(8px);
+    box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.7);
+  }
+  .thumb-wrap .seen.on {
+    background: var(--accent);
+    color: var(--accent-ink);
+    box-shadow: none;
+  }
+  /* spoiler-free: episodes you haven't seen keep their picture and story blurred */
+  .ep.hide .thumb img {
+    filter: blur(14px) saturate(0.8);
+    transform: scale(1.12);
+  }
+  .ep.hide .ep-txt p {
+    filter: blur(5px);
+    user-select: none;
+    transition: filter var(--t-med);
+  }
+  .ep.hide:hover .ep-txt p {
+    filter: blur(0);
   }
   .bar span {
     display: block;

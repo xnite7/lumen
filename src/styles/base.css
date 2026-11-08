@@ -820,6 +820,16 @@ html.vt-tab::view-transition-new(root) {
   from { opacity: 0.35; }
   40%, to { opacity: 1; }
 }
+/* the title page's words arrive just after the picture settles */
+::view-transition-new(hero-info) {
+  animation: vt-info-in calc(380ms * var(--motion)) cubic-bezier(0.22, 1, 0.36, 1) calc(180ms * var(--motion)) both;
+}
+::view-transition-old(hero-info) {
+  animation: vt-fade-plain-out calc(200ms * var(--motion)) ease both;
+}
+@keyframes vt-info-in {
+  from { opacity: 0; transform: translateY(10px); }
+}
 html.vt-art::view-transition-old(root) {
   animation: vt-fade-plain-out calc(300ms * var(--motion)) ease both;
 }

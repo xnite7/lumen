@@ -29,6 +29,7 @@ export const DEFAULT_SETTINGS = {
   playback: {
     autoplayNext: true,
     minimalPlayer: false,
+    blurUnwatched: false,
     nextCardSecs: 35,
     bingeSameSource: true,
     autoSkipIntro: false,

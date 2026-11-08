@@ -151,6 +151,8 @@ pub struct Playback {
     pub autoplay_next: bool,
     /// Minimal player: the progress bar sits inside the controls bar.
     pub minimal_player: bool,
+    /// Spoiler-free: blur pictures and stories of episodes you haven't seen.
+    pub blur_unwatched: bool,
     /// Seconds before the end at which the "Up next" card appears when no
     /// credits segment is known.
     pub next_card_secs: u32,
@@ -192,6 +194,7 @@ impl Default for Playback {
         Self {
             autoplay_next: true,
             minimal_player: false,
+            blur_unwatched: false,
             next_card_secs: 35,
             binge_same_source: true,
             auto_skip_intro: false,

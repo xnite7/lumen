@@ -116,6 +116,7 @@
         {#if section === "playback"}
           <div class="group">
             <Cell label="Play next episode automatically"><Controls kind="switch" bind:value={s.playback.autoplayNext} onchange={changed} /></Cell>
+            <Cell label="Blur unwatched episodes" hint="Spoiler-free: episode pictures and stories stay blurred until you've watched them."><Controls kind="switch" bind:value={s.playback.blurUnwatched} onchange={changed} /></Cell>
             <Cell label="Minimal player" hint="The progress bar sits inside the controls bar, no title in the middle."><Controls kind="switch" bind:value={s.playback.minimalPlayer} onchange={changed} /></Cell>
           </div>
           <div class="group">
