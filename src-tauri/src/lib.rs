@@ -297,6 +297,7 @@ pub fn run() {
             commands::share_link,
             commands::discord_me,
             commands::discord_rpc_status,
+            commands::clip_url,
             commands::did_you_mean,
             commands::scene_color,
             commands::simkl_episode_info,

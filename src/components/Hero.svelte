@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Clip from "./Clip.svelte";
   import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
   import { checkRelease, isUnreleased, releaseNote } from "../lib/release.svelte";
   import { toast } from "../lib/stores/toast.svelte";
@@ -35,6 +36,8 @@
   let slides = $state<Meta[]>([]);
   let i = $state(0);
   let trailer = $state<string | null>(null);
+  /** a ClipCafe scene (preferred over the YouTube trailer) */
+  let clip = $state<string | null>(null);
   let trailerOn = $state(false);
   let muted = $state(false);
   let el: HTMLElement | undefined = $state();
@@ -71,6 +74,7 @@
     clearTimeout(rotate);
     clearTimeout(dwell);
     trailer = null;
+    clip = null;
     trailerOn = false;
     if (!slides.length) return;
     if (held) return;
@@ -80,6 +84,13 @@
       dwell = setTimeout(async () => {
         const m = cur;
         if (!m || scrollY > 200) return;
+        // the most watched scene from it first, the trailer if there's none
+        const c = m.id.startsWith("tt") ? await api.clipUrl(m.id).catch(() => null) : null;
+        if (c && cur?.id === m.id) {
+          clip = c;
+          muted = app.settings.general.heroMuted;
+          return;
+        }
         const k = m.trailer ?? m.trailers?.[0]?.source ?? (m.id.startsWith("tt") ? await api.trailer(m.type, m.id) : null);
         if (k && cur?.id === m.id) {
           trailer = k;
@@ -107,7 +118,7 @@
     else if (below && scrollY < 90) below = false;
   });
   $effect(() => {
-    if (trailer) trailerOn = !below && trailerOn;
+    if (trailer || clip) trailerOn = !below && trailerOn;
   });
 
   // A poster preview takes the stage: the billboard stops on its picture,
@@ -121,6 +132,7 @@
       clearTimeout(rotate);
       clearTimeout(dwell);
       trailer = null;
+      clip = null;
       trailerOn = false;
     } else if (!open && held) {
       held = false;
@@ -220,7 +232,9 @@
         {#key cur.id}
           <img class="bg" src={img(bg, "original")} alt="" use:fallback={[imdbArt(cur.id, "background")]} />
         {/key}
-        {#if trailer}
+        {#if clip}
+          <Clip src={clip} {muted} paused={below} onplaying={() => (trailerOn = true)} onended={() => setTimeout(next, 2500)} />
+        {:else if trailer}
           <YouTube id={trailer} {muted} fill paused={below} onplaying={() => (trailerOn = true)} onended={() => setTimeout(next, 2500)} />
         {/if}
       </div>
@@ -261,7 +275,7 @@
         <button class="btn lg icon glass press" use:tvFocus={{ tilt: false }} onclick={() => toggleLibrary(cur)} aria-label={owned ? "In your list" : "Add to your list"} title={owned ? "In your list" : "Add to your list"}>
           <Icon name={owned ? "check" : "plus"} size={21} />
         </button>
-        {#if trailer}
+        {#if trailer || clip}
           <button class="btn lg icon glass press" onclick={() => (muted = !muted)} aria-label={muted ? "Unmute" : "Mute"}>
             <Icon name={muted ? "mute" : "volume"} size={19} />
           </button>

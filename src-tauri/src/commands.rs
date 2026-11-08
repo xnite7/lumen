@@ -743,6 +743,11 @@ pub async fn did_you_mean(s: S<'_>, query: String) -> AppResult<Option<String>> 
 }
 
 #[tauri::command]
+pub async fn clip_url(s: S<'_>, id: String) -> AppResult<Option<String>> {
+    Ok(crate::crew::clip_url(&s.core, &id).await)
+}
+
+#[tauri::command]
 pub fn discord_rpc_status() -> String {
     crate::discord::status()
 }

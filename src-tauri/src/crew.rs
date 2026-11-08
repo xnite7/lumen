@@ -378,6 +378,19 @@ pub async fn answer(core: &Core, id: &str, accept: bool) -> AppResult<Value> {
     Ok(v)
 }
 
+/// A ClipCafe scene for this title (billboard / previews), as a playable URL.
+pub async fn clip_url(core: &Core, id: &str) -> Option<String> {
+    let imdb = id.split(':').next().filter(|s| s.starts_with("tt"))?;
+    login(core).await.ok()?;
+    let v = call(core, reqwest::Method::GET, &format!("/v1/clip/{imdb}"), None).await.ok()?;
+    if v.get("clip").and_then(|c| c.as_bool()) != Some(true) {
+        return None;
+    }
+    let (url, auth) = server(core)?;
+    let session = auth.trim_start_matches("Bearer ").to_string();
+    Some(format!("{url}/clip/{imdb}?t={}", urlencoding::encode(&session)))
+}
+
 pub async fn social(core: &Core, method: &str, path: &str, body: Option<Value>) -> AppResult<Value> {
     let ok = ["/v1/favs", "/v1/activity"].contains(&path) || path.starts_with("/v1/reviews/") || path.starts_with("/v1/react/") || path.starts_with("/v1/frame/");
     if !ok || path.contains("..") {

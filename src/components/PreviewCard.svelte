@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Clip from "./Clip.svelte";
   import { checkRelease, isUnreleased, releaseNote } from "../lib/release.svelte";
   // The hover card: grows out of the poster it came from, plays the trailer
   // (muted unless you ask), and offers the three things people do from here.
@@ -15,6 +16,7 @@
   import Icon from "./Icon.svelte";
 
   let trailer = $state<string | null>(null);
+  let clip = $state<string | null>(null);
   let trailerOn = $state(false);
   let muted = $state(true);
   let card: HTMLElement | undefined = $state();
@@ -62,15 +64,22 @@
   });
 
   $effect(() => {
-    const m = meta;
+    const m = preview.meta;
     const token = preview.token;
     trailer = null;
+    clip = null;
     trailerOn = false;
     grown = false;
     muted = app.settings.general.previewMuted;
     if (!m) return;
     // two frames: lay out at the poster's size first, then grow
     requestAnimationFrame(() => requestAnimationFrame(() => preview.token === token && (grown = true)));
+    // a short scene (ClipCafe, 20 s or so) beats a full trailer; trailer if none
+    if (m.id.startsWith("tt")) {
+      api.clipUrl(m.id).then((c) => {
+        if (preview.token === token && c) clip = c;
+      }).catch(() => {});
+    }
     const own = m.trailerStreams?.[0]?.ytId ?? m.trailers?.find((t) => t.type === "Trailer")?.source ?? m.trailers?.[0]?.source;
     if (own) {
       trailer = own;
@@ -111,7 +120,9 @@
       {#if meta.background || meta.poster}
         <img class="pv-art" src={img(meta.background ?? meta.poster, "w780")} alt="" />
       {/if}
-      {#if trailer}
+      {#if clip}
+        <div class="tr" class:on={trailerOn}><Clip src={clip} {muted} loop onplaying={() => (trailerOn = true)} /></div>
+      {:else if trailer}
         <div class="tr" class:on={trailerOn}><YouTube id={trailer} {muted} loop fill onplaying={() => (trailerOn = true)} /></div>
       {/if}
       <!-- the poster it came from, fading out as the card grows -->
@@ -122,7 +133,7 @@
       {:else}
         <span class="title2 name">{meta.name}</span>
       {/if}
-      {#if trailer}
+      {#if trailer || clip}
         <span
           class="mute glass clear"
           role="button"

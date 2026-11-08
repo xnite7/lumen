@@ -33,6 +33,8 @@ export interface Env {
   /** couch's bot, sitting in the server: reads members' roles, so nobody has
    *  to give couch an extra permission or sign in again */
   DISCORD_BOT_TOKEN?: string;
+  /** ClipCafe PRO key: scene clips for billboard / preview (instead of trailers) */
+  CLIPCAFE_KEY?: string;
   /** read-only GitHub token for the app's releases (updates) */
   GH_TOKEN?: string;
   /** owner/repo holding the releases */
@@ -249,8 +251,17 @@ export default {
     if (req.method === "POST" && url.pathname === "/v1/auth") return auth(req, env);
     if (req.method === "POST" && url.pathname === "/v1/discord/exchange") return discordToken(req, env, "exchange");
     if (req.method === "POST" && url.pathname === "/v1/discord/refresh") return discordToken(req, env, "refresh");
+    // a scene clip as video (the <video> can't send headers: session in the URL)
+    const clipFile = url.pathname.match(/^\/clip\/(tt\d{5,10})$/);
+    if (clipFile) {
+      const w = await verify(env, `Bearer ${url.searchParams.get("t") ?? ""}`);
+      if (!w) return new Response("sign in again", { status: 401 });
+      return clipStream(env, clipFile[1], req);
+    }
     const who = await verify(env, req.headers.get("authorization"));
     if (!who) return json({ error: "sign in again" }, 401);
+    const clipAsk = url.pathname.match(/^\/v1\/clip\/(tt\d{5,10})$/);
+    if (clipAsk) return json({ clip: !!(await clipPick(env, clipAsk[1])) });
     if (url.pathname.startsWith("/v1/update/")) return updates(url, env);
     // the Durable Object trusts this header; set it here, never from the client
     const fwd = new Request(req);
@@ -259,6 +270,56 @@ export default {
     return stub.fetch(fwd);
   },
 };
+
+// ------------------------------------------------------------ clips
+// The most watched ClipCafe scene for a title that runs at least 20 s (else
+// 15, else 10): what the billboard and previews play instead of a trailer.
+// The pick and the video are kept in Cloudflare's cache, so each clip costs
+// one ClipCafe download however many people watch it.
+
+type Clip = { slug: string; download: string; duration: number } | null;
+const CLIP_DAYS = 30;
+
+async function clipPick(env: Env, imdb: string): Promise<Clip> {
+  if (!env.CLIPCAFE_KEY) return null;
+  const cache = caches.default;
+  const key = new Request(`https://couch.clips/pick/${imdb}`);
+  const hit = await cache.match(key);
+  if (hit) return (await hit.json()) as Clip;
+  let pick: Clip = null;
+  for (const min of [20, 15, 10]) {
+    const u = `https://api.clip.cafe/?api_key=${encodeURIComponent(env.CLIPCAFE_KEY)}&imdb=${imdb}&duration=${min}-&size=25`;
+    const r = await fetch(u);
+    if (!r.ok) break;
+    const d: any = await r.json().catch(() => null);
+    const clips = (d?.hits?.hits ?? []).map((h: any) => h?._source).filter((c: any) => c?.download && c?.slug);
+    if (clips.length) {
+      clips.sort((a: any, b: any) => (Number(b.views) || 0) - (Number(a.views) || 0));
+      pick = { slug: String(clips[0].slug), download: String(clips[0].download), duration: Number(clips[0].duration) || 0 };
+      break;
+    }
+  }
+  // remember "no clip" too (for a day) so we don't ask again and again
+  await cache.put(key, new Response(JSON.stringify(pick), { headers: { "content-type": "application/json", "cache-control": `public, max-age=${pick ? CLIP_DAYS * 86400 : 86400}` } }));
+  return pick;
+}
+
+async function clipStream(env: Env, imdb: string, req: Request): Promise<Response> {
+  const cache = caches.default;
+  const fileKey = `https://couch.clips/file/${imdb}.mp4`;
+  // ranges (seeking) are answered straight from the cache
+  const cached = await cache.match(new Request(fileKey, { headers: req.headers.get("range") ? { range: req.headers.get("range")! } : {} }));
+  if (cached) return cached;
+  const pick = await clipPick(env, imdb);
+  if (!pick) return new Response("no clip", { status: 404 });
+  const dl = pick.download.includes("api_key=") ? pick.download : `${pick.download}${pick.download.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(env.CLIPCAFE_KEY ?? "")}`;
+  const r = await fetch(dl);
+  if (!r.ok || !r.body) return new Response("clip unavailable", { status: 502 });
+  const body = await r.arrayBuffer();
+  const res = new Response(body, { headers: { "content-type": "video/mp4", "cache-control": `public, max-age=${CLIP_DAYS * 86400}`, "accept-ranges": "bytes" } });
+  await cache.put(new Request(fileKey), res.clone());
+  return res;
+}
 
 // A shared title: opens couch right on its page (or says how to get couch).
 function titlePage(type: string, id: string, name: string) {
