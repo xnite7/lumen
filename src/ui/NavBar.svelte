@@ -102,6 +102,10 @@
     .trail {
       padding-right: 0 !important;
     }
+    /* clear of the avatar that hangs under the window buttons */
+    :global(html.winctl) .trail {
+      padding-right: 64px !important;
+    }
     .lead {
       height: 48px;
     }

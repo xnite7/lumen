@@ -301,7 +301,7 @@
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
-    padding: calc(var(--safe-top) + 166px) 0 182px;
+    padding: calc(var(--safe-top) + 230px) 0 182px;
   }
   .hero:not(.inset) .info {
     position: relative;

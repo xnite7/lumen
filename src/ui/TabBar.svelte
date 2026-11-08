@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { updates, installUpdate } from "../lib/stores/updates.svelte";
   import { untrack } from "svelte";
   // Tabs, Apple TV style. Phone: a floating plum-glass capsule at the bottom
   // with a draggable pill. Wide screens: tvOS's top row of quiet text tabs;
@@ -216,6 +217,12 @@
   </nav>
 
   <div class="me">
+    <!-- a new couch is ready: tap to update now -->
+    {#if updates.available}
+      <button class="upd press" onclick={installUpdate} title="couch {updates.available} is ready. click to update" aria-label="Update couch to {updates.available}">
+        <Icon name="download" size={15} />
+      </button>
+    {/if}
     <button class="me-btn" class:on={nav.tab === "profile" || menuOpen} onclick={() => (menuOpen = !menuOpen)} aria-label="Account" aria-expanded={menuOpen}>
       <span class="avatar big">{#if user?.avatar}<img src={user.avatar} alt="" />{:else if initial}{initial}{:else}<Icon name="personCircle" size={20} />{/if}</span>
     </button>
@@ -340,7 +347,7 @@
     left: 0;
     right: 0;
     height: calc(var(--safe-top) + 58px);
-    padding: calc(var(--safe-top) + 10px) calc(var(--gutter) + var(--win-controls, 0px)) 0 var(--gutter);
+    padding: calc(var(--safe-top) + 10px) var(--gutter) 0 var(--gutter); /* the avatar now hangs under the window buttons, so the tabs sit truly centred */
     display: grid;
     grid-template-columns: 1fr auto 1fr;
     align-items: center;
@@ -506,6 +513,36 @@
   .me {
     justify-self: end;
     position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    pointer-events: auto;
+  }
+  /* PC: the avatar hangs right under the window's maximize / close buttons */
+  :global(html.winctl) .me {
+    position: fixed;
+    top: 40px;
+    right: 29px;
+    z-index: 61;
+  }
+  .upd {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background: var(--neon);
+    box-shadow: 0 0 0 3px rgb(var(--neon-rgb) / 0.25), 0 0 16px rgb(var(--neon-rgb) / 0.7);
+    animation: upd-pulse 2.2s ease-in-out infinite;
+  }
+  .upd:hover {
+    transform: scale(1.08);
+  }
+  @keyframes upd-pulse {
+    50% {
+      box-shadow: 0 0 0 6px rgb(var(--neon-rgb) / 0.12), 0 0 22px rgb(var(--neon-rgb) / 0.9);
+    }
   }
   .me-btn {
     display: grid;
