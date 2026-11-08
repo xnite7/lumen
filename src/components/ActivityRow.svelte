@@ -11,8 +11,15 @@
   $effect(() => {
     loadMe();
     loadFeed();
-    const t = setInterval(() => loadFeed(), 120_000);
-    return () => clearInterval(t);
+    const t = setInterval(() => document.visibilityState === "visible" && loadFeed(true), 60_000);
+    const back = () => document.visibilityState === "visible" && loadFeed(true);
+    document.addEventListener("visibilitychange", back);
+    window.addEventListener("focus", back);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", back);
+      window.removeEventListener("focus", back);
+    };
   });
   const feed = $derived(social.feed.slice(0, 24));
   const open = (a: Activity) => go({ name: "detail", type: a.title.type, id: a.title.id });

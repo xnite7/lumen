@@ -171,7 +171,7 @@ pub fn run() {
                     if integrations::simkl_sync::sync(&c2).await.unwrap_or(false) {
                         let _ = c2.app.emit("library-changed", ());
                     }
-                    tokio::time::sleep(std::time::Duration::from_secs(600)).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(300)).await;
                 }
             });
 

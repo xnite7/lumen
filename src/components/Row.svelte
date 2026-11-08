@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { live } from "../lib/stores/live.svelte";
   // A catalog row. Loads only when it scrolls near the viewport (so twenty
   // addons don't fire at once), shows shimmer while waiting, hides itself if
   // the addon answers with nothing, and pages more in as you reach the end.
@@ -46,6 +47,19 @@
       status = "error";
     }
   }
+
+  // your own rows (Simkl lists, Top 10…) refresh by themselves
+  const mine = $derived(catalog.builtin && /^(simkl-|motn-top|couch-)/.test(catalog.id));
+  let lastTick = live.tick;
+  $effect(() => {
+    const t = live.tick;
+    if (!mine || t === lastTick || status !== "ready") return;
+    lastTick = t;
+    api.catalog(catalog, defaultExtra()).then((list) => {
+      if (!list.length) return;
+      items = isTop10 ? list.slice(0, 10) : list;
+    }).catch(() => {});
+  });
 
   function defaultExtra(): [string, string][] {
     if (extra) return extra;

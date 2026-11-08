@@ -69,5 +69,12 @@ export function startUpdates() {
     updates.progress = total ? got / total : 0;
   });
   setTimeout(() => checkForUpdates(), 8000);
-  setInterval(() => checkForUpdates(), 6 * 3600 * 1000);
+  // keep looking: every 10 minutes, and whenever you come back to couch
+  setInterval(() => checkForUpdates(), 10 * 60 * 1000);
+  let lastLook = Date.now();
+  window.addEventListener("focus", () => {
+    if (Date.now() - lastLook < 2 * 60 * 1000) return;
+    lastLook = Date.now();
+    checkForUpdates();
+  });
 }

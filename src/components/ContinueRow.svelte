@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { live } from "../lib/stores/live.svelte";
   import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
   import RailArrows from "./RailArrows.svelte";
   let rail: HTMLElement | undefined = $state();
@@ -53,6 +54,7 @@
   let fromSimkl = $state<Item[]>([]);
   $effect(() => {
     void lib.cw.length;
+    void live.tick;
     if (!app.secrets.simkl_token) return;
     api.catalogs().then(async (cats) => {
       const pick = (id: string) => cats.find((c) => c.builtin && c.id === id && c.type === "series");

@@ -15,6 +15,7 @@
   import { openMenu } from "../lib/menu.svelte";
   import { go } from "../lib/router.svelte";
   import { social, loadFavs } from "../lib/stores/social.svelte";
+  import { live } from "../lib/stores/live.svelte";
 
   type Tab = "plan" | "watching" | "completed" | "favs" | "custom";
   type Row = Meta & { userRating?: number | null; when?: number };
@@ -36,6 +37,7 @@
   let listItems = $state<Meta[]>([]);
 
   $effect(() => {
+    void live.tick; // refreshes by itself every few minutes
     loadLibrary();
     loadFavs();
     api.myLists().then((r) => (simkl = r)).catch(() => (simkl = { simkl: false }));

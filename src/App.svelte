@@ -24,6 +24,7 @@
   import Gate from "./ui/Gate.svelte";
   import UpdateBanner from "./components/UpdateBanner.svelte";
   import { installRails } from "./lib/rails";
+  import { startLive, live } from "./lib/stores/live.svelte";
   import { startUpdates } from "./lib/stores/updates.svelte";
   import { refreshCrew } from "./lib/stores/crew.svelte";
   import Player from "./views/Player.svelte";
@@ -48,6 +49,7 @@
       startCrew();
       startUpdates();
       installRails();
+      startLive();
       if (!app.settings.general.onboarded) ui.onboarding = true;
       else checkGate();
     })();
@@ -65,6 +67,11 @@
       api.simklSync().catch(() => {});
     });
     listen<{ kind: string; text: string }>("toast", (t) => toast(t.text, (t.kind as any) ?? "info"));
+  });
+
+  // the live tick: your library (Continue Watching, My Lists) follows it
+  $effect(() => {
+    if (live.tick) loadLibrary().catch(() => {});
   });
 
   // TV-style arrow-key / controller focus on desktop
