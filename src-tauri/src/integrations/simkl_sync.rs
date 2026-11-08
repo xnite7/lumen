@@ -219,13 +219,14 @@ pub fn resume_fraction(core: &Core, imdb: &str, season: Option<u32>, episode: Op
 /// that couch's own library doesn't already have.
 pub fn continue_items(core: &Core, have: &std::collections::HashSet<String>) -> Vec<Value> {
     let mut out = vec![];
+    let th = core.settings.read().playback.watched_threshold as f64;
     for p in playbacks(core) {
         let Some(imdb) = imdb_of(&p).map(|s| s.to_string()) else { continue };
         if have.contains(&imdb) {
             continue;
         }
         let pct = p.get("progress").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        if !(2.0..95.0).contains(&pct) {
+        if !(2.0..th).contains(&pct) {
             continue;
         }
         let it = inner(&p);

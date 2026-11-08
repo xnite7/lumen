@@ -51,7 +51,7 @@ impl Settings {
         p.auto_skip_credits = true;
         p.next_card_secs = 35;
         p.binge_same_source = true;
-        p.watched_threshold = 84;
+        p.watched_threshold = 80; // same as Simkl: 80% counts as watched
         p.native_ass = true;
         let s = &mut self.subtitles;
         s.style_sdh = true;
@@ -219,7 +219,7 @@ impl Default for Playback {
             cache_mb: 400,
             readahead_secs: 120,
             native_ass: false,
-            watched_threshold: 84,
+            watched_threshold: 80,
             embed_video: true,
             ios_player: "auto".into(),
         }

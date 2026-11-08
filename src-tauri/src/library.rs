@@ -192,15 +192,18 @@ pub fn set_watched(core: &Core, meta: &Value, video_id: Option<&str>, watched: b
 
 /// In progress, newest first: started, not finished, not dismissed.
 pub fn continue_watching(core: &Core) -> AppResult<Vec<Value>> {
+    let th = core.settings.read().playback.watched_threshold as f64 / 100.0;
     let mut v: Vec<Value> = all(core)?
         .into_iter()
         .filter(|i| !i["removed"].as_bool().unwrap_or(false) || i["temp"].as_bool().unwrap_or(false))
         .filter(|i| i["state"]["timeOffset"].as_i64().unwrap_or(0) > 0 && !i["state"]["video_id"].is_null())
         .filter(|i| !i["state"]["dismissed"].as_bool().unwrap_or(false))
+        // finished = past the watched mark (80%), same rule that ticks it
+        // watched, so nothing you completed lingers here
         .filter(|i| {
             let d = i["state"]["duration"].as_i64().unwrap_or(0);
             let t = i["state"]["timeOffset"].as_i64().unwrap_or(0);
-            d == 0 || (t as f64) < d as f64 * 0.95
+            d == 0 || (t as f64) < d as f64 * th
         })
         .collect();
     v.sort_by_key(|i| -parse_iso(i["state"]["lastWatched"].as_str().unwrap_or("")));

@@ -51,7 +51,7 @@ export const DEFAULT_SETTINGS = {
     cacheMb: 400,
     readaheadSecs: 120,
     nativeAss: false,
-    watchedThreshold: 84,
+    watchedThreshold: 80,
     embedVideo: true,
     iosPlayer: "auto",
   },
