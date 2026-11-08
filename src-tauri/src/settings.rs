@@ -34,7 +34,7 @@ impl Settings {
         g.refraction = true;
         g.motion_scale = 1.3; // floaty
         g.hover_previews = true;
-        g.hover_delay_ms = 450;
+        g.hover_delay_ms = 600; // a beat longer before a preview opens
         g.preview_muted = true;
         g.hero_trailers = true;
         g.hero_muted = true;
