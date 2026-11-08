@@ -280,6 +280,7 @@ export default {
 type Clip = { slug: string; download: string; duration: number } | null;
 const CLIP_DAYS = 30;
 
+// ClipCafe: needs the CLIPCAFE_KEY secret (set); previews play the most-viewed clip, 20s+ then 15s+ then 10s+
 async function clipPick(env: Env, imdb: string): Promise<Clip> {
   if (!env.CLIPCAFE_KEY) return null;
   const cache = caches.default;
