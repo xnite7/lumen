@@ -74,6 +74,29 @@
     if (live.tick) loadLibrary().catch(() => {});
   });
 
+  // Testing the first-run screens without a fresh install:
+  //   Ctrl+Shift+O  the welcome / onboarding, from the start
+  //   Ctrl+Shift+G  the "not sigma" lockout (Esc to close)
+  //   Ctrl+Shift+K  the "one more knock" sign-in (Esc to close)
+  function devKeys(e: KeyboardEvent) {
+    if (e.key === "Escape" && gate && previewGate) {
+      gate = "";
+      previewGate = false;
+      return;
+    }
+    if (!(e.ctrlKey && e.shiftKey)) return;
+    const k = e.key.toLowerCase();
+    if (k === "o") {
+      e.preventDefault();
+      ui.onboarding = true;
+    } else if (k === "g" || k === "k") {
+      e.preventDefault();
+      previewGate = true;
+      gate = k === "g" ? "outsider" : "signin";
+    }
+  }
+  let previewGate = false;
+
   // TV-style arrow-key / controller focus on desktop
   $effect(() => {
     if (!app.ready || ui.phone || app.platform === "ios") return;
@@ -179,6 +202,8 @@
   }
 
   function onKey(e: KeyboardEvent) {
+    devKeys(e);
+    if (e.defaultPrevented) return;
     if (pb.open) return;
     const typing = (e.target as HTMLElement)?.closest("input, textarea");
     if (e.key === "Escape" && !typing) back();

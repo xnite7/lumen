@@ -195,7 +195,7 @@
   <nav class="links" class:searching={searchBar.open || !!searchBar.q} aria-label="Tabs">
     <form class="find" class:open={searchBar.open || !!searchBar.q} onsubmit={(e) => e.preventDefault()}>
       <button type="button" class="find-btn" onclick={() => (searchBar.open ? field?.focus() : openSearch())} aria-label="Search">
-        <Icon name="search" size={18} />
+        <Icon name="search" size={21} />
       </button>
       <input
         bind:this={field}
@@ -346,8 +346,8 @@
     top: 0;
     left: 0;
     right: 0;
-    height: calc(var(--safe-top) + 58px);
-    padding: calc(var(--safe-top) + 10px) var(--gutter) 0 var(--gutter); /* the avatar now hangs under the window buttons, so the tabs sit truly centred */
+    height: calc(var(--safe-top) + 68px);
+    padding: calc(var(--safe-top) + 20px) var(--gutter) 0 var(--gutter); /* the avatar now hangs under the window buttons, so the tabs sit truly centred */
     display: grid;
     grid-template-columns: 1fr auto 1fr;
     align-items: center;
@@ -380,7 +380,7 @@
     transition: opacity var(--t-med) ease, transform var(--t-med) var(--spring);
   }
   .brand img {
-    height: 30px;
+    height: 34.5px;
     width: auto;
     /* the mark is black ink: flip it to light ink on the dark app */
     filter: invert(1) drop-shadow(0 2px 10px rgb(var(--lo) / 0.8));
@@ -522,7 +522,7 @@
   /* PC: the avatar hangs right under the window's maximize / close buttons */
   :global(html.winctl) .me {
     position: fixed;
-    top: 40px;
+    top: 50px;
     right: 29px;
     z-index: 61;
   }
@@ -565,9 +565,9 @@
     corner-shape: squircle;
   }
   .avatar.big {
-    width: 34px;
-    height: 34px;
-    font-size: 15px;
+    width: 40px;
+    height: 40px;
+    font-size: 17px;
     box-shadow: 0 4px 14px -4px rgb(var(--lo) / 0.9);
   }
   .menu {

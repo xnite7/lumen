@@ -96,7 +96,7 @@
     .navbar {
       z-index: 61;
       height: calc(var(--safe-top) + 120px);
-      padding-top: calc(var(--safe-top) + 68px);
+      padding-top: calc(var(--safe-top) + 78px);
       align-items: start;
     }
     .trail {
