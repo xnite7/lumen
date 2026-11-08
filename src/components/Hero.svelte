@@ -39,7 +39,22 @@
   /** a ClipCafe scene (preferred over the YouTube trailer) */
   let clip = $state<string | null>(null);
   let trailerOn = $state(false);
-  let muted = $state(false);
+  // the billboard remembers mute (sound on until you mute it)
+  const MUTE_KEY = "couch.heroMuted";
+  const savedMute = () => {
+    try {
+      return localStorage.getItem(MUTE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  };
+  let muted = $state(savedMute());
+  function toggleMute() {
+    muted = !muted;
+    try {
+      localStorage.setItem(MUTE_KEY, muted ? "1" : "0");
+    } catch {}
+  }
   let el: HTMLElement | undefined = $state();
   let paused = $state(false);
   let art = $state<Record<string, string>>({});
@@ -89,7 +104,7 @@
         const k = (m.id.startsWith("tt") ? await api.trailer(m.type, m.id).catch(() => null) : null) ?? m.trailer ?? m.trailers?.[0]?.source ?? null;
         if (k && cur?.id === m.id) {
           trailer = k;
-          muted = app.settings.general.heroMuted;
+          muted = savedMute();
         }
       }, 3000);
     }
@@ -271,7 +286,7 @@
           <Icon name={owned ? "check" : "plus"} size={21} />
         </button>
         {#if trailer || clip}
-          <button class="btn lg icon glass press" onclick={() => (muted = !muted)} aria-label={muted ? "Unmute" : "Mute"}>
+          <button class="btn lg icon glass press" onclick={toggleMute} aria-label={muted ? "Unmute" : "Mute"}>
             <Icon name={muted ? "mute" : "volume"} size={19} />
           </button>
         {/if}
