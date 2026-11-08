@@ -298,6 +298,7 @@ pub fn run() {
             commands::discord_me,
             commands::discord_rpc_status,
             commands::clip_url,
+            commands::streaming_services,
             commands::did_you_mean,
             commands::scene_color,
             commands::simkl_episode_info,

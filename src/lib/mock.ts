@@ -274,6 +274,8 @@ export async function mock(cmd: string, args: any): Promise<any> {
     case "health":
     case "addons_health":
       return [];
+    case "streaming_services":
+      return ["Netflix", "Max", "Disney+", "Prime Video", "Apple TV+", "Hulu", "Paramount+", "Peacock", "Crunchyroll"].map((name, i) => ({ id: i + 1, name, logo: null }));
     case "discord_me":
       return { id: "me", name: "sultan", avatar: undefined };
     case "local_ratings":

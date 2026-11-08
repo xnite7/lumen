@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Service from "../views/Service.svelte";
   // One screen on the navigation stack: its own scroll container, so going
   // back reveals the previous screen exactly as you left it.
   import { onMount, onDestroy, setContext } from "svelte";
@@ -86,6 +87,8 @@
       <Vibe q={route.q} />
     {:else if route.name === "couch"}
       <Couch />
+    {:else if route.name === "service"}
+      <Service id={route.id} label={route.label} logo={route.logo} />
     {/if}
   </div>
 </main>

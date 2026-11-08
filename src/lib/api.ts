@@ -298,6 +298,7 @@ export const api = {
   episodeInfo: (id: string) => invoke<Record<string, { runtime?: number | null; finale?: number | null }>>("simkl_episode_info", { id }),
   sceneColor: () => invoke<string | null>("scene_color"),
   didYouMean: (query: string) => invoke<string | null>("did_you_mean", { query }),
+  services: () => invoke<{ id: number; name: string; logo: string | null }[]>("streaming_services"),
   clipUrl: (id: string) => invoke<string | null>("clip_url", { id }),
   discordRpcStatus: () => invoke<string>("discord_rpc_status"),
   discordMe: () => invoke<{ id: string; name: string; avatar?: string } | null>("discord_me"),

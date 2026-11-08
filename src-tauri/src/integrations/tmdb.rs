@@ -362,6 +362,47 @@ pub async fn enrich(core: &Core, stremio_type: &str, id: &str) -> AppResult<Valu
 }
 
 /// Best trailer for a hover card or the hero: a YouTube key.
+/// Is this YouTube video wider than tall? (YouTube's oEmbed gives the
+/// player's size: Shorts come back taller than wide.) Unknown counts as yes.
+async fn landscape(core: &Core, key: &str) -> bool {
+    let u = format!("https://www.youtube.com/oembed?format=json&url={}", urlencoding::encode(&format!("https://www.youtube.com/watch?v={key}")));
+    match core.http.get_json_cached::<Value>(&u, DAY * 30, T).await {
+        Ok(v) => {
+            let w = v.get("width").and_then(|x| x.as_f64()).unwrap_or(16.0);
+            let h = v.get("height").and_then(|x| x.as_f64()).unwrap_or(9.0);
+            w >= h
+        }
+        Err(_) => true,
+    }
+}
+
+/// The big streaming services, with TMDB's own logos (for the Home row).
+pub const SERVICES: &[(u64, &str)] = &[
+    (8, "Netflix"),
+    (1899, "Max"),
+    (337, "Disney+"),
+    (9, "Prime Video"),
+    (350, "Apple TV+"),
+    (15, "Hulu"),
+    (531, "Paramount+"),
+    (386, "Peacock"),
+    (283, "Crunchyroll"),
+];
+
+pub async fn services(core: &Core) -> Vec<Value> {
+    let mut logos = std::collections::HashMap::new();
+    for kind in ["movie", "tv"] {
+        if let Ok(v) = get(core, &format!("/watch/providers/{kind}"), "&watch_region=US", DAY * 7).await {
+            for p in v.get("results").and_then(|r| r.as_array()).into_iter().flatten() {
+                if let (Some(id), Some(l)) = (p.get("provider_id").and_then(|i| i.as_u64()), p.get("logo_path").and_then(|l| l.as_str())) {
+                    logos.entry(id).or_insert_with(|| img(Some(l), "w300"));
+                }
+            }
+        }
+    }
+    SERVICES.iter().map(|(id, name)| json!({ "id": id, "name": name, "logo": logos.get(id).cloned().flatten() })).collect()
+}
+
 pub async fn trailer(core: &Core, stremio_type: &str, id: &str) -> AppResult<Option<String>> {
     let kind = kind_of(stremio_type);
     let tid = if id.starts_with("tt") { tmdb_id_for_imdb(core, id, kind).await? } else { None };
@@ -370,17 +411,29 @@ pub async fn trailer(core: &Core, stremio_type: &str, id: &str) -> AppResult<Opt
         let list = v.get("results").and_then(|r| r.as_array()).cloned().unwrap_or_default();
         let yt: Vec<&Value> = list.iter().filter(|x| x.get("site").and_then(|s| s.as_str()) == Some("YouTube")).collect();
         // billboard / previews: a teaser (short, sets the mood, gives little
-        // away) beats a full trailer; official ones first
-        let is = |x: &&&Value, t: &str, official: bool| x.get("type").and_then(|v| v.as_str()) == Some(t) && (!official || x.get("official").and_then(|o| o.as_bool()) == Some(true));
-        let pick = yt
-            .iter()
-            .find(|x| is(x, "Teaser", true))
-            .or_else(|| yt.iter().find(|x| is(x, "Teaser", false)))
-            .or_else(|| yt.iter().find(|x| is(x, "Trailer", true)))
-            .or_else(|| yt.iter().find(|x| is(x, "Trailer", false)))
-            .or_else(|| yt.first());
-        if let Some(k) = pick.and_then(|p| p.get("key")).and_then(|k| k.as_str()) {
-            return Ok(Some(k.to_string()));
+        // away) beats a full trailer; official ones first. Never a vertical
+        // phone cut (Shorts / TikTok versions) or a random featurette.
+        let ty = |x: &Value| x.get("type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let official = |x: &Value| x.get("official").and_then(|o| o.as_bool()) == Some(true);
+        let looks_vertical = |x: &Value| {
+            let n = x.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
+            ["short", "vertical", "tiktok", "reel", "#", "9x16", "9:16"].iter().any(|w| n.contains(w))
+        };
+        let mut order: Vec<&Value> = yt.iter().copied().filter(|x| !looks_vertical(x) && x.get("size").and_then(|s| s.as_u64()).unwrap_or(1080) >= 720).collect();
+        let rank = |x: &Value| match (ty(x).as_str(), official(x)) {
+            ("Teaser", true) => 0,
+            ("Teaser", false) => 1,
+            ("Trailer", true) => 2,
+            ("Trailer", false) => 3,
+            _ => 9,
+        };
+        order.retain(|x| rank(x) < 9);
+        order.sort_by_key(|x| rank(x));
+        for x in order.into_iter().take(6) {
+            let Some(k) = x.get("key").and_then(|k| k.as_str()) else { continue };
+            if landscape(core, k).await {
+                return Ok(Some(k.to_string()));
+            }
         }
     }
     // KinoCheck: free, keyed by IMDb id, official trailers only.

@@ -159,6 +159,12 @@ pub async fn catalog(core: &Core, id: &str, kind: &str, seed: Option<&str>, skip
             let p = format!("&sort_by=popularity.desc&with_genres={}&vote_count.gte=300&vote_average.gte=6.5", urlencoding::encode(g));
             discover(core, tk, &p, skip).await
         }
+        // a streaming service's shelf: couch-prov-<TMDB provider id>
+        c if c.starts_with("couch-prov-") => {
+            let pid = c.trim_start_matches("couch-prov-");
+            let p = format!("&with_watch_providers={}&watch_region=US&sort_by=popularity.desc&vote_count.gte=40", urlencoding::encode(pid));
+            discover(core, tk, &p, skip).await
+        }
         "couch-emmy" if skip == 0 => by_titles(core, "tv", EMMY).await,
         "couch-oscar" if skip == 0 => by_titles(core, "movie", OSCAR).await,
         "couch-morelike" if skip == 0 => {

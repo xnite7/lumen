@@ -742,6 +742,12 @@ pub async fn did_you_mean(s: S<'_>, query: String) -> AppResult<Option<String>> 
     Ok(ai::did_you_mean(&s.core, &query).await)
 }
 
+/// Netflix, Max, Disney+… with their logos, for the services row.
+#[tauri::command]
+pub async fn streaming_services(s: S<'_>) -> AppResult<Vec<Value>> {
+    Ok(tmdb::services(&s.core).await)
+}
+
 #[tauri::command]
 pub async fn clip_url(s: S<'_>, id: String) -> AppResult<Option<String>> {
     Ok(crate::crew::clip_url(&s.core, &id).await)

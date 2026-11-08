@@ -19,7 +19,8 @@ export type Route =
   | { name: "person"; person: string; tmdbId?: number; adult?: boolean }
   | { name: "addons"; install?: string }
   | { name: "settings"; section?: string }
-  | { name: "vibe"; q?: string };
+  | { name: "vibe"; q?: string }
+  | { name: "service"; id: number; label: string; logo?: string | null };
 
 /** a route on a stack carries a stable key, so its page layer survives */
 export type Entry = Route & { _k?: number };
