@@ -54,8 +54,12 @@ export function rank(streams: Stream[], mbps: number, runtime?: string | number,
   const rest = real.filter((s) => !fits.includes(s));
   // on iPhone, at the same resolution, a picture-in-picture friendly file wins
   const pip = (s: Stream) => (ios && pipFriendly(s) ? 1 : 0);
+  // a file with no source at all ("Title 2026.mkv" calling itself 4K) is
+  // how cams and fakes slip past filters: real WEB-DL / BluRay / WEBRip first
+  const known = (s: Stream) => (s._couch?.source ? 1 : 0);
   const byScore = (a: Stream, b: Stream) =>
     (instant(b) ? 1 : 0) - (instant(a) ? 1 : 0) ||
+    known(b) - known(a) ||
     (b._couch?.resRank ?? 0) - (a._couch?.resRank ?? 0) ||
     pip(b) - pip(a) ||
     (b._couch?.score ?? 0) - (a._couch?.score ?? 0);
