@@ -458,7 +458,27 @@ fn profile_snapshot(core: &Core) -> Value {
             .flatten()
             .filter_map(|m| m.pointer("/episodes/0").and_then(|v| v.as_i64()))
             .sum();
+        // taste: everything watched (ids), your scores, and what you loved,
+        // so the crew can see how alike you are
+        let mut ids: Vec<Value> = vec![];
+        let mut ratings = serde_json::Map::new();
+        let mut loved: Vec<Value> = vec![];
+        for key in ["completed", "watching"] {
+            for m in l.get(key).and_then(|a| a.as_array()).into_iter().flatten() {
+                let Some(id) = m.get("id").and_then(|v| v.as_str()) else { continue };
+                if ids.len() < 1000 {
+                    ids.push(json!(id));
+                }
+                if let Some(r) = m.get("userRating").and_then(|v| v.as_u64()).filter(|r| (1..=10).contains(r)) {
+                    ratings.insert(id.to_string(), json!(r));
+                    if r >= 8 && loved.len() < 60 {
+                        loved.push(slim(m, "watchedAt"));
+                    }
+                }
+            }
+        }
         return json!({
+            "taste": { "ids": ids, "ratings": ratings, "loved": loved },
             "follows": core.db.get::<Value>("follows").unwrap_or(json!([])),
             "source": "simkl",
             "watching": newest("watching", "watchedAt"),

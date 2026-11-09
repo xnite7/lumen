@@ -278,6 +278,14 @@ export async function mock(cmd: string, args: any): Promise<any> {
       return ["Netflix", "Max", "Disney+", "Prime Video", "Apple TV+", "Hulu", "Paramount+", "Peacock", "Crunchyroll"].map((name, i) => ({ id: i + 1, name, logo: null }));
     case "discord_me":
       return { id: "me", name: "sultan", avatar: undefined };
+    case "wrapped_data": {
+      const G = [["Drama", "Mystery"], ["Comedy"], ["Drama", "Thriller"], ["Sci-Fi", "Drama"], ["Animation", "Comedy"], ["Thriller"]];
+      return metas.slice(0, 14).map((m: any, k: number) => ({
+        id: m.id, type: m.type, name: m.name, poster: m.poster, background: m.background,
+        genres: G[k % G.length], at: new Date(Date.UTC(args.year, (k * 5) % 12, 3 + k, (k * 7) % 24)).toISOString(),
+        status: "completed", userRating: k % 3 === 0 ? 10 : k % 3 === 1 ? 8 : null, eps: m.type === "series" ? 8 + k * 3 : null, minutes: m.type === "series" ? 45 : 118,
+      }));
+    }
     case "local_ratings":
       return {};
     case "share_link":

@@ -226,7 +226,8 @@ type Fav = { id: string; type: string; name: string; poster?: string; at: number
 type PItem = { id: string; type: string; name: string; poster?: string; background?: string; logo?: string; rating?: number; at?: number; eps?: [number, number] };
 /** what someone's couch publishes about them (from their Simkl, or their couch library) */
 type Follow = { kind: "person" | "studio"; id: number; name: string; img?: string };
-type Profile = { watching: PItem[]; recent: PItem[]; plan: PItem[]; follows?: Follow[]; stats: Record<string, number>; source: "simkl" | "couch"; at: number };
+type Taste = { ids: string[]; ratings: Record<string, number>; loved: PItem[] };
+type Profile = { watching: PItem[]; recent: PItem[]; plan: PItem[]; follows?: Follow[]; taste?: Taste; stats: Record<string, number>; source: "simkl" | "couch"; at: number };
 /** the bits of their page they pick themselves */
 type Style = { accent?: string; glow?: boolean };
 type Person = { id: string; name: string; avatar?: string; accent?: string; at: number };
@@ -520,7 +521,15 @@ export class Crew {
         const fid = num(f?.id);
         if (kind && fid > 0) follows.push({ kind, id: Math.round(fid), name: str(f?.name, 120) ?? "", img: str(f?.img, 500) });
       }
-      const prof: Profile = { watching: items(b?.watching, 30), recent: items(b?.recent, 30), plan: items(b?.plan, 30), follows, stats, source: b?.source === "simkl" ? "simkl" : "couch", at: Date.now() };
+      const t = b?.taste;
+      const tIds = (Array.isArray(t?.ids) ? t.ids : []).filter((x: unknown) => typeof x === "string" && /^tt\d{5,10}$/.test(x)).slice(0, 1000) as string[];
+      const tRatings: Record<string, number> = {};
+      for (const [k, v] of Object.entries(t?.ratings && typeof t.ratings === "object" ? t.ratings : {}).slice(0, 1000)) {
+        const n = num(v);
+        if (/^tt\d{5,10}$/.test(k) && n >= 1 && n <= 10) tRatings[k] = Math.round(n);
+      }
+      const taste: Taste = { ids: tIds, ratings: tRatings, loved: items(t?.loved, 60) };
+      const prof: Profile = { watching: items(b?.watching, 30), recent: items(b?.recent, 30), plan: items(b?.plan, 30), follows, taste, stats, source: b?.source === "simkl" ? "simkl" : "couch", at: Date.now() };
       await this.storage.put(`profile:${who.id}`, prof);
       await this.touchPerson(who);
       return json({ ok: true });

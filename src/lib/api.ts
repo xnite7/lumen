@@ -329,6 +329,7 @@ export const api = {
   simklCustomLists: () => invoke<{ paid: boolean; lists: any[] }>("simkl_custom_lists"),
   simklListItems: (id: number) => invoke<Meta[]>("simkl_list_items", { id }),
   company: (id: number) => invoke<Studio>("company_get", { id }),
+  wrappedData: (year: number) => invoke<WrapRow[]>("wrapped_data", { year }),
   follows: () => invoke<Follow[]>("follows_list"),
   followToggle: (f: Follow) => invoke<Follow[]>("follow_toggle", { kind: f.kind, id: f.id, name: f.name, img: f.img ?? null }),
   followFeed: () => invoke<(Meta & { because?: string; date?: string })[]>("follow_feed"),
@@ -382,6 +383,28 @@ export interface CrewRoom {
   shared?: boolean;
 }
 
+/** one title watched in a year (Wrapped) */
+export interface WrapRow {
+  id: string;
+  type: string;
+  name: string;
+  poster?: string;
+  background?: string;
+  logo?: string;
+  genres?: string[] | null;
+  at: string;
+  status: string;
+  userRating?: number | null;
+  eps?: number | null;
+  minutes?: number | null;
+  watchedMinutes?: number;
+}
+export interface Taste {
+  ids: string[];
+  ratings: Record<string, number>;
+  loved: ProfileItem[];
+}
+
 /** a person or studio someone follows */
 export interface Follow {
   kind: "person" | "studio";
@@ -431,7 +454,7 @@ export interface CrewProfile {
   id: string;
   name?: string;
   avatar?: string;
-  profile: { watching: ProfileItem[]; recent: ProfileItem[]; plan: ProfileItem[]; follows?: Follow[]; stats: Record<string, number>; source: "simkl" | "couch"; at: number } | null;
+  profile: { watching: ProfileItem[]; recent: ProfileItem[]; plan: ProfileItem[]; follows?: Follow[]; taste?: Taste; stats: Record<string, number>; source: "simkl" | "couch"; at: number } | null;
   style: ProfileStyle;
   favs: { id: string; type: string; name: string; poster?: string; at: number }[];
   activity: { id: string; kind: "review" | "rating" | "finished"; title: { id: string; type: string; name: string; poster?: string; background?: string }; rating?: number; text?: string; at: number }[];

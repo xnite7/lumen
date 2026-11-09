@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tasteMatch, matchWord } from "../lib/taste";
+  import { openWrapped } from "../lib/stores/wrapped.svelte";
   import EmojiText from "../components/EmojiText.svelte";
   import { trimLogo } from "../lib/trimlogo";
   // Someone's page on the couch: what they're on right now, what they're in
@@ -47,6 +49,15 @@
   const name = $derived(data?.name ?? who ?? "someone");
   const pic = $derived(data?.avatar ?? avatar);
   const p = $derived(data?.profile ?? null);
+
+  // taste match: my taste against theirs (not on my own page)
+  let myTaste = $state<import("../lib/api").Taste | undefined>(undefined);
+  $effect(() => {
+    const me = social.me?.id;
+    if (!me || me === id) return;
+    api.profile(me).then((r) => (myTaste = r.profile?.taste)).catch(() => {});
+  });
+  const match = $derived(!mine ? tasteMatch(myTaste, p?.taste) : null);
   const accent = $derived(data?.style?.accent || "#e0309a");
   // live from the couch: what they've got on right now
   const now = $derived(crew.members.find((m) => m.id === id && m.watching?.title) ?? null);
@@ -121,6 +132,40 @@
       <span class="foot dim">last seen on the couch {ago(p.at)}</span>
     {/if}
   </div>
+
+  {#if mine}
+    <button class="wrap-cta press" onclick={() => openWrapped()}>
+      <span class="wc-year">{new Date().getFullYear()}</span>
+      <span class="wc-txt"><b>your year on the couch</b><span class="dim">wrapped</span></span>
+      <Icon name="play" size={18} />
+    </button>
+  {/if}
+
+  {#if match}
+    <section class="match rise">
+      <div class="ring" style:--p={match.pct}>
+        <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="bg" cx="50" cy="50" r="44" /><circle class="fg" cx="50" cy="50" r="44" /></svg>
+        <b>{match.pct}<small>%</small></b>
+      </div>
+      <div class="m-txt">
+        <span class="kicker">taste match</span>
+        <h2 class="title2">{matchWord(match.pct)}</h2>
+        <p class="foot dim">you've both watched {match.both} {match.both === 1 ? "title" : "titles"}{match.rated ? ` · scored ${match.rated} of the same` : ""}</p>
+      </div>
+    </section>
+    {#if match.bothLoved.length}
+      <section class="sec">
+        <header class="sh"><div><h2 class="title2">you both loved</h2></div></header>
+        <div class="rail scroll-x">{#each match.bothLoved as i (i.id)}<div class="cell"><Poster meta={meta(i)} /></div>{/each}</div>
+      </section>
+    {/if}
+    {#if match.forYou.length}
+      <section class="sec">
+        <header class="sh"><div><h2 class="title2">{name} loved, you haven't seen</h2></div></header>
+        <div class="rail scroll-x">{#each match.forYou as i (i.id)}<div class="cell"><Poster meta={meta(i)} /></div>{/each}</div>
+      </section>
+    {/if}
+  {/if}
 
   {#if mine && editing}
     <section class="custom glass rise">
@@ -645,6 +690,91 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+  .match {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    margin: 26px var(--gutter) 0;
+    padding: 18px 22px;
+    border-radius: 22px;
+    max-width: 620px;
+    background: color-mix(in srgb, var(--acc) 12%, rgb(255 255 255 / 0.04));
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07);
+  }
+  .ring {
+    position: relative;
+    width: 96px;
+    height: 96px;
+    flex: none;
+    display: grid;
+    place-items: center;
+  }
+  .ring svg {
+    position: absolute;
+    inset: 0;
+    rotate: -90deg;
+  }
+  .ring circle {
+    fill: none;
+    stroke-width: 8;
+  }
+  .ring .bg {
+    stroke: rgb(255 255 255 / 0.1);
+  }
+  .ring .fg {
+    stroke: var(--acc);
+    stroke-linecap: round;
+    stroke-dasharray: 276.5;
+    stroke-dashoffset: calc(276.5 * (1 - var(--p) / 100));
+    animation: ring-in calc(1.2s * var(--motion, 1)) cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes ring-in {
+    from {
+      stroke-dashoffset: 276.5;
+    }
+  }
+  .ring b {
+    font: 900 28px var(--font-display);
+    letter-spacing: -0.04em;
+  }
+  .ring small {
+    font-size: 14px;
+    opacity: 0.7;
+  }
+  .m-txt {
+    display: grid;
+    gap: 2px;
+  }
+  .m-txt h2 {
+    margin: 0;
+  }
+  .m-txt p {
+    margin: 0;
+  }
+  .wrap-cta {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 18px var(--gutter) 0;
+    padding: 14px 20px 14px 14px;
+    border-radius: 20px;
+    max-width: 420px;
+    text-align: left;
+    background:
+      radial-gradient(120% 160% at 0% 0%, rgb(var(--neon-rgb) / 0.55), transparent 60%),
+      radial-gradient(120% 160% at 100% 100%, rgb(var(--lamp-rgb) / 0.4), transparent 60%),
+      #140a12;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
+  }
+  .wc-year {
+    font: 900 30px var(--font-display);
+    letter-spacing: -0.05em;
+  }
+  .wc-txt {
+    display: grid;
+    flex: 1;
+    font-size: 14px;
   }
   .quote {
     display: grid;

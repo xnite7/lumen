@@ -1,5 +1,6 @@
 <script lang="ts">
   import UpdatePrompt from "./ui/UpdatePrompt.svelte";
+  import Wrapped from "./components/Wrapped.svelte";
   import { api, listen, type Meta, type Stream } from "./lib/api";
   import { app, boot, refreshSecrets } from "./lib/stores/app.svelte";
   import { applyCurrent } from "./lib/stores/theme.svelte";
@@ -293,11 +294,12 @@
   <Reactions />
   {#if finish.meta}
     {#key finish.meta.id}
-      <UpdatePrompt />
-<RateSheet open={true} meta={finish.meta} finished onclose={() => (finish.meta = null)} />
+      <RateSheet open={true} meta={finish.meta} finished onclose={() => (finish.meta = null)} />
     {/key}
   {/if}
   <UpdateBanner />
+  <UpdatePrompt />
+  <Wrapped />
 {/if}
 {#if splashing}<Splash ondone={() => (splashing = false)} />{/if}
 

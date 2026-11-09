@@ -710,6 +710,51 @@ pub async fn simkl_list_items(s: S<'_>, id: u64) -> AppResult<Vec<Value>> {
 
 /// Favourites, reviews, the crew's activity and watch-together reactions
 /// live on the crew server (Simkl's API has none of them).
+/// Everything watched in one year, for Wrapped: one row per title with when,
+/// your rating, runtime, genres, episodes. The slides are worked out from it.
+#[tauri::command]
+pub fn wrapped_data(s: S<'_>, year: i32) -> Vec<Value> {
+    let core = &s.core;
+    let ys = format!("{year:04}-");
+    let mut out = vec![];
+    if simkl::connected(core) && crate::integrations::simkl_sync::has_data(core) {
+        for st in ["completed", "watching", "hold", "dropped"] {
+            for kind in ["movie", "series"] {
+                for e in crate::integrations::simkl_sync::list(core, st, kind) {
+                    let at = e.get("last_watched_at").and_then(|t| t.as_str()).unwrap_or("");
+                    if !at.starts_with(&ys) {
+                        continue;
+                    }
+                    if let Some(mut m) = simkl::to_meta(&e, None) {
+                        m["at"] = json!(at);
+                        m["status"] = json!(st);
+                        m["eps"] = e.get("watched_episodes_count").cloned().unwrap_or(Value::Null);
+                        m["minutes"] = json!(m["runtime"].as_str().and_then(|r| r.trim_end_matches(" min").parse::<u64>().ok()));
+                        out.push(m);
+                    }
+                }
+            }
+        }
+        return out;
+    }
+    // no Simkl: what couch itself saw you watch
+    for i in crate::library::all(core).unwrap_or_default() {
+        let st = &i["state"];
+        let at = st["lastWatched"].as_str().unwrap_or("");
+        if !at.starts_with(&ys) || st["overallTimeWatched"].as_i64().unwrap_or(0) < 5 * 60_000 {
+            continue;
+        }
+        let done = st["flaggedWatched"].as_i64().unwrap_or(0) > 0 || st["timesWatched"].as_i64().unwrap_or(0) > 0;
+        out.push(json!({
+            "id": i["_id"], "type": i["type"], "name": i["name"], "poster": i["poster"], "background": i["background"], "logo": i["logo"],
+            "genres": i.get("genres"), "at": at, "status": if done { "completed" } else { "watching" },
+            "eps": st["watchedIds"].as_array().map(|a| a.len()),
+            "watchedMinutes": st["overallTimeWatched"].as_i64().unwrap_or(0) / 60_000,
+        }));
+    }
+    out
+}
+
 /// A studio's page (TMDB company): logo, films, shows.
 #[tauri::command]
 pub async fn company_get(s: S<'_>, id: u64) -> AppResult<Value> {

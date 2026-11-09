@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { openWrapped } from "../lib/stores/wrapped.svelte";
   import DiscordSignIn from "../ui/DiscordSignIn.svelte";
   // The Profile tab: who you are, then everything else in short groups.
   // A search field finds any setting by name.
@@ -121,6 +122,10 @@
         {/each}
       </div>
     {/each}
+
+    <div class="group">
+      <Item label="Your {new Date().getFullYear()} on the couch" detail="wrapped" icon="sparkles" tint="var(--neon)" chevron onclick={() => openWrapped()} />
+    </div>
 
     <div class="group">
       <Item label="Run setup again" icon="wand" tint="var(--orange)" chevron onclick={() => (ui.onboarding = true)} />

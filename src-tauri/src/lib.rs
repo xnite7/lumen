@@ -318,6 +318,7 @@ pub fn run() {
             commands::crew_social,
             commands::crew_profile_publish,
             commands::company_get,
+            commands::wrapped_data,
             commands::follows_list,
             commands::follow_toggle,
             commands::follow_feed,
