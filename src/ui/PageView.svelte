@@ -19,6 +19,7 @@
   import Vibe from "../views/Vibe.svelte";
   import Couch from "../views/Couch.svelte";
   import Member from "../views/Member.svelte";
+  import Studio from "../views/Studio.svelte";
 
   let { route, active, index = 0, layer = $bindable() }: { route: Entry; active: boolean; index?: number; layer?: HTMLElement } = $props();
   let y = $state(0);
@@ -88,6 +89,8 @@
       <Vibe q={route.q} />
     {:else if route.name === "couch"}
       <Couch />
+    {:else if route.name === "studio"}
+      <Studio id={route.id} label={route.label} logo={route.logo} />
     {:else if route.name === "member"}
       <Member id={route.id} who={route.who} avatar={route.avatar} />
     {:else if route.name === "service"}

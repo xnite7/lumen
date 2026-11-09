@@ -225,7 +225,8 @@ type Fav = { id: string; type: string; name: string; poster?: string; at: number
 /** one title on someone's profile */
 type PItem = { id: string; type: string; name: string; poster?: string; background?: string; logo?: string; rating?: number; at?: number; eps?: [number, number] };
 /** what someone's couch publishes about them (from their Simkl, or their couch library) */
-type Profile = { watching: PItem[]; recent: PItem[]; plan: PItem[]; stats: Record<string, number>; source: "simkl" | "couch"; at: number };
+type Follow = { kind: "person" | "studio"; id: number; name: string; img?: string };
+type Profile = { watching: PItem[]; recent: PItem[]; plan: PItem[]; follows?: Follow[]; stats: Record<string, number>; source: "simkl" | "couch"; at: number };
 /** the bits of their page they pick themselves */
 type Style = { accent?: string; glow?: boolean };
 type Person = { id: string; name: string; avatar?: string; accent?: string; at: number };
@@ -463,6 +464,7 @@ export class Crew {
   frames = new Map<string, { img: string; at: number }>();
   storage: DurableObjectStorage;
   reactN = 0;
+  lastSeenWrite = new Map<string, number>();
   constructor(state: DurableObjectState, _env: Env) {
     this.storage = state.storage;
   }
@@ -512,7 +514,13 @@ export class Crew {
       };
       const stats: Record<string, number> = {};
       for (const k of ["movies", "shows", "episodes", "watching", "plan"]) stats[k] = Math.max(0, Math.round(num(b?.stats?.[k])));
-      const prof: Profile = { watching: items(b?.watching, 30), recent: items(b?.recent, 30), plan: items(b?.plan, 30), stats, source: b?.source === "simkl" ? "simkl" : "couch", at: Date.now() };
+      const follows: Follow[] = [];
+      for (const f of Array.isArray(b?.follows) ? b.follows.slice(0, 60) : []) {
+        const kind = f?.kind === "studio" ? "studio" : f?.kind === "person" ? "person" : null;
+        const fid = num(f?.id);
+        if (kind && fid > 0) follows.push({ kind, id: Math.round(fid), name: str(f?.name, 120) ?? "", img: str(f?.img, 500) });
+      }
+      const prof: Profile = { watching: items(b?.watching, 30), recent: items(b?.recent, 30), plan: items(b?.plan, 30), follows, stats, source: b?.source === "simkl" ? "simkl" : "couch", at: Date.now() };
       await this.storage.put(`profile:${who.id}`, prof);
       await this.touchPerson(who);
       return json({ ok: true });
@@ -758,6 +766,11 @@ export class Crew {
       }
       const id = who.id;
       if (!this.members.has(id) && this.members.size >= MAX_MEMBERS) return json({ error: "couch is full" }, 429);
+      // anyone who's been on the couch stays in the crew list, online or not
+      if ((this.lastSeenWrite.get(id) ?? 0) < Date.now() - 3_600_000) {
+        this.lastSeenWrite.set(id, Date.now());
+        await this.touchPerson(who);
+      }
       const w = b.watching && typeof b.watching === "object" ? b.watching : null;
       this.members.set(id, {
         id,

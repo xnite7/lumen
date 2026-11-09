@@ -710,6 +710,44 @@ pub async fn simkl_list_items(s: S<'_>, id: u64) -> AppResult<Vec<Value>> {
 
 /// Favourites, reviews, the crew's activity and watch-together reactions
 /// live on the crew server (Simkl's API has none of them).
+/// A studio's page (TMDB company): logo, films, shows.
+#[tauri::command]
+pub async fn company_get(s: S<'_>, id: u64) -> AppResult<Value> {
+    crate::integrations::tmdb::company(&s.core, id).await
+}
+
+/// People and studios you follow: [{ kind: "person"|"studio", id, name, img }]
+#[tauri::command]
+pub fn follows_list(s: S<'_>) -> Value {
+    s.core.db.get::<Value>("follows").unwrap_or(json!([]))
+}
+
+/// Follow or unfollow; returns the new list. Your couch page shows it too.
+#[tauri::command]
+pub async fn follow_toggle(s: S<'_>, kind: String, id: u64, name: String, img: Option<String>) -> AppResult<Value> {
+    let mut list: Vec<Value> = s.core.db.get::<Vec<Value>>("follows").unwrap_or_default();
+    let had = list.iter().any(|f| f["kind"] == kind.as_str() && f["id"].as_u64() == Some(id));
+    if had {
+        list.retain(|f| !(f["kind"] == kind.as_str() && f["id"].as_u64() == Some(id)));
+    } else if kind == "person" || kind == "studio" {
+        list.insert(0, json!({ "kind": kind, "id": id, "name": name, "img": img }));
+    }
+    s.core.db.set("follows", &list)?;
+    let core = s.core.clone();
+    tauri::async_runtime::spawn(async move { crate::crew::publish_profile(&core, true).await });
+    Ok(json!(list))
+}
+
+/// "new from who you follow": recent and upcoming releases.
+#[tauri::command]
+pub async fn follow_feed(s: S<'_>) -> AppResult<Vec<Value>> {
+    let list: Vec<Value> = s.core.db.get::<Vec<Value>>("follows").unwrap_or_default();
+    if list.is_empty() {
+        return Ok(vec![]);
+    }
+    Ok(crate::integrations::tmdb::follow_feed(&s.core, &list).await)
+}
+
 /// Push my profile (watching / recent / plan / stats) to the crew now.
 #[tauri::command]
 pub async fn crew_profile_publish(s: S<'_>) -> AppResult<()> {

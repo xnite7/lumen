@@ -328,6 +328,10 @@ export const api = {
   myLists: () => invoke<{ simkl: boolean; paid?: boolean; plan?: Meta[]; watching?: Meta[]; completed?: Meta[] }>("my_lists"),
   simklCustomLists: () => invoke<{ paid: boolean; lists: any[] }>("simkl_custom_lists"),
   simklListItems: (id: number) => invoke<Meta[]>("simkl_list_items", { id }),
+  company: (id: number) => invoke<Studio>("company_get", { id }),
+  follows: () => invoke<Follow[]>("follows_list"),
+  followToggle: (f: Follow) => invoke<Follow[]>("follow_toggle", { kind: f.kind, id: f.id, name: f.name, img: f.img ?? null }),
+  followFeed: () => invoke<(Meta & { because?: string; date?: string })[]>("follow_feed"),
   people: () => invoke<{ people: CrewPerson[] }>("crew_social", { method: "GET", path: "/v1/people", body: null }),
   profile: (id: string) => invoke<CrewProfile>("crew_social", { method: "GET", path: `/v1/profile/${id}`, body: null }),
   setProfileStyle: (style: ProfileStyle) => invoke<{ ok: boolean; style: ProfileStyle }>("crew_social", { method: "PUT", path: "/v1/profile/style", body: style }),
@@ -378,6 +382,25 @@ export interface CrewRoom {
   shared?: boolean;
 }
 
+/** a person or studio someone follows */
+export interface Follow {
+  kind: "person" | "studio";
+  id: number;
+  name: string;
+  img?: string | null;
+}
+/** a studio's page */
+export interface Studio {
+  id: number;
+  name?: string;
+  logo?: string | null;
+  description?: string | null;
+  country?: string;
+  hq?: string;
+  movies: Meta[];
+  shows: Meta[];
+}
+
 /** someone with a page on the couch */
 export interface CrewPerson {
   id: string;
@@ -408,7 +431,7 @@ export interface CrewProfile {
   id: string;
   name?: string;
   avatar?: string;
-  profile: { watching: ProfileItem[]; recent: ProfileItem[]; plan: ProfileItem[]; stats: Record<string, number>; source: "simkl" | "couch"; at: number } | null;
+  profile: { watching: ProfileItem[]; recent: ProfileItem[]; plan: ProfileItem[]; follows?: Follow[]; stats: Record<string, number>; source: "simkl" | "couch"; at: number } | null;
   style: ProfileStyle;
   favs: { id: string; type: string; name: string; poster?: string; at: number }[];
   activity: { id: string; kind: "review" | "rating" | "finished"; title: { id: string; type: string; name: string; poster?: string; background?: string }; rating?: number; text?: string; at: number }[];

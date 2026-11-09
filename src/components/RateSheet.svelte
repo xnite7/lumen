@@ -116,7 +116,7 @@
   }
   .eyebrow {
     margin: 18px 0 0;
-    font: 12px var(--mono, ui-monospace, monospace);
+    font: 12px var(--font-text);
     letter-spacing: 0.06em;
     color: var(--label-2);
     text-transform: lowercase;
@@ -155,7 +155,7 @@
   }
   .score {
     margin: 0;
-    font: 600 13px ui-monospace, monospace;
+    font: 700 13px var(--font-text);
     color: var(--label-2);
     min-height: 18px;
   }

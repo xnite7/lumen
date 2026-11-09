@@ -459,6 +459,7 @@ fn profile_snapshot(core: &Core) -> Value {
             .filter_map(|m| m.pointer("/episodes/0").and_then(|v| v.as_i64()))
             .sum();
         return json!({
+            "follows": core.db.get::<Value>("follows").unwrap_or(json!([])),
             "source": "simkl",
             "watching": newest("watching", "watchedAt"),
             "recent": newest("completed", "watchedAt"),
@@ -500,7 +501,7 @@ fn profile_snapshot(core: &Core) -> Value {
     watching.truncate(30);
     recent.truncate(30);
     plan.truncate(30);
-    json!({ "source": "couch", "watching": watching, "recent": recent, "plan": plan, "stats": stats })
+    json!({ "follows": core.db.get::<Value>("follows").unwrap_or(json!([])), "source": "couch", "watching": watching, "recent": recent, "plan": plan, "stats": stats })
 }
 
 /// Send my profile to the crew when it changed (or `force`), at most every

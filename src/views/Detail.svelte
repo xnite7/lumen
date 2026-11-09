@@ -347,6 +347,19 @@
       </section>
     {/if}
 
+    {#if extra?.companies?.length}
+      <section class="block">
+        <header class="block-h"><h2 class="title2">Studio</h2></header>
+        <div class="studios scroll-x">
+          {#each extra.companies as c (c.id)}
+            <button class="studio press" onclick={() => go({ name: "studio", id: c.id, label: c.name, logo: c.logo })} title={c.name}>
+              {#if c.logo}<img src={c.logo} alt={c.name} loading="lazy" />{:else}<span>{c.name}</span>{/if}
+            </button>
+          {/each}
+        </div>
+      </section>
+    {/if}
+
     {#if cast.length}
       <section class="block">
         <header class="block-h"><h2 class="title2">Cast</h2></header>
@@ -669,7 +682,7 @@
     align-items: center;
     gap: 3px;
     color: var(--rating);
-    font: 600 12px ui-monospace, monospace;
+    font: 700 12px var(--font-text);
   }
   .rv-who .foot {
     margin-left: auto;
@@ -857,6 +870,34 @@
     box-shadow: none;
   }
 
+  .studios {
+    display: flex;
+    gap: 12px;
+    padding: 4px var(--gutter) 12px;
+  }
+  /* company logos are made for white backgrounds */
+  .studio {
+    flex: none;
+    width: 168px;
+    height: 84px;
+    display: grid;
+    place-items: center;
+    padding: 14px 18px;
+    border-radius: 16px;
+    background: #f4f1f3;
+    color: #111;
+    font-weight: 800;
+    text-align: center;
+    transition: transform 0.2s var(--spring, ease);
+  }
+  .studio:hover {
+    transform: translateY(-2px) scale(1.03);
+  }
+  .studio img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
   .cast,
   .vids,
   .rail {

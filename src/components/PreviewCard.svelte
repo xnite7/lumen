@@ -87,6 +87,7 @@
     trailer = null;
     clip = null;
     trailerOn = false;
+    played = false;
     grown = false;
     muted = previewMuted();
     if (!m) return;
@@ -111,6 +112,13 @@
 
   // the wheel over the card scrolls what's under it (the page, or a row
   // sideways) and the card gets out of the way
+  // previews play once, then rest on the backdrop and title
+  let played = $state(false);
+  function finished() {
+    trailerOn = false;
+    setTimeout(() => (played = true), 450); // let it fade out first
+  }
+
   function passWheel(e: WheelEvent) {
     if (!card) return;
     e.preventDefault();
@@ -159,10 +167,12 @@
       {#if meta.background || meta.poster || meta.id.startsWith("tt")}
         <img class="pv-art" src={img(meta.background ?? imdbArt(meta.id, "background") ?? meta.poster, "w780")} alt="" use:fallback={[meta.background ? imdbArt(meta.id, "background") : null, meta.poster ? img(meta.poster, "w780") : null]} />
       {/if}
-      {#if clip}
-        <div class="tr" class:on={trailerOn}><Clip src={clip} {muted} loop onplaying={() => (trailerOn = true)} /></div>
+      {#if played}
+        <!-- played once: the backdrop and the title, that's it -->
+      {:else if clip}
+        <div class="tr" class:on={trailerOn}><Clip src={clip} {muted} onplaying={() => (trailerOn = true)} onended={finished} /></div>
       {:else if trailer}
-        <div class="tr" class:on={trailerOn}><YouTube id={trailer} {muted} loop fill onplaying={() => (trailerOn = true)} /></div>
+        <div class="tr" class:on={trailerOn}><YouTube id={trailer} {muted} fill onplaying={() => (trailerOn = true)} onended={finished} /></div>
       {/if}
       <!-- the poster it came from, fading out as the card grows -->
       {#if preview.art}<img class="from" src={preview.art} alt="" />{/if}
@@ -172,7 +182,7 @@
       {:else}
         <span class="title2 name">{meta.name}</span>
       {/if}
-      {#if trailer || clip}
+      {#if (trailer || clip) && !played}
         <span
           class="mute glass clear"
           role="button"

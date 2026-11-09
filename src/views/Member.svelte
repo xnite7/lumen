@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { trimLogo } from "../lib/trimlogo";
   // Someone's page on the couch: what they're on right now, what they're in
   // the middle of, what they finished (with their score), their favourites and
   // what's next on their list. It comes from their Simkl (or their couch
@@ -46,7 +47,6 @@
   const pic = $derived(data?.avatar ?? avatar);
   const p = $derived(data?.profile ?? null);
   const accent = $derived(data?.style?.accent || "#e0309a");
-  const glow = $derived(data?.style?.glow !== false);
   // live from the couch: what they've got on right now
   const now = $derived(crew.members.find((m) => m.id === id && m.watching?.title) ?? null);
 
@@ -68,9 +68,9 @@
 
   // ---- customising your own page
   const SWATCHES = ["#e0309a", "#ff6ec4", "#ff4d4d", "#ffb25c", "#ffd84a", "#7ee081", "#2dd4bf", "#4cc9f0", "#5b7cff", "#9b6bff", "#f4eaf0"];
-  async function save(style: { accent?: string; glow?: boolean }) {
+  async function save(style: { accent?: string }) {
     if (!data) return;
-    const next = { accent, glow, ...style };
+    const next = { accent, glow: true, ...style };
     data.style = next; // instant on screen
     saving = true;
     try {
@@ -84,16 +84,12 @@
   // "show all": a rail opens up into a full grid
   let all = $state<Record<string, boolean>>({});
   const toggle = (k: string) => (all[k] = !all[k]);
-  let glowOn = $state(true);
-  $effect(() => {
-    glowOn = glow;
-  });
 </script>
 
 <NavBar title={name} />
 
 <div class="member" style:--acc={accent}>
-  {#if glow}<div class="edge" aria-hidden="true"></div>{/if}
+  <div class="edge" aria-hidden="true"></div>
 
   <header class="band">
     <div class="pic">
@@ -139,10 +135,6 @@
           </label>
         </div>
       </div>
-      <div class="crow">
-        <span class="headline">grainy glow round the edges</span>
-        <Controls kind="switch" bind:value={glowOn} onchange={() => save({ glow: glowOn })} />
-      </div>
       <p class="foot dim">{saving ? "saving…" : "everyone on the couch sees your page like this."}</p>
     </section>
   {/if}
@@ -165,7 +157,7 @@
             <button class="wide press" onclick={() => go({ name: "detail", type: i.type, id: i.id })} aria-label={i.name}>
               <img class="bg" src={img(i.background ?? imdbArt(i.id, "background") ?? i.poster, "w780")} alt="" loading="lazy" use:fallback={[imdbArt(i.id, "background"), i.poster ? img(i.poster, "w780") : null]} />
               <span class="shade"></span>
-              {#if i.logo && !logoBroken(i.logo)}<img class="logo" src={img(i.logo)} alt={i.name} loading="lazy" use:logoOk={{ src: i.logo, id: i.id }} />{:else}<span class="nm">{i.name}</span>{/if}
+              {#if i.logo && !logoBroken(i.logo)}<img class="logo" src={img(i.logo)} alt={i.name} loading="lazy" use:logoOk={{ src: i.logo, id: i.id }} use:trimLogo />{:else}<span class="nm">{i.name}</span>{/if}
               {#if i.eps?.[1]}
                 <span class="eps foot">{i.eps[0]} / {i.eps[1]} episodes</span>
                 <span class="bar"><span style:width="{pct(i)}%"></span></span>
@@ -187,13 +179,14 @@
 
     {#if p.recent.length}
       <section class="sec">
-        <header class="sh"><div><h2 class="title2">recently watched</h2><span class="sub">with their score</span></div>{#if (p.recent.length) > 6}<button class="all press" onclick={() => toggle("recent")}>{all["recent"] ? "show less" : "show all"}</button>{/if}</header>
+        <header class="sh"><div><h2 class="title2">recently watched</h2></div>{#if (p.recent.length) > 6}<button class="all press" onclick={() => toggle("recent")}>{all["recent"] ? "show less" : "show all"}</button>{/if}</header>
         <div class="rail" class:scroll-x={!all.recent} class:grid={all.recent}>
           {#each p.recent as i (i.id)}
             <div class="cell">
               <Poster meta={meta(i)} />
-              <span class="score" class:none={!i.rating}>
-                {#if i.rating}<Icon name="star" size={11} fill /> {i.rating}/10{:else}{i.at ? ago(i.at) : "watched"}{/if}
+              <span class="under">
+                {#if i.rating}<span class="score"><Icon name="star" size={11} fill /> {i.rating}/10</span>{/if}
+                <span class="when">{i.at ? ago(i.at) : "watched"}</span>
               </span>
             </div>
           {/each}
@@ -204,20 +197,38 @@
 
   {#if data?.favs.length}
     <section class="sec">
-      <header class="sh"><div><h2 class="title2">favourites</h2><span class="sub">the ones they love</span></div>{#if (data.favs.length) > 6}<button class="all press" onclick={() => toggle("favs")}>{all["favs"] ? "show less" : "show all"}</button>{/if}</header>
+      <header class="sh"><div><h2 class="title2">favourites</h2></div>{#if (data.favs.length) > 6}<button class="all press" onclick={() => toggle("favs")}>{all["favs"] ? "show less" : "show all"}</button>{/if}</header>
       <div class="rail" class:scroll-x={!all.favs} class:grid={all.favs}>
         {#each data.favs as i (i.id)}<div class="cell"><Poster meta={meta(i)} /></div>{/each}
       </div>
     </section>
   {/if}
 
+  {#if p?.follows?.length}
+    <section class="sec">
+      <header class="sh"><div><h2 class="title2">following</h2></div></header>
+      <div class="rail scroll-x follows">
+        {#each p.follows as f (f.kind + f.id)}
+          <button
+            class="fol press"
+            class:studio={f.kind === "studio"}
+            onclick={() => (f.kind === "studio" ? go({ name: "studio", id: f.id, label: f.name, logo: f.img }) : go({ name: "person", person: f.name, tmdbId: f.id }))}
+          >
+            <span class="fimg">{#if f.img}<img src={f.kind === "person" ? img(f.img) : f.img} alt="" loading="lazy" />{:else}<b>{f.name.charAt(0)}</b>{/if}</span>
+            <span class="fn">{f.name}</span>
+          </button>
+        {/each}
+      </div>
+    </section>
+  {/if}
+
   {#if data?.activity.filter((a) => a.text).length}
     <section class="sec">
-      <header class="sh"><div><h2 class="title2">said on the couch</h2><span class="sub">their reviews</span></div></header>
+      <header class="sh"><div><h2 class="title2">said on the couch</h2></div></header>
       <div class="said">
         {#each data.activity.filter((a) => a.text).slice(0, 6) as a (a.id)}
           <button class="quote press" onclick={() => go({ name: "detail", type: a.title.type, id: a.title.id })}>
-            <span class="q-top"><b>{a.title.name}</b>{#if a.rating}<span class="score"><Icon name="star" size={11} fill /> {a.rating}/10</span>{/if}<span class="dim foot">{ago(a.at)}</span></span>
+            <span class="q-top"><b>{a.title.name}</b>{#if a.rating}<span class="q-score"><Icon name="star" size={11} fill /> {a.rating}/10</span>{/if}<span class="dim foot">{ago(a.at)}</span></span>
             <span class="q-txt">{a.text}</span>
           </button>
         {/each}
@@ -234,9 +245,6 @@
     </section>
   {/if}
 
-  {#if p}
-    <p class="src foot dim">{p.source === "simkl" ? "from their Simkl" : "from their couch library"}</p>
-  {/if}
 </div>
 
 <style>
@@ -508,16 +516,23 @@
   .cell :global(.poster) {
     width: auto;
   }
+  .under {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+  }
   .score {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font: 600 12px ui-monospace, monospace;
+    font-weight: 700;
     color: var(--acc);
   }
-  .score.none {
+  .when {
+    margin-left: auto;
     color: var(--label-3);
-    font-weight: 400;
   }
 
   .wide {
@@ -586,6 +601,50 @@
     gap: 12px;
     padding: 0 var(--gutter);
   }
+  .follows {
+    gap: 18px;
+  }
+  .fol {
+    flex: none;
+    width: 108px;
+    display: grid;
+    justify-items: center;
+    gap: 8px;
+    text-align: center;
+  }
+  .fimg {
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    background: rgb(255 255 255 / 0.07);
+    font: 800 30px var(--font-display);
+  }
+  .fimg img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  /* studios: their logo on a light card */
+  .fol.studio .fimg {
+    width: 108px;
+    border-radius: 16px;
+    background: #f4f1f3;
+    color: #111;
+    padding: 12px;
+  }
+  .fol.studio .fimg img {
+    object-fit: contain;
+  }
+  .fn {
+    font-size: 13px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .quote {
     display: grid;
     gap: 6px;
@@ -593,13 +652,21 @@
     padding: 14px 16px;
     border-radius: 16px 16px 16px 4px;
     background: rgb(255 255 255 / 0.06);
-    box-shadow: inset 3px 0 0 var(--acc);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
   }
   .q-top {
     display: flex;
     align-items: baseline;
     gap: 10px;
     flex-wrap: wrap;
+  }
+  .q-score {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--rating, var(--label));
   }
   .q-txt {
     font-size: 14px;
@@ -626,10 +693,6 @@
   .empty p {
     margin: 0;
     max-width: 44ch;
-  }
-  .src {
-    padding: 40px var(--gutter) 0;
-    text-align: center;
   }
 
   @media (max-width: 759px) {

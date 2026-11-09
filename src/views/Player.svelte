@@ -1148,7 +1148,8 @@
   .still h2 {
     margin: 4px 0 0;
     color: var(--label);
-    font-family: ui-monospace, monospace;
+    font-family: var(--font-text);
+    font-variant-numeric: tabular-nums;
     text-transform: lowercase;
   }
   .still p {

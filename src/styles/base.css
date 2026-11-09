@@ -123,7 +123,7 @@
   --font-text: -apple-system, "SF Pro Text", "Inter Variable", "Segoe UI Variable Text", system-ui, sans-serif;
   --font-display: "Satoshi", -apple-system, "SF Pro Display", "Inter Variable", system-ui, sans-serif;
   --font-round: "Satoshi", ui-rounded, "SF Pro Rounded", var(--font-display);
-  --font-bump: "SF Mono", "Cascadia Mono", ui-monospace, Consolas, monospace;
+  --font-bump: var(--font-text); /* was a mono face; one font everywhere now */
   --fs-xl: 48px;
   --fs-large: 34px;
   --fs-title1: 28px;

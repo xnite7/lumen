@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { trimLogo } from "../lib/trimlogo";
   import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
   import { img, type Meta } from "../lib/api";
   import { app } from "../lib/stores/app.svelte";
@@ -89,7 +90,7 @@
     {#if landscape && loaded}
       <div class="lshade"></div>
       {#if meta.logo}
-        <img class="llogo" src={img(meta.logo)} alt="" loading="lazy" use:fallback={[imdbArt(meta.id, "logo")]} />
+        <img class="llogo" src={img(meta.logo)} alt="" loading="lazy" use:fallback={[imdbArt(meta.id, "logo")]} use:trimLogo />
       {:else}
         <span class="lname">{meta.name}</span>
       {/if}

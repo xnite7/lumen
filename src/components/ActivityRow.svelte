@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { trimLogo } from "../lib/trimlogo";
   import { logoBroken, logoOk } from "../lib/badlogo.svelte";
   // "From the couch": what the crew's been saying. A review is a speech
   // bubble coming out of the person (picture + name), score on top; a rating
@@ -36,7 +37,7 @@
           <div class="art">
             {#if a.title.background || a.title.poster}<img src={img(a.title.background ?? a.title.poster, "w780")} alt="" loading="lazy" />{/if}
             <div class="shade"></div>
-            {#if a.title.logo && !logoBroken(a.title.logo)}<img class="logo" src={img(a.title.logo)} alt={a.title.name} loading="lazy" use:logoOk={{ src: a.title.logo, id: a.title.id }} />{:else}<span class="tname">{a.title.name}</span>{/if}
+            {#if a.title.logo && !logoBroken(a.title.logo)}<img class="logo" src={img(a.title.logo)} alt={a.title.name} loading="lazy" use:logoOk={{ src: a.title.logo, id: a.title.id }} use:trimLogo />{:else}<span class="tname">{a.title.name}</span>{/if}
           </div>
           <div class="said">
             <span
@@ -186,7 +187,7 @@
     align-items: center;
     gap: 3px;
     color: var(--rating);
-    font: 700 11.5px ui-monospace, monospace;
+    font: 700 11.5px var(--font-text);
   }
   .when {
     margin-left: auto;

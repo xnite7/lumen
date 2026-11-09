@@ -222,7 +222,7 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font: 600 12px ui-monospace, monospace;
+    font: 700 12px var(--font-text);
     color: var(--rating);
   }
   .mine.none {

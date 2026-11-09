@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isFollowing, toggleFollow, loadFollows } from "../lib/stores/follows.svelte";
   import NavBar from "../ui/NavBar.svelte";
   // A person's own page: portrait, the facts that matter, gallery, and
   // everything of theirs you can open. TMDB for actors; for adult
@@ -19,6 +20,7 @@
   let sort = $state<"popular" | "newest">("popular");
 
   $effect(() => {
+    loadFollows();
     p = null;
     error = "";
     api.person(name, tmdbId, adult).then((r) => {
@@ -65,7 +67,15 @@
         {#if p?.profile}<img src={img(p.profile)} alt={name} />{:else}<div class="skeleton fill"></div>{/if}
       </div>
       <div class="facts">
-        <h1 class="large-title">{p?.name ?? name}</h1>
+        <div class="name-row">
+          <h1 class="large-title">{p?.name ?? name}</h1>
+          {#if p?.source === "tmdb" && p?.id}
+            {@const on = isFollowing("person", p.id)}
+            <button class="btn press follow" class:on onclick={() => toggleFollow({ kind: "person", id: p.id, name: p.name ?? name, img: p.profile ?? null })}>
+              <Icon name={on ? "check" : "plus"} size={16} />{on ? "following" : "follow"}
+            </button>
+          {/if}
+        </div>
         <div class="chips">
           {#if p?.knownFor}<span class="chip">{p.knownFor}</span>{/if}
           {#if p?.birthday}<span class="chip outline">Born {new Date(p.birthday).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}{age(p.birthday, p.deathday) ? ` (${age(p.birthday, p.deathday)})` : ""}</span>{/if}
@@ -110,6 +120,23 @@
 </div>
 
 <style>
+  .name-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+  }
+  .follow {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--label);
+    color: var(--black, #000);
+  }
+  .follow.on {
+    background: rgb(255 255 255 / 0.1);
+    color: var(--label);
+  }
   .person {
     padding: calc(var(--safe-top) + var(--bar-h) + 24px) var(--gutter) calc(var(--safe-bottom) + 120px);
   }

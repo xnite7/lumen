@@ -341,6 +341,8 @@ pub async fn enrich(core: &Core, stremio_type: &str, id: &str) -> AppResult<Valu
         "lastAired": full.get("last_air_date"),
         "networks": full.get("networks").and_then(|n| n.as_array()).map(|n| n.iter().map(|x| json!({"name": x["name"], "logo": img(x.get("logo_path").and_then(|v| v.as_str()), "w154")})).collect::<Vec<_>>()),
         "studios": full.get("production_companies").and_then(|n| n.as_array()).map(|n| n.iter().take(3).map(|x| x["name"].clone()).collect::<Vec<_>>()),
+        // the studios with their logos (each opens a page of what they made)
+        "companies": full.get("production_companies").and_then(|n| n.as_array()).map(|n| n.iter().take(6).map(|x| json!({ "id": x["id"], "name": x["name"], "logo": img(x.get("logo_path").and_then(|v| v.as_str()), "w300") })).collect::<Vec<_>>()),
         "certification": certification(&full, kind),
         "homeRelease": if kind == "movie" { home_release(&full) } else { None },
         "unreleased": unreleased(&full, kind),
@@ -589,7 +591,12 @@ pub async fn resolve_rows(core: &Core, rows: Vec<Value>, kind: &str) -> Vec<Valu
 }
 
 fn today() -> String {
-    let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() / 86_400).unwrap_or(0) as i64;
+    day_str(0)
+}
+
+/// A date `offset` days from today, as YYYY-MM-DD.
+fn day_str(offset: i64) -> String {
+    let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() / 86_400).unwrap_or(0) as i64 + offset;
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;
@@ -600,6 +607,98 @@ fn today() -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
     format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// A studio's page: its logo and what it made (films and shows, most
+/// popular first).
+pub async fn company(core: &Core, id: u64) -> AppResult<Value> {
+    let c = get(core, &format!("/company/{id}"), "", MONTH).await?;
+    let disc = |kind: &'static str, page: u32| async move {
+        let v = get(core, &format!("/discover/{kind}"), &format!("&with_companies={id}&sort_by=popularity.desc&include_adult=false&page={page}"), DAY).await.ok();
+        v.and_then(|v| v.get("results").and_then(|r| r.as_array()).cloned())
+            .unwrap_or_default()
+            .iter()
+            .filter(|r| r.get("poster_path").map_or(false, |p| !p.is_null()))
+            .map(|r| tile(r, kind))
+            .collect::<Vec<_>>()
+    };
+    let (m1, m2, t1) = futures::join!(disc("movie", 1), disc("movie", 2), disc("tv", 1));
+    let movies: Vec<Value> = m1.into_iter().chain(m2).collect();
+    Ok(json!({
+        "id": id,
+        "name": c.get("name"),
+        "logo": img(c.get("logo_path").and_then(|v| v.as_str()), "w500"),
+        "description": c.get("description").filter(|d| d.as_str().map_or(false, |s| !s.is_empty())),
+        "country": c.get("origin_country"),
+        "hq": c.get("headquarters"),
+        "movies": movies,
+        "shows": t1,
+    }))
+}
+
+/// New and upcoming things from the people and studios you follow: the last
+/// year and the next six months, newest first, each saying who it's from.
+pub async fn follow_feed(core: &Core, follows: &[Value]) -> Vec<Value> {
+    use futures::StreamExt;
+    let from = day_str(-365);
+    let to = day_str(183);
+    let jobs = follows.iter().take(40).cloned().map(|f| {
+        let (from, to) = (from.clone(), to.clone());
+        async move {
+            let kind = f.get("kind").and_then(|k| k.as_str()).unwrap_or("");
+            let id = f.get("id").and_then(|i| i.as_u64()).unwrap_or(0);
+            let who = f.get("name").cloned().unwrap_or(Value::Null);
+            let mut out: Vec<(String, Value)> = vec![];
+            if id == 0 {
+                return out;
+            }
+            let in_range = |d: &str| !d.is_empty() && d >= from.as_str() && d <= to.as_str();
+            if kind == "person" {
+                if let Ok(v) = get(core, &format!("/person/{id}/combined_credits"), "", DAY).await {
+                    let all = ["cast", "crew"].iter().filter_map(|k| v.get(*k).and_then(|a| a.as_array()).cloned()).flatten();
+                    for r in all {
+                        let mt = r.get("media_type").and_then(|m| m.as_str()).unwrap_or("");
+                        if mt != "movie" && mt != "tv" || r.get("poster_path").map_or(true, |p| p.is_null()) {
+                            continue;
+                        }
+                        // crew only counts for directing / writing / creating
+                        if r.get("job").is_some() && !matches!(r.get("job").and_then(|j| j.as_str()), Some("Director") | Some("Screenplay") | Some("Writer") | Some("Creator")) {
+                            continue;
+                        }
+                        let d = r.get("release_date").or_else(|| r.get("first_air_date")).and_then(|d| d.as_str()).unwrap_or("").to_string();
+                        if in_range(&d) {
+                            let mut t = tile(&r, mt);
+                            t["because"] = who.clone();
+                            t["date"] = json!(d);
+                            out.push((d, t));
+                        }
+                    }
+                }
+            } else if kind == "studio" {
+                for (mt, gte, lte) in [("movie", "primary_release_date.gte", "primary_release_date.lte"), ("tv", "first_air_date.gte", "first_air_date.lte")] {
+                    let q = format!("&with_companies={id}&{gte}={from}&{lte}={to}&sort_by=popularity.desc&include_adult=false");
+                    if let Ok(v) = get(core, &format!("/discover/{mt}"), &q, DAY).await {
+                        for r in v.get("results").and_then(|r| r.as_array()).cloned().unwrap_or_default().into_iter().take(12) {
+                            if r.get("poster_path").map_or(true, |p| p.is_null()) {
+                                continue;
+                            }
+                            let d = r.get("release_date").or_else(|| r.get("first_air_date")).and_then(|d| d.as_str()).unwrap_or("").to_string();
+                            let mut t = tile(&r, mt);
+                            t["because"] = who.clone();
+                            t["date"] = json!(d);
+                            out.push((d, t));
+                        }
+                    }
+                }
+            }
+            out
+        }
+    });
+    let lists: Vec<Vec<(String, Value)>> = futures::stream::iter(jobs).buffer_unordered(6).collect().await;
+    let mut all: Vec<(String, Value)> = lists.into_iter().flatten().collect();
+    all.sort_by(|a, b| b.0.cmp(&a.0));
+    let mut seen = std::collections::HashSet::new();
+    all.into_iter().filter(|(_, t)| seen.insert(t["id"].as_str().unwrap_or("").to_string())).map(|(_, t)| t).take(40).collect()
 }
 
 pub async fn catalog(core: &Core, def: &CatalogDef, stremio_type: &str, genre: Option<&str>, skip: u32) -> AppResult<Vec<Value>> {
