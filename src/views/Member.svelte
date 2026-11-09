@@ -81,6 +81,9 @@
       saving = false;
     }
   }
+  // "show all": a rail opens up into a full grid
+  let all = $state<Record<string, boolean>>({});
+  const toggle = (k: string) => (all[k] = !all[k]);
   let glowOn = $state(true);
   $effect(() => {
     glowOn = glow;
@@ -92,36 +95,35 @@
 <div class="member" style:--acc={accent}>
   {#if glow}<div class="edge" aria-hidden="true"></div>{/if}
 
-  <header class="head rise">
+  <header class="band">
     <div class="pic">
       {#if pic}<img src={pic} alt="" />{:else}<span>{name.charAt(0).toUpperCase()}</span>{/if}
       {#if now}<i class="live-dot" title="on the couch now"></i>{/if}
     </div>
     <div class="who">
-      <h1 class="large-title">{name}</h1>
-      {#if now?.watching}
-        {@const w = now.watching}
-        <button class="now press" onclick={() => w.metaId && go({ name: "detail", type: w.type ?? "movie", id: w.metaId })}>
-          <i class="pulse"></i>
-          {now.paused ? "paused on" : "watching"} <b>{w.title}</b>{#if w.episode}<span class="dim"> · {w.episode}</span>{/if}
-        </button>
-      {:else if p}
-        <p class="foot dim">last seen on the couch {ago(p.at)}</p>
-      {/if}
-      {#if stats.length}
-        <div class="stats">
-          {#each stats as s}
-            <div class="stat"><b>{s.n.toLocaleString()}</b><span>{s.label}</span></div>
-          {/each}
-        </div>
-      {/if}
+      <span class="kicker">profile</span>
+      <h1 class="big-name" class:long={name.length > 12}>{name}</h1>
+      <p class="meta">
+        {#each stats as st, k}{#if k}<span class="sep">•</span>{/if}<span><b>{st.n.toLocaleString()}</b> {st.label}</span>{/each}
+        {#if !stats.length && p}<span>last seen {ago(p.at)}</span>{/if}
+      </p>
     </div>
-    {#if mine}
-      <button class="btn tinted press edit" class:on={editing} onclick={() => (editing = !editing)}>
-        <Icon name="palette" size={16} /> {editing ? "done" : "customise"}
-      </button>
-    {/if}
   </header>
+
+  <div class="actions">
+    {#if mine}
+      <button class="ic press" class:on={editing} onclick={() => (editing = !editing)} aria-label="Customise your page" title="Customise"><Icon name="settings" size={24} /></button>
+    {/if}
+    {#if now?.watching}
+      {@const w = now.watching}
+      <button class="now press" onclick={() => w.metaId && go({ name: "detail", type: w.type ?? "movie", id: w.metaId })}>
+        <i class="pulse"></i>
+        {now.paused ? "paused on" : "watching"} <b>{w.title}</b>{#if w.episode}<span class="dim"> · {w.episode}</span>{/if}
+      </button>
+    {:else if p && stats.length}
+      <span class="foot dim">last seen on the couch {ago(p.at)}</span>
+    {/if}
+  </div>
 
   {#if mine && editing}
     <section class="custom glass rise">
@@ -157,8 +159,8 @@
   {#if p}
     {#if shows.length}
       <section class="sec">
-        <h2 class="title3">in the middle of</h2>
-        <div class="rail scroll-x">
+        <header class="sh"><div><h2 class="title2">in the middle of</h2><span class="sub">shows on the go</span></div>{#if (shows.length) > 6}<button class="all press" onclick={() => toggle("shows")}>{all["shows"] ? "show less" : "show all"}</button>{/if}</header>
+        <div class="rail" class:scroll-x={!all.shows} class:grid-wide={all.shows}>
           {#each shows as i (i.id)}
             <button class="wide press" onclick={() => go({ name: "detail", type: i.type, id: i.id })} aria-label={i.name}>
               <img class="bg" src={img(i.background ?? imdbArt(i.id, "background") ?? i.poster, "w780")} alt="" loading="lazy" use:fallback={[imdbArt(i.id, "background"), i.poster ? img(i.poster, "w780") : null]} />
@@ -176,8 +178,8 @@
 
     {#if films.length}
       <section class="sec">
-        <h2 class="title3">films on the go</h2>
-        <div class="rail scroll-x">
+        <header class="sh"><div><h2 class="title2">films on the go</h2><span class="sub">started, not finished</span></div>{#if (films.length) > 6}<button class="all press" onclick={() => toggle("films")}>{all["films"] ? "show less" : "show all"}</button>{/if}</header>
+        <div class="rail" class:scroll-x={!all.films} class:grid={all.films}>
           {#each films as i (i.id)}<div class="cell"><Poster meta={meta(i)} /></div>{/each}
         </div>
       </section>
@@ -185,8 +187,8 @@
 
     {#if p.recent.length}
       <section class="sec">
-        <h2 class="title3">recently watched</h2>
-        <div class="rail scroll-x">
+        <header class="sh"><div><h2 class="title2">recently watched</h2><span class="sub">with their score</span></div>{#if (p.recent.length) > 6}<button class="all press" onclick={() => toggle("recent")}>{all["recent"] ? "show less" : "show all"}</button>{/if}</header>
+        <div class="rail" class:scroll-x={!all.recent} class:grid={all.recent}>
           {#each p.recent as i (i.id)}
             <div class="cell">
               <Poster meta={meta(i)} />
@@ -202,8 +204,8 @@
 
   {#if data?.favs.length}
     <section class="sec">
-      <h2 class="title3"><Icon name="heart" size={16} fill /> favourites</h2>
-      <div class="rail scroll-x">
+      <header class="sh"><div><h2 class="title2">favourites</h2><span class="sub">the ones they love</span></div>{#if (data.favs.length) > 6}<button class="all press" onclick={() => toggle("favs")}>{all["favs"] ? "show less" : "show all"}</button>{/if}</header>
+      <div class="rail" class:scroll-x={!all.favs} class:grid={all.favs}>
         {#each data.favs as i (i.id)}<div class="cell"><Poster meta={meta(i)} /></div>{/each}
       </div>
     </section>
@@ -211,7 +213,7 @@
 
   {#if data?.activity.filter((a) => a.text).length}
     <section class="sec">
-      <h2 class="title3">said on the couch</h2>
+      <header class="sh"><div><h2 class="title2">said on the couch</h2><span class="sub">their reviews</span></div></header>
       <div class="said">
         {#each data.activity.filter((a) => a.text).slice(0, 6) as a (a.id)}
           <button class="quote press" onclick={() => go({ name: "detail", type: a.title.type, id: a.title.id })}>
@@ -225,8 +227,8 @@
 
   {#if p?.plan.length}
     <section class="sec">
-      <h2 class="title3">on their list</h2>
-      <div class="rail scroll-x">
+      <header class="sh"><div><h2 class="title2">on their list</h2><span class="sub">plan to watch</span></div>{#if (p.plan.length) > 6}<button class="all press" onclick={() => toggle("plan")}>{all["plan"] ? "show less" : "show all"}</button>{/if}</header>
+      <div class="rail" class:scroll-x={!all.plan} class:grid={all.plan}>
         {#each p.plan as i (i.id)}<div class="cell"><Poster meta={meta(i)} /></div>{/each}
       </div>
     </section>
@@ -277,26 +279,26 @@
     z-index: 1;
   }
 
-  .head {
+  /* the header band: their colour washing down into the page */
+  .band {
     display: flex;
-    align-items: center;
-    gap: 26px;
-    padding: 0 var(--gutter);
-    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 28px;
+    margin-top: calc(-1 * (var(--safe-top) + var(--bar-h) + 26px));
+    padding: calc(var(--safe-top) + var(--bar-h) + 40px) var(--gutter) 28px;
+    background: linear-gradient(180deg, color-mix(in srgb, var(--acc) 55%, #000) 0%, color-mix(in srgb, var(--acc) 22%, transparent) 70%, transparent 100%);
   }
   .pic {
     position: relative;
-    width: 124px;
-    height: 124px;
+    width: 232px;
+    height: 232px;
     flex: none;
     border-radius: 50%;
-    box-shadow:
-      0 0 0 3px var(--acc),
-      0 0 46px -4px var(--acc);
-    background: rgb(255 255 255 / 0.06);
+    box-shadow: 0 12px 60px rgb(0 0 0 / 0.55);
+    background: color-mix(in srgb, var(--acc) 30%, #111);
     display: grid;
     place-items: center;
-    font: 800 46px system-ui, sans-serif;
+    font: 900 84px system-ui, sans-serif;
   }
   .pic img {
     width: 100%;
@@ -306,26 +308,67 @@
   }
   .live-dot {
     position: absolute;
-    right: 6px;
-    bottom: 6px;
-    width: 20px;
-    height: 20px;
+    right: 16px;
+    bottom: 16px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
     background: #3ddc84;
-    box-shadow: 0 0 0 4px var(--black, #000);
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--acc) 30%, #111);
   }
   .who {
     display: grid;
-    gap: 8px;
+    gap: 2px;
     min-width: 0;
-    flex: 1;
+    padding-bottom: 8px;
   }
-  .who h1 {
-    margin: 0;
+  .kicker {
+    font-size: 14px;
+    font-weight: 700;
+    text-transform: lowercase;
+  }
+  .big-name {
+    margin: 0 0 8px;
+    font: 900 clamp(48px, 8.5vw, 104px) / 1 system-ui, sans-serif;
+    letter-spacing: -0.05em;
     overflow-wrap: anywhere;
   }
+  .big-name.long {
+    font-size: clamp(40px, 6vw, 76px);
+  }
+  .meta {
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 14px;
+    color: rgb(255 255 255 / 0.75);
+  }
+  .meta b {
+    color: #fff;
+  }
+  .sep {
+    opacity: 0.7;
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    min-height: 56px;
+    padding: 6px var(--gutter) 0;
+  }
+  .ic {
+    color: var(--label-2);
+    display: grid;
+    place-items: center;
+    transition: color 0.15s, transform 0.15s;
+  }
+  .ic:hover,
+  .ic.on {
+    color: var(--label);
+    transform: rotate(30deg);
+  }
   .now {
-    justify-self: start;
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -351,36 +394,9 @@
   }
   @keyframes pulse {
     50% {
-      box-shadow: 0 0 0 6px color-mix(in srgb, var(--acc) 0%, transparent);
-      opacity: 0.6;
+      opacity: 0.4;
     }
   }
-  .stats {
-    display: flex;
-    gap: 26px;
-    margin-top: 6px;
-    flex-wrap: wrap;
-  }
-  .stat {
-    display: grid;
-  }
-  .stat b {
-    font: 800 26px ui-monospace, monospace;
-    letter-spacing: -0.03em;
-    color: var(--acc);
-  }
-  .stat span {
-    font-size: 12px;
-    color: var(--label-2);
-    text-transform: lowercase;
-  }
-  .edit {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    align-self: flex-start;
-  }
-
   .custom {
     margin: 22px var(--gutter) 0;
     padding: 18px 20px;
@@ -435,15 +451,48 @@
   .sec {
     margin-top: 34px;
   }
-  .sec h2 {
+  .sh {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
     padding: 0 var(--gutter);
-    margin: 0 0 12px;
+    margin-bottom: 14px;
   }
-  .sec h2 :global(svg) {
-    color: var(--acc);
+  .sh h2 {
+    margin: 0;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  .sh .sub {
+    font-size: 13px;
+    color: var(--label-2);
+  }
+  .all {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--label-2);
+    white-space: nowrap;
+  }
+  .all:hover {
+    color: var(--label);
+    text-decoration: underline;
+  }
+  .rail.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--card-w), 1fr));
+    gap: 22px 14px;
+  }
+  .rail.grid .cell {
+    width: auto;
+  }
+  .rail.grid-wide {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+  }
+  .rail.grid-wide .wide {
+    width: auto;
   }
   .rail {
     display: flex;
@@ -584,19 +633,15 @@
   }
 
   @media (max-width: 759px) {
-    .head {
+    .band {
+      flex-direction: column;
+      align-items: flex-start;
       gap: 18px;
     }
     .pic {
-      width: 88px;
-      height: 88px;
-      font-size: 34px;
-    }
-    .stats {
-      gap: 18px;
-    }
-    .stat b {
-      font-size: 21px;
+      width: 150px;
+      height: 150px;
+      font-size: 56px;
     }
     .wide {
       width: 250px;
