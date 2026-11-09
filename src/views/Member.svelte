@@ -1,4 +1,5 @@
 <script lang="ts">
+  import EmojiText from "../components/EmojiText.svelte";
   import { trimLogo } from "../lib/trimlogo";
   // Someone's page on the couch: what they're on right now, what they're in
   // the middle of, what they finished (with their score), their favourites and
@@ -229,7 +230,7 @@
         {#each data.activity.filter((a) => a.text).slice(0, 6) as a (a.id)}
           <button class="quote press" onclick={() => go({ name: "detail", type: a.title.type, id: a.title.id })}>
             <span class="q-top"><b>{a.title.name}</b>{#if a.rating}<span class="q-score"><Icon name="star" size={11} fill /> {a.rating}/10</span>{/if}<span class="dim foot">{ago(a.at)}</span></span>
-            <span class="q-txt">{a.text}</span>
+            <span class="q-txt"><EmojiText text={a.text ?? ""} /></span>
           </button>
         {/each}
       </div>

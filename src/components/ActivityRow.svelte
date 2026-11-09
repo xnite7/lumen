@@ -1,4 +1,5 @@
 <script lang="ts">
+  import EmojiText from "./EmojiText.svelte";
   import { trimLogo } from "../lib/trimlogo";
   import { logoBroken, logoOk } from "../lib/badlogo.svelte";
   // "From the couch": what the crew's been saying. A review is a speech
@@ -58,7 +59,7 @@
                 <span class="when">{ago(a.at)}</span>
               </div>
               {#if a.text}
-                <p class="txt">{a.text}</p>
+                <p class="txt"><EmojiText text={a.text} /></p>
               {:else if a.kind === "finished"}
                 <p class="txt dim">finished <b>{a.title.name}</b></p>
               {:else}
@@ -82,7 +83,7 @@
   }
   .rail {
     display: flex;
-    gap: 16px;
+    gap: 10px;
     padding: 6px var(--gutter) 18px;
     align-items: flex-start;
   }

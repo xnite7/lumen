@@ -52,55 +52,62 @@
 </script>
 
 {#if canLeft}
-  <button class="arrow left" class:on={inside} class:near={near === "left"} onclick={() => page(-1)} aria-label="Scroll left"><Icon name="back" size={26} /></button>
+  <button class="arrow left" class:on={inside} class:near={near === "left"} onclick={() => page(-1)} aria-label="Scroll left"><span class="disc"><Icon name="back" size={22} /></span></button>
 {/if}
 {#if canRight}
-  <button class="arrow right" class:on={inside} class:near={near === "right"} onclick={() => page(1)} aria-label="Scroll right"><Icon name="forward" size={26} /></button>
+  <button class="arrow right" class:on={inside} class:near={near === "right"} onclick={() => page(1)} aria-label="Scroll right"><span class="disc"><Icon name="forward" size={22} /></span></button>
 {/if}
 
 <style>
+  /* a round dark button over the row's edge, chevron in the middle */
   .arrow {
     position: absolute;
     z-index: 5;
     top: var(--arrow-top, 10px);
     bottom: var(--arrow-bottom, 22px);
-    width: calc(var(--gutter) - 6px);
-    min-width: 34px;
+    width: 64px;
     display: grid;
     place-items: center;
     color: #fff;
-    background: rgb(0 0 0 / 0.55);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    background: none;
     opacity: 0;
     pointer-events: none;
-    transition:
-      opacity 200ms ease,
-      background 200ms ease;
+    transition: opacity 200ms ease;
   }
   .arrow.left {
-    left: 0;
-    border-radius: 0 10px 10px 0;
+    left: 6px;
   }
   .arrow.right {
-    right: 0;
-    border-radius: 10px 0 0 10px;
+    right: 6px;
+  }
+  .disc {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: rgb(52 22 36 / 0.78);
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.1),
+      0 8px 22px -8px rgb(0 0 0 / 0.7);
+    transition:
+      transform 220ms var(--spring, ease),
+      background 200ms ease;
   }
   .arrow.on {
-    opacity: 0.55;
+    opacity: 0.75;
     pointer-events: auto;
   }
   .arrow.near,
   .arrow:hover {
     opacity: 1;
-    background: rgb(0 0 0 / 0.72);
   }
-  .arrow :global(svg) {
-    transition: transform 200ms ease;
-  }
-  .arrow.near :global(svg),
-  .arrow:hover :global(svg) {
-    transform: scale(1.25);
+  .arrow.near .disc,
+  .arrow:hover .disc {
+    transform: scale(1.1);
+    background: rgb(70 28 48 / 0.9);
   }
   @media (max-width: 759px), (pointer: coarse) {
     .arrow {

@@ -48,7 +48,7 @@
   }
   .rail {
     display: flex;
-    gap: 14px;
+    gap: 10px;
     padding: 4px var(--gutter) 8px;
   }
   .cell {

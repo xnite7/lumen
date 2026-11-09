@@ -1,4 +1,5 @@
 <script lang="ts">
+  import EmojiText from "../components/EmojiText.svelte";
   import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
   import { tvFocus } from "../lib/tvfocus";
   import { api, img, type Meta, type Video } from "../lib/api";
@@ -340,7 +341,7 @@
                 {#if r.rating}<span class="rv-score"><Icon name="star" size={12} fill /> {r.rating}/10</span>{/if}
                 <span class="foot faint">{ago(r.at)}</span>
               </div>
-              {#if r.text}<p class="rv-text">{r.text}</p>{/if}
+              {#if r.text}<p class="rv-text"><EmojiText text={r.text} /></p>{/if}
             </article>
           {/each}
         </div>

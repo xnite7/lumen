@@ -114,6 +114,18 @@
   // sideways) and the card gets out of the way
   // previews play once, then rest on the backdrop and title
   let played = $state(false);
+  // 2 s into the video the title and mute button step aside; pointing at the
+  // video brings them back
+  let calm = $state(false);
+  let overMedia = $state(false);
+  $effect(() => {
+    if (!trailerOn) {
+      calm = false;
+      return;
+    }
+    const t = setTimeout(() => (calm = true), 2000);
+    return () => clearTimeout(t);
+  });
   function finished() {
     trailerOn = false;
     setTimeout(() => (played = true), 450); // let it fade out first
@@ -161,7 +173,7 @@
     aria-label={meta.name}
     tabindex="-1"
   >
-    <button class="media" onclick={() => openDetail(meta, card)} aria-label="Open {meta.name}">
+    <button class="media" class:quiet={calm && !overMedia && !played} onmouseenter={() => (overMedia = true)} onmouseleave={() => (overMedia = false)} onclick={() => openDetail(meta, card)} aria-label="Open {meta.name}">
       <!-- always the wide backdrop (IMDb's if the title has none); the
            poster only as a last resort -->
       {#if meta.background || meta.poster || meta.id.startsWith("tt")}
@@ -250,6 +262,16 @@
 {/if}
 
 <style>
+  .media .logo,
+  .media .name,
+  .media .mute {
+    transition: opacity 600ms ease;
+  }
+  .media.quiet .logo,
+  .media.quiet .name,
+  .media.quiet .mute {
+    opacity: 0;
+  }
   /* one easing for every part, so it moves as one piece */
   .card {
     --pv-ease: cubic-bezier(0.22, 0.9, 0.24, 1);

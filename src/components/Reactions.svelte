@@ -1,4 +1,5 @@
 <script lang="ts">
+  import EmojiText from "./EmojiText.svelte";
   // Teleparty-style reactions while watching together: tap an emoji and it
   // floats up the side of everyone's screen with your name on it.
   import { api } from "../lib/api";
@@ -89,7 +90,7 @@
   <div class="stage" aria-hidden="true">
     {#each flying as f (f.k)}
       <div class="fly" style:right="{24 + f.x}px">
-        <span class="e">{f.emoji}</span>
+        <span class="e"><EmojiText text={f.emoji} size="1em" /></span>
         <span class="who">{#if f.avatar}<img src={f.avatar} alt="" />{/if}{f.name}</span>
       </div>
     {/each}
@@ -97,10 +98,10 @@
   <div class="tray" class:open>
     {#if open}
       {#each EMOJI as e}
-        <button class="em press" onclick={() => send(e)} aria-label="React {e}">{e}</button>
+        <button class="em press" onclick={() => send(e)} aria-label="React {e}"><EmojiText text={e} size="1em" /></button>
       {/each}
     {/if}
-    <button class="toggle press" onclick={() => (open = !open)} aria-label="Reactions" aria-expanded={open}>{open ? "✕" : "😊"}</button>
+    <button class="toggle press" onclick={() => (open = !open)} aria-label="Reactions" aria-expanded={open}>{#if open}✕{:else}<EmojiText text="😊" size="1em" />{/if}</button>
   </div>
 {/if}
 

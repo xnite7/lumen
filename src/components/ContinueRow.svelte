@@ -148,7 +148,7 @@
   }
   .rail {
     display: flex;
-    gap: 16px;
+    gap: 10px;
     padding: 6px var(--gutter) 16px;
   }
   .card {

@@ -174,13 +174,13 @@
   }
   .rail {
     display: flex;
-    gap: 18px;
+    gap: 10px;
     padding: 10px var(--gutter) 22px;
     scroll-snap-type: x proximity;
     scroll-padding: 0 var(--gutter);
   }
   .top10 .rail {
-    gap: 22px;
+    gap: 14px;
   }
   .ghost {
     flex: 0 0 auto;

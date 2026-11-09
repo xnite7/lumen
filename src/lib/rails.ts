@@ -12,7 +12,7 @@ function arrows(el: HTMLElement) {
     const b = document.createElement("button");
     b.className = `rail-arrow ${dir < 0 ? "l" : "r"}`;
     b.setAttribute("aria-label", dir < 0 ? "Scroll left" : "Scroll right");
-    b.innerHTML = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${dir < 0 ? "M14.5 5.5 8 12l6.5 6.5" : "M9.5 5.5 16 12l-6.5 6.5"}"/></svg>`;
+    b.innerHTML = `<span class="disc"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${dir < 0 ? "M14.5 5.5 8 12l6.5 6.5" : "M9.5 5.5 16 12l-6.5 6.5"}"/></svg></span>`;
     b.onclick = (e) => {
       e.stopPropagation();
       el.scrollBy({ left: dir * el.clientWidth * 0.82, behavior: "smooth" });

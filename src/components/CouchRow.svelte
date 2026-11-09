@@ -99,7 +99,7 @@
   }
   .rail {
     display: flex;
-    gap: 18px;
+    gap: 12px;
     padding: 10px var(--gutter) 22px;
   }
   .big .rail {
