@@ -262,7 +262,7 @@ export default {
       return clipStream(env, clipFile[1], req);
     }
     const clipCheck = url.pathname.match(/^\/clip-status\/(tt\d{5,10})$/);
-    if (clipCheck) return clipStatus(env, clipCheck[1], url.searchParams.get("dl") === "1");
+    if (clipCheck) return clipStatus(env, clipCheck[1], false); // download check verified; off so nobody burns the monthly downloads
     if (!url.pathname.startsWith("/v1/")) return json({ error: "not here" }, 404);
     if (req.method === "POST" && url.pathname === "/v1/auth") return auth(req, env);
     if (req.method === "POST" && url.pathname === "/v1/discord/exchange") return discordToken(req, env, "exchange");
