@@ -266,7 +266,7 @@ export default {
     if (clipFile) {
       const w = await verify(env, `Bearer ${url.searchParams.get("t") ?? ""}`);
       if (!w) return new Response("sign in again", { status: 401 });
-      return clipStream(env, clipFile[1], req);
+      return clipStream(env, clipFile[1], req, url.searchParams.get("title"), url.searchParams.get("year"));
     }
     const clipCheck = url.pathname.match(/^\/clip-status\/(tt\d{5,10})$/);
     if (clipCheck) return clipStatus(env, clipCheck[1], false, req); // download check verified; off so nobody burns the monthly downloads
@@ -279,7 +279,7 @@ export default {
     const who = await verify(env, req.headers.get("authorization"));
     if (!who) return json({ error: "sign in again" }, 401);
     const clipAsk = url.pathname.match(/^\/v1\/clip\/(tt\d{5,10})$/);
-    if (clipAsk) return json({ clip: !!(await clipPick(env, clipAsk[1])) });
+    if (clipAsk) return json({ clip: !!(await clipPick(env, clipAsk[1], url.searchParams.get("title"), url.searchParams.get("year"))) });
     if (url.pathname.startsWith("/v1/update/")) return updates(url, env);
     // the Durable Object trusts this header; set it here, never from the client
     const fwd = new Request(req);
@@ -309,16 +309,30 @@ async function clipSearch(env: Env, q: string): Promise<{ status: number; error?
   return { status: r.status, error: d?.error ? String(d.error).slice(0, 200) : undefined, clips };
 }
 
-async function clipPick(env: Env, imdb: string): Promise<Clip> {
+async function clipPick(env: Env, imdb: string, title?: string | null, year?: string | null): Promise<Clip> {
   if (!env.CLIPCAFE_KEY) return null;
   const cache = caches.default;
-  const key = new Request(`https://couch.clips/pick2/${imdb}`);
+  const key = new Request(`https://couch.clips/pick3/${imdb}`);
   const hit = await cache.match(key);
   if (hit) return (await hit.json()) as Clip;
   let pick: Clip = null;
   let failed = false;
+  // ClipCafe sometimes files a film under a different IMDb id (Zootopia 2):
+  // nothing for the id -> the same title (and year), checked word for word
+  const norm = (x: unknown) => String(x ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  let by = `imdb=${imdb}`;
+  if (title) {
+    const probe = await clipSearch(env, `imdb=${imdb}&size=1`);
+    if (probe.status === 200 && !probe.clips.length) {
+      const y = year && /^\d{4}$/.test(year) ? `&movie_year=${year}` : "";
+      const t = await clipSearch(env, `movie_title=${encodeURIComponent(title)}${y}&size=5`);
+      const hit = t.clips.find((c: any) => norm(c.movie_title) === norm(title));
+      if (hit?.imdb) by = `imdb=${encodeURIComponent(String(hit.imdb))}`;
+      else if (hit) by = `movie_title=${encodeURIComponent(title)}${y}`;
+    }
+  }
   for (const min of [20, 15, 10]) {
-    const r = await clipSearch(env, `imdb=${imdb}&duration=${min}-&size=25`);
+    const r = await clipSearch(env, `${by}&duration=${min}-&size=25`);
     if (r.status !== 200) {
       failed = true; // key/limit trouble: don't remember "no clip"
       break;
@@ -346,13 +360,13 @@ async function clipDownloadUrl(env: Env, pick: NonNullable<Clip>): Promise<strin
   return `https://api.clip.cafe/?api_key=${k}&slug=${encodeURIComponent(pick.slug)}&key=${encodeURIComponent(dl)}`;
 }
 
-async function clipStream(env: Env, imdb: string, req: Request): Promise<Response> {
+async function clipStream(env: Env, imdb: string, req: Request, title?: string | null, year?: string | null): Promise<Response> {
   const cache = caches.default;
   const fileKey = `https://couch.clips/file/${imdb}.mp4`;
   // ranges (seeking) are answered straight from the cache
   const cached = await cache.match(new Request(fileKey, { headers: req.headers.get("range") ? { range: req.headers.get("range")! } : {} }));
   if (cached) return cached;
-  const pick = await clipPick(env, imdb);
+  const pick = await clipPick(env, imdb, title, year);
   if (!pick) return new Response("no clip", { status: 404 });
   const dl = await clipDownloadUrl(env, pick);
   if (!dl) return new Response("clip unavailable", { status: 502 });

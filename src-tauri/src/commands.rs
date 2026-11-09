@@ -765,8 +765,8 @@ pub async fn streaming_services(s: S<'_>) -> AppResult<Vec<Value>> {
 }
 
 #[tauri::command]
-pub async fn clip_url(s: S<'_>, id: String) -> AppResult<Option<String>> {
-    Ok(crate::crew::clip_url(&s.core, &id).await)
+pub async fn clip_url(s: S<'_>, id: String, title: Option<String>, year: Option<String>) -> AppResult<Option<String>> {
+    Ok(crate::crew::clip_url(&s.core, &id, title.as_deref(), year.as_deref()).await)
 }
 
 #[tauri::command]

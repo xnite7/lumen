@@ -379,16 +379,25 @@ pub async fn answer(core: &Core, id: &str, accept: bool) -> AppResult<Value> {
 }
 
 /// A ClipCafe scene for this title (billboard / previews), as a playable URL.
-pub async fn clip_url(core: &Core, id: &str) -> Option<String> {
+pub async fn clip_url(core: &Core, id: &str, title: Option<&str>, year: Option<&str>) -> Option<String> {
     let imdb = id.split(':').next().filter(|s| s.starts_with("tt"))?;
     login(core).await.ok()?;
-    let v = call(core, reqwest::Method::GET, &format!("/v1/clip/{imdb}"), None).await.ok()?;
+    // title + year: ClipCafe sometimes files a film under another IMDb id
+    let mut q = String::new();
+    if let Some(t) = title.filter(|t| !t.is_empty()) {
+        q.push_str(&format!("title={}", urlencoding::encode(t)));
+        if let Some(y) = year.filter(|y| y.len() == 4) {
+            q.push_str(&format!("&year={y}"));
+        }
+    }
+    let ask = if q.is_empty() { format!("/v1/clip/{imdb}") } else { format!("/v1/clip/{imdb}?{q}") };
+    let v = call(core, reqwest::Method::GET, &ask, None).await.ok()?;
     if v.get("clip").and_then(|c| c.as_bool()) != Some(true) {
         return None;
     }
     let (url, auth) = server(core)?;
     let session = auth.trim_start_matches("Bearer ").to_string();
-    Some(format!("{url}/clip/{imdb}?t={}", urlencoding::encode(&session)))
+    Some(format!("{url}/clip/{imdb}?t={}{}{}", urlencoding::encode(&session), if q.is_empty() { "" } else { "&" }, q))
 }
 
 pub async fn social(core: &Core, method: &str, path: &str, body: Option<Value>) -> AppResult<Value> {

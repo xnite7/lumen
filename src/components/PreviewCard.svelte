@@ -94,7 +94,7 @@
     requestAnimationFrame(() => requestAnimationFrame(() => preview.token === token && (grown = true)));
     // a short scene (ClipCafe, 20 s or so) beats a full trailer; trailer if none
     if (m.id.startsWith("tt")) {
-      api.clipUrl(m.id).then((c) => {
+      api.clipUrl(m.id, m.name, String((m as any).year ?? (m as any).releaseInfo ?? "").slice(0, 4) || undefined).then((c) => {
         if (preview.token === token && c) clip = c;
       }).catch(() => {});
     }
