@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { logoBroken, logoOk } from "../lib/badlogo.svelte";
   import Clip from "./Clip.svelte";
   import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
   import { checkRelease, isUnreleased, releaseNote } from "../lib/release.svelte";
@@ -210,8 +211,8 @@
           </button>
           <div class="card-shade"></div>
           <div class="card-info">
-            {#if m.logo}
-              <img class="card-logo" src={img(m.logo)} alt={m.name} use:trimLogo />
+            {#if m.logo && !logoBroken(m.logo)}
+              <img class="card-logo" src={img(m.logo)} alt={m.name} use:trimLogo use:logoOk={{ src: m.logo, id: m.id }} />
             {:else}
               <h2 class="title1">{m.name}</h2>
             {/if}
@@ -258,8 +259,8 @@
       <div use:parallax={-0.35}>
       {#key cur.id}
         <div class="copy">
-          {#if cur.logo}
-            <img class="logo" src={img(cur.logo)} alt={cur.name} use:trimLogo />
+          {#if cur.logo && !logoBroken(cur.logo)}
+            <img class="logo" src={img(cur.logo)} alt={cur.name} use:trimLogo use:logoOk={{ src: cur.logo, id: cur.id }} />
           {:else}
             <h1 class="xl-title">{cur.name}</h1>
           {/if}

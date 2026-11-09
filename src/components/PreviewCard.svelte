@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { fallback, imdbArt } from "../lib/fallback";
+  import { logoBroken, logoOk } from "../lib/badlogo.svelte";
   import Clip from "./Clip.svelte";
   import { checkRelease, isUnreleased, releaseNote } from "../lib/release.svelte";
   // The hover card: grows out of the poster it came from, plays the trailer
@@ -129,8 +131,10 @@
     tabindex="-1"
   >
     <button class="media" onclick={() => openDetail(meta, card)} aria-label="Open {meta.name}">
-      {#if meta.background || meta.poster}
-        <img class="pv-art" src={img(meta.background ?? meta.poster, "w780")} alt="" />
+      <!-- always the wide backdrop (IMDb's if the title has none); the
+           poster only as a last resort -->
+      {#if meta.background || meta.poster || meta.id.startsWith("tt")}
+        <img class="pv-art" src={img(meta.background ?? imdbArt(meta.id, "background") ?? meta.poster, "w780")} alt="" use:fallback={[meta.background ? imdbArt(meta.id, "background") : null, meta.poster ? img(meta.poster, "w780") : null]} />
       {/if}
       {#if clip}
         <div class="tr" class:on={trailerOn}><Clip src={clip} {muted} loop onplaying={() => (trailerOn = true)} /></div>
@@ -140,8 +144,8 @@
       <!-- the poster it came from, fading out as the card grows -->
       {#if preview.art}<img class="from" src={preview.art} alt="" />{/if}
       <div class="shade"></div>
-      {#if meta.logo}
-        <img class="logo" src={img(meta.logo)} alt={meta.name} />
+      {#if meta.logo && !logoBroken(meta.logo)}
+        <img class="logo" src={img(meta.logo)} alt={meta.name} use:logoOk={{ src: meta.logo, id: meta.id }} />
       {:else}
         <span class="title2 name">{meta.name}</span>
       {/if}

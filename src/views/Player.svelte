@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { logoBroken, logoOk } from "../lib/badlogo.svelte";
   import { together, setShared, steer } from "../lib/stores/together.svelte";
   // The player UI. On desktop the video itself is mpv, drawn underneath this
   // transparent page -- everything here is the glass floating over it.
@@ -647,7 +648,7 @@
     <button class="round glass press" onclick={close} aria-label="Close player"><Icon name="back" size={20} /></button>
     <div class="ttl">
       {#if !pausedScreen}
-        {#if pb.meta?.logo}<img src={img(pb.meta.logo)} alt={pb.meta.name} />{:else}<span class="title3">{pb.meta?.name}</span>{/if}
+        {#if pb.meta?.logo && !logoBroken(pb.meta.logo)}<img src={img(pb.meta.logo)} alt={pb.meta.name} use:logoOk={{ src: pb.meta.logo, id: pb.meta.id }} />{:else}<span class="title3">{pb.meta?.name}</span>{/if}
       {/if}
     </div>
     <div class="badges">

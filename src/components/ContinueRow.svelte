@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { logoBroken, logoOk } from "../lib/badlogo.svelte";
   import { live } from "../lib/stores/live.svelte";
   import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
   import RailArrows from "./RailArrows.svelte";
@@ -119,7 +120,7 @@
             {:else}
               <img src={img(it.background ?? it.poster, "w780")} alt="" loading="lazy" use:fallback={[imdbArt(it._id, "background")]} />
               <div class="shade"></div>
-              {#if it.logo}<img class="logo" src={img(it.logo)} alt={it.name} loading="lazy" use:fallback={[imdbArt(it._id, "logo")]} />{:else}<span class="nm">{it.name}</span>{/if}
+              {#if it.logo && !logoBroken(it.logo)}<img class="logo" src={img(it.logo)} alt={it.name} loading="lazy" use:logoOk={{ src: it.logo, id: it._id }} />{:else}<span class="nm">{it.name}</span>{/if}
             {/if}
             <span class="play glass clear"><Icon name="play" size={18} /></span>
           </div>

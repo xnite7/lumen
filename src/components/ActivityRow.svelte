@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { logoBroken, logoOk } from "../lib/badlogo.svelte";
   // "From the couch": what the crew's been saying. A review is a speech
   // bubble coming out of the person (picture + name), score on top; a rating
   // on its own is just the score; finishing something with nothing to say is
@@ -35,7 +36,7 @@
           <div class="art">
             {#if a.title.background || a.title.poster}<img src={img(a.title.background ?? a.title.poster, "w780")} alt="" loading="lazy" />{/if}
             <div class="shade"></div>
-            {#if a.title.logo}<img class="logo" src={img(a.title.logo)} alt={a.title.name} loading="lazy" />{:else}<span class="tname">{a.title.name}</span>{/if}
+            {#if a.title.logo && !logoBroken(a.title.logo)}<img class="logo" src={img(a.title.logo)} alt={a.title.name} loading="lazy" use:logoOk={{ src: a.title.logo, id: a.title.id }} />{:else}<span class="tname">{a.title.name}</span>{/if}
           </div>
           <div class="said">
             <span class="av">{#if a.avatar}<img src={a.avatar} alt="" />{:else}{a.name.charAt(0).toUpperCase()}{/if}</span>
