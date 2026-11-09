@@ -39,10 +39,11 @@
   const src = $derived(img(landscape ? (meta.background ?? meta.poster) : meta.poster, landscape ? "w780" : "medium"));
   const owned = $derived(inLibrary(meta.id));
 
-  // A short rest on the poster opens it; moving across from an open preview
-  // swaps straight over (Netflix).
+  // Each poster on its own: a rest on it opens its preview after the full
+  // wait; landing on another poster puts any open preview away first.
   function arm() {
     clearTimeout(timer);
+    if (preview.meta && preview.meta.id !== meta.id) closePreview(0);
     if (!app.settings.general.hoverPreviews || hidden) return;
     timer = setTimeout(() => el && openPreview(meta, el), hoverDelay(app.settings.general.hoverDelayMs));
   }

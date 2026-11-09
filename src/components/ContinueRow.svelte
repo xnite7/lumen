@@ -86,6 +86,7 @@
   let timers = new Map<string, ReturnType<typeof setTimeout>>();
   function arm(it: LibraryItem, el: HTMLElement) {
     clearTimeout(timers.get(it._id));
+    if (preview.meta && preview.meta.id !== it._id) closePreview(0);
     if (!app.settings.general.hoverPreviews) return;
     timers.set(it._id, setTimeout(() => openPreview(asMeta(it), el, { cw: it }), hoverDelay(app.settings.general.hoverDelayMs)));
   }

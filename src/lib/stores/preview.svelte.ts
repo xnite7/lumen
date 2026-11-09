@@ -36,9 +36,10 @@ if (typeof document !== "undefined") {
 let goneTimer: ReturnType<typeof setTimeout> | undefined;
 let lastClosed = 0;
 
-/** Netflix-quick: once one preview is open, sliding to the next is instant. */
+/** Every poster waits its own full dwell: no chaining from one preview into
+ *  the next, each hover starts fresh. */
 export function hoverDelay(base: number): number {
-  return (preview.meta && !preview.closing) || performance.now() - lastClosed < 450 ? 70 : base;
+  return base;
 }
 
 export function openPreview(meta: Meta, el: HTMLElement, extra: { source?: string; cw?: any } = {}) {
