@@ -253,10 +253,7 @@ export default {
     }
     const share = url.pathname.match(/^\/t\/(movie|series)\/([A-Za-z0-9:._-]{1,100})$/);
     if (share) return titlePage(share[1], share[2], url.searchParams.get("n") ?? "");
-    if (!url.pathname.startsWith("/v1/")) return json({ error: "not here" }, 404);
-    if (req.method === "POST" && url.pathname === "/v1/auth") return auth(req, env);
-    if (req.method === "POST" && url.pathname === "/v1/discord/exchange") return discordToken(req, env, "exchange");
-    if (req.method === "POST" && url.pathname === "/v1/discord/refresh") return discordToken(req, env, "refresh");
+    // (these two live outside /v1/, so they come before the /v1/ gate)
     // a scene clip as video (the <video> can't send headers: session in the URL)
     const clipFile = url.pathname.match(/^\/clip\/(tt\d{5,10})$/);
     if (clipFile) {
@@ -264,6 +261,12 @@ export default {
       if (!w) return new Response("sign in again", { status: 401 });
       return clipStream(env, clipFile[1], req);
     }
+    const clipCheck = url.pathname.match(/^\/clip-status\/(tt\d{5,10})$/);
+    if (clipCheck) return clipStatus(env, clipCheck[1]);
+    if (!url.pathname.startsWith("/v1/")) return json({ error: "not here" }, 404);
+    if (req.method === "POST" && url.pathname === "/v1/auth") return auth(req, env);
+    if (req.method === "POST" && url.pathname === "/v1/discord/exchange") return discordToken(req, env, "exchange");
+    if (req.method === "POST" && url.pathname === "/v1/discord/refresh") return discordToken(req, env, "refresh");
     const who = await verify(env, req.headers.get("authorization"));
     if (!who) return json({ error: "sign in again" }, 401);
     const clipAsk = url.pathname.match(/^\/v1\/clip\/(tt\d{5,10})$/);
@@ -286,29 +289,52 @@ export default {
 type Clip = { slug: string; download: string; duration: number } | null;
 const CLIP_DAYS = 30;
 
-// ClipCafe: needs the CLIPCAFE_KEY secret (set); previews play the most-viewed clip, 20s+ then 15s+ then 10s+
+// ClipCafe: needs the CLIPCAFE_KEY secret. Previews play the most-viewed
+// clip, 20s+ then 15s+ then 10s+. A search hands out per-clip download keys
+// that die after 5 minutes, so only the clip's slug is remembered and a
+// fresh key is fetched right before the (one-time, then cached) download.
+async function clipSearch(env: Env, q: string): Promise<{ status: number; error?: string; clips: any[] }> {
+  const r = await fetch(`https://api.clip.cafe/?api_key=${encodeURIComponent(env.CLIPCAFE_KEY ?? "")}&${q}`);
+  const d: any = await r.json().catch(() => null);
+  const clips = (d?.hits?.hits ?? []).map((h: any) => h?._source).filter((c: any) => c?.slug);
+  return { status: r.status, error: d?.error ? String(d.error).slice(0, 200) : undefined, clips };
+}
+
 async function clipPick(env: Env, imdb: string): Promise<Clip> {
   if (!env.CLIPCAFE_KEY) return null;
   const cache = caches.default;
-  const key = new Request(`https://couch.clips/pick/${imdb}`);
+  const key = new Request(`https://couch.clips/pick2/${imdb}`);
   const hit = await cache.match(key);
   if (hit) return (await hit.json()) as Clip;
   let pick: Clip = null;
+  let failed = false;
   for (const min of [20, 15, 10]) {
-    const u = `https://api.clip.cafe/?api_key=${encodeURIComponent(env.CLIPCAFE_KEY)}&imdb=${imdb}&duration=${min}-&size=25`;
-    const r = await fetch(u);
-    if (!r.ok) break;
-    const d: any = await r.json().catch(() => null);
-    const clips = (d?.hits?.hits ?? []).map((h: any) => h?._source).filter((c: any) => c?.download && c?.slug);
-    if (clips.length) {
-      clips.sort((a: any, b: any) => (Number(b.views) || 0) - (Number(a.views) || 0));
-      pick = { slug: String(clips[0].slug), download: String(clips[0].download), duration: Number(clips[0].duration) || 0 };
+    const r = await clipSearch(env, `imdb=${imdb}&duration=${min}-&size=25`);
+    if (r.status !== 200) {
+      failed = true; // key/limit trouble: don't remember "no clip"
+      break;
+    }
+    if (r.clips.length) {
+      r.clips.sort((a: any, b: any) => (Number(b.views) || 0) - (Number(a.views) || 0));
+      const c = r.clips[0];
+      pick = { slug: String(c.slug), download: String(c.download ?? ""), duration: Number(c.duration) || 0 };
       break;
     }
   }
-  // remember "no clip" too (for a day) so we don't ask again and again
-  await cache.put(key, new Response(JSON.stringify(pick), { headers: { "content-type": "application/json", "cache-control": `public, max-age=${pick ? CLIP_DAYS * 86400 : 86400}` } }));
+  if (!failed) await cache.put(key, new Response(JSON.stringify(pick), { headers: { "content-type": "application/json", "cache-control": `public, max-age=${pick ? CLIP_DAYS * 86400 : 86400}` } }));
   return pick;
+}
+
+/** the download address for a clip, with a key that's fresh right now */
+async function clipDownloadUrl(env: Env, pick: NonNullable<Clip>): Promise<string | null> {
+  const r = await clipSearch(env, `slug=${encodeURIComponent(pick.slug)}&size=1`);
+  const c = r.clips.find((x: any) => x.slug === pick.slug) ?? r.clips[0];
+  const dl = String(c?.download ?? pick.download ?? "");
+  if (!dl) return null;
+  const k = encodeURIComponent(env.CLIPCAFE_KEY ?? "");
+  if (/^https?:/.test(dl)) return dl.includes("api_key=") ? dl : `${dl}${dl.includes("?") ? "&" : "?"}api_key=${k}`;
+  // a bare download key
+  return `https://api.clip.cafe/?api_key=${k}&slug=${encodeURIComponent(pick.slug)}&key=${encodeURIComponent(dl)}`;
 }
 
 async function clipStream(env: Env, imdb: string, req: Request): Promise<Response> {
@@ -319,13 +345,32 @@ async function clipStream(env: Env, imdb: string, req: Request): Promise<Respons
   if (cached) return cached;
   const pick = await clipPick(env, imdb);
   if (!pick) return new Response("no clip", { status: 404 });
-  const dl = pick.download.includes("api_key=") ? pick.download : `${pick.download}${pick.download.includes("?") ? "&" : "?"}api_key=${encodeURIComponent(env.CLIPCAFE_KEY ?? "")}`;
+  const dl = await clipDownloadUrl(env, pick);
+  if (!dl) return new Response("clip unavailable", { status: 502 });
   const r = await fetch(dl);
-  if (!r.ok || !r.body) return new Response("clip unavailable", { status: 502 });
+  const type = r.headers.get("content-type") ?? "";
+  if (!r.ok || !r.body || type.includes("json") || type.includes("html")) return new Response("clip unavailable", { status: 502 });
   const body = await r.arrayBuffer();
   const res = new Response(body, { headers: { "content-type": "video/mp4", "cache-control": `public, max-age=${CLIP_DAYS * 86400}`, "accept-ranges": "bytes" } });
   await cache.put(new Request(fileKey), res.clone());
   return res;
+}
+
+/** Is ClipCafe answering couch's key? Never shows the key or a download link. */
+async function clipStatus(env: Env, imdb: string): Promise<Response> {
+  if (!env.CLIPCAFE_KEY) return json({ key: "missing" });
+  const r = await clipSearch(env, `imdb=${imdb}&size=3`);
+  const c = r.clips[0];
+  return json({
+    key: "set",
+    keyLength: env.CLIPCAFE_KEY.length,
+    status: r.status,
+    error: r.error,
+    clips: r.clips.length,
+    fields: c ? Object.keys(c).sort() : [],
+    downloadLooksLike: c?.download ? (/^https?:/.test(String(c.download)) ? "url" : "key") : "none",
+    sample: c ? { slug: c.slug, duration: c.duration, views: c.views } : null,
+  });
 }
 
 // A shared title: opens couch right on its page (or says how to get couch).
