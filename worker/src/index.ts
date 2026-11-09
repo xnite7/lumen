@@ -262,7 +262,7 @@ export default {
       return clipStream(env, clipFile[1], req);
     }
     const clipCheck = url.pathname.match(/^\/clip-status\/(tt\d{5,10})$/);
-    if (clipCheck) return clipStatus(env, clipCheck[1]);
+    if (clipCheck) return clipStatus(env, clipCheck[1], url.searchParams.get("dl") === "1");
     if (!url.pathname.startsWith("/v1/")) return json({ error: "not here" }, 404);
     if (req.method === "POST" && url.pathname === "/v1/auth") return auth(req, env);
     if (req.method === "POST" && url.pathname === "/v1/discord/exchange") return discordToken(req, env, "exchange");
@@ -357,10 +357,19 @@ async function clipStream(env: Env, imdb: string, req: Request): Promise<Respons
 }
 
 /** Is ClipCafe answering couch's key? Never shows the key or a download link. */
-async function clipStatus(env: Env, imdb: string): Promise<Response> {
+async function clipStatus(env: Env, imdb: string, tryDownload = false): Promise<Response> {
   if (!env.CLIPCAFE_KEY) return json({ key: "missing" });
   const r = await clipSearch(env, `imdb=${imdb}&size=3`);
   const c = r.clips[0];
+  let download: any = undefined;
+  if (tryDownload && c) {
+    const u = await clipDownloadUrl(env, { slug: String(c.slug), download: String(c.download ?? ""), duration: 0 });
+    if (u) {
+      const d = await fetch(u);
+      download = { status: d.status, type: d.headers.get("content-type"), bytes: d.headers.get("content-length") };
+      await d.body?.cancel();
+    }
+  }
   return json({
     key: "set",
     keyLength: env.CLIPCAFE_KEY.length,
@@ -370,6 +379,7 @@ async function clipStatus(env: Env, imdb: string): Promise<Response> {
     fields: c ? Object.keys(c).sort() : [],
     downloadLooksLike: c?.download ? (/^https?:/.test(String(c.download)) ? "url" : "key") : "none",
     sample: c ? { slug: c.slug, duration: c.duration, views: c.views } : null,
+    download,
   });
 }
 
