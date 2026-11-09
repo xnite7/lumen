@@ -813,9 +813,9 @@
     box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.7);
   }
   .thumb-wrap .seen.on {
-    background: var(--accent);
-    color: var(--accent-ink);
-    box-shadow: none;
+    background: #000;
+    color: #fff;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18);
   }
   /* spoiler-free: episodes you haven't seen keep their picture and story blurred */
   .ep.hide .thumb img {
@@ -866,9 +866,9 @@
     transition: all var(--t-fast);
   }
   .seen.on {
-    background: var(--accent);
-    color: var(--accent-ink);
-    box-shadow: none;
+    background: #000;
+    color: #fff;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18);
   }
 
   .studios {

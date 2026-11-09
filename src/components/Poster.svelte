@@ -217,9 +217,11 @@
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: var(--accent);
-    color: var(--accent-ink);
-    box-shadow: 0 2px 8px rgb(var(--lo) / 0.35);
+    background: #000;
+    color: #fff;
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.18),
+      0 2px 8px rgb(var(--lo) / 0.35);
   }
   .lname {
     position: absolute;
