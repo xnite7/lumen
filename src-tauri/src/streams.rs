@@ -55,6 +55,9 @@ re!(RAVC, r"(?i)\b(avc|x264|h\.?264)\b");
 re!(RATMOS, r"(?i)\batmos\b");
 re!(RTRUEHD, r"(?i)\btrue[ -]?hd\b");
 re!(RDTSHD, r"(?i)\bdts[ -.]?(hd|x|ma)\b");
+re!(RDTSX, r"(?i)\bdts[ -.:]?x\b");
+re!(RDTSMA, r"(?i)\bdts[ -.]?hd[ -.]?ma\b|\bdts[ -.]?ma\b");
+re!(RFLAC, r"(?i)\bflac\b");
 re!(RDTS, r"(?i)\bdts\b");
 re!(RDDP, r"(?i)\b(ddp|dd\+|e-?ac-?3)\s?([257]\.[01])?");
 re!(R51, r"(?i)\b([57]\.1)\b");
@@ -149,11 +152,17 @@ pub fn parse(s: &Value) -> Parsed {
     if RTRUEHD.is_match(&t) {
         p.audio.push("TrueHD");
     } else if RDTSHD.is_match(&t) {
-        p.audio.push("DTS-HD");
+        if RDTSX.is_match(&t) {
+            p.audio.push("DTS:X");
+        }
+        p.audio.push(if RDTSMA.is_match(&t) { "DTS-HD MA" } else { "DTS-HD" });
     } else if RDTS.is_match(&t) {
         p.audio.push("DTS");
     } else if RDDP.is_match(&t) {
         p.audio.push("DD+");
+    }
+    if RFLAC.is_match(&t) {
+        p.audio.push("FLAC");
     }
     if let Some(c) = R51.captures(&t) {
         p.audio.push(if &c[1] == "7.1" { "7.1" } else { "5.1" });

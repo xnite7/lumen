@@ -84,7 +84,7 @@
       <div class="veil"><Icon name="eyeOff" size={22} /></div>
     {/if}
     {#if owned && !landscape}
-      <span class="badge" title="In your library"><Icon name="check" size={13} /></span>
+      <span class="badge" title="In your library"><Icon name="check" size={15} /></span>
     {/if}
     {#if landscape && loaded}
       <div class="lshade"></div>
@@ -205,18 +205,18 @@
     place-items: center;
     color: var(--text-dim);
   }
+  /* same tick as the episodes' "watched" mark */
   .badge {
     position: absolute;
     top: 8px;
     right: 8px;
-    width: 22px;
-    height: 22px;
+    width: 26px;
+    height: 26px;
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: rgb(var(--lo) / 0.6);
-    color: var(--lamp);
-    backdrop-filter: blur(8px);
+    background: var(--accent);
+    color: var(--accent-ink);
     box-shadow: 0 2px 8px rgb(var(--lo) / 0.35);
   }
   .lname {

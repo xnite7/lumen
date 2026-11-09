@@ -3,6 +3,7 @@
   // page of what's on that service.
   import { api } from "../lib/api";
   import { go } from "../lib/router.svelte";
+  import { serviceLogo } from "../lib/badges";
 
   let list = $state<{ id: number; name: string; logo: string | null }[]>([]);
   $effect(() => {
@@ -16,7 +17,9 @@
     <div class="rail scroll-x">
       {#each list as s (s.id)}
         <button class="svc press" onclick={() => go({ name: "service", id: s.id, label: s.name, logo: s.logo })} aria-label={s.name}>
-          {#if s.logo}<img src={s.logo} alt="" loading="lazy" />{:else}<span>{s.name}</span>{/if}
+          {#if serviceLogo(s.id)}
+            <img class="word" src={serviceLogo(s.id)} alt={s.name} loading="lazy" />
+          {:else if s.logo}<img src={s.logo} alt="" loading="lazy" />{:else}<span>{s.name}</span>{/if}
         </button>
       {/each}
     </div>
@@ -56,6 +59,12 @@
     height: 64px;
     border-radius: 14px;
     object-fit: cover;
+  }
+  .svc img.word {
+    width: 72%;
+    height: 42%;
+    border-radius: 0;
+    object-fit: contain;
   }
   .svc span {
     font-weight: 800;

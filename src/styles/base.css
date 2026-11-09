@@ -955,6 +955,9 @@ html.winctl {
 .scroll-x {
   cursor: grab;
 }
+.scroll-x.rail-free {
+  scroll-snap-type: none !important;
+}
 .scroll-x.rail-dragging {
   cursor: grabbing;
   scroll-snap-type: none !important;

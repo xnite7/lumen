@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { updates, installUpdate } from "../lib/stores/updates.svelte";
+  import { updates } from "../lib/stores/updates.svelte";
   import { untrack } from "svelte";
   // Tabs, Apple TV style. Phone: a floating plum-glass capsule at the bottom
   // with a draggable pill. Wide screens: tvOS's top row of quiet text tabs;
@@ -219,7 +219,7 @@
   <div class="me">
     <!-- a new couch is ready: tap to update now -->
     {#if updates.available}
-      <button class="upd press" onclick={installUpdate} title="couch {updates.available} is ready" aria-label="Update couch to {updates.available}">
+      <button class="upd press" onclick={() => (updates.ask = true)} title="couch {updates.available} is ready" aria-label="Update couch to {updates.available}">
         <span class="dot"></span>update
       </button>
     {/if}

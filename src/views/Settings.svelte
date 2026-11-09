@@ -326,7 +326,6 @@
           <p class="dim lead">Version {app.version}. Built for one person.</p>
           {#if app.platform === "windows" || app.platform === "linux"}
             <div class="group">
-              <Cell label="Auto-update" hint="New versions install by themselves, never in the middle of something you're watching."><Controls kind="switch" bind:value={s.general.autoUpdate} onchange={changed} /></Cell>
               <Cell label="Updates" hint={updates.installing ? `installing ${updates.available}…` : updates.available ? `couch ${updates.available} is ready` : "you're on the newest couch"}>
                 {#if updates.available && !updates.installing}
                   <button class="btn small primary press" onclick={installUpdate}>Update now</button>

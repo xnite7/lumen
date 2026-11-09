@@ -11,6 +11,7 @@
   import EpisodeCarousel from "../components/player/EpisodeCarousel.svelte";
   import EpisodesPopover from "../components/player/EpisodesPopover.svelte";
   import { time, lang, episodeLabel } from "../lib/format";
+  import { formatBadges, langFlag } from "../lib/badges";
   import YouTube from "../components/YouTube.svelte";
   import Icon from "../components/Icon.svelte";
   import EyeBubbles, { type Bubble } from "../components/EyeBubbles.svelte";
@@ -434,18 +435,10 @@
   const minimal = $derived(!!pbs.minimalPlayer);
   // Material's replay/forward glyphs carry the number for 5, 10 and 30
   const numbered = $derived([5, 10, 30].includes(pbs.seekSmall));
+  // format badges (T1-T3 only) from the Fusion Badges pack
   const quality = $derived.by(() => {
-    const v = st.video;
-    const h = v.height || 0;
-    const tags = [];
-    if (h >= 2000) tags.push("4K");
-    else if (h >= 1000) tags.push("1080p");
-    else if (h >= 700) tags.push("720p");
-    const c: any = pb.stream?._couch ?? {};
-    if (c.hdr?.includes("DV")) tags.push("Dolby Vision");
-    else if (v.hdr || c.hdr?.length) tags.push(v.gamma === "hlg" ? "HLG" : c.hdr?.includes("HDR10+") ? "HDR10+" : "HDR10");
-    if (c.audio?.includes("Atmos")) tags.push("Dolby Atmos");
-    return tags;
+    const at = audio.find((t) => isOn(t, st.aid)) as any;
+    return formatBadges(pb.stream?._couch as any, st.video, at?.codec);
   });
 
   const bg = $derived(pb.meta?.background ?? pb.meta?.poster);
@@ -665,9 +658,8 @@
           <Icon name="hand" size={15} />{together.shared ? "everyone has the remote" : "let everyone control"}
         </button>
       {/if}
-      {#each quality as q}
-        {@const dolby = q.startsWith("Dolby ")}
-        <span class="spec" class:dolby>{#if dolby}<b>DOLBY</b><i>{q.slice(6).toUpperCase()}</i>{:else}{q}{/if}</span>
+      {#each quality as q (q.src)}
+        <img class="fbadge {q.kind}" src={q.src} alt={q.alt} title={q.alt} onerror={(e) => ((e.currentTarget as HTMLElement).style.display = "none")} />
       {/each}
       {#if layout3d}<span class="chip">3D{tobiiOn() && app.settings.tobii.depth3d ? " · look around" : ""}</span>{/if}
     </div>
@@ -737,14 +729,14 @@
             <div class="col">
               <h4 class="headline">Audio</h4>
               {#each audio as t (t.id)}
-                <button class="opt" class:sel={isOn(t, st.aid)} onclick={() => cmd("aid", { value: t.id })}>{trackName(t)}</button>
+                <button class="opt" class:sel={isOn(t, st.aid)} onclick={() => cmd("aid", { value: t.id })}>{#if langFlag(t.lang)}<img class="flag" src={langFlag(t.lang)} alt="" />{/if}{trackName(t)}</button>
               {/each}
             </div>
             <div class="col alt">
               <h4 class="headline">Subtitles</h4>
               <button class="opt" class:sel={!subsOn} onclick={() => cmd("sid", { value: "no" })}>Off</button>
               {#each subs as t (t.id)}
-                <button class="opt" class:sel={subsOn && isOn(t, st.sid)} onclick={() => cmd("sid", { value: t.id })}>{trackName(t)}{#if t.external}<span class="faint"> · addon</span>{/if}</button>
+                <button class="opt" class:sel={subsOn && isOn(t, st.sid)} onclick={() => cmd("sid", { value: t.id })}>{#if langFlag(t.lang)}<img class="flag" src={langFlag(t.lang)} alt="" />{/if}{trackName(t)}{#if t.external}<span class="faint"> · addon</span>{/if}</button>
               {/each}
               {#if subsOn}
                 <div class="delay">
@@ -1759,6 +1751,26 @@
     line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+  /* format badges from the Fusion Badges pack */
+  .fbadge {
+    height: 22px;
+    width: auto;
+    object-fit: contain;
+    filter: drop-shadow(0 1px 6px rgb(0 0 0 / 0.5));
+  }
+  .fbadge.visual,
+  .fbadge.audio {
+    height: 30px;
+  }
+  .flag {
+    width: 21px;
+    height: 14px;
+    border-radius: 3px;
+    object-fit: cover;
+    margin-right: 9px;
+    vertical-align: -2px;
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.15);
   }
   /* spec labels: plain white, sharp, like the back of a Blu-ray box */
   .spec {

@@ -12,7 +12,13 @@ export const updates = $state({
   installing: false,
   progress: 0,
   error: "",
+  /** the "update now / when I close couch" sheet is up */
+  ask: false,
+  /** downloaded, goes in when couch closes */
+  onExit: false,
 });
+
+const asked = new Set<string>(); // don't ask twice about the same version
 
 const desktop = () => isTauri && (app.platform === "windows" || app.platform === "linux");
 
@@ -24,7 +30,7 @@ export async function checkForUpdates(manual = false) {
     const r = await api.updateCheck();
     updates.available = r.available;
     if (manual && !r.available) toast("you're on the newest couch", "ok");
-    if (r.available && app.settings.general.autoUpdate) installWhenFree();
+    if (r.available && !updates.onExit && (manual || !asked.has(r.available))) askWhenFree();
   } catch (e) {
     updates.error = errorText(e);
     if (manual) toast(updates.error, "warn");
@@ -33,19 +39,38 @@ export async function checkForUpdates(manual = false) {
 }
 
 let waiting = false;
-function installWhenFree() {
-  if (!pb.open) return void installUpdate();
+// never pops up over a movie: waits until the player's closed
+function askWhenFree() {
+  const ask = () => {
+    if (updates.available) asked.add(updates.available);
+    updates.ask = true;
+  };
+  if (!pb.open) return ask();
   if (waiting) return;
   waiting = true;
   const t = setInterval(() => {
     if (pb.open) return;
     clearInterval(t);
     waiting = false;
-    installUpdate();
+    ask();
   }, 5000);
 }
 
+/** "when I close couch": fetch it now, it goes in on the way out */
+export async function updateOnExit() {
+  updates.ask = false;
+  if (updates.onExit) return;
+  try {
+    await api.updateOnExit();
+    updates.onExit = true;
+    toast(`couch ${updates.available ?? ""} will install when you close the app`.replace("  ", " "), "ok");
+  } catch (e) {
+    toast(errorText(e), "error");
+  }
+}
+
 export async function installUpdate() {
+  updates.ask = false;
   if (updates.installing) return;
   updates.installing = true;
   updates.progress = 0;

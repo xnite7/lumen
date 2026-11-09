@@ -58,3 +58,44 @@ pub async fn install(app: &tauri::AppHandle, core: &Core) -> AppResult<()> {
         Err(AppError::msg("on iPhone, updates come through SideStore"))
     }
 }
+
+
+/// Downloaded now, installed when couch closes ("when I close couch").
+#[cfg(desktop)]
+static PENDING: parking_lot::Mutex<Option<(tauri_plugin_updater::Update, Vec<u8>)>> = parking_lot::Mutex::new(None);
+
+/// Fetch the update in the background and keep it for the moment the app closes.
+pub async fn install_on_exit(app: &tauri::AppHandle, core: &Core) -> AppResult<()> {
+    #[cfg(desktop)]
+    {
+        let Some(u) = find(app, core).await? else { return Ok(()) };
+        let h = app.clone();
+        let bytes = u
+            .download(
+                move |got, total| {
+                    use tauri::Emitter;
+                    let _ = h.emit("update-progress", json!({ "got": got, "total": total }));
+                },
+                || {},
+            )
+            .await
+            .map_err(|e| AppError::msg(format!("the update didn't download: {e}")))?;
+        *PENDING.lock() = Some((u, bytes));
+        Ok(())
+    }
+    #[cfg(not(desktop))]
+    {
+        let _ = (app, core);
+        Err(AppError::msg("on iPhone, updates come through SideStore"))
+    }
+}
+
+/// On close: put the waiting update in (the installer takes it from there).
+pub fn install_pending() {
+    #[cfg(desktop)]
+    if let Some((u, bytes)) = PENDING.lock().take() {
+        if let Err(e) = u.install(bytes) {
+            log::warn!("update on exit failed: {e}");
+        }
+    }
+}

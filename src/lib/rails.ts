@@ -48,13 +48,32 @@ function arrows(el: HTMLElement) {
   };
 }
 
+// Mouse drag that feels like a phone: the row follows the hand, keeps
+// gliding after you let go and slows down by itself, and at either end it
+// stretches a little and springs back ("boing") instead of stopping dead.
 function drag(el: HTMLElement) {
   let x0 = 0, s0 = 0, moved = false, down = false, id = 0;
+  let lastX = 0, lastT = 0, vel = 0; // px per ms, positive = content moves right
+  let glide = 0;
+  const max = () => el.scrollWidth - el.clientWidth;
+  const stretch = (o: number) => Math.sign(o) * Math.min(90, Math.abs(o) * 0.35);
+  const setPull = (px: number, spring = false) => {
+    el.style.transition = spring ? "transform 620ms cubic-bezier(0.34, 1.56, 0.64, 1)" : "none";
+    el.style.transform = px ? `translateX(${px}px)` : "";
+  };
+  const stopGlide = () => {
+    cancelAnimationFrame(glide);
+    glide = 0;
+  };
+
   const md = (e: PointerEvent) => {
     if (e.pointerType !== "mouse" || e.button !== 0) return;
+    stopGlide();
     down = true;
     moved = false;
-    x0 = e.clientX;
+    x0 = lastX = e.clientX;
+    lastT = performance.now();
+    vel = 0;
     s0 = el.scrollLeft;
     id = e.pointerId;
   };
@@ -66,26 +85,72 @@ function drag(el: HTMLElement) {
       el.setPointerCapture(id);
       el.classList.add("rail-dragging");
     }
-    if (moved) el.scrollLeft = s0 - dx;
+    if (!moved) return;
+    const now = performance.now();
+    const dt = Math.max(1, now - lastT);
+    // smoothed speed of the hand
+    vel = vel * 0.6 + ((e.clientX - lastX) / dt) * 0.4;
+    lastX = e.clientX;
+    lastT = now;
+    const want = s0 - dx;
+    const m = max();
+    const over = want < 0 ? want : want > m ? want - m : 0;
+    el.scrollLeft = Math.min(m, Math.max(0, want));
+    setPull(-stretch(over));
   };
   const mu = () => {
     if (!down) return;
     down = false;
-    el.classList.remove("rail-dragging");
-    if (moved) {
-      // a drag isn't a click on whatever it started over
-      const stop = (e: Event) => {
-        e.stopPropagation();
-        e.preventDefault();
-      };
-      el.addEventListener("click", stop, { capture: true, once: true });
-      setTimeout(() => el.removeEventListener("click", stop, { capture: true }), 50);
+    if (!moved) return;
+    // a drag isn't a click on whatever it started over
+    const stop = (e: Event) => {
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    el.addEventListener("click", stop, { capture: true, once: true });
+    setTimeout(() => el.removeEventListener("click", stop, { capture: true }), 50);
+
+    // let go while stretched: spring back
+    if (el.style.transform) {
+      setPull(0, true);
+      el.classList.remove("rail-dragging");
+      return;
     }
+    // released still: nothing to glide
+    if (performance.now() - lastT > 80) vel = 0;
+    let v = vel;
+    let t = performance.now();
+    const step = (now: number) => {
+      const dt = Math.min(32, now - t);
+      t = now;
+      const before = el.scrollLeft;
+      el.scrollLeft = before - v * dt;
+      const m = max();
+      // ran into an end while gliding: a little bounce, then rest
+      if ((el.scrollLeft <= 0 && v > 0) || (el.scrollLeft >= m && v < 0)) {
+        const kick = Math.max(-46, Math.min(46, v * 26));
+        setPull(kick);
+        requestAnimationFrame(() => setPull(0, true));
+        glide = 0;
+        el.classList.remove("rail-dragging");
+        return;
+      }
+      v *= Math.pow(0.9955, dt); // friction, frame-rate independent
+      if (Math.abs(v) < 0.02) {
+        glide = 0;
+        el.classList.remove("rail-dragging");
+        return;
+      }
+      glide = requestAnimationFrame(step);
+    };
+    if (Math.abs(v) > 0.05) glide = requestAnimationFrame(step);
+    else el.classList.remove("rail-dragging");
   };
   el.addEventListener("pointerdown", md);
   el.addEventListener("pointermove", mm);
   el.addEventListener("pointerup", mu);
   el.addEventListener("pointercancel", mu);
+  el.addEventListener("wheel", stopGlide, { passive: true });
   el.addEventListener("dragstart", (e) => moved && e.preventDefault());
 }
 
@@ -93,6 +158,8 @@ const seen = new WeakSet<HTMLElement>();
 function wire(el: HTMLElement) {
   if (seen.has(el)) return;
   seen.add(el);
+  // with a mouse, rows glide freely instead of clicking into place
+  el.classList.add("rail-free");
   drag(el);
   if (!el.hasAttribute("data-own-arrows")) arrows(el);
 }

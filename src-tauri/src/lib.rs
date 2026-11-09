@@ -155,7 +155,24 @@ pub fn run() {
             // Background: defaults on first run, then keep the account in sync.
             let a2 = addons.clone();
             let c2 = core.clone();
+            *addons::builtin::TOP_COUNTRY.write() = core.settings.read().integrations.motn_country.clone();
             tauri::async_runtime::spawn(async move {
+                // Top 10 follows the country the app is in (where Movie of
+                // the Night has one), unless picked by hand in settings
+                if c2.db.get::<bool>("motn_country_manual") != Some(true) {
+                    let geo = c2.http.client().get(format!("{}/geo", crew::CREW_URL.trim_end_matches('/'))).timeout(std::time::Duration::from_secs(8)).send().await;
+                    if let Ok(r) = geo {
+                        if let Ok(v) = r.json::<serde_json::Value>().await {
+                            let cc = v.get("country").and_then(|c| c.as_str()).unwrap_or("").to_lowercase();
+                            if addons::builtin::MOTN_COUNTRIES.contains(&cc.as_str()) && cc != c2.settings.read().integrations.motn_country {
+                                c2.settings.write().integrations.motn_country = cc.clone();
+                                let snapshot = c2.settings.read().clone();
+                                let _ = c2.db.set("settings", &snapshot);
+                            }
+                        }
+                    }
+                }
+                *addons::builtin::TOP_COUNTRY.write() = c2.settings.read().integrations.motn_country.clone();
                 a2.ensure_defaults().await;
                 let _ = c2.app.emit("addons-changed", ());
                 loop {
@@ -205,6 +222,8 @@ pub fn run() {
                 tauri::async_runtime::block_on(async move {
                     let _ = p.stop().await;
                 });
+                // "update when I close couch"
+                updates::install_pending();
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -235,6 +254,7 @@ pub fn run() {
             commands::genre_trending,
             commands::update_check,
             commands::update_install,
+            commands::update_on_exit,
             commands::discord_membership,
             commands::crew_ask,
             commands::crew_ask_status,

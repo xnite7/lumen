@@ -269,7 +269,9 @@ export default {
       return clipStream(env, clipFile[1], req);
     }
     const clipCheck = url.pathname.match(/^\/clip-status\/(tt\d{5,10})$/);
-    if (clipCheck) return clipStatus(env, clipCheck[1], false); // download check verified; off so nobody burns the monthly downloads
+    if (clipCheck) return clipStatus(env, clipCheck[1], false, req); // download check verified; off so nobody burns the monthly downloads
+    // which country the app is in (for "Top 10 in UAE"); just the 2-letter code
+    if (url.pathname === "/geo") return json({ country: String((req as any).cf?.country ?? "").toLowerCase() });
     if (!url.pathname.startsWith("/v1/")) return json({ error: "not here" }, 404);
     if (req.method === "POST" && url.pathname === "/v1/auth") return auth(req, env);
     if (req.method === "POST" && url.pathname === "/v1/discord/exchange") return discordToken(req, env, "exchange");
@@ -364,9 +366,10 @@ async function clipStream(env: Env, imdb: string, req: Request): Promise<Respons
 }
 
 /** Is ClipCafe answering couch's key? Never shows the key or a download link. */
-async function clipStatus(env: Env, imdb: string, tryDownload = false): Promise<Response> {
+async function clipStatus(env: Env, imdb: string, tryDownload = false, req?: Request): Promise<Response> {
   if (!env.CLIPCAFE_KEY) return json({ key: "missing" });
-  const r = await clipSearch(env, `imdb=${imdb}&size=3`);
+  const title = req && new URL(req.url).searchParams.get("title");
+  const r = await clipSearch(env, title ? `movie_title=${encodeURIComponent(title)}&size=3` : `imdb=${imdb}&size=3`);
   const c = r.clips[0];
   let download: any = undefined;
   if (tryDownload && c) {
@@ -385,7 +388,7 @@ async function clipStatus(env: Env, imdb: string, tryDownload = false): Promise<
     clips: r.clips.length,
     fields: c ? Object.keys(c).sort() : [],
     downloadLooksLike: c?.download ? (/^https?:/.test(String(c.download)) ? "url" : "key") : "none",
-    sample: c ? { slug: c.slug, duration: c.duration, views: c.views } : null,
+    sample: c ? { slug: c.slug, duration: c.duration, views: c.views, imdb: c.imdb, movie: c.movie_title, year: c.movie_year } : null,
     download,
   });
 }

@@ -295,6 +295,7 @@ export const api = {
   discordLogout: () => invoke<void>("discord_logout"),
   updateCheck: () => invoke<{ current: string; available: string | null; notes?: string }>("update_check"),
   updateInstall: () => invoke<void>("update_install"),
+  updateOnExit: () => invoke<void>("update_on_exit"),
   episodeInfo: (id: string) => invoke<Record<string, { runtime?: number | null; finale?: number | null }>>("simkl_episode_info", { id }),
   sceneColor: () => invoke<string | null>("scene_color"),
   didYouMean: (query: string) => invoke<string | null>("did_you_mean", { query }),

@@ -254,6 +254,12 @@ pub async fn update_install(app: AppHandle, s: S<'_>) -> AppResult<()> {
     crate::updates::install(&app, &s.core).await
 }
 
+/// Download the update now, install it when couch closes.
+#[tauri::command]
+pub async fn update_on_exit(app: AppHandle, s: S<'_>) -> AppResult<()> {
+    crate::updates::install_on_exit(&app, &s.core).await
+}
+
 /// Simkl's trending for one genre (genre pages' billboard).
 #[tauri::command]
 pub async fn genre_trending(s: S<'_>, kind: String, genre: String) -> AppResult<Vec<Value>> {

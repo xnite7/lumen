@@ -23,6 +23,31 @@ const SIMKL_ROWS: &[(&str, &str, &[&str])] = &[
     ("motn-top", "Top 10 Today", &["movie", "series"]),
 ];
 
+/// The country the Top 10 rows are for (follows where the app is).
+pub static TOP_COUNTRY: parking_lot::RwLock<String> = parking_lot::RwLock::new(String::new());
+
+/// Countries Movie of the Night has Top 10s for.
+pub const MOTN_COUNTRIES: &[&str] = &[
+    "ae", "ar", "at", "au", "az", "be", "bg", "br", "ca", "ch", "cl", "co", "cy", "cz", "de", "dk", "ec", "ee", "es", "fi", "fr", "gb", "gr", "hk", "hr",
+    "hu", "id", "ie", "il", "in", "is", "it", "jp", "kr", "lt", "md", "mk", "mx", "my", "nl", "no", "nz", "pa", "pe", "ph", "pl", "pt", "ro", "rs", "ru",
+    "se", "sg", "si", "th", "tr", "ua", "us", "vn", "za",
+];
+
+pub fn country_name(code: &str) -> String {
+    let n = match code {
+        "ae" => "UAE", "us" => "the US", "gb" => "the UK", "sa" => "Saudi Arabia", "ca" => "Canada", "au" => "Australia", "nz" => "New Zealand",
+        "ie" => "Ireland", "in" => "India", "de" => "Germany", "fr" => "France", "es" => "Spain", "it" => "Italy", "nl" => "the Netherlands",
+        "be" => "Belgium", "se" => "Sweden", "no" => "Norway", "dk" => "Denmark", "fi" => "Finland", "pl" => "Poland", "pt" => "Portugal",
+        "br" => "Brazil", "mx" => "Mexico", "ar" => "Argentina", "cl" => "Chile", "co" => "Colombia", "pe" => "Peru", "jp" => "Japan",
+        "kr" => "Korea", "sg" => "Singapore", "my" => "Malaysia", "ph" => "the Philippines", "th" => "Thailand", "id" => "Indonesia",
+        "vn" => "Vietnam", "hk" => "Hong Kong", "tr" => "Türkiye", "il" => "Israel", "za" => "South Africa", "gr" => "Greece",
+        "ch" => "Switzerland", "at" => "Austria", "cz" => "Czechia", "hu" => "Hungary", "ro" => "Romania", "ua" => "Ukraine",
+        "" => "UAE",
+        other => return other.to_uppercase(),
+    };
+    n.to_string()
+}
+
 pub fn descriptor() -> AddonDescriptor {
     let mut catalogs = vec![ManifestCatalog {
         kind: "all".into(),
@@ -40,8 +65,8 @@ pub fn descriptor() -> AddonDescriptor {
                 id: id.to_string(),
                 // Top 10 says what it's a Top 10 of
                 name: Some(match (*id, *t) {
-                    ("motn-top", "series") => "Top 10 TV Shows".to_string(),
-                    ("motn-top", _) => "Top 10 Movies".to_string(),
+                    ("motn-top", "series") => format!("Top 10 TV Shows in {}", country_name(&TOP_COUNTRY.read())),
+                    ("motn-top", _) => format!("Top 10 Movies in {}", country_name(&TOP_COUNTRY.read())),
                     _ => name.to_string(),
                 }),
                 extra: vec![ExtraProp { name: "skip".into(), ..Default::default() }],

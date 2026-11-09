@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { trimLogo } from "../lib/trimlogo";
   import { fallback, imdbArt } from "../lib/fallback";
   import { logoBroken, logoOk } from "../lib/badlogo.svelte";
   import Clip from "./Clip.svelte";
@@ -108,6 +109,27 @@
 
   const owned = $derived(meta ? inLibrary(meta.id) : false);
 
+  // the wheel over the card scrolls what's under it (the page, or a row
+  // sideways) and the card gets out of the way
+  function passWheel(e: WheelEvent) {
+    if (!card) return;
+    e.preventDefault();
+    card.style.pointerEvents = "none";
+    let el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+    card.style.pointerEvents = "";
+    const sideways = Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey;
+    while (el && el !== document.body) {
+      const cs = getComputedStyle(el);
+      if (sideways ? /(auto|scroll)/.test(cs.overflowX) && el.scrollWidth > el.clientWidth : /(auto|scroll)/.test(cs.overflowY) && el.scrollHeight > el.clientHeight) break;
+      el = el.parentElement;
+    }
+    const target = el && el !== document.body ? el : (document.querySelector("[data-scroller]") as HTMLElement | null);
+    const dy = e.deltaMode === 1 ? e.deltaY * 32 : e.deltaY;
+    const dx = e.deltaMode === 1 ? e.deltaX * 32 : e.deltaX;
+    target?.scrollBy({ top: sideways ? 0 : dy, left: sideways ? dx || dy : 0 });
+    closePreview(0);
+  }
+
   function onKey(e: KeyboardEvent) {
     if (e.key === "Escape" && meta) closePreview();
   }
@@ -126,6 +148,7 @@
     style:--mh="{box.mh}px"
     onmouseenter={keepPreview}
     onmouseleave={() => closePreview(80)}
+    onwheel={passWheel}
     role="dialog"
     aria-label={meta.name}
     tabindex="-1"
@@ -145,7 +168,7 @@
       {#if preview.art}<img class="from" src={preview.art} alt="" />{/if}
       <div class="shade"></div>
       {#if meta.logo && !logoBroken(meta.logo)}
-        <img class="logo" src={img(meta.logo)} alt={meta.name} use:logoOk={{ src: meta.logo, id: meta.id }} />
+        <img class="logo" src={img(meta.logo)} alt={meta.name} use:logoOk={{ src: meta.logo, id: meta.id }} use:trimLogo />
       {:else}
         <span class="title2 name">{meta.name}</span>
       {/if}
