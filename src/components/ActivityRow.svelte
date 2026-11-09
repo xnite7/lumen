@@ -39,7 +39,17 @@
             {#if a.title.logo && !logoBroken(a.title.logo)}<img class="logo" src={img(a.title.logo)} alt={a.title.name} loading="lazy" use:logoOk={{ src: a.title.logo, id: a.title.id }} />{:else}<span class="tname">{a.title.name}</span>{/if}
           </div>
           <div class="said">
-            <span class="av">{#if a.avatar}<img src={a.avatar} alt="" />{:else}{a.name.charAt(0).toUpperCase()}{/if}</span>
+            <span
+              class="av person"
+              role="button"
+              tabindex="0"
+              title="{a.name}'s page"
+              onclick={(e) => {
+                e.stopPropagation();
+                go({ name: "member", id: a.who, who: a.name, avatar: a.avatar });
+              }}
+              onkeydown={(e) => e.key === "Enter" && (e.stopPropagation(), go({ name: "member", id: a.who, who: a.name, avatar: a.avatar }))}
+            >{#if a.avatar}<img src={a.avatar} alt="" />{:else}{a.name.charAt(0).toUpperCase()}{/if}</span>
             <div class="bubble">
               <div class="top">
                 <span class="nm">{who(a)}</span>

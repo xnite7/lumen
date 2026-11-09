@@ -171,6 +171,8 @@ pub fn run() {
                     if integrations::simkl_sync::sync(&c2).await.unwrap_or(false) {
                         let _ = c2.app.emit("library-changed", ());
                     }
+                    // my page on the couch follows what I watch
+                    crew::publish_profile(&c2, false).await;
                     tokio::time::sleep(std::time::Duration::from_secs(300)).await;
                 }
             });
@@ -294,6 +296,7 @@ pub fn run() {
             commands::simkl_custom_lists,
             commands::simkl_list_items,
             commands::crew_social,
+            commands::crew_profile_publish,
             commands::share_link,
             commands::discord_me,
             commands::discord_rpc_status,

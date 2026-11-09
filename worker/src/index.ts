@@ -222,6 +222,13 @@ type React = { n: number; who: string; name: string; avatar?: string; emoji: str
 /** one line of the crew's activity: a review, a rating, or "finished X" */
 type Act = { id: string; who: string; name: string; avatar?: string; kind: "review" | "rating" | "finished"; title: { id: string; type: string; name: string; poster?: string; background?: string; logo?: string }; rating?: number; text?: string; at: number };
 type Fav = { id: string; type: string; name: string; poster?: string; at: number };
+/** one title on someone's profile */
+type PItem = { id: string; type: string; name: string; poster?: string; background?: string; logo?: string; rating?: number; at?: number; eps?: [number, number] };
+/** what someone's couch publishes about them (from their Simkl, or their couch library) */
+type Profile = { watching: PItem[]; recent: PItem[]; plan: PItem[]; stats: Record<string, number>; source: "simkl" | "couch"; at: number };
+/** the bits of their page they pick themselves */
+type Style = { accent?: string; glow?: boolean };
+type Person = { id: string; name: string; avatar?: string; accent?: string; at: number };
 const FEED_MAX = 150;
 const REACTIONS = ["😂", "😭", "😱", "🔥", "❤️", "👀", "💀", "🍿", "👏", "🤯"];
 const ASK_TTL = 120_000;
@@ -443,6 +450,14 @@ export class Crew {
     this.storage = state.storage;
   }
 
+  /** keep the people index (who has a page) current. accent "" = clear it */
+  async touchPerson(who: Who, accent?: string) {
+    const people = (await this.storage.get<Record<string, Person>>("people")) ?? {};
+    const prev = people[who.id];
+    people[who.id] = { id: who.id, name: who.name, avatar: who.avatar, accent: accent === undefined ? prev?.accent : accent || undefined, at: Date.now() };
+    await this.storage.put("people", people);
+  }
+
   /** the lasting part (kept in the Durable Object's storage): favourites,
    *  reviews and ratings, and the crew's activity feed */
   async social(req: Request, url: URL, b: any, who: Who): Promise<Response | null> {
@@ -465,6 +480,59 @@ export class Crew {
         return json({ ok: true });
       }
     }
+    // ---- profiles: everyone's page on the couch
+    if (p === "/v1/profile" && req.method === "PUT") {
+      const items = (a: unknown, max: number): PItem[] => {
+        const out: PItem[] = [];
+        for (const x of Array.isArray(a) ? a.slice(0, max) : []) {
+          const t = title(x);
+          if (!t) continue;
+          const r = num((x as any).rating);
+          const e = Array.isArray((x as any).eps) ? [num((x as any).eps[0]), num((x as any).eps[1])] as [number, number] : undefined;
+          out.push({ ...t, rating: r >= 1 && r <= 10 ? Math.round(r) : undefined, at: num((x as any).at) || undefined, eps: e });
+        }
+        return out;
+      };
+      const stats: Record<string, number> = {};
+      for (const k of ["movies", "shows", "episodes", "watching", "plan"]) stats[k] = Math.max(0, Math.round(num(b?.stats?.[k])));
+      const prof: Profile = { watching: items(b?.watching, 30), recent: items(b?.recent, 30), plan: items(b?.plan, 30), stats, source: b?.source === "simkl" ? "simkl" : "couch", at: Date.now() };
+      await this.storage.put(`profile:${who.id}`, prof);
+      await this.touchPerson(who);
+      return json({ ok: true });
+    }
+    if (p === "/v1/profile/style" && req.method === "PUT") {
+      const accent = typeof b?.accent === "string" && /^#[0-9a-fA-F]{6}$/.test(b.accent) ? b.accent.toLowerCase() : undefined;
+      const style: Style = { accent, glow: b?.glow !== false };
+      await this.storage.put(`style:${who.id}`, style);
+      await this.touchPerson(who, accent ?? "");
+      return json({ ok: true, style });
+    }
+    if (p === "/v1/people" && req.method === "GET") {
+      const people = Object.values((await this.storage.get<Record<string, Person>>("people")) ?? {}).sort((a, b) => b.at - a.at);
+      return json({ people });
+    }
+    const pm = p.match(/^\/v1\/profile\/([0-9]{5,25})$/);
+    if (pm && req.method === "GET") {
+      const id = pm[1];
+      const [prof, style, favs, people, feed] = await Promise.all([
+        this.storage.get<Profile>(`profile:${id}`),
+        this.storage.get<Style>(`style:${id}`),
+        this.storage.get<Fav[]>(`favs:${id}`),
+        this.storage.get<Record<string, Person>>("people"),
+        this.storage.get<Act[]>("feed"),
+      ]);
+      const person = people?.[id];
+      return json({
+        id,
+        name: person?.name,
+        avatar: person?.avatar,
+        profile: prof ?? null,
+        style: style ?? {},
+        favs: (favs ?? []).slice(0, 30),
+        activity: (feed ?? []).filter((a) => a.who === id).slice(0, 20),
+      });
+    }
+
     if (p === "/v1/activity") {
       if (req.method === "GET") return json({ feed: ((await this.storage.get<Act[]>("feed")) ?? []).slice(0, 60) });
       if (req.method === "POST") {

@@ -644,7 +644,10 @@ pub async fn simkl_item_status(s: S<'_>, kind: String, id: String) -> AppResult<
 /// with your rating and dates on each. `simkl: false` = build it locally.
 #[tauri::command]
 pub fn my_lists(s: S<'_>) -> Value {
-    let core = &s.core;
+    lists_value(&s.core)
+}
+
+pub fn lists_value(core: &crate::core::Core) -> Value {
     if !simkl::connected(core) || !crate::integrations::simkl_sync::has_data(core) {
         return json!({ "simkl": false });
     }
@@ -701,6 +704,13 @@ pub async fn simkl_list_items(s: S<'_>, id: u64) -> AppResult<Vec<Value>> {
 
 /// Favourites, reviews, the crew's activity and watch-together reactions
 /// live on the crew server (Simkl's API has none of them).
+/// Push my profile (watching / recent / plan / stats) to the crew now.
+#[tauri::command]
+pub async fn crew_profile_publish(s: S<'_>) -> AppResult<()> {
+    crate::crew::publish_profile(&s.core, true).await;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn crew_social(s: S<'_>, method: String, path: String, body: Option<Value>) -> AppResult<Value> {
     crate::crew::social(&s.core, &method, &path, body).await

@@ -392,7 +392,11 @@ pub async fn clip_url(core: &Core, id: &str) -> Option<String> {
 }
 
 pub async fn social(core: &Core, method: &str, path: &str, body: Option<Value>) -> AppResult<Value> {
-    let ok = ["/v1/favs", "/v1/activity"].contains(&path) || path.starts_with("/v1/reviews/") || path.starts_with("/v1/react/") || path.starts_with("/v1/frame/");
+    let ok = ["/v1/favs", "/v1/activity", "/v1/people", "/v1/profile"].contains(&path)
+        || path.starts_with("/v1/reviews/")
+        || path.starts_with("/v1/react/")
+        || path.starts_with("/v1/frame/")
+        || path.starts_with("/v1/profile/");
     if !ok || path.contains("..") {
         return Err(AppError::msg("not a social path"));
     }
@@ -413,4 +417,104 @@ pub async fn room(core: &Core, host: &str) -> AppResult<Value> {
 pub async fn leave(core: &Core, host: &str) -> AppResult<Value> {
     let me = member_id(core);
     call(core, reqwest::Method::DELETE, &format!("/v1/room/{host}/{me}"), None).await
+}
+
+
+// ------------------------------------------------------------ profiles
+static LAST_PROFILE: parking_lot::Mutex<Option<(u64, std::time::Instant)>> = parking_lot::Mutex::new(None);
+
+fn slim(m: &Value, at_key: &str) -> Value {
+    let at = m.get(at_key).and_then(|v| v.as_str()).map(crate::library::parse_iso).filter(|t| *t > 0);
+    json!({
+        "id": m.get("id"), "type": m.get("type"), "name": m.get("name"),
+        "poster": m.get("poster"), "background": m.get("background"), "logo": m.get("logo"),
+        "rating": m.get("userRating"), "at": at, "eps": m.get("episodes"),
+    })
+}
+
+/// What my page on the couch shows: from Simkl when connected, otherwise
+/// from what I've watched in couch.
+fn profile_snapshot(core: &Core) -> Value {
+    let l = crate::commands::lists_value(core);
+    let newest = |key: &str, at: &str| -> Vec<Value> {
+        let mut v: Vec<Value> = l.get(key).and_then(|a| a.as_array()).cloned().unwrap_or_default();
+        v.sort_by_key(|m| -m.get(at).and_then(|x| x.as_str()).map(crate::library::parse_iso).unwrap_or(0));
+        v.iter().take(30).map(|m| slim(m, at)).collect()
+    };
+    if l.get("simkl").and_then(|b| b.as_bool()) == Some(true) {
+        let count = |key: &str, kind: &str| l.get(key).and_then(|a| a.as_array()).map_or(0, |a| a.iter().filter(|m| m["type"] == kind).count());
+        let episodes: i64 = ["watching", "completed"]
+            .iter()
+            .filter_map(|k| l.get(*k).and_then(|a| a.as_array()))
+            .flatten()
+            .filter_map(|m| m.pointer("/episodes/0").and_then(|v| v.as_i64()))
+            .sum();
+        return json!({
+            "source": "simkl",
+            "watching": newest("watching", "watchedAt"),
+            "recent": newest("completed", "watchedAt"),
+            "plan": newest("plan", "addedAt"),
+            "stats": {
+                "movies": count("completed", "movie"),
+                "shows": count("completed", "series"),
+                "episodes": episodes,
+                "watching": l.get("watching").and_then(|a| a.as_array()).map_or(0, |a| a.len()),
+                "plan": l.get("plan").and_then(|a| a.as_array()).map_or(0, |a| a.len()),
+            },
+        });
+    }
+    // no Simkl: sort the couch library the same way My Lists does
+    let items = crate::library::all(core).unwrap_or_default();
+    let (mut watching, mut recent, mut plan) = (vec![], vec![], vec![]);
+    for i in &items {
+        let st = &i["state"];
+        let removed = i["removed"].as_bool().unwrap_or(false);
+        let done = st["flaggedWatched"].as_i64().unwrap_or(0) > 0 || st["timesWatched"].as_i64().unwrap_or(0) > 0;
+        if removed && !done {
+            continue;
+        }
+        let going = !done && (st["timeOffset"].as_i64().unwrap_or(0) > 0 || st["watchedIds"].as_array().map_or(false, |a| !a.is_empty()));
+        if i["temp"].as_bool().unwrap_or(false) && !done && !going {
+            continue;
+        }
+        let at = crate::library::parse_iso(st["lastWatched"].as_str().or(i["_mtime"].as_str()).unwrap_or(""));
+        let eps = st["watchedIds"].as_array().map(|a| a.len());
+        let row = json!({ "id": i["_id"], "type": i["type"], "name": i["name"], "poster": i["poster"], "background": i["background"], "logo": i["logo"], "at": at, "eps": eps.map(|n| json!([n, 0])) });
+        if done { recent.push(row) } else if going { watching.push(row) } else { plan.push(row) }
+    }
+    for v in [&mut watching, &mut recent, &mut plan] {
+        v.sort_by_key(|m| -m["at"].as_i64().unwrap_or(0));
+    }
+    let movies = recent.iter().filter(|m| m["type"] == "movie").count();
+    let shows = recent.len() - movies;
+    let stats = json!({ "movies": movies, "shows": shows, "episodes": 0, "watching": watching.len(), "plan": plan.len() });
+    watching.truncate(30);
+    recent.truncate(30);
+    plan.truncate(30);
+    json!({ "source": "couch", "watching": watching, "recent": recent, "plan": plan, "stats": stats })
+}
+
+/// Send my profile to the crew when it changed (or `force`), at most every
+/// few minutes otherwise.
+pub async fn publish_profile(core: &Core, force: bool) {
+    if server(core).is_none() && login(core).await.is_err() {
+        return;
+    }
+    let snap = profile_snapshot(core);
+    let hash = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        snap.to_string().hash(&mut h);
+        h.finish()
+    };
+    if !force {
+        if let Some((last, when)) = *LAST_PROFILE.lock() {
+            if last == hash && when.elapsed() < Duration::from_secs(6 * 3600) {
+                return;
+            }
+        }
+    }
+    if social(core, "PUT", "/v1/profile", Some(snap)).await.is_ok() {
+        *LAST_PROFILE.lock() = Some((hash, std::time::Instant::now()));
+    }
 }

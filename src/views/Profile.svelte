@@ -74,13 +74,14 @@
   <!-- account -->
   <section class="account group">
     {#if signed}
-      <div class="me">
+      <button class="me press mine" onclick={() => user?.id && go({ name: "member", id: String(user.id), who: name, avatar: user?.avatar as string | undefined })}>
         <span class="avatar">{#if user?.avatar}<img src={user.avatar} alt="" />{:else}{initial || "?"}{/if}</span>
         <div class="who">
           <span class="title3">{name}</span>
-          <span class="foot dim">on the couch via Discord</span>
+          <span class="foot dim">your page on the couch · customise it</span>
         </div>
-      </div>
+        <Icon name="chevron" size={16} />
+      </button>
     {:else}
       <div class="me col">
         <div class="who">
@@ -138,6 +139,14 @@
 </Sheet>
 
 <style>
+  .mine {
+    width: 100%;
+    text-align: left;
+  }
+  .mine > :global(svg) {
+    margin-left: auto;
+    opacity: 0.5;
+  }
   .profile {
     max-width: 720px;
     margin: 0 auto;

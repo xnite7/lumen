@@ -17,6 +17,7 @@ export type Route =
   | { name: "discover"; type?: string; catalog?: string; genre?: string }
   | { name: "detail"; type: string; id: string; hint?: string; preview?: any }
   | { name: "person"; person: string; tmdbId?: number; adult?: boolean }
+  | { name: "member"; id: string; who?: string; avatar?: string }
   | { name: "addons"; install?: string }
   | { name: "settings"; section?: string }
   | { name: "vibe"; q?: string }

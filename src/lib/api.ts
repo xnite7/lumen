@@ -327,6 +327,10 @@ export const api = {
   myLists: () => invoke<{ simkl: boolean; paid?: boolean; plan?: Meta[]; watching?: Meta[]; completed?: Meta[] }>("my_lists"),
   simklCustomLists: () => invoke<{ paid: boolean; lists: any[] }>("simkl_custom_lists"),
   simklListItems: (id: number) => invoke<Meta[]>("simkl_list_items", { id }),
+  people: () => invoke<{ people: CrewPerson[] }>("crew_social", { method: "GET", path: "/v1/people", body: null }),
+  profile: (id: string) => invoke<CrewProfile>("crew_social", { method: "GET", path: `/v1/profile/${id}`, body: null }),
+  setProfileStyle: (style: ProfileStyle) => invoke<{ ok: boolean; style: ProfileStyle }>("crew_social", { method: "PUT", path: "/v1/profile/style", body: style }),
+  publishProfile: () => invoke<void>("crew_profile_publish"),
   social: <T = any>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown) => invoke<T>("crew_social", { method, path, body: body ?? null }),
   shareLink: (kind: string, id: string, name: string) => invoke<string>("share_link", { kind, id, name }),
   vibe: (query: string) => invoke<{ read: string; picks: any[] }>("ai_vibe", { query }),
@@ -371,6 +375,42 @@ export interface CrewRoom {
   guests: string[];
   /** the host lets everyone control playback */
   shared?: boolean;
+}
+
+/** someone with a page on the couch */
+export interface CrewPerson {
+  id: string;
+  name: string;
+  avatar?: string;
+  accent?: string;
+  at: number;
+}
+export interface ProfileItem {
+  id: string;
+  type: string;
+  name: string;
+  poster?: string;
+  background?: string;
+  logo?: string;
+  /** their own score, 1-10 */
+  rating?: number;
+  at?: number;
+  /** [watched, total] episodes */
+  eps?: [number, number];
+}
+export interface ProfileStyle {
+  accent?: string;
+  /** the grainy glow round the edges of their page */
+  glow?: boolean;
+}
+export interface CrewProfile {
+  id: string;
+  name?: string;
+  avatar?: string;
+  profile: { watching: ProfileItem[]; recent: ProfileItem[]; plan: ProfileItem[]; stats: Record<string, number>; source: "simkl" | "couch"; at: number } | null;
+  style: ProfileStyle;
+  favs: { id: string; type: string; name: string; poster?: string; at: number }[];
+  activity: { id: string; kind: "review" | "rating" | "finished"; title: { id: string; type: string; name: string; poster?: string; background?: string }; rating?: number; text?: string; at: number }[];
 }
 
 export interface CrewMember {

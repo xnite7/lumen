@@ -295,6 +295,35 @@ export async function mock(cmd: string, args: any): Promise<any> {
       if (p === "/v1/favs") return { favs: [] };
       if (p.startsWith("/v1/reviews/")) return { reviews: [] };
       if (p.startsWith("/v1/react/")) return { reactions: [] };
+      if (p === "/v1/people") {
+        const now = Date.now();
+        return { people: [
+          { id: "100000000000000001", name: "nora", accent: "#4cc9f0", at: now - 6e4 },
+          { id: "100000000000000002", name: "dex", accent: "#ffb25c", at: now - 36e5 },
+          { id: "100000000000000003", name: "mika", accent: "#7ee081", at: now - 9e6 },
+        ] };
+      }
+      if (/^\/v1\/profile\/\d+$/.test(p) && args.method === "GET") {
+        const now = Date.now();
+        const it = (i: number, extra: any = {}) => ({ id: metas[i % metas.length].id, type: metas[i % metas.length].type, name: metas[i % metas.length].name, poster: metas[i % metas.length].poster, background: metas[i % metas.length].background, logo: (metas[i % metas.length] as any).logo, ...extra });
+        const series = metas.map((m, i) => [m, i] as const).filter(([m]) => m.type === "series").map(([, i]) => i);
+        const movies = metas.map((m, i) => [m, i] as const).filter(([m]) => m.type !== "series").map(([, i]) => i);
+        return {
+          id: p.split("/").pop(),
+          name: "nora",
+          profile: {
+            source: "simkl",
+            at: now - 6e5,
+            stats: { movies: 412, shows: 57, episodes: 3184, watching: 6, plan: 88 },
+            watching: [...series.slice(0, 4).map((i, k) => it(i, { eps: [3 + k * 4, 10 + k * 6] })), ...movies.slice(0, 2).map((i) => it(i))],
+            recent: movies.slice(2, 12).map((i, k) => it(i, { rating: k % 3 ? 7 + (k % 4) : undefined, at: now - k * 864e5 })),
+            plan: metas.slice(0, 10).map((_, i) => it(i + 3)),
+          },
+          style: { accent: "#4cc9f0", glow: true },
+          favs: movies.slice(0, 6).map((i) => it(i, { at: now })),
+          activity: [{ id: "x1", kind: "review", title: it(1), rating: 9, text: "the last twenty minutes had me holding my breath. go in blind.", at: now - 42 * 6e4 }],
+        };
+      }
       if (p === "/v1/activity" && args.method === "GET") {
         const now = Date.now();
         const t = (i: number) => ({ id: metas[i].id, type: metas[i].type, name: metas[i].name, poster: metas[i].poster, background: metas[i].background, logo: (metas[i] as any).logo });
