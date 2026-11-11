@@ -7,7 +7,7 @@ use gpui::{div, img, linear_color_stop, linear_gradient, prelude::*, px, AnyElem
 
 type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
-pub fn hero(m: &Meta, height: Pixels, on_play: Click, on_info: Click, on_add: Click) -> AnyElement {
+pub fn hero(m: &Meta, height: Pixels, clip: Option<(std::sync::Arc<gpui::RenderImage>, f32)>, on_play: Click, on_info: Click, on_add: Click) -> AnyElement {
     let art = m.background.clone().or(m.poster.clone()).map(|u| sized(&u, "original"));
     let logo = m.logo.clone().map(|u| sized(&u, "large"));
     let mut facts: Vec<String> = vec![if m.kind == "series" { "Series".into() } else { "Movie".into() }];
@@ -25,6 +25,8 @@ pub fn hero(m: &Meta, height: Pixels, on_play: Click, on_info: Click, on_add: Cl
         .overflow_hidden()
         .bg(theme::bg())
         .children(art.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover)))
+        // the clip, fading in over the art once it's playing
+        .children(clip.clone().map(|(f, a)| img(f).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(a)))
         // shade: left for the words, bottom into the rows
         .child(
             div()

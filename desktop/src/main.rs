@@ -53,6 +53,10 @@ impl Nav {
                 if r.route != route {
                     r.back.push(r.route.clone());
                     r.route = route;
+                    // the billboard / preview clip belongs to the page we left
+                    let v = ui::video::get(cx);
+                    let owner = v.read(cx).owner.clone();
+                    v.update(cx, |v, cx| v.stop(&owner, cx));
                     // lists are fresh every visit
                     if r.route == Route::Lists {
                         if let Some(l) = &r.library {
@@ -66,6 +70,9 @@ impl Nav {
     }
     pub fn back(cx: &mut App) {
         if let Some(r) = Self::root(cx) {
+            let v = ui::video::get(cx);
+            let owner = v.read(cx).owner.clone();
+            v.update(cx, |v, cx| v.stop(&owner, cx));
             r.update(cx, |r, cx| {
                 r.route = r.back.pop().unwrap_or(Route::Home);
                 cx.notify();
@@ -502,6 +509,7 @@ fn main() {
         }
         cx.set_http_client(net::CouchHttp::new(st.core.clone()));
         playback::init(cx);
+        ui::video::init(cx);
         together::init(cx);
         parties::init(cx);
         update::start(cx);

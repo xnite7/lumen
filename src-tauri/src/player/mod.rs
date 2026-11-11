@@ -13,6 +13,8 @@
 pub mod depth3d;
 #[cfg(desktop)]
 mod mpv;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub mod surface;
 mod session;
 
 use crate::core::CoreRef;

@@ -17,6 +17,8 @@ pub struct Row {
 
 pub struct Home {
     scope: &'static str,
+    /// the billboard's clip: (owner, url)
+    pub clip: Option<(String, String)>,
     hero: Option<Meta>,
     rows: Vec<Row>,
     scroll: ScrollHandle,
@@ -25,7 +27,8 @@ pub struct Home {
 impl Home {
     /// scope: "all" (Home), "series" (Shows) or "movie" (Movies)
     pub fn new(scope: &'static str, cx: &mut Context<Self>) -> Self {
-        let me = Self { scope, hero: None, rows: vec![], scroll: ScrollHandle::new() };
+        cx.observe(&crate::ui::video::get(cx), |_, _, cx| cx.notify()).detach();
+        let me = Self { scope, clip: None, hero: None, rows: vec![], scroll: ScrollHandle::new() };
         cx.spawn(async move |this, cx| {
             // the billboard: one title per visit, the next one each time
             if let Ok(list) = api::call::<Vec<Meta>>("hero_items", json!({})).await {
@@ -38,9 +41,24 @@ impl Home {
                     }
                     let pick = list[turn % list.len()].clone();
                     let _ = this.update(cx, |v, cx| {
-                        v.hero = Some(pick);
+                        v.hero = Some(pick.clone());
                         cx.notify();
                     });
+                    // a couple of seconds in, the billboard plays a clip (muted)
+                    gpui::Timer::after(std::time::Duration::from_millis(2000)).await;
+                    let year = pick.year();
+                    let clip = match std::env::var("COUCH_TEST_CLIP") {
+                        Ok(f) => Ok(Some(f)),
+                        Err(_) => api::call::<Option<String>>("clip_url", json!({ "id": pick.id, "title": pick.name, "year": year })).await,
+                    };
+                    if let Ok(Some(url)) = clip {
+                        let owner = format!("hero:{scope}:{}", pick.id);
+                        let _ = this.update(cx, |v, cx| {
+                            v.clip = Some((owner.clone(), url.clone()));
+                            let vid = crate::ui::video::get(cx);
+                            vid.update(cx, |x, cx| x.play(&owner, &url, cx));
+                        });
+                    }
                 }
             }
         })
@@ -151,9 +169,30 @@ impl Render for Home {
         match &self.hero {
             Some(m) => {
                 let (a, b, c) = (m.clone(), m.clone(), m.clone());
+                let vid = crate::ui::video::get(cx);
+                // the clip: resume it if we came back to this page
+                let clip = match &self.clip {
+                    Some((owner, url)) => {
+                        if vid.read(cx).owner.is_empty() {
+                            let (o, u) = (owner.clone(), url.clone());
+                            vid.update(cx, |x, cx| x.play(&o, &u, cx));
+                        }
+                        let owner = owner.clone();
+                        vid.update(cx, |x, _| {
+                            let f = x.frame(&owner, window)?;
+                            let a = x.since.map_or(0., |t| (t.elapsed().as_secs_f32() / 0.8).min(1.));
+                            Some((f, a))
+                        })
+                    }
+                    None => None,
+                };
+                if clip.as_ref().map_or(false, |c| c.1 < 1.) {
+                    window.request_animation_frame();
+                }
                 page = page.child(hero::hero(
                     m,
                     vh * 0.86,
+                    clip,
                     Box::new(move |_, _, cx| Nav::play(&a, cx)),
                     Box::new(move |_, _, cx| Nav::detail(&b, cx)),
                     Box::new(move |_, _, cx| Nav::add(&c, cx)),
@@ -161,6 +200,23 @@ impl Render for Home {
             }
             None => page = page.child(div().w_full().h(vh * 0.86).bg(theme::bg())),
         }
+        // the card that's previewing (one at a time)
+        let vid = crate::ui::video::get(cx);
+        let owner = vid.read(cx).owner.clone();
+        let card_clip = if owner.starts_with("card:") {
+            let o = owner.clone();
+            vid.update(cx, |x, _| {
+                let f = x.frame(&o, window)?;
+                let t = x.since.map_or(0., |t| t.elapsed().as_secs_f32());
+                Some((f, (t / 0.5).min(1.), t))
+            })
+        } else {
+            None
+        };
+        if card_clip.as_ref().map_or(false, |c| c.2 < 3.) {
+            window.request_animation_frame();
+        }
+        let card_owner = owner.trim_start_matches("card:").to_string();
         let mut below = div().relative().mt(px(-120.)).flex().flex_col().gap(px(34.)).pb(px(80.));
         for (ri, r) in self.rows.iter().enumerate() {
             below = below.child(
@@ -181,9 +237,10 @@ impl Render for Home {
                                 let (p, sub) = r.extra.get(i).cloned().unwrap_or((None, None));
                                 if r.key == "cw" {
                                     // straight back in where you left off
-                                    card::card_with(SharedString::from(format!("c-{ri}-{i}")), m, p, sub, move |_, _, cx| Nav::play(&mm, cx))
+                                    card::card_with(SharedString::from(format!("c-{ri}-{i}")), m, p, sub, None, move |_, _, cx| Nav::play(&mm, cx))
                                 } else {
-                                    card::card(SharedString::from(format!("c-{ri}-{i}")), m, move |_, _, cx| Nav::detail(&mm, cx))
+                                    let clip = if m.id == card_owner { card_clip.clone() } else { None };
+                                    card::card_preview(SharedString::from(format!("c-{ri}-{i}")), m, clip, move |_, _, cx| Nav::detail(&mm, cx))
                                 }
                             })),
                     ),

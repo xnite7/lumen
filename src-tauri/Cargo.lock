@@ -1082,6 +1082,7 @@ dependencies = [
  "image",
  "libloading 0.8.9",
  "libmpv2",
+ "libmpv2-sys",
  "librqbit",
  "librqbit-dualstack-sockets",
  "log",

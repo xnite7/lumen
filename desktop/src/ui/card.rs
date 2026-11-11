@@ -8,7 +8,18 @@ pub const W: f32 = 300.0;
 pub const H: f32 = 169.0;
 
 pub fn card(id: SharedString, m: &Meta, on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> AnyElement {
-    card_with(id, m, None, None, on_click)
+    card_with(id, m, None, None, None, on_click)
+}
+
+/// A card that previews on hover: `clip` is this card's frame + how far it
+/// has faded in + how long it's been playing (seconds).
+pub fn card_preview(
+    id: SharedString,
+    m: &Meta,
+    clip: Option<(std::sync::Arc<gpui::RenderImage>, f32, f32)>,
+    on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
+) -> AnyElement {
+    card_with(id, m, None, None, Some(clip), on_click)
 }
 
 /// A card with a progress bar and a line under it (Continue watching).
@@ -17,8 +28,13 @@ pub fn card_with(
     m: &Meta,
     progress: Option<f32>,
     sub: Option<String>,
+    preview: Option<Option<(std::sync::Arc<gpui::RenderImage>, f32, f32)>>,
     on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> AnyElement {
+    let hover_meta = m.clone();
+    let clip = preview.clone().flatten();
+    // the logo steps back once the clip has played 2 s, and comes back on hover of the picture
+    let logo_a = clip.as_ref().map_or(1., |c| 1. - ((c.2 - 2.) / 0.6).clamp(0., 1.));
     let art = m.background.clone().or(m.poster.clone()).map(|u| sized(&u, "w780"));
     let logo = m.logo.clone().map(|u| sized(&u, "w500"));
     let el = div()
@@ -35,7 +51,9 @@ pub fn card_with(
         .border_color(theme::white(0.0))
         .hover(|s| s.border_color(theme::white(0.55)))
         .on_click(on_click)
+        .when(preview.is_some(), |d| d.on_hover(move |on, _, cx| crate::ui::video::hover(&hover_meta, *on, cx)))
         .children(art.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover)))
+        .children(clip.map(|(f, a, _)| img(f).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(a)))
         .child(
             div()
                 .absolute()
@@ -54,6 +72,7 @@ pub fn card_with(
                 .h(px(54.))
                 .flex()
                 .items_end()
+                .opacity(logo_a)
                 .child(match logo {
                     Some(u) => img(u)
                         .h(px(54.))
