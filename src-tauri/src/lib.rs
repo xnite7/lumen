@@ -327,6 +327,8 @@ pub fn run() {
             commands::wrapped_data,
             commands::calendar_get,
             commands::follows_list,
+            commands::couch_lists_get,
+            commands::couch_lists_set,
             commands::follow_toggle,
             commands::follow_feed,
             commands::share_link,

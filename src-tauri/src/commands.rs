@@ -831,6 +831,21 @@ pub async fn company_get(s: S<'_>, id: u64) -> AppResult<Value> {
     crate::integrations::tmdb::company(&s.core, id).await
 }
 
+/// couch's own custom lists: [{ id, name, items: [meta], at }]
+#[tauri::command]
+pub fn couch_lists_get(s: S<'_>) -> Value {
+    s.core.db.get::<Value>("couch_lists").unwrap_or(json!([]))
+}
+
+#[tauri::command]
+pub fn couch_lists_set(s: S<'_>, lists: Value) -> AppResult<()> {
+    if !lists.is_array() {
+        return Err(AppError::msg("lists must be a list"));
+    }
+    s.core.db.set("couch_lists", &lists)?;
+    Ok(())
+}
+
 /// People and studios you follow: [{ kind: "person"|"studio", id, name, img }]
 #[tauri::command]
 pub fn follows_list(s: S<'_>) -> Value {

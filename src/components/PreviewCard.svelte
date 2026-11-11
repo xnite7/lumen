@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { addTo } from "../lib/stores/lists.svelte";
   import { pb } from "../lib/stores/playback.svelte";
   import { trimLogo } from "../lib/trimlogo";
   import { fallback, imdbArt } from "../lib/fallback";
@@ -238,7 +239,7 @@
           {:else}
             <button class="btn primary small press" onclick={() => { const m = meta; closePreview(0, false); app.settings.streams.autoplayBest ? quickPlay(m, card) : openDetail(m, card); }}><Icon name="play" size={15} /> Watch</button>
           {/if}
-          <button class="btn tinted icon small press" onclick={() => toggleLibrary(meta)} aria-label={owned ? "Remove from library" : "Add to library"} title={owned ? "In your library" : "Add to library"}>
+          <button class="btn tinted icon small press" onclick={(e) => addTo(meta, e.currentTarget)} aria-label={owned ? "Remove from library" : "Add to library"} title={owned ? "In your library" : "Add to library"}>
             <Icon name={owned ? "check" : "plus"} size={17} />
           </button>
           <button class="btn tinted icon small press" onclick={() => setWatched(meta, null, true)} aria-label="Mark as watched" title="Mark as watched">

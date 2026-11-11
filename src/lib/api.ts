@@ -334,6 +334,8 @@ export const api = {
   thumb: (t: number) => invoke<string | null>("player_thumb", { t }),
   calendar: (hits: boolean) => invoke<CalItem[]>("calendar_get", { hits }),
   wrappedData: (year: number) => invoke<WrapRow[]>("wrapped_data", { year }),
+  couchLists: () => invoke<CouchList[]>("couch_lists_get"),
+  saveCouchLists: (lists: CouchList[]) => invoke<void>("couch_lists_set", { lists }),
   follows: () => invoke<Follow[]>("follows_list"),
   followToggle: (f: Follow) => invoke<Follow[]>("follow_toggle", { kind: f.kind, id: f.id, name: f.name, img: f.img ?? null }),
   followFeed: () => invoke<(Meta & { because?: string; date?: string })[]>("follow_feed"),
@@ -419,6 +421,14 @@ export interface Taste {
   ids: string[];
   ratings: Record<string, number>;
   loved: ProfileItem[];
+}
+
+/** one of couch's own lists */
+export interface CouchList {
+  id: string;
+  name: string;
+  items: Meta[];
+  at: number;
 }
 
 /** a person or studio someone follows */

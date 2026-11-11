@@ -6,7 +6,7 @@
   import boil from "../assets/brand/couch-boil.webp";
   import { lib, loadLibrary } from "../lib/stores/library.svelte";
   import { app } from "../lib/stores/app.svelte";
-  import { api, type Meta } from "../lib/api";
+  import { api, img, type Meta } from "../lib/api";
   import { parseIsoLike } from "../lib/time";
   import Poster from "../components/Poster.svelte";
   import Controls from "../components/Controls.svelte";
@@ -16,6 +16,7 @@
   import { go } from "../lib/router.svelte";
   import { social, loadFavs } from "../lib/stores/social.svelte";
   import { live } from "../lib/stores/live.svelte";
+  import { lists, loadLists, askName, deleteList } from "../lib/stores/lists.svelte";
 
   type Tab = "plan" | "watching" | "completed" | "favs" | "custom";
   type Row = Meta & { userRating?: number | null; when?: number };
@@ -24,7 +25,7 @@
     { value: "watching", label: "Watching" },
     { value: "completed", label: "Completed" },
     { value: "favs", label: "Favourites" },
-    { value: "custom", label: "Custom lists" },
+    { value: "custom", label: "Lists" },
   ];
   let tab = $state<Tab>("plan");
   let kind = $state("all");
@@ -40,6 +41,7 @@
     void live.tick; // refreshes by itself every few minutes
     loadLibrary();
     loadFavs();
+    loadLists();
     api.myLists().then((r) => (simkl = r)).catch(() => (simkl = { simkl: false }));
     api.localRatings().then((r) => (local = r)).catch(() => {});
   });
@@ -64,7 +66,7 @@
   const rows = $derived.by((): Row[] => {
     let l: Row[];
     if (tab === "favs") l = social.favs.map((f) => ({ ...f, when: f.at }) as Row);
-    else if (tab === "custom") l = listItems;
+    else if (tab === "custom") l = openList?.couch ? (lists.all.find((x) => x.id === openList.id)?.items ?? []) : listItems;
     else if (simkl?.simkl) l = ((simkl[tab] ?? []) as Row[]).map((m: any) => ({ ...m, when: parseIsoLike(m.ratedAt && sort === "rating" ? m.ratedAt : m.watchedAt ?? m.addedAt) }));
     else l = fromLocal[tab];
     if (kind !== "all") l = l.filter((i) => i.type === kind);
@@ -82,6 +84,21 @@
       ],
       { title: "Sort completed by" },
     );
+  }
+
+  function pickCouch(l: { id: string; name: string }) {
+    openList = { id: l.id, name: l.name, couch: true };
+  }
+  function listMenu(e: MouseEvent, l: { id: string; name: string }) {
+    e.stopPropagation();
+    openMenu(e.currentTarget as HTMLElement, [
+      {
+        label: "Rename",
+        icon: "pencil",
+        run: () => askName(null, l),
+      },
+      { label: "Delete list", icon: "trash", destructive: true, run: () => deleteList(l.id) },
+    ], { title: l.name });
   }
 
   async function pick(l: any) {
@@ -118,31 +135,36 @@
     {/each}
   </div>
 
-  {#if tab === "custom" && !paid}
-    <div class="promo rise">
-      <img class="simkl" src="https://www.google.com/s2/favicons?domain=simkl.com&sz=128" alt="Simkl" />
-      <div class="tags"><span class="tag vip">VIP</span><span class="tag pro">PRO</span></div>
-      <p class="title3">Custom lists live on Simkl</p>
-      <p class="sub dim">Make as many lists as you like on Simkl and they show up here, backed up and synced everywhere. It's a Simkl PRO / VIP thing.</p>
-      {#if app.secrets.simkl_token}
-        <button class="btn primary press" onclick={() => api.openExternal("https://simkl.com/vip/")}>Get Simkl PRO or VIP</button>
-      {:else}
-        <button class="btn primary press" onclick={() => go({ name: "settings", section: "accounts" })}>Connect Simkl</button>
-        <button class="btn ghost press" onclick={() => api.openExternal("https://simkl.com/vip/")}>About PRO / VIP</button>
-      {/if}
-    </div>
-  {:else if tab === "custom" && !openList}
-    {#if custom?.lists.length}
-      <div class="cl-grid">
-        {#each custom.lists as l (l.id)}
+  {#if tab === "custom" && !openList}
+    <div class="cl-grid">
+      <button class="cl new press" onclick={() => askName()}>
+        <Icon name="plus" size={22} />
+        <span class="headline">new list</span>
+      </button>
+      {#each lists.all as l (l.id)}
+        <div class="cl-wrap">
+          <button class="cl press" onclick={() => pickCouch(l)}>
+            <div class="stackart">
+              {#each l.items.slice(0, 3) as it, k}{#if it.poster}<img src={img(it.poster, "w342")} alt="" style:--k={k} loading="lazy" />{/if}{/each}
+            </div>
+            <span class="headline">{l.name}</span>
+            <span class="foot dim">{l.items.length} {l.items.length === 1 ? "title" : "titles"}</span>
+          </button>
+          <button class="cl-more press" onclick={(e) => listMenu(e, l)} aria-label="List options"><Icon name="more" size={18} /></button>
+        </div>
+      {/each}
+      {#if paid}
+        {#each custom?.lists ?? [] as l (l.id)}
           <button class="cl press" onclick={() => pick(l)}>
+            <span class="tagline foot">simkl</span>
             <span class="headline">{l.name}</span>
             <span class="foot dim">{l.counts?.items ?? 0} titles · {l.media_type ?? "mixed"}</span>
           </button>
         {/each}
-      </div>
-    {:else if custom}
-      <div class="empty rise"><img class="couch-empty" src={boil} alt="" /><p>{empty.custom}</p></div>
+      {/if}
+    </div>
+    {#if !lists.all.length && !(paid && custom?.lists?.length)}
+      <p class="foot dim hint">make a list, then the + on any title lets you drop it in.</p>
     {/if}
   {:else}
     {#if tab === "custom" && openList}
@@ -250,6 +272,55 @@
     border-radius: 16px;
     background: rgb(255 255 255 / 0.06);
     box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.09);
+  }
+  .cl-wrap {
+    position: relative;
+    display: grid;
+  }
+  .cl-more {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: rgb(0 0 0 / 0.35);
+  }
+  .cl.new {
+    place-items: center;
+    align-content: center;
+    min-height: 150px;
+    text-align: center;
+    color: var(--label-2);
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.14);
+    border: 0;
+  }
+  .stackart {
+    position: relative;
+    height: 96px;
+    margin-bottom: 8px;
+  }
+  .stackart img {
+    position: absolute;
+    left: calc(var(--k) * 38px);
+    top: 0;
+    height: 96px;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    border-radius: 8px;
+    rotate: calc((var(--k) - 1) * 4deg);
+    box-shadow: 0 10px 20px -8px #000;
+    z-index: calc(3 - var(--k));
+  }
+  .tagline {
+    color: var(--label-3);
+    text-transform: lowercase;
+  }
+  .hint {
+    margin-top: 14px;
   }
   .cl:hover {
     background: rgb(255 255 255 / 0.1);

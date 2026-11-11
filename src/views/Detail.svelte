@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { addTo } from "../lib/stores/lists.svelte";
   import EmojiText from "../components/EmojiText.svelte";
   import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
   import { tvFocus } from "../lib/tvfocus";
@@ -256,7 +257,7 @@
             </button>
           {/if}
           <div class="secondary">
-            <button class="act press" onclick={() => { haptic("light"); toggleLibrary(m); }} aria-label={owned ? "Remove from My List" : "Add to My List"}>
+            <button class="act press" onclick={(e) => { haptic("light"); addTo(m, e.currentTarget); }} aria-label={owned ? "Remove from My List" : "Add to My List"}>
               <span class="act-ic glass"><Icon name={owned ? "check" : "plus"} size={20} /></span><span class="act-l">My List</span>
             </button>
             <button class="act press" onclick={() => { haptic("light"); markAll(); }} aria-label="Mark watched">

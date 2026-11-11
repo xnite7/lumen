@@ -1,6 +1,7 @@
 <script lang="ts">
   import UpdatePrompt from "./ui/UpdatePrompt.svelte";
   import Wrapped from "./components/Wrapped.svelte";
+  import ListNamer from "./ui/ListNamer.svelte";
   import { api, listen, type Meta, type Stream } from "./lib/api";
   import { app, boot, refreshSecrets } from "./lib/stores/app.svelte";
   import { applyCurrent } from "./lib/stores/theme.svelte";
@@ -304,6 +305,7 @@
   <UpdateBanner />
   <UpdatePrompt />
   <Wrapped />
+  <ListNamer />
 {/if}
 {#if splashing}<Splash ondone={() => (splashing = false)} />{/if}
 

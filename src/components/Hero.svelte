@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { addTo } from "../lib/stores/lists.svelte";
   import { logoBroken, logoOk } from "../lib/badlogo.svelte";
   import Clip from "./Clip.svelte";
   import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
@@ -237,7 +238,7 @@
             <div class="card-actions">
               {#if isUnreleased(m.id)}<button class="btn primary press grow unreleased" title={releaseNote(m.id)} onclick={() => openDetail(m, null)}><Icon name="play" size={16} /> Unreleased</button>{:else}<button class="btn primary press grow" onclick={() => playNow(m)} disabled={starting === m.id}>{#if starting === m.id}<span class="spin"></span>{:else}<Icon name="play" size={16} />{/if} Play</button>{/if}
               <button class="btn icon glass press" onclick={() => openDetail(m)} aria-label="More info"><Icon name="info" size={18} /></button>
-              <button class="btn icon glass press" onclick={() => { haptic("light"); toggleLibrary(m); }} aria-label={inLibrary(m.id) ? "In your list" : "Add to your list"}>
+              <button class="btn icon glass press" onclick={(e) => { haptic("light"); addTo(m, e.currentTarget); }} aria-label={inLibrary(m.id) ? "In your list" : "Add to your list"}>
                 <Icon name={inLibrary(m.id) ? "check" : "plus"} size={20} />
               </button>
             </div>
@@ -302,7 +303,7 @@
       <div class="actions">
         {#if isUnreleased(cur.id)}<button class="btn lg primary press play unreleased" title={releaseNote(cur.id)} use:tvFocus={{ tilt: false }} onclick={() => toast(`${cur.name}: ${releaseNote(cur.id)}`, "info")}><Icon name="play" size={18} /> Unreleased</button>{:else}<button class="btn lg primary press play" use:tvFocus={{ tilt: false }} onclick={() => playNow(cur)} disabled={starting === cur.id}>{#if starting === cur.id}<span class="spin"></span>{:else}<Icon name="play" size={18} />{/if} Play</button>{/if}
         <button class="btn lg glass press more-info" use:tvFocus={{ tilt: false }} onclick={() => openDetail(cur, el)}><Icon name="info" size={18} /> More info</button>
-        <button class="btn lg icon glass press" use:tvFocus={{ tilt: false }} onclick={() => toggleLibrary(cur)} aria-label={owned ? "In your list" : "Add to your list"} title={owned ? "In your list" : "Add to your list"}>
+        <button class="btn lg icon glass press" use:tvFocus={{ tilt: false }} onclick={(e) => addTo(cur, e.currentTarget)} aria-label={owned ? "In your list" : "Add to your list"} title={owned ? "In your list" : "Add to your list"}>
           <Icon name={owned ? "check" : "plus"} size={21} />
         </button>
         {#if trailer || clip}
