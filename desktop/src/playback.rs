@@ -111,6 +111,14 @@ pub fn init(cx: &mut App) {
                 while let Some(v) = rx.next().await {
                     let msg = v["message"].as_str().or(v["reason"].as_str()).unwrap_or("").to_string();
                     if ev == "player://end" && !msg.to_lowercase().contains("error") {
+                        // reached the end: the next episode by itself
+                        if msg == "eof" && couch::state::get().core.settings().playback.autoplay_next {
+                            let _ = this.update(cx, |p, cx| {
+                                if p.open && p.state.duration > 0. && p.state.pos / p.state.duration > 0.9 {
+                                    p.play_next(cx);
+                                }
+                            });
+                        }
                         continue;
                     }
                     let _ = this.update(cx, |p, cx| {
@@ -261,6 +269,31 @@ pub async fn gather(kind: &str, id: &str, ms: u64) -> Vec<Value> {
 }
 
 impl Playback {
+    /// The episode after this one (not specials after a finale, not unaired).
+    pub fn next_video(&self) -> Option<Value> {
+        let f = self.full.as_ref()?;
+        if f["type"] != "series" {
+            return None;
+        }
+        let list = ordered(f);
+        let i = list.iter().position(|v| v["id"].as_str() == Some(self.video_id.as_str()))?;
+        let n = list.get(i + 1)?;
+        if n["season"].as_i64().unwrap_or(0) == 0 && list[i]["season"].as_i64().unwrap_or(0) != 0 {
+            return None;
+        }
+        let today = couch::integrations::tmdb::today_str();
+        if n["released"].as_str().map_or(false, |r| &r[..r.len().min(10)] > today.as_str()) {
+            return None;
+        }
+        Some(n.clone())
+    }
+
+    pub fn play_next(&mut self, cx: &mut Context<Self>) {
+        let (Some(n), Some(m)) = (self.next_video(), self.meta.clone()) else { return };
+        let id = n["id"].as_str().unwrap_or("").to_string();
+        cx.defer(move |cx| quick_play(m, Some(id), None, cx));
+    }
+
     pub fn cmd(&self, name: &str, args: Value) {
         let name = name.to_string();
         couch::rt::spawn(async move {

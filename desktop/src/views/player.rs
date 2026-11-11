@@ -5,13 +5,21 @@ use crate::playback::{self, Playback};
 use crate::theme;
 use crate::ui::{icon, icon_fill};
 use gpui::{
-    div, img, linear_color_stop, linear_gradient, prelude::*, px, Context, Entity, FontWeight, MouseMoveEvent, ObjectFit, Pixels, Window,
+    SharedString, div, img, linear_color_stop, linear_gradient, prelude::*, px, Context, Entity, FontWeight, MouseMoveEvent, ObjectFit, Pixels, Window,
 };
 use serde_json::json;
 use std::time::{Duration, Instant};
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum Menu {
+    Audio,
+    Subs,
+    Speed,
+}
+
 pub struct PlayerView {
     pb: Entity<Playback>,
+    menu: Option<Menu>,
     last_move: Instant,
     shown: bool,
     hover_x: Option<f32>,
@@ -26,7 +34,7 @@ impl PlayerView {
             gpui::Timer::after(Duration::from_millis(400)).await;
             let Ok(()) = this.update(cx, |v, cx| {
                 let paused = v.pb.read(cx).state.paused;
-                let show = paused || v.last_move.elapsed() < Duration::from_millis(2800) || v.pb.read(cx).loading;
+                let show = paused || v.menu.is_some() || v.last_move.elapsed() < Duration::from_millis(2800) || v.pb.read(cx).loading;
                 if show != v.shown {
                     v.shown = show;
                     cx.notify();
@@ -36,7 +44,7 @@ impl PlayerView {
             };
         })
         .detach();
-        Self { pb, last_move: Instant::now(), shown: true, hover_x: None }
+        Self { pb, menu: None, last_move: Instant::now(), shown: true, hover_x: None }
     }
 
     pub fn poke(&mut self, cx: &mut Context<Self>) {
@@ -58,6 +66,49 @@ pub fn clock(t: f64) -> String {
     }
 }
 
+fn lang(code: &str) -> String {
+    let c = code.to_lowercase();
+    let name = match c.as_str() {
+        "en" | "eng" => "English",
+        "ar" | "ara" => "Arabic",
+        "fr" | "fre" | "fra" => "French",
+        "es" | "spa" => "Spanish",
+        "de" | "ger" | "deu" => "German",
+        "it" | "ita" => "Italian",
+        "pt" | "por" => "Portuguese",
+        "ru" | "rus" => "Russian",
+        "ja" | "jpn" => "Japanese",
+        "ko" | "kor" => "Korean",
+        "zh" | "chi" | "zho" => "Chinese",
+        "hi" | "hin" => "Hindi",
+        "tr" | "tur" => "Turkish",
+        "nl" | "dut" | "nld" => "Dutch",
+        "pl" | "pol" => "Polish",
+        "sv" | "swe" => "Swedish",
+        "" | "und" => "Unknown",
+        other => return other.to_string(),
+    };
+    name.into()
+}
+
+/// "English 1", "English 2", "Arabic" — simple names for the tracks
+fn named(list: &[serde_json::Value]) -> Vec<(serde_json::Value, String)> {
+    let mut total = std::collections::HashMap::new();
+    for t in list {
+        *total.entry(lang(t["lang"].as_str().unwrap_or(""))).or_insert(0) += 1;
+    }
+    let mut seen = std::collections::HashMap::new();
+    list.iter()
+        .map(|t| {
+            let l = lang(t["lang"].as_str().unwrap_or(""));
+            let n = seen.entry(l.clone()).or_insert(0);
+            *n += 1;
+            let label = if total[&l] > 1 { format!("{l} {n}") } else { l };
+            (t.clone(), label)
+        })
+        .collect()
+}
+
 fn round_btn(id: &'static str, child: impl IntoElement, size: f32) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
@@ -69,6 +120,78 @@ fn round_btn(id: &'static str, child: impl IntoElement, size: f32) -> gpui::Stat
         .cursor_pointer()
         .hover(|s| s.bg(theme::white(0.14)))
         .child(child)
+}
+
+impl PlayerView {
+    fn menu_panel(&self, m: Menu, cx: &mut Context<Self>) -> gpui::AnyElement {
+        let p = self.pb.read(cx);
+        let row = |id: SharedString, label: String, on: bool| {
+            div()
+                .id(id)
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .px(px(14.))
+                .h(px(42.))
+                .rounded(px(10.))
+                .cursor_pointer()
+                .text_size(px(16.))
+                .font_weight(if on { FontWeight::BOLD } else { FontWeight::MEDIUM })
+                .hover(|s| s.bg(theme::white(0.1)))
+                .child(div().w(px(18.)).children(on.then(|| icon("check", 18.))))
+                .child(label)
+        };
+        let (title, rows): (&str, Vec<gpui::AnyElement>) = match m {
+            Menu::Audio | Menu::Subs => {
+                let kind = if m == Menu::Audio { "audio" } else { "sub" };
+                let list: Vec<serde_json::Value> = p.tracks.iter().filter(|t| t["type"] == kind).cloned().collect();
+                let mut rows: Vec<gpui::AnyElement> = vec![];
+                if m == Menu::Subs {
+                    let off = !list.iter().any(|t| t["selected"].as_bool() == Some(true));
+                    let pb = self.pb.clone();
+                    rows.push(row("sub-off".into(), "Off".into(), off).on_click(move |_, _, cx| pb.read(cx).cmd("sid", json!({ "value": "no" }))).into_any_element());
+                }
+                for (i, (t, label)) in named(&list).into_iter().enumerate() {
+                    let on = t["selected"].as_bool() == Some(true);
+                    let id = t["id"].as_i64().unwrap_or(0);
+                    let pb = self.pb.clone();
+                    let cmd = if m == Menu::Audio { "aid" } else { "sid" };
+                    rows.push(row(SharedString::from(format!("{kind}-{i}")), label, on).on_click(move |_, _, cx| pb.read(cx).cmd(cmd, json!({ "value": id }))).into_any_element());
+                }
+                (if m == Menu::Audio { "audio" } else { "subtitles" }, rows)
+            }
+            Menu::Speed => {
+                let cur = p.state.speed;
+                let rows = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
+                    .into_iter()
+                    .map(|v| {
+                        let pb = self.pb.clone();
+                        row(SharedString::from(format!("sp-{v}")), if v == 1.0 { "normal".into() } else { format!("{v}x") }, (cur - v).abs() < 0.01)
+                            .on_click(move |_, _, cx| pb.read(cx).cmd("speed", json!({ "value": v })))
+                            .into_any_element()
+                    })
+                    .collect();
+                ("speed", rows)
+            }
+        };
+        div()
+            .id("pl-menu")
+            .absolute()
+            .right(px(theme::GUTTER))
+            .bottom(px(96.))
+            .w(px(300.))
+            .max_h(px(420.))
+            .overflow_y_scroll()
+            .p(px(8.))
+            .rounded(px(18.))
+            .bg(gpui::rgba(0x0c090bf2))
+            .border_1()
+            .border_color(theme::white(0.1))
+            .on_click(|_, _, cx| cx.stop_propagation())
+            .child(div().px(px(14.)).py(px(8.)).text_size(px(13.)).font_weight(FontWeight::BOLD).text_color(theme::label3()).child(title))
+            .children(rows)
+            .into_any_element()
+    }
 }
 
 impl Render for PlayerView {
@@ -96,9 +219,19 @@ impl Render for PlayerView {
             .size_full()
             .relative()
             .on_mouse_move(cx.listener(|v, _: &MouseMoveEvent, _, cx| v.poke(cx)))
-            .on_click(cx.listener(|v, e: &gpui::ClickEvent, _, cx| {
+            .on_click(cx.listener(|v, e: &gpui::ClickEvent, window, cx| {
+                if e.click_count() == 2 {
+                    // double click: full screen (undo the first click's pause)
+                    window.toggle_fullscreen();
+                    let paused = v.pb.read(cx).state.paused;
+                    v.pb.read(cx).cmd("pause", json!({ "value": !paused }));
+                    return;
+                }
                 // a click on the picture: play / pause (double click: full screen)
-                if e.click_count() == 1 {
+                if v.menu.is_some() {
+                    v.menu = None;
+                    cx.notify();
+                } else if e.click_count() == 1 {
                     let paused = v.pb.read(cx).state.paused;
                     v.pb.read(cx).cmd("pause", json!({ "value": !paused }));
                 }
@@ -165,6 +298,9 @@ impl Render for PlayerView {
         let pb3 = self.pb.clone();
         let pb4 = self.pb.clone();
         let hover = self.hover_x;
+        let next = p.next_video().map(|n| format!("S{} E{}", n["season"].as_i64().unwrap_or(0), n["episode"].as_i64().or(n["number"].as_i64()).unwrap_or(0)));
+        let menu = self.menu.map(|m| self.menu_panel(m, cx));
+        let root = root.children(menu);
         root
             // top: back, title
             .child(
@@ -314,6 +450,42 @@ impl Render for PlayerView {
                                     .child(format!("{} / {}", clock(st.pos), clock(st.duration))),
                             )
                             .child(div().flex_1())
+                            .children(next.map(|n| {
+                                let pb = self.pb.clone();
+                                div()
+                                    .id("pl-next")
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.))
+                                    .h(px(44.))
+                                    .px(px(16.))
+                                    .rounded_full()
+                                    .bg(theme::white(0.12))
+                                    .text_size(px(15.))
+                                    .font_weight(FontWeight::BOLD)
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::white(0.2)))
+                                    .on_click(move |_, _, cx| pb.update(cx, |p, cx| p.play_next(cx)))
+                                    .child(icon("next", 20.))
+                                    .child(format!("next · {}", n))
+                            }))
+                            .child(round_btn("pl-subs", icon("subtitles", 26.), 50.).on_click(cx.listener(|v, _, _, cx| {
+                                cx.stop_propagation();
+                                v.menu = if v.menu == Some(Menu::Subs) { None } else { Some(Menu::Subs) };
+                                cx.notify();
+                            })))
+                            .child(round_btn("pl-audio", icon("audio", 26.), 50.).on_click(cx.listener(|v, _, _, cx| {
+                                cx.stop_propagation();
+                                v.menu = if v.menu == Some(Menu::Audio) { None } else { Some(Menu::Audio) };
+                                cx.notify();
+                            })))
+                            .child(
+                                round_btn("pl-speed", div().text_size(px(15.)).font_weight(FontWeight::BLACK).child(format!("{}x", st.speed)), 50.).on_click(cx.listener(|v, _, _, cx| {
+                                    cx.stop_propagation();
+                                    v.menu = if v.menu == Some(Menu::Speed) { None } else { Some(Menu::Speed) };
+                                    cx.notify();
+                                })),
+                            )
                             .child(round_btn("pl-full", icon("fullscreen", 26.), 50.).on_click(|_, window, _| window.toggle_fullscreen())),
                     ),
             )
