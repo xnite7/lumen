@@ -1,5 +1,6 @@
 pub mod card;
 pub mod hero;
+pub mod input;
 
 use crate::theme;
 use gpui::{prelude::*, px, svg, Svg};

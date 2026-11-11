@@ -13,7 +13,7 @@ mod views;
 use api::Meta;
 use futures::StreamExt;
 use gpui::{
-    div, img, prelude::*, px, size, App, Application, Bounds, Context, Entity, FontWeight, Global, Image, ImageFormat, SharedString,
+    Focusable, div, img, prelude::*, px, size, App, Application, Bounds, Context, Entity, FontWeight, Global, Image, ImageFormat, SharedString,
     TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowOptions,
 };
 use serde_json::json;
@@ -47,6 +47,12 @@ impl Nav {
                 if r.route != route {
                     r.back.push(r.route.clone());
                     r.route = route;
+                    // lists are fresh every visit
+                    if r.route == Route::Lists {
+                        if let Some(l) = &r.library {
+                            l.update(cx, |_, cx| views::library::Library::load(cx));
+                        }
+                    }
                 }
                 cx.notify();
             });
@@ -104,10 +110,15 @@ pub struct Root {
     route: Route,
     back: Vec<Route>,
     home: Entity<views::home::Home>,
+    shows: Option<Entity<views::home::Home>>,
+    movies: Option<Entity<views::home::Home>>,
     toast: Option<String>,
     mark: Arc<Image>,
     player: Entity<views::player::PlayerView>,
     detail: Option<Entity<views::detail::Detail>>,
+    search: Option<Entity<views::search::Search>>,
+    library: Option<Entity<views::library::Library>>,
+    calendar: Option<Entity<views::calendar::Calendar>>,
     focus: gpui::FocusHandle,
     last_size: gpui::Size<gpui::Pixels>,
 }
@@ -154,6 +165,7 @@ impl Root {
                                 .justify_center()
                                 .rounded_full()
                                 .cursor_pointer()
+                                .when(route == Route::Search, |d| d.bg(theme::white(0.16)))
                                 .hover(|s| s.bg(theme::white(0.1)))
                                 .on_click(|_, _, cx| Nav::go(Route::Search, cx))
                                 .child(icon("search", 20.).text_color(theme::label2())),
@@ -271,6 +283,18 @@ impl Render for Root {
         let page = match &self.route {
             Route::Home => self.home.clone().into_any_element(),
             Route::Player => self.player.clone().into_any_element(),
+            Route::Calendar => self.calendar.get_or_insert_with(|| cx.new(views::calendar::Calendar::new)).clone().into_any_element(),
+            Route::Lists => self.library.get_or_insert_with(|| cx.new(views::library::Library::new)).clone().into_any_element(),
+            Route::Search => {
+                let s = self.search.get_or_insert_with(|| cx.new(views::search::Search::new)).clone();
+                let f = s.read(cx).input.read(cx).focus_handle(cx);
+                if !f.contains_focused(window, cx) {
+                    window.focus(&f);
+                }
+                s.into_any_element()
+            }
+            Route::Shows => self.shows.get_or_insert_with(|| cx.new(|cx| views::home::Home::new("series", cx))).clone().into_any_element(),
+            Route::Movies => self.movies.get_or_insert_with(|| cx.new(|cx| views::home::Home::new("movie", cx))).clone().into_any_element(),
             Route::Detail(m) => {
                 let fresh = self.detail.as_ref().map_or(true, |d| d.read(cx).base.id != m.id);
                 if fresh {
@@ -330,6 +354,26 @@ fn main() {
 
     Application::new().with_assets(assets::Assets).run(move |cx: &mut App| {
         cx.text_system().add_fonts(assets::fonts()).expect("fonts");
+        {
+            use gpui::KeyBinding;
+            use ui::input::*;
+            let c = Some("TextInput");
+            cx.bind_keys([
+                KeyBinding::new("backspace", Backspace, c),
+                KeyBinding::new("delete", Delete, c),
+                KeyBinding::new("left", Left, c),
+                KeyBinding::new("right", Right, c),
+                KeyBinding::new("shift-left", SelectLeft, c),
+                KeyBinding::new("shift-right", SelectRight, c),
+                KeyBinding::new("ctrl-a", SelectAll, c),
+                KeyBinding::new("ctrl-v", Paste, c),
+                KeyBinding::new("ctrl-c", Copy, c),
+                KeyBinding::new("ctrl-x", Cut, c),
+                KeyBinding::new("home", Home, c),
+                KeyBinding::new("end", End, c),
+                KeyBinding::new("enter", Enter, c),
+            ]);
+        }
         cx.set_http_client(net::CouchHttp::new(st.core.clone()));
         playback::init(cx);
 
@@ -363,16 +407,29 @@ fn main() {
                         // dev: start on a page (COUCH_START=detail:series:tt0903747)
                         let start = std::env::var("COUCH_START").ok().and_then(|v| {
                             let p: Vec<&str> = v.split(':').collect();
-                            (p.len() == 3 && p[0] == "detail").then(|| Route::Detail(Meta { kind: p[1].into(), id: p[2].into(), ..Default::default() }))
+                            match p.as_slice() {
+                                ["detail", k, i] => Some(Route::Detail(Meta { kind: (*k).into(), id: (*i).into(), ..Default::default() })),
+                                ["search"] => Some(Route::Search),
+                                ["lists"] => Some(Route::Lists),
+                                ["calendar"] => Some(Route::Calendar),
+                                ["shows"] => Some(Route::Shows),
+                                ["movies"] => Some(Route::Movies),
+                                _ => None,
+                            }
                         });
                         Root {
                             route: start.unwrap_or(Route::Home),
                             back: vec![],
-                            home: cx.new(views::home::Home::new),
+                            home: cx.new(|cx| views::home::Home::new("all", cx)),
+                            shows: None,
+                            movies: None,
                             toast: None,
                             mark,
                             player: cx.new(views::player::PlayerView::new),
                             detail: None,
+                            search: None,
+                            library: None,
+                            calendar: None,
                             focus,
                             last_size: gpui::Size::default(),
                         }

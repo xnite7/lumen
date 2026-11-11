@@ -1,4 +1,7 @@
 pub mod home;
+pub mod calendar;
+pub mod library;
+pub mod search;
 pub mod player;
 pub mod detail;
 

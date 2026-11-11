@@ -14,22 +14,26 @@ pub struct Row {
 }
 
 pub struct Home {
+    scope: &'static str,
     hero: Option<Meta>,
     rows: Vec<Row>,
     scroll: ScrollHandle,
 }
 
 impl Home {
-    pub fn new(cx: &mut Context<Self>) -> Self {
-        let me = Self { hero: None, rows: vec![], scroll: ScrollHandle::new() };
+    /// scope: "all" (Home), "series" (Shows) or "movie" (Movies)
+    pub fn new(scope: &'static str, cx: &mut Context<Self>) -> Self {
+        let me = Self { scope, hero: None, rows: vec![], scroll: ScrollHandle::new() };
         cx.spawn(async move |this, cx| {
             // the billboard: one title per visit, the next one each time
             if let Ok(list) = api::call::<Vec<Meta>>("hero_items", json!({})).await {
-                let list: Vec<Meta> = list.into_iter().filter(|m| m.background.is_some()).collect();
+                let list: Vec<Meta> = list.into_iter().filter(|m| m.background.is_some() && (scope == "all" || m.kind == scope)).collect();
                 if !list.is_empty() {
                     let st = couch::state::get();
                     let turn = st.core.db.get::<usize>("gpui_hero_turn").unwrap_or(0);
-                    let _ = st.core.db.set("gpui_hero_turn", &(turn + 1));
+                    if scope == "all" {
+                        let _ = st.core.db.set("gpui_hero_turn", &(turn + 1));
+                    }
                     let pick = list[turn % list.len()].clone();
                     let _ = this.update(cx, |v, cx| {
                         v.hero = Some(pick);
@@ -40,8 +44,9 @@ impl Home {
         })
         .detach();
         cx.spawn(async move |this, cx| {
-            // continue watching first
-            if let Ok(items) = api::call::<Vec<Value>>("continue_watching", json!({})).await {
+            // continue watching first (Home only)
+            if scope != "all" {
+            } else if let Ok(items) = api::call::<Vec<Value>>("continue_watching", json!({})).await {
                 let metas: Vec<Meta> = items
                     .into_iter()
                     .filter_map(|v| serde_json::from_value::<Meta>(v.get("meta").cloned().unwrap_or(v)).ok())
@@ -60,11 +65,16 @@ impl Home {
                 .into_iter()
                 .filter(|c| {
                     let id = c["id"].as_str().unwrap_or("");
-                    c["builtin"].as_bool() == Some(true)
-                        && (matches!(id, "simkl-new" | "simkl-plantowatch" | "motn-top"))
+                    let personal = c["builtin"].as_bool() == Some(true) && matches!(id, "simkl-new" | "simkl-plantowatch" | "motn-top" | "simkl-upnext" | "simkl-watching");
+                    let browsable = !c["extra"].as_array().into_iter().flatten().any(|e| e["isRequired"].as_bool() == Some(true) && (e["name"] == "search" || e["options"].as_array().map_or(true, |o| o.is_empty())));
+                    if scope == "all" {
+                        personal && !matches!(id, "simkl-upnext" | "simkl-watching")
+                    } else {
+                        browsable && !personal && c["type"].as_str() == Some(scope)
+                    }
                 })
                 .collect();
-            let curated = api::call::<Vec<Value>>("home_rows", json!({ "scope": "all" })).await.unwrap_or_default();
+            let curated = api::call::<Vec<Value>>("home_rows", json!({ "scope": scope })).await.unwrap_or_default();
             let mut specs: Vec<(Value, Vec<(String, String)>)> = vec![];
             let (mut a, mut b) = (personal.into_iter(), curated.into_iter());
             loop {
@@ -116,7 +126,7 @@ impl Home {
 impl Render for Home {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let vh = window.viewport_size().height;
-        let mut page = div().id("home").size_full().overflow_y_scroll().track_scroll(&self.scroll).bg(theme::bg());
+        let mut page = div().id(SharedString::from(format!("home-{}", self.scope))).size_full().overflow_y_scroll().track_scroll(&self.scroll).bg(theme::bg());
         match &self.hero {
             Some(m) => {
                 let (a, b, c) = (m.clone(), m.clone(), m.clone());

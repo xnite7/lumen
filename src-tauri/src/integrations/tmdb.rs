@@ -595,7 +595,7 @@ fn today() -> String {
 }
 
 /// A date `offset` days from today, as YYYY-MM-DD.
-fn day_str(offset: i64) -> String {
+pub fn day_str(offset: i64) -> String {
     let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() / 86_400).unwrap_or(0) as i64 + offset;
     let z = days + 719_468;
     let era = z.div_euclid(146_097);

@@ -62,3 +62,26 @@ pub fn card(id: SharedString, m: &Meta, on_click: impl Fn(&gpui::ClickEvent, &mu
 fn title_text(name: &str) -> impl IntoElement {
     div().text_size(px(19.)).font_weight(gpui::FontWeight::BLACK).line_height(px(21.)).line_clamp(2).text_color(theme::text()).child(name.to_string())
 }
+
+/// A portrait poster (search results, lists).
+pub fn poster(id: SharedString, m: &Meta, w: f32, on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> AnyElement {
+    let art = m.poster.clone().map(|u| sized(&u, "w342"));
+    let name = m.name.clone();
+    div()
+        .id(id)
+        .flex_none()
+        .w(px(w))
+        .h(px(w * 1.5))
+        .rounded(px(10.))
+        .overflow_hidden()
+        .relative()
+        .bg(theme::surface2())
+        .cursor_pointer()
+        .border_1()
+        .border_color(theme::white(0.0))
+        .hover(|s| s.border_color(theme::white(0.55)))
+        .on_click(on_click)
+        .child(div().absolute().top_0().left_0().size_full().p(px(10.)).flex().items_end().child(title_text(&name)))
+        .children(art.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover)))
+        .into_any_element()
+}
