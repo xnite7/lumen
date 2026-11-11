@@ -232,6 +232,8 @@ pub fn run() {
             commands::cache_info,
             commands::cache_clear,
             commands::import_stremio_enhanced,
+            commands::beta_latest,
+            commands::beta_install,
         ])
         .run(tauri::generate_context!())
         .expect("error while running couch");

@@ -116,6 +116,24 @@ async function updates(url: URL, env: Env): Promise<Response> {
   return json(latest);
 }
 
+// ----------------------------------------------------- the new app (beta)
+// The GPUI build: prereleases tagged gpui-<n>, each with couch-gpui.zip.
+// /v1/gpui/latest -> { version, size } ; /v1/gpui/file -> the zip.
+async function gpui(url: URL, env: Env): Promise<Response> {
+  if (!env.GH_TOKEN) return json({ error: "no builds yet" }, 404);
+  const rels = await gh(env, "/releases?per_page=20");
+  if (!rels.ok) return json({ error: "no builds yet" }, 404);
+  const list: any[] = await rels.json();
+  const rel = list.find((r) => String(r.tag_name).startsWith("gpui-"));
+  const zip = rel?.assets?.find((a: any) => a.name === "couch-gpui.zip");
+  if (!rel || !zip) return json({ error: "no builds yet" }, 404);
+  if (url.pathname === "/v1/gpui/file") {
+    const bin = await asset(env, zip.id);
+    return new Response(bin.body, { headers: { "content-type": "application/zip", "content-length": String(zip.size) } });
+  }
+  return json({ version: String(rel.tag_name).slice(5), size: zip.size, notes: rel.body ?? "" });
+}
+
 type Who = { id: string; name: string; avatar?: string };
 // short on purpose: a session is re-earned from Discord every couple of
 // minutes, so someone kicked from the server is out right away
@@ -300,6 +318,7 @@ export default {
     const clipAsk = url.pathname.match(/^\/v1\/clip\/(tt\d{5,10})$/);
     if (clipAsk) return json({ clip: !!(await clipPick(env, clipAsk[1], url.searchParams.get("title"), url.searchParams.get("year"))) });
     if (url.pathname.startsWith("/v1/update/")) return updates(url, env);
+    if (url.pathname === "/v1/gpui/latest" || url.pathname === "/v1/gpui/file") return gpui(url, env);
     // the Durable Object trusts this header; set it here, never from the client
     const fwd = new Request(req);
     fwd.headers.set("x-who", JSON.stringify(who));

@@ -37,7 +37,7 @@ pub fn member_id(core: &Core) -> String {
 
 /// (url, "Bearer <session>") once the server has checked you're in the
 /// midnite Discord server. No codes, no invite links.
-fn server(core: &Core) -> Option<(String, String)> {
+pub fn server(core: &Core) -> Option<(String, String)> {
     let session = core.db.secret("crew_session")?;
     let exp = core.db.get::<Value>("crew_session_exp").and_then(|v| v.as_u64()).unwrap_or(0);
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);

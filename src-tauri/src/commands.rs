@@ -1296,3 +1296,17 @@ pub async fn net_speed(s: S<'_>, fresh: Option<bool>) -> AppResult<f64> {
     *SPEED.lock() = Some((std::time::Instant::now(), mbps));
     Ok(mbps)
 }
+
+// ------------------------------------------------------------ the new app
+
+/// { version } of the newest build of the new couch (GPUI), if any.
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn beta_latest(s: S<'_>) -> AppResult<Value> {
+    crate::beta::latest(&s.core).await
+}
+
+/// Install the new couch next to this one and open it.
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn beta_install(s: S<'_>) -> AppResult<()> {
+    crate::beta::install_and_open(&s.core).await
+}

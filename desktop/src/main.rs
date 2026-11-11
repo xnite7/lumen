@@ -8,6 +8,7 @@ mod net;
 mod parties;
 mod playback;
 mod together;
+mod update;
 mod theme;
 mod ui;
 mod views;
@@ -503,6 +504,7 @@ fn main() {
         playback::init(cx);
         together::init(cx);
         parties::init(cx);
+        update::start(cx);
 
         let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
         let window = cx

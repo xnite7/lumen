@@ -1,4 +1,5 @@
 pub mod addons;
+pub mod beta;
 pub mod commands;
 pub mod core;
 pub mod db;

@@ -508,6 +508,12 @@ pub async fn invoke(cmd: &str, a: Value) -> Result<Value, String> {
             let fresh: Option<bool> = arg(&a, "fresh")?;
             out(commands::net_speed(st, fresh).await.map_err(|e| e.to_string())?)
         }
+        "beta_latest" => {
+            out(commands::beta_latest(st).await.map_err(|e| e.to_string())?)
+        }
+        "beta_install" => {
+            out(commands::beta_install(st).await.map_err(|e| e.to_string())?)
+        }
         _ => Err(format!("unknown command {cmd}")),
     }
 }

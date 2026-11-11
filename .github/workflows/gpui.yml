@@ -12,6 +12,8 @@ env:
   COUCH_AI_KEY: ${{ secrets.COUCH_AI_KEY }}
   COUCH_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
   COUCH_ROLES: ${{ secrets.ALLOWED_ROLE_IDS }}
+  # the new app's own version line (the webview app is 0.3.x)
+  COUCH_VERSION: 0.9.${{ github.run_number }}
 
 concurrency:
   group: gpui-${{ github.ref }}
@@ -20,6 +22,8 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -45,3 +49,11 @@ jobs:
         with:
           name: couch-gpui-windows
           path: dist/
+      - name: Publish (beta channel)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Compress-Archive -Path dist/* -DestinationPath couch-gpui.zip -Force
+          $notes = git log -1 --pretty=%s
+          gh release create "gpui-$env:COUCH_VERSION" couch-gpui.zip --repo "${{ github.repository }}" --prerelease --target "${{ github.sha }}" --title "couch (new) $env:COUCH_VERSION" --notes "$notes"
