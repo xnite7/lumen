@@ -39,3 +39,6 @@ strip = true
 librqbit-dualstack-sockets = { path = "../src-tauri/patches/librqbit-dualstack-sockets" }
 # newer libc dropped ENOATTR on Linux; gpui's tar helper still uses it
 xattr = { path = "patches/xattr" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi"] }

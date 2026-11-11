@@ -6,6 +6,7 @@ mod assets;
 mod host;
 mod net;
 mod parties;
+mod pip;
 mod playback;
 mod together;
 mod update;
@@ -262,8 +263,11 @@ impl Root {
                 "down" => p.cmd("volume", json!({ "value": (p.state.volume - 5.).max(0.) })),
                 "m" => p.cmd("mute", json!({})),
                 "f" => window.toggle_fullscreen(),
+                "p" | "i" => pip::toggle(cx),
                 "escape" => {
-                    if window.is_fullscreen() {
+                    if pip::is_on() {
+                        pip::toggle(cx);
+                    } else if window.is_fullscreen() {
                         window.toggle_fullscreen();
                     } else {
                         pb.update(cx, |p, cx| p.close(cx));

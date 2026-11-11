@@ -1668,6 +1668,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "unicode-segmentation",
+ "windows 0.61.3",
 ]
 
 [[package]]

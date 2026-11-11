@@ -397,6 +397,38 @@ impl Render for PlayerView {
             return root;
         }
 
+        // small window (picture in picture): just play/pause, ±10, a thin bar, and back to big
+        if f32::from(vw) < 640. {
+            let paused = st.paused;
+            let (pa, pb, pc) = (self.pb.clone(), self.pb.clone(), self.pb.clone());
+            return root
+                .child(div().absolute().top_0().left_0().size_full().bg(theme::black(0.35)))
+                .child(
+                    div().absolute().top(px(8.)).right(px(8.)).flex().gap(px(4.))
+                        .child(round_btn("pip-big", icon("expand", 20.), 36.).on_click(|_, _, cx| crate::pip::toggle(cx)))
+                        .child(round_btn("pip-close", icon("close", 18.), 36.).on_click(move |_, _, cx| {
+                            crate::pip::toggle(cx);
+                            pc.update(cx, |p, cx| p.close(cx));
+                            crate::Nav::back(cx);
+                        })),
+                )
+                .child(
+                    div().absolute().top_0().left_0().size_full().flex().items_center().justify_center().gap(px(18.))
+                        .child(round_btn("pip-b10", icon("replay10", 26.), 46.).on_click(move |_, _, cx| pa.read(cx).cmd("seek", json!({ "to": -10, "relative": true }))))
+                        .child(round_btn("pip-play", if paused { icon_fill("play", 34.) } else { icon_fill("pause", 34.) }, 60.).on_click({
+                            let pb = self.pb.clone();
+                            move |_, _, cx| {
+                                let paused = pb.read(cx).state.paused;
+                                if may(if paused { "play" } else { "pause" }, None, cx) {
+                                    pb.read(cx).cmd("pause", json!({ "value": !paused }));
+                                }
+                            }
+                        }))
+                        .child(round_btn("pip-f10", icon("forward10", 26.), 46.).on_click(move |_, _, cx| pb.read(cx).cmd("seek", json!({ "to": 10, "relative": true })))),
+                )
+                .child(div().absolute().left(px(10.)).right(px(10.)).bottom(px(10.)).h(px(4.)).rounded_full().bg(theme::white(0.25)).child(div().h_full().rounded_full().w((vw - px(20.)) * frac).bg(theme::neon())));
+        }
+
         let paused = st.paused;
         let pb = self.pb.clone();
         let pb2 = self.pb.clone();
@@ -621,6 +653,7 @@ impl Render for PlayerView {
                                     cx.notify();
                                 })),
                             )
+                            .child(round_btn("pl-pip", icon("pip", 26.), 50.).on_click(|_, _, cx| crate::pip::toggle(cx)))
                             .child(round_btn("pl-full", icon("fullscreen", 26.), 50.).on_click(|_, window, _| window.toggle_fullscreen())),
                     ),
             )
