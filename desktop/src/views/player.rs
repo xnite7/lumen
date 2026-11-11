@@ -2,6 +2,8 @@
 //! this view is the see-through layer on top with couch's controls.
 use crate::api::sized;
 use crate::playback::{self, Playback};
+#[allow(unused_imports)]
+use crate::playback::Sleep;
 use crate::theme;
 use crate::ui::{icon, icon_fill};
 use gpui::{
@@ -15,6 +17,7 @@ pub enum Menu {
     Audio,
     Subs,
     Speed,
+    Episodes,
 }
 
 pub struct PlayerView {
@@ -228,6 +231,29 @@ impl PlayerView {
                 }
                 (if m == Menu::Audio { "audio" } else { "subtitles" }, rows)
             }
+            Menu::Episodes => {
+                let Some(f) = p.full.clone() else { return div().into_any_element() };
+                let cur = playback::ordered(&f).into_iter().find(|v| v["id"].as_str() == Some(p.video_id.as_str())).and_then(|v| v["season"].as_i64()).unwrap_or(1);
+                let meta = p.meta.clone();
+                let rows = playback::ordered(&f)
+                    .into_iter()
+                    .filter(|v| v["season"].as_i64() == Some(cur))
+                    .map(|v| {
+                        let id = v["id"].as_str().unwrap_or("").to_string();
+                        let on = id == p.video_id;
+                        let label = format!("{}. {}", v["episode"].as_i64().or(v["number"].as_i64()).unwrap_or(0), playback::episode_name(&v));
+                        let m = meta.clone();
+                        row(SharedString::from(format!("ep-{id}")), label, on)
+                            .on_click(move |_, _, cx| {
+                                if let Some(m) = m.clone() {
+                                    crate::Nav::play_episode(&m, id.clone(), cx);
+                                }
+                            })
+                            .into_any_element()
+                    })
+                    .collect();
+                ("episodes", rows)
+            }
             Menu::Speed => {
                 let cur = p.state.speed;
                 let rows = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
@@ -239,6 +265,23 @@ impl PlayerView {
                             .into_any_element()
                     })
                     .collect();
+                let mut rows: Vec<gpui::AnyElement> = rows;
+                rows.push(div().px(px(14.)).pt(px(12.)).pb(px(4.)).text_size(px(13.)).font_weight(FontWeight::BOLD).text_color(theme::label3()).child("sleep timer").into_any_element());
+                let sleep = p.sleep;
+                for (label, v) in [("off", 0i64), ("end of this episode", -1), ("15 min", 15), ("30 min", 30), ("60 min", 60)] {
+                    let pb = self.pb.clone();
+                    let on = match (sleep, v) {
+                        (None, 0) => true,
+                        (Some(playback::Sleep::Episode), -1) => true,
+                        (Some(playback::Sleep::At(_, m)), x) => m == x,
+                        _ => false,
+                    };
+                    rows.push(
+                        row(SharedString::from(format!("sl-{v}")), label.into(), on)
+                            .on_click(move |_, _, cx| pb.update(cx, |p, cx| p.set_sleep(v, cx)))
+                            .into_any_element(),
+                    );
+                }
                 ("speed", rows)
             }
         };
@@ -445,6 +488,7 @@ impl Render for PlayerView {
         let p = self.pb.read(cx);
         let segment = p.segment_at(st.pos);
         let next = p.next_video().map(|n| format!("S{} E{}", n["season"].as_i64().unwrap_or(0), n["episode"].as_i64().or(n["number"].as_i64()).unwrap_or(0)));
+        let is_series = p.meta.as_ref().map_or(false, |m| m.kind == "series");
         let near_end = st.duration > 300. && st.duration - st.pos < 45. && next.is_some();
         let menu = self.menu.map(|m| self.menu_panel(m, cx));
         let root = root.children(menu);
@@ -636,6 +680,13 @@ impl Render for PlayerView {
                                     .child(icon("next", 20.))
                                     .child(format!("next · {}", n))
                             }))
+                            .when(is_series, |d| {
+                                d.child(round_btn("pl-eps", icon("stack", 26.), 50.).on_click(cx.listener(|v, _, _, cx| {
+                                    cx.stop_propagation();
+                                    v.menu = if v.menu == Some(Menu::Episodes) { None } else { Some(Menu::Episodes) };
+                                    cx.notify();
+                                })))
+                            })
                             .child(round_btn("pl-subs", icon("subtitles", 26.), 50.).on_click(cx.listener(|v, _, _, cx| {
                                 cx.stop_propagation();
                                 v.menu = if v.menu == Some(Menu::Subs) { None } else { Some(Menu::Subs) };

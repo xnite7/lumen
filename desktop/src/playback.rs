@@ -8,6 +8,13 @@ use gpui::{App, AppContext, Context, Entity, Global};
 use serde_json::{json, Value};
 use std::time::Duration;
 
+/// Stop playing: when this episode ends, or at a time (Instant, minutes asked)
+#[derive(Clone, Copy, PartialEq)]
+pub enum Sleep {
+    Episode,
+    At(std::time::Instant, i64),
+}
+
 #[derive(Default, Clone)]
 pub struct State {
     pub pos: f64,
@@ -41,6 +48,7 @@ pub struct Playback {
     /// skip segments from TheIntroDB: { intro: [{start,end}], recap, credits }
     pub segments: Value,
     skipped: Vec<String>,
+    pub sleep: Option<Sleep>,
 }
 
 pub struct PlaybackHandle(pub Entity<Playback>);
@@ -87,8 +95,13 @@ pub fn init(cx: &mut App) {
                     // reached the end: the next episode by itself
                     let finished = s.ended && !p.state.ended;
                     p.state = s;
-                    if finished && p.open && couch::state::get().core.settings().playback.autoplay_next {
-                        p.play_next(cx);
+                    if finished && p.open {
+                        if p.sleep == Some(Sleep::Episode) {
+                            // sleep timer: that was the last one tonight
+                            p.sleep = None;
+                        } else if couch::state::get().core.settings().playback.autoplay_next {
+                            p.play_next(cx);
+                        }
                     }
                     cx.notify();
                 });
@@ -297,6 +310,29 @@ pub async fn gather(kind: &str, id: &str, ms: u64) -> Vec<Value> {
 }
 
 impl Playback {
+    /// 0 = off, -1 = end of this episode, n = in n minutes
+    pub fn set_sleep(&mut self, v: i64, cx: &mut Context<Self>) {
+        self.sleep = match v {
+            0 => None,
+            -1 => Some(Sleep::Episode),
+            n => Some(Sleep::At(std::time::Instant::now() + Duration::from_secs(n as u64 * 60), n)),
+        };
+        if let Some(Sleep::At(at, _)) = self.sleep {
+            cx.spawn(async move |this, cx| {
+                gpui::Timer::at(at).await;
+                let _ = this.update(cx, |p, cx| {
+                    if matches!(p.sleep, Some(Sleep::At(a, _)) if a == at) && p.open {
+                        p.sleep = None;
+                        p.cmd("pause", json!({ "value": true }));
+                        cx.notify();
+                    }
+                });
+            })
+            .detach();
+        }
+        cx.notify();
+    }
+
     /// Inside an intro / recap / credits right now? (kind, where it ends)
     pub fn segment_at(&self, pos: f64) -> Option<(String, f64)> {
         let o = self.segments.as_object()?;
