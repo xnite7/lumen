@@ -33,6 +33,7 @@ pub enum Route {
     Detail(Meta),
     Player,
     Settings,
+    SignIn,
 }
 
 /// Getting around from anywhere: `Nav::detail(&meta, cx)`.
@@ -123,6 +124,8 @@ pub struct Root {
     calendar: Option<Entity<views::calendar::Calendar>>,
     couch: Option<Entity<views::couch::Couch>>,
     settings: Option<Entity<views::settings::Settings>>,
+    signin: Option<Entity<views::signin::SignIn>>,
+    me: serde_json::Value,
     focus: gpui::FocusHandle,
     last_size: gpui::Size<gpui::Pixels>,
 }
@@ -211,7 +214,13 @@ impl Root {
                     .justify_center()
                     .font_weight(FontWeight::BLACK)
                     .text_color(theme::text())
-                    .child(couch::state::get().core.db.get::<String>("gpui_me_initial").unwrap_or_else(|| "S".into())),
+                    .overflow_hidden()
+                    .child(match self.me["avatar"].as_str() {
+                        Some(u) => img(u.to_string()).size_full().into_any_element(),
+                        None => div()
+                            .child(self.me["name"].as_str().or(self.me["username"].as_str()).and_then(|n| n.chars().next()).unwrap_or('S').to_uppercase().to_string())
+                            .into_any_element(),
+                    }),
             )
             .child(window_controls())
     }
@@ -375,6 +384,7 @@ impl Render for Root {
             Route::Calendar => self.calendar.get_or_insert_with(|| cx.new(views::calendar::Calendar::new)).clone().into_any_element(),
             Route::Couch => self.couch.get_or_insert_with(|| cx.new(views::couch::Couch::new)).clone().into_any_element(),
             Route::Settings => self.settings.get_or_insert_with(|| cx.new(views::settings::Settings::new)).clone().into_any_element(),
+            Route::SignIn => self.signin.get_or_insert_with(|| cx.new(views::signin::SignIn::new)).clone().into_any_element(),
             Route::Lists => self.library.get_or_insert_with(|| cx.new(views::library::Library::new)).clone().into_any_element(),
             Route::Search => {
                 let s = self.search.get_or_insert_with(|| cx.new(views::search::Search::new)).clone();
@@ -413,7 +423,8 @@ impl Render for Root {
             .font_family(theme::FONT)
             .text_color(theme::text())
             .child(page)
-            .when(!playing, |d| d.child(self.nav_bar(cx)))
+            .when(!playing && self.route != Route::SignIn, |d| d.child(self.nav_bar(cx)))
+            .when(self.route == Route::SignIn, |d| d.child(window_controls()))
             .when(playing, |d| d.child(window_controls()))
             .child(self.together_cards(cx))
             .children(self.toast.clone().map(|t| {
@@ -513,8 +524,11 @@ fn main() {
                                 _ => None,
                             }
                         });
+                        // not signed in yet: Discord first
+                        let me: serde_json::Value = couch::state::get().core.db.get("discord_user").unwrap_or_default();
+                        let first = if me.is_null() { Route::SignIn } else { Route::Home };
                         Root {
-                            route: start.unwrap_or(Route::Home),
+                            route: start.unwrap_or(first),
                             back: vec![],
                             home: cx.new(|cx| views::home::Home::new("all", cx)),
                             shows: None,
@@ -528,6 +542,8 @@ fn main() {
                             calendar: None,
                             couch: None,
                             settings: None,
+                            signin: None,
+                            me: me.clone(),
                             focus,
                             last_size: gpui::Size::default(),
                         }
