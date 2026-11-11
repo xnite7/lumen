@@ -144,14 +144,7 @@ impl Render for Couch {
                                     .bottom(px(18.))
                                     .child(btn(SharedString::from(format!("join-{id}")), "ask to join", true).on_click(move |_, _, cx| {
                                         let (to, nm) = (to.clone(), nm.clone());
-                                        cx.spawn(async move |cx| {
-                                            let r = api::call::<Value>("crew_ask", json!({ "to": to })).await;
-                                            let _ = cx.update(|cx| Nav::toast(match r {
-                                                Ok(_) => format!("asked {nm} — waiting for them to let you in"),
-                                                Err(e) => e,
-                                            }, cx));
-                                        })
-                                        .detach();
+                                        crate::together::get(cx).update(cx, |t, cx| t.ask_to_join(to, nm, cx));
                                     })),
                             )
                             .child(div().absolute().left(px(12.)).right(px(12.)).bottom(px(8.)).h(px(4.)).rounded_full().bg(theme::white(0.25)).child(div().h_full().rounded_full().w(px((w - 24.) * frac)).bg(theme::lamp()))),

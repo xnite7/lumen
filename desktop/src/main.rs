@@ -6,6 +6,7 @@ mod assets;
 mod host;
 mod net;
 mod playback;
+mod together;
 mod theme;
 mod ui;
 mod views;
@@ -250,6 +251,88 @@ impl Root {
     }
 }
 
+impl Root {
+    /// people asking to join my couch; my own ask while it waits
+    fn together_cards(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let t = together::get(cx);
+        let tr = t.read(cx);
+        let card = || {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .p(px(12.))
+                .pl(px(14.))
+                .rounded(px(18.))
+                .bg(gpui::rgba(0x0c090bf2))
+                .border_1()
+                .border_color(theme::white(0.1))
+        };
+        let mut col = div().absolute().top(px(70.)).right(px(theme::GUTTER)).flex().flex_col().gap(px(10.)).w(px(420.));
+        for (i, a) in tr.inbox.iter().enumerate() {
+            let name = a["fromName"].as_str().unwrap_or("someone").to_string();
+            let (a1, a2) = (a.clone(), a.clone());
+            let (t1, t2) = (t.clone(), t.clone());
+            col = col.child(
+                card()
+                    .child(div().size(px(36.)).rounded(px(10.)).bg(theme::neon()).flex().items_center().justify_center().font_weight(FontWeight::BLACK).child(name.chars().next().unwrap_or('?').to_uppercase().to_string()))
+                    .child(div().flex_1().flex().flex_col().child(div().font_weight(FontWeight::BOLD).child(name.clone())).child(div().text_size(px(13.)).text_color(theme::label2()).child("wants to join your couch")))
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("deny-{i}")))
+                            .size(px(34.))
+                            .rounded_full()
+                            .bg(theme::white(0.1))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .on_click(move |_, _, cx| t1.update(cx, |t, cx| t.answer(a1.clone(), false, cx)))
+                            .child(icon("close", 16.)),
+                    )
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("allow-{i}")))
+                            .px(px(14.))
+                            .h(px(36.))
+                            .rounded_full()
+                            .bg(theme::text())
+                            .text_color(gpui::rgb(0x000000))
+                            .font_weight(FontWeight::BOLD)
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .cursor_pointer()
+                            .on_click(move |_, _, cx| t2.update(cx, |t, cx| t.answer(a2.clone(), true, cx)))
+                            .child(icon("couch", 18.).text_color(gpui::rgb(0x000000)))
+                            .child("Let them in"),
+                    ),
+            );
+        }
+        if let Some((_, _, name)) = &tr.asking {
+            let t3 = t.clone();
+            col = col.child(
+                card()
+                    .child(div().flex_1().text_size(px(15.)).child(format!("waiting for {name} to let you in…")))
+                    .child(
+                        div()
+                            .id("ask-cancel")
+                            .px(px(14.))
+                            .h(px(34.))
+                            .rounded_full()
+                            .bg(theme::white(0.12))
+                            .flex()
+                            .items_center()
+                            .cursor_pointer()
+                            .on_click(move |_, _, cx| t3.update(cx, |t, cx| t.cancel_ask(cx)))
+                            .child("cancel"),
+                    ),
+            );
+        }
+        col
+    }
+}
+
 /// minimize / maximize / close, drawn by couch (the title bar is ours)
 fn window_controls() -> impl IntoElement {
     let btn = |id: &'static str, glyph: &'static str, area: WindowControlArea, danger: bool| {
@@ -332,6 +415,7 @@ impl Render for Root {
             .child(page)
             .when(!playing, |d| d.child(self.nav_bar(cx)))
             .when(playing, |d| d.child(window_controls()))
+            .child(self.together_cards(cx))
             .children(self.toast.clone().map(|t| {
                 div().absolute().bottom(px(28.)).left_0().w_full().flex().justify_center().child(
                     div()
@@ -384,6 +468,7 @@ fn main() {
         }
         cx.set_http_client(net::CouchHttp::new(st.core.clone()));
         playback::init(cx);
+        together::init(cx);
 
         let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
         let window = cx
@@ -410,6 +495,7 @@ fn main() {
                     let _ = window;
                     let mark = Arc::new(Image::from_bytes(ImageFormat::Png, assets::bytes("brand/couch-mark.png").unwrap_or_default().to_vec()));
                     let root = cx.new(|cx| {
+                        cx.observe(&together::get(cx), |_, _, cx| cx.notify()).detach();
                         let focus = cx.focus_handle();
                         window.focus(&focus);
                         // dev: start on a page (COUCH_START=detail:series:tt0903747)

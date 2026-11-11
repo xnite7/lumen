@@ -56,6 +56,20 @@ impl PlayerView {
     }
 }
 
+/// Watching on someone's couch: pause/seek go to the host (when they've
+/// shared the remote); otherwise they stay with the host. True = do it here too.
+pub fn may(action: &str, pos: Option<f64>, cx: &mut gpui::App) -> bool {
+    let t = crate::together::get(cx);
+    if t.read(cx).following.is_none() {
+        return true;
+    }
+    let sent = t.update(cx, |t, _| t.steer(action, pos));
+    if !sent {
+        crate::Nav::toast("the host has the remote".into(), cx);
+    }
+    sent
+}
+
 pub fn clock(t: f64) -> String {
     let t = t.max(0.) as u64;
     let (h, m, s) = (t / 3600, (t % 3600) / 60, t % 60);
@@ -233,7 +247,9 @@ impl Render for PlayerView {
                     cx.notify();
                 } else if e.click_count() == 1 {
                     let paused = v.pb.read(cx).state.paused;
-                    v.pb.read(cx).cmd("pause", json!({ "value": !paused }));
+                    if may(if paused { "play" } else { "pause" }, None, cx) {
+                        v.pb.read(cx).cmd("pause", json!({ "value": !paused }));
+                    }
                 }
                 v.poke(cx);
             }))
@@ -374,8 +390,9 @@ impl Render for PlayerView {
                                 let x = f32::from(e.position().x) - g;
                                 let w = f32::from(bar_w).max(1.);
                                 let d = pb2.read(cx).state.duration;
-                                if d > 0. {
-                                    pb2.read(cx).cmd("seek", json!({ "to": (x / w).clamp(0., 1.) as f64 * d }));
+                                let to = (x / w).clamp(0., 1.) as f64 * d;
+                                if d > 0. && may("seek", Some(to), cx) {
+                                    pb2.read(cx).cmd("seek", json!({ "to": to }));
                                 }
                             })
                             .child(
@@ -426,8 +443,10 @@ impl Render for PlayerView {
                             .gap(px(6.))
                             .child(round_btn("pl-play", if paused { icon_fill("play", 34.) } else { icon_fill("pause", 34.) }, 56.).on_click(
                                 move |_, _, cx| {
-                                    let p = pb3.read(cx);
-                                    p.cmd("pause", json!({ "value": !p.state.paused }));
+                                    let paused = pb3.read(cx).state.paused;
+                                    if may(if paused { "play" } else { "pause" }, None, cx) {
+                                        pb3.read(cx).cmd("pause", json!({ "value": !paused }));
+                                    }
                                 },
                             ))
                             .child(round_btn("pl-back10", icon("replay10", 28.), 50.).on_click({
