@@ -5,6 +5,7 @@ mod api;
 mod assets;
 mod host;
 mod net;
+mod playback;
 mod theme;
 mod ui;
 mod views;
@@ -29,6 +30,7 @@ pub enum Route {
     Couch,
     Search,
     Detail(Meta),
+    Player,
 }
 
 /// Getting around from anywhere: `Nav::detail(&meta, cx)`.
@@ -62,7 +64,10 @@ impl Nav {
         Self::go(Route::Detail(m.clone()), cx);
     }
     pub fn play(m: &Meta, cx: &mut App) {
-        Self::toast(format!("the player comes next in this build: {}", m.name), cx);
+        playback::quick_play(m.clone(), None, None, cx);
+    }
+    pub fn play_episode(m: &Meta, video_id: String, cx: &mut App) {
+        playback::quick_play(m.clone(), Some(video_id), None, cx);
     }
     pub fn add(m: &Meta, cx: &mut App) {
         let meta = serde_json::to_value(m).unwrap_or_default();
@@ -101,6 +106,10 @@ pub struct Root {
     home: Entity<views::home::Home>,
     toast: Option<String>,
     mark: Arc<Image>,
+    player: Entity<views::player::PlayerView>,
+    detail: Option<Entity<views::detail::Detail>>,
+    focus: gpui::FocusHandle,
+    last_size: gpui::Size<gpui::Pixels>,
 }
 
 const TABS: &[(&str, fn() -> Route)] = &[
@@ -189,6 +198,40 @@ impl Root {
     }
 }
 
+impl Root {
+    /// keys: space play/pause, arrows seek/volume, f full screen, esc back
+    fn key(&mut self, e: &gpui::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let k = e.keystroke.key.as_str();
+        if self.route == Route::Player {
+            let pb = playback::get(cx);
+            let p = pb.read(cx);
+            match k {
+                "space" | "k" => p.cmd("pause", json!({ "value": !p.state.paused })),
+                "left" | "j" => p.cmd("seek", json!({ "to": if k == "j" { -10 } else { -5 }, "relative": true })),
+                "right" | "l" => p.cmd("seek", json!({ "to": if k == "l" { 10 } else { 5 }, "relative": true })),
+                "up" => p.cmd("volume", json!({ "value": (p.state.volume + 5.).min(130.) })),
+                "down" => p.cmd("volume", json!({ "value": (p.state.volume - 5.).max(0.) })),
+                "m" => p.cmd("mute", json!({})),
+                "f" => window.toggle_fullscreen(),
+                "escape" => {
+                    if window.is_fullscreen() {
+                        window.toggle_fullscreen();
+                    } else {
+                        pb.update(cx, |p, cx| p.close(cx));
+                        Nav::back(cx);
+                    }
+                }
+                _ => {}
+            }
+            self.player.update(cx, |v, cx| v.poke(cx));
+            return;
+        }
+        if k == "escape" || (k == "backspace" && matches!(self.route, Route::Detail(_))) {
+            Nav::back(cx);
+        }
+    }
+}
+
 /// minimize / maximize / close, drawn by couch (the title bar is ours)
 fn window_controls() -> impl IntoElement {
     let btn = |id: &'static str, glyph: &'static str, area: WindowControlArea, danger: bool| {
@@ -216,10 +259,26 @@ fn window_controls() -> impl IntoElement {
 }
 
 impl Render for Root {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // mpv's window follows ours (resize, full screen, DPI)
+        let size = window.viewport_size();
+        if size != self.last_size {
+            self.last_size = size;
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            couch::player::refit_video(couch::state::get().core.host.main_window());
+        }
+        let playing = self.route == Route::Player;
         let page = match &self.route {
             Route::Home => self.home.clone().into_any_element(),
-            Route::Detail(m) => views::detail_stub(m),
+            Route::Player => self.player.clone().into_any_element(),
+            Route::Detail(m) => {
+                let fresh = self.detail.as_ref().map_or(true, |d| d.read(cx).base.id != m.id);
+                if fresh {
+                    let m = m.clone();
+                    self.detail = Some(cx.new(|cx| views::detail::Detail::new(m, cx)));
+                }
+                self.detail.clone().unwrap().into_any_element()
+            }
             other => views::soon(match other {
                 Route::Shows => "shows",
                 Route::Movies => "movies",
@@ -233,11 +292,14 @@ impl Render for Root {
         div()
             .size_full()
             .relative()
-            .bg(theme::bg())
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(Self::key))
+            .when(!playing, |d| d.bg(theme::bg()))
             .font_family(theme::FONT)
             .text_color(theme::text())
             .child(page)
-            .child(self.nav_bar(cx))
+            .when(!playing, |d| d.child(self.nav_bar(cx)))
+            .when(playing, |d| d.child(window_controls()))
             .children(self.toast.clone().map(|t| {
                 div().absolute().bottom(px(28.)).left_0().w_full().flex().justify_center().child(
                     div()
@@ -269,6 +331,7 @@ fn main() {
     Application::new().with_assets(assets::Assets).run(move |cx: &mut App| {
         cx.text_system().add_fonts(assets::fonts()).expect("fonts");
         cx.set_http_client(net::CouchHttp::new(st.core.clone()));
+        playback::init(cx);
 
         let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
         let window = cx
@@ -294,7 +357,26 @@ fn main() {
                     }
                     let _ = window;
                     let mark = Arc::new(Image::from_bytes(ImageFormat::Png, assets::bytes("brand/couch-mark.png").unwrap_or_default().to_vec()));
-                    let root = cx.new(|cx| Root { route: Route::Home, back: vec![], home: cx.new(views::home::Home::new), toast: None, mark });
+                    let root = cx.new(|cx| {
+                        let focus = cx.focus_handle();
+                        window.focus(&focus);
+                        // dev: start on a page (COUCH_START=detail:series:tt0903747)
+                        let start = std::env::var("COUCH_START").ok().and_then(|v| {
+                            let p: Vec<&str> = v.split(':').collect();
+                            (p.len() == 3 && p[0] == "detail").then(|| Route::Detail(Meta { kind: p[1].into(), id: p[2].into(), ..Default::default() }))
+                        });
+                        Root {
+                            route: start.unwrap_or(Route::Home),
+                            back: vec![],
+                            home: cx.new(views::home::Home::new),
+                            toast: None,
+                            mark,
+                            player: cx.new(views::player::PlayerView::new),
+                            detail: None,
+                            focus,
+                            last_size: gpui::Size::default(),
+                        }
+                    });
                     cx.set_global(Nav(root.downgrade()));
                     root
                 },

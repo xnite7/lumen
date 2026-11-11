@@ -45,8 +45,8 @@ pub fn card(id: SharedString, m: &Meta, on_click: impl Fn(&gpui::ClickEvent, &mu
                 .items_end()
                 .child(match logo {
                     Some(u) => img(u)
+                        .h(px(54.))
                         .max_w(px(170.))
-                        .max_h(px(54.))
                         .object_fit(ObjectFit::Contain)
                         .with_fallback({
                             let name = m.name.clone();

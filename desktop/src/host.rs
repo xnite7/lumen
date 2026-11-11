@@ -27,8 +27,18 @@ impl GpuiHost {
     }
 }
 
+/// Anyone in the UI can listen for an engine event by name.
+static SUBS: Mutex<Vec<(String, UnboundedSender<Value>)>> = Mutex::new(Vec::new());
+
+pub fn listen(event: &str) -> UnboundedReceiver<Value> {
+    let (tx, rx) = unbounded();
+    SUBS.lock().push((event.to_string(), tx));
+    rx
+}
+
 impl Host for GpuiHost {
     fn emit(&self, event: &str, payload: Value) {
+        SUBS.lock().retain(|(name, tx)| name != event || tx.unbounded_send(payload.clone()).is_ok());
         let _ = self.tx.unbounded_send(Msg::Event(event.to_string(), payload));
     }
     fn open_url(&self, url: &str) -> Result<(), String> {

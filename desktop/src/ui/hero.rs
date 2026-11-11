@@ -54,8 +54,8 @@ pub fn hero(m: &Meta, height: Pixels, on_play: Click, on_info: Click, on_add: Cl
                 .gap(px(14.))
                 .child(match logo {
                     Some(u) => img(u)
+                        .h(px(150.))
                         .max_w(px(460.))
-                        .max_h(px(150.))
                         .object_fit(ObjectFit::Contain)
                         .with_fallback(move || big_title(&name).into_any_element())
                         .into_any_element(),
