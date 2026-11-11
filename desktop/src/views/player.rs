@@ -20,6 +20,9 @@ pub enum Menu {
 pub struct PlayerView {
     pb: Entity<Playback>,
     menu: Option<Menu>,
+    /// seek-bar stills, every 10 s of the film
+    stills: std::collections::HashMap<i64, Option<std::sync::Arc<gpui::Image>>>,
+    vol_hud: Option<Instant>,
     last_move: Instant,
     shown: bool,
     hover_x: Option<f32>,
@@ -44,7 +47,7 @@ impl PlayerView {
             };
         })
         .detach();
-        Self { pb, menu: None, last_move: Instant::now(), shown: true, hover_x: None }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None }
     }
 
     pub fn poke(&mut self, cx: &mut Context<Self>) {
@@ -68,6 +71,14 @@ pub fn may(action: &str, pos: Option<f64>, cx: &mut gpui::App) -> bool {
         crate::Nav::toast("the host has the remote".into(), cx);
     }
     sent
+}
+
+async fn api_still(t: f64) -> Option<std::sync::Arc<gpui::Image>> {
+    use base64::Engine;
+    let url = crate::api::call::<Option<String>>("player_thumb", json!({ "t": t })).await.ok()??;
+    let b64 = url.split(',').nth(1)?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
+    Some(std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Jpeg, bytes)))
 }
 
 pub fn clock(t: f64) -> String {
@@ -123,6 +134,32 @@ fn named(list: &[serde_json::Value]) -> Vec<(serde_json::Value, String)> {
         .collect()
 }
 
+fn pill(id: &'static str, label: String) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(id)
+        .h(px(52.))
+        .px(px(24.))
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .rounded(px(14.))
+        .bg(theme::text())
+        .text_color(gpui::rgb(0x000000))
+        .text_size(px(17.))
+        .font_weight(FontWeight::BOLD)
+        .cursor_pointer()
+        .hover(|s| s.opacity(0.88))
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(label)
+}
+
+fn next_pill(pb: Entity<Playback>, label: String) -> gpui::Stateful<gpui::Div> {
+    pill("pl-upnext", format!("next episode · {label}")).on_click(move |_, _, cx| {
+        cx.stop_propagation();
+        pb.update(cx, |p, cx| p.play_next(cx))
+    })
+}
+
 fn round_btn(id: &'static str, child: impl IntoElement, size: f32) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
@@ -137,6 +174,23 @@ fn round_btn(id: &'static str, child: impl IntoElement, size: f32) -> gpui::Stat
 }
 
 impl PlayerView {
+    fn want_still(&mut self, t: f64, cx: &mut Context<Self>) -> Option<std::sync::Arc<gpui::Image>> {
+        let k = (t / 10.).floor() as i64;
+        if let Some(v) = self.stills.get(&k) {
+            return v.clone();
+        }
+        self.stills.insert(k, None);
+        cx.spawn(async move |this, cx| {
+            let r = api_still(k as f64 * 10. + 5.).await;
+            let _ = this.update(cx, |v, cx| {
+                v.stills.insert(k, r);
+                cx.notify();
+            });
+        })
+        .detach();
+        None
+    }
+
     fn menu_panel(&self, m: Menu, cx: &mut Context<Self>) -> gpui::AnyElement {
         let p = self.pb.read(cx);
         let row = |id: SharedString, label: String, on: bool| {
@@ -253,7 +307,20 @@ impl Render for PlayerView {
                 }
                 v.poke(cx);
             }))
-            .when(!shown, |d| d.cursor(gpui::CursorStyle::None));
+            .when(!shown, |d| d.cursor(gpui::CursorStyle::None))
+            .on_scroll_wheel(cx.listener(|v, e: &gpui::ScrollWheelEvent, w, cx| {
+                // scroll = volume
+                let dy = f32::from(e.delta.pixel_delta(w.line_height()).y);
+                if dy.abs() < 0.5 {
+                    return;
+                }
+                let p = v.pb.read(cx);
+                let max = if couch::state::get().core.settings().playback.volume_boost { 130. } else { 100. };
+                let vol = (p.state.volume + if dy > 0. { 5. } else { -5. }).clamp(0., max);
+                p.cmd("volume", json!({ "value": vol }));
+                v.vol_hud = Some(Instant::now());
+                cx.notify();
+            }));
 
         // while it starts: the title's art under a dim, the logo, a line
         if starting || !p.error.is_empty() {
@@ -304,6 +371,28 @@ impl Render for PlayerView {
             );
         }
 
+        if let Some(at) = self.vol_hud.filter(|a| a.elapsed() < Duration::from_millis(1200)) {
+            let _ = at;
+            root = root.child(
+                div().absolute().top(px(90.)).left_0().w_full().flex().justify_center().child(
+                    div()
+                        .px(px(18.))
+                        .py(px(10.))
+                        .rounded(px(14.))
+                        .bg(theme::black(0.7))
+                        .flex()
+                        .items_center()
+                        .gap(px(10.))
+                        .child(icon(if st.volume <= 0. { "mute" } else { "volume" }, 22.))
+                        .child(div().font_weight(FontWeight::BOLD).child(format!("{}%", st.volume.round() as i64))),
+                ),
+            );
+            cx.spawn(async move |this, cx| {
+                gpui::Timer::after(Duration::from_millis(1300)).await;
+                let _ = this.update(cx, |_, cx| cx.notify());
+            })
+            .detach();
+        }
         if !shown {
             return root;
         }
@@ -314,9 +403,34 @@ impl Render for PlayerView {
         let pb3 = self.pb.clone();
         let pb4 = self.pb.clone();
         let hover = self.hover_x;
+        let still_img = match hover {
+            Some(x) if st.duration > 0. => {
+                let t = (x / f32::from(bar_w).max(1.)).clamp(0., 1.) as f64 * st.duration;
+                self.want_still(t, cx)
+            }
+            _ => None,
+        };
+        let p = self.pb.read(cx);
+        let segment = p.segment_at(st.pos);
         let next = p.next_video().map(|n| format!("S{} E{}", n["season"].as_i64().unwrap_or(0), n["episode"].as_i64().or(n["number"].as_i64()).unwrap_or(0)));
+        let near_end = st.duration > 300. && st.duration - st.pos < 45. && next.is_some();
         let menu = self.menu.map(|m| self.menu_panel(m, cx));
         let root = root.children(menu);
+        // skip intro / recap; at the credits (or the last bit): next episode
+        let skip = match &segment {
+            Some((k, end)) if k == "intro" || k == "recap" => {
+                let (end, pb) = (*end, self.pb.clone());
+                Some(pill("pl-skip", if k == "intro" { "skip intro".into() } else { "skip recap".into() }).on_click(move |_, _, cx| {
+                    if may("seek", Some(end), cx) {
+                        pb.read(cx).cmd("seek", json!({ "to": end }));
+                    }
+                }))
+            }
+            Some((k, _)) if k == "credits" && next.is_some() => Some(next_pill(self.pb.clone(), next.clone().unwrap_or_default())),
+            _ if near_end => Some(next_pill(self.pb.clone(), next.clone().unwrap_or_default())),
+            _ => None,
+        };
+        let root = root.children(skip.map(|b| div().absolute().right(px(theme::GUTTER)).bottom(px(130.)).child(b)));
         root
             // top: back, title
             .child(
@@ -416,18 +530,20 @@ impl Render for PlayerView {
                                     .children(hover.filter(|_| st.duration > 0.).map(|x| {
                                         let w = f32::from(bar_w).max(1.);
                                         let t = (x / w).clamp(0., 1.) as f64 * st.duration;
+                                        let still = still_img.clone();
                                         div()
                                             .absolute()
                                             .bottom(px(16.))
-                                            .left(px(x - 34.))
-                                            .w(px(68.))
-                                            .py(px(4.))
-                                            .rounded(px(8.))
-                                            .bg(theme::black(0.8))
-                                            .text_center()
-                                            .text_size(px(14.))
-                                            .font_weight(FontWeight::BOLD)
-                                            .child(clock(t))
+                                            .left(px((x - 100.).clamp(0., w - 200.)))
+                                            .w(px(200.))
+                                            .flex()
+                                            .flex_col()
+                                            .items_center()
+                                            .gap(px(6.))
+                                            .children(still.map(|i| {
+                                                img(i).w(px(200.)).h(px(112.)).rounded(px(10.)).border_2().border_color(theme::white(0.85)).object_fit(ObjectFit::Cover)
+                                            }))
+                                            .child(div().px(px(10.)).py(px(4.)).rounded(px(8.)).bg(theme::black(0.8)).text_size(px(14.)).font_weight(FontWeight::BOLD).child(clock(t)))
                                     })),
                             ),
                     )

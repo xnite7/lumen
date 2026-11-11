@@ -38,6 +38,9 @@ pub struct Playback {
     pub tracks: Vec<Value>,
     pub sub: String,
     pub status: String,
+    /// skip segments from TheIntroDB: { intro: [{start,end}], recap, credits }
+    pub segments: Value,
+    skipped: Vec<String>,
 }
 
 pub struct PlaybackHandle(pub Entity<Playback>);
@@ -69,6 +72,17 @@ pub fn init(cx: &mut App) {
                 let _ = this.update(cx, |p, cx| {
                     if p.loading && !s.buffering && s.duration > 0. {
                         p.loading = false;
+                    }
+                    // auto-skip intros / recaps when asked to
+                    let pos = s.pos;
+                    if let Some((kind, end)) = p.segment_at(pos) {
+                        let set = couch::state::get().core.settings();
+                        let auto = (kind == "intro" && set.playback.auto_skip_intro) || (kind == "recap" && set.playback.auto_skip_recap);
+                        let key = format!("{kind}{}", end as i64);
+                        if auto && !p.skipped.contains(&key) {
+                            p.skipped.push(key);
+                            p.cmd("seek", json!({ "to": end }));
+                        }
                     }
                     // reached the end: the next episode by itself
                     let finished = s.ended && !p.state.ended;
@@ -104,9 +118,24 @@ pub fn init(cx: &mut App) {
         let mut loaded = host::listen("player://loaded");
         cx.spawn(async move |this, cx| {
             while loaded.next().await.is_some() {
+                let vid = this
+                    .update(cx, |p, cx| {
+                        p.loading = false;
+                        p.segments = Value::Null;
+                        p.skipped.clear();
+                        cx.notify();
+                        p.video_id.clone()
+                    })
+                    .unwrap_or_default();
+                if vid.is_empty() || !couch::state::get().core.settings().integrations.tidb_enabled {
+                    continue;
+                }
+                let segs = api::call::<Value>("skip_segments", json!({ "videoId": vid, "durationMs": Value::Null })).await.unwrap_or(Value::Null);
                 let _ = this.update(cx, |p, cx| {
-                    p.loading = false;
-                    cx.notify();
+                    if p.video_id == vid {
+                        p.segments = segs;
+                        cx.notify();
+                    }
                 });
             }
         })
@@ -268,6 +297,21 @@ pub async fn gather(kind: &str, id: &str, ms: u64) -> Vec<Value> {
 }
 
 impl Playback {
+    /// Inside an intro / recap / credits right now? (kind, where it ends)
+    pub fn segment_at(&self, pos: f64) -> Option<(String, f64)> {
+        let o = self.segments.as_object()?;
+        for (kind, list) in o {
+            for seg in list.as_array().into_iter().flatten() {
+                let a = seg["start"].as_f64().unwrap_or(0.);
+                let b = seg["end"].as_f64().unwrap_or(self.state.duration);
+                if pos >= a && pos < b - 1. {
+                    return Some((kind.clone(), b));
+                }
+            }
+        }
+        None
+    }
+
     /// The episode after this one (not specials after a finale, not unaired).
     pub fn next_video(&self) -> Option<Value> {
         let f = self.full.as_ref()?;
