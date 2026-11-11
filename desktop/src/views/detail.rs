@@ -526,6 +526,38 @@ impl Render for Detail {
             }
         }
 
+        // ----------------------------------------------------------- studios
+        if let Some(cos) = ex["companies"].as_array().filter(|c| !c.is_empty()) {
+            page = page.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(14.))
+                    .mt(px(36.))
+                    .child(div().px(px(g)).text_size(px(24.)).font_weight(FontWeight::BLACK).child("made by"))
+                    .child(div().px(px(g)).flex().flex_wrap().gap(px(12.)).children(cos.iter().map(|c| {
+                        let (cid, cname) = (c["id"].as_u64().unwrap_or(0), c["name"].as_str().unwrap_or("").to_string());
+                        let logo = c["logo"].as_str().map(|s| s.to_string());
+                        let n2 = cname.clone();
+                        div()
+                            .id(SharedString::from(format!("co-{cid}")))
+                            .h(px(64.))
+                            .px(px(18.))
+                            .flex()
+                            .items_center()
+                            .rounded(px(14.))
+                            .bg(if logo.is_some() { gpui::rgb(0xf4eaf0).into() } else { theme::white(0.08) })
+                            .cursor_pointer()
+                            .hover(|s| s.opacity(0.85))
+                            .on_click(move |_, _, cx| Nav::go(crate::Route::Studio(cid, n2.clone()), cx))
+                            .child(match logo {
+                                Some(u) => img(u).h(px(36.)).max_w(px(160.)).object_fit(ObjectFit::Contain).into_any_element(),
+                                None => div().font_weight(FontWeight::BOLD).child(cname).into_any_element(),
+                            })
+                    }))),
+            );
+        }
+
         // -------------------------------------------------------------- cast
         if let Some(cast) = ex["cast"].as_array().filter(|c| !c.is_empty()) {
             page = page.child(

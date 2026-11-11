@@ -223,7 +223,11 @@ impl Render for Couch {
                 self.people.iter().map(|p| {
                     let name = p["name"].as_str().unwrap_or("").to_string();
                     let on = self.members.iter().any(|m| m["id"] == p["id"]);
+                    let pid = p["id"].as_str().unwrap_or("").to_string();
                     div()
+                        .id(SharedString::from(format!("crew-{pid}")))
+                        .cursor_pointer()
+                        .on_click(move |_, _, cx| Nav::go(crate::Route::Member(pid.clone()), cx))
                         .w(px(92.))
                         .flex()
                         .flex_col()

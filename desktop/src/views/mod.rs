@@ -1,4 +1,6 @@
 pub mod home;
+pub mod studio;
+pub mod member;
 pub mod planner;
 pub mod invite;
 pub mod person;

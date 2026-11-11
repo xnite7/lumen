@@ -38,6 +38,8 @@ pub enum Route {
     Settings,
     SignIn,
     Person(String, Option<u64>),
+    Member(String),
+    Studio(u64, String),
 }
 
 /// Getting around from anywhere: `Nav::detail(&meta, cx)`.
@@ -145,6 +147,8 @@ pub struct Root {
     settings: Option<Entity<views::settings::Settings>>,
     signin: Option<Entity<views::signin::SignIn>>,
     person: Option<Entity<views::person::Person>>,
+    member: Option<Entity<views::member::Member>>,
+    studio: Option<Entity<views::studio::Studio>>,
     invite: Entity<views::invite::Invite>,
     pub planner: Entity<views::planner::Planner>,
     me: serde_json::Value,
@@ -418,6 +422,20 @@ impl Render for Root {
                 }
                 self.person.clone().unwrap().into_any_element()
             }
+            Route::Member(id) => {
+                if self.member.as_ref().map_or(true, |m| &m.read(cx).id != id) {
+                    let i = id.clone();
+                    self.member = Some(cx.new(|cx| views::member::Member::new(i, cx)));
+                }
+                self.member.clone().unwrap().into_any_element()
+            }
+            Route::Studio(id, name) => {
+                if self.studio.as_ref().map_or(true, |s| s.read(cx).id != *id) {
+                    let (i, n) = (*id, name.clone());
+                    self.studio = Some(cx.new(|cx| views::studio::Studio::new(i, n, cx)));
+                }
+                self.studio.clone().unwrap().into_any_element()
+            }
             Route::Lists => self.library.get_or_insert_with(|| cx.new(views::library::Library::new)).clone().into_any_element(),
             Route::Search => {
                 let s = self.search.get_or_insert_with(|| cx.new(views::search::Search::new)).clone();
@@ -582,6 +600,8 @@ fn main() {
                             settings: None,
                             signin: None,
                             person: None,
+                            member: None,
+                            studio: None,
                             invite: cx.new(views::invite::Invite::new),
                             planner: cx.new(views::planner::Planner::new),
                             me: me.clone(),
