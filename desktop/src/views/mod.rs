@@ -1,4 +1,5 @@
 pub mod home;
+pub mod planner;
 pub mod invite;
 pub mod person;
 pub mod signin;

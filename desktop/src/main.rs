@@ -93,6 +93,14 @@ impl Nav {
         })
         .detach();
     }
+    /// open "throw a watch party" for a title
+    pub fn plan_party(m: &Meta, cx: &mut App) {
+        if let Some(r) = Self::root(cx) {
+            let p = r.read(cx).planner.clone();
+            let m = m.clone();
+            p.update(cx, |p, cx| p.open(m, cx));
+        }
+    }
     pub fn toast(msg: String, cx: &mut App) {
         if let Some(r) = Self::root(cx) {
             r.update(cx, |r, cx| {
@@ -129,6 +137,7 @@ pub struct Root {
     signin: Option<Entity<views::signin::SignIn>>,
     person: Option<Entity<views::person::Person>>,
     invite: Entity<views::invite::Invite>,
+    pub planner: Entity<views::planner::Planner>,
     me: serde_json::Value,
     focus: gpui::FocusHandle,
     last_size: gpui::Size<gpui::Pixels>,
@@ -439,7 +448,7 @@ impl Render for Root {
             .when(self.route == Route::SignIn, |d| d.child(window_controls()))
             .when(playing, |d| d.child(window_controls()))
             .child(self.together_cards(cx))
-            .when(!playing && self.route != Route::SignIn, |d| d.child(self.invite.clone()))
+            .when(!playing && self.route != Route::SignIn, |d| d.child(self.planner.clone()).child(self.invite.clone()))
             .children(self.toast.clone().map(|t| {
                 div().absolute().bottom(px(28.)).left_0().w_full().flex().justify_center().child(
                     div()
@@ -560,6 +569,7 @@ fn main() {
                             signin: None,
                             person: None,
                             invite: cx.new(views::invite::Invite::new),
+                            planner: cx.new(views::planner::Planner::new),
                             me: me.clone(),
                             focus,
                             last_size: gpui::Size::default(),

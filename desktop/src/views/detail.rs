@@ -275,6 +275,10 @@ impl Render for Detail {
                                     .detach();
                                 }
                             })))
+                            .child(act("d-party", icon("couch", 22.), "Watch party").on_click({
+                                let m = m.clone();
+                                move |_, _, cx| Nav::plan_party(&m, cx)
+                            }))
                             .child(act("d-seen", icon(if flagged { "checkCircle" } else { "eye" }, 22.), if flagged { "Watched" } else { "Mark watched" }).on_click(
                                 cx.listener(move |d, _, _, cx| {
                                     let Some(f) = d.full.clone() else { return };
