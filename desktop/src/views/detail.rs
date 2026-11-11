@@ -15,6 +15,9 @@ pub struct Detail {
     extra: Option<Value>,
     item: Option<Value>,
     season: Option<i64>,
+    rating: Option<u8>,
+    hover_star: u8,
+    favs: Option<Vec<Value>>,
     scroll: ScrollHandle,
 }
 
@@ -28,10 +31,14 @@ impl Detail {
             );
             let lid = full.as_ref().ok().and_then(|f| f["id"].as_str().map(|s| s.to_string())).unwrap_or(id.clone());
             let item = api::call::<Value>("library_item", json!({ "id": lid })).await.ok();
+            let favs = api::call::<Value>("crew_social", json!({ "method": "GET", "path": "/v1/favs", "body": Value::Null })).await.ok().and_then(|v| v["favs"].as_array().cloned());
+            let rating = api::call::<Value>("simkl_item_status", json!({ "kind": kind, "id": lid })).await.ok().and_then(|v| v["rating"].as_u64()).map(|r| r as u8);
             let _ = this.update(cx, |d, cx| {
                 d.full = full.ok();
                 d.extra = extra.ok();
                 d.item = item.filter(|v| !v.is_null());
+                d.rating = rating;
+                d.favs = favs;
                 // open on the season you're in
                 if let Some(f) = &d.full {
                     let at = d.item.as_ref().and_then(|i| i["state"]["season"].as_i64());
@@ -42,7 +49,7 @@ impl Detail {
             });
         })
         .detach();
-        Self { base, full: None, extra: None, item: None, season: None, scroll: ScrollHandle::new() }
+        Self { base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, favs: None, scroll: ScrollHandle::new() }
     }
 
     fn refresh_item(&mut self, cx: &mut Context<Self>) {
@@ -135,6 +142,56 @@ fn seasons(f: &Value) -> Vec<i64> {
     u
 }
 
+impl Detail {
+    fn stars(&self, m: &Meta, cx: &mut Context<Self>) -> impl IntoElement {
+        let shown = if self.hover_star > 0 { self.hover_star } else { self.rating.unwrap_or(0) };
+        div()
+            .id("stars")
+            .flex()
+            .items_center()
+            .gap(px(4.))
+            .on_hover(cx.listener(|d, on: &bool, _, cx| {
+                if !*on {
+                    d.hover_star = 0;
+                    cx.notify();
+                }
+            }))
+            .child(div().mr(px(8.)).text_size(px(14.)).text_color(theme::label3()).child("your rating"))
+            .children((1..=10u8).map(|n| {
+                let (kind, id, name) = (m.kind.clone(), self.lid(), m.name.clone());
+                let title = json!({ "id": m.id, "type": m.kind, "name": m.name, "poster": m.poster, "background": m.background });
+                div()
+                    .id(SharedString::from(format!("star-{n}")))
+                    .cursor_pointer()
+                    .on_hover(cx.listener(move |d, on: &bool, _, cx| {
+                        if *on {
+                            d.hover_star = n;
+                            cx.notify();
+                        }
+                    }))
+                    .on_click(cx.listener(move |d, _, _, cx| {
+                        let v = if d.rating == Some(n) { None } else { Some(n) };
+                        d.rating = v;
+                        cx.notify();
+                        let (kind, id, name, title) = (kind.clone(), id.clone(), name.clone(), title.clone());
+                        cx.spawn(async move |_, cx| {
+                            let r = api::call::<Value>("simkl_rate", json!({ "kind": kind, "id": id, "rating": v })).await;
+                            if r.is_ok() && v.is_some() {
+                                let _ = api::call::<Value>("crew_social", json!({ "method": "POST", "path": "/v1/activity", "body": { "kind": "rating", "title": title, "rating": v } })).await;
+                            }
+                            let _ = cx.update(|cx| Nav::toast(match (&r, v) {
+                                (Err(e), _) => e.clone(),
+                                (_, Some(n)) => format!("rated {name} {n}/10"),
+                                _ => "rating removed".into(),
+                            }, cx));
+                        })
+                        .detach();
+                    }))
+                    .child(if shown >= n { icon_fill("star", 20.).text_color(theme::lamp()) } else { icon("star", 20.).text_color(theme::label3()) })
+            }))
+    }
+}
+
 fn act(id: &'static str, ic: impl IntoElement, label: &str) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
@@ -196,6 +253,8 @@ impl Render for Detail {
         let flagged = self.item.as_ref().map_or(false, |i| i["state"]["flaggedWatched"].as_bool() == Some(true));
         let owned = self.item.as_ref().map_or(false, |i| i["removed"].as_bool() != Some(true) && i["temp"].as_bool() != Some(true));
         let name = m.name.clone();
+        // rating only once you've actually watched it
+        let seen_it = self.rating.is_some() || flagged || !self.watched().is_empty() || self.item.as_ref().map_or(false, |i| i["state"]["timesWatched"].as_i64().unwrap_or(0) > 0);
 
         let hero = div()
             .relative()
@@ -275,6 +334,30 @@ impl Render for Detail {
                                     .detach();
                                 }
                             })))
+                            .child({
+                                let base = m.id.split(':').next().unwrap_or("").to_string();
+                                let fav = self.favs.as_ref().map_or(false, |f| f.iter().any(|x| x["id"].as_str() == Some(base.as_str())));
+                                let r = json!({ "id": base, "type": m.kind, "name": m.name, "poster": m.poster, "background": m.background });
+                                act("d-fav", if fav { icon_fill("heart", 21.).text_color(theme::neon_soft()) } else { icon("heart", 21.) }, "Favourite").on_click(cx.listener(move |d, _, _, cx| {
+                                    let mut list = d.favs.clone().unwrap_or_default();
+                                    let id = r["id"].clone();
+                                    let now = list.iter().any(|x| x["id"] == id);
+                                    if now {
+                                        list.retain(|x| x["id"] != id);
+                                    } else {
+                                        let mut e = r.clone();
+                                        e["at"] = json!(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64);
+                                        list.insert(0, e);
+                                    }
+                                    d.favs = Some(list.clone());
+                                    cx.notify();
+                                    cx.spawn(async move |_, cx| {
+                                        let _ = api::call::<Value>("crew_social", json!({ "method": "PUT", "path": "/v1/favs", "body": { "favs": list } })).await;
+                                        let _ = cx.update(|cx| Nav::toast(if now { "removed from favourites".into() } else { "added to favourites".into() }, cx));
+                                    })
+                                    .detach();
+                                }))
+                            })
                             .child(act("d-party", icon("couch", 22.), "Watch party").on_click({
                                 let m = m.clone();
                                 move |_, _, cx| Nav::plan_party(&m, cx)
@@ -302,7 +385,8 @@ impl Render for Detail {
                     .children(ex["tagline"].as_str().map(|t| div().text_size(px(17.)).italic().text_color(theme::label2()).child(t.to_string())))
                     .children(m.description.clone().or(ex["overview"].as_str().map(|s| s.to_string())).map(|d| {
                         div().max_w(px(600.)).text_size(px(17.)).line_height(px(25.)).text_color(theme::white(0.88)).child(d)
-                    })),
+                    }))
+                    .when(seen_it, |d| d.child(self.stars(&m, cx))),
             );
 
         let mut page = div().id("detail").size_full().overflow_y_scroll().track_scroll(&self.scroll).bg(theme::bg()).child(hero);
