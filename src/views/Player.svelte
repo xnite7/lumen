@@ -6,7 +6,8 @@
   import { api, img, listen } from "../lib/api";
   import { toast } from "../lib/stores/toast.svelte";
   import { app } from "../lib/stores/app.svelte";
-  import { pb, close, cmd, nextVideo, playNext, playVideo, orderedVideos, autoNext, keepWatching, markActive, still } from "../lib/stores/playback.svelte";
+  import { pb, close, cmd, nextVideo, playNext, playVideo, orderedVideos, autoNext, keepWatching, markActive, still, minimize, restore, sleep, setSleep } from "../lib/stores/playback.svelte";
+  import { fallback, imdbEpisode } from "../lib/fallback";
   import { progressOf, watchedIds } from "../lib/stores/library.svelte";
   import EpisodeCarousel from "../components/player/EpisodeCarousel.svelte";
   import EpisodesPopover from "../components/player/EpisodesPopover.svelte";
@@ -61,6 +62,13 @@
     const t = e.target as HTMLElement;
     if (t.closest(".pop") || t.closest(".bar .ic")) return;
     menu = "";
+    menuShut = performance.now();
+  }
+  // the click that closes a menu must not also pause the film
+  let menuShut = 0;
+  function tapPicture() {
+    if (performance.now() - menuShut < 500) return;
+    toggle();
   }
   function openMenu(m: typeof menu, e: MouseEvent) {
     if (menu === m) return void (menu = "");
@@ -210,10 +218,8 @@
   // ------------------------------------------------- head-tracked 3D
   // 3D releases (SBS / OU) go through a depth shader in mpv; your head
   // position picks the camera, so the screen behaves like a window.
-  let mode3d = $state<"auto" | "off" | "sbs" | "ou">("auto");
-  const layout3d = $derived<"" | "sbs" | "ou">(
-    !native ? "" : mode3d === "off" ? "" : mode3d === "auto" ? (pb.stream?._couch?.threeDLayout ?? "") : mode3d,
-  );
+  // always automatic: a 3D release plays in 3D, everything else doesn't
+  const layout3d = $derived<"" | "sbs" | "ou">(!native ? "" : ((pb.stream?._couch?.threeDLayout ?? "") as "" | "sbs" | "ou"));
   let applied3d = "";
   $effect(() => {
     const w = st.video.width;
@@ -329,11 +335,157 @@
   // from when the video opened
   const isOn = (t: { id: any; selected?: boolean }, cur: string) => (/^\d+$/.test(cur ?? "") ? String(t.id) === cur : !!t.selected);
 
-  function trackName(t: any) {
-    const parts = [t.title, lang(t.lang)].filter((x, i, a) => x && a.indexOf(x) === i);
-    if (t.channels) parts.push(t.channels >= 6 ? `${t.channels - 1}.1` : "Stereo");
-    if (t.codec) parts.push(t.codec.toUpperCase());
-    return parts.join(" · ");
+  // just the language; "English 1", "English 2" when there are several
+  function named(list: any[]) {
+    const total = new Map<string, number>();
+    for (const t of list) total.set(lang(t.lang), (total.get(lang(t.lang)) ?? 0) + 1);
+    const seen = new Map<string, number>();
+    return list.map((t) => {
+      const l = lang(t.lang);
+      const n = (seen.get(l) ?? 0) + 1;
+      seen.set(l, n);
+      return { t, label: (total.get(l) ?? 1) > 1 ? `${l} ${n}` : l };
+    });
+  }
+  const audioNamed = $derived(named(audio));
+  const subsNamed = $derived(named(subs));
+
+  // ---------------------------------------------------------------- speed
+  const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+  function setSpeed(v: number) {
+    v = Math.max(0.5, Math.min(2, Math.round(v * 4) / 4));
+    if (native) cmd("speed", { value: v });
+    else if (video) {
+      video.playbackRate = v;
+      pb.state = { ...pb.state, speed: v };
+    }
+  }
+
+  // --------------------------------------------- wheel = volume (with a HUD)
+  let volHud = $state(false);
+  let volTimer: ReturnType<typeof setTimeout> | undefined;
+  function onWheel(e: WheelEvent) {
+    if (pb.mini || (e.target as HTMLElement).closest(".carousel, .pop, .eps, input, select")) return;
+    e.preventDefault();
+    const max = pbs.volumeBoost ? 200 : 100;
+    const step = e.deltaY < 0 ? 5 : -5;
+    const v = Math.max(0, Math.min(max, Math.round(((st.muted ? 0 : st.volume) + step) / 5) * 5));
+    if (st.muted && step > 0) mute();
+    setVolume(v);
+    volHud = true;
+    clearTimeout(volTimer);
+    volTimer = setTimeout(() => (volHud = false), 1100);
+  }
+
+  // ------------------------------------------- next episode, ready to go
+  // its streams are fetched while this one plays, so "next" is instant
+  let fetchedFor = "";
+  $effect(() => {
+    const n = next;
+    if (!n || !pb.meta || st.pos < 20 || fetchedFor === n.id) return;
+    fetchedFor = n.id;
+    api.prefetchNext(pb.meta.type, n.id).catch(() => (fetchedFor = ""));
+  });
+  let nextHover = $state(false);
+  let aspect = $state(app.settings.playback.aspect ?? "fit");
+  const epArt = (v: { id: string; thumbnail?: string | null }) => img(v.thumbnail ?? imdbEpisode(v.id) ?? undefined);
+
+  // ------------------------------------------------------------ sleep timer
+  $effect(() => {
+    if (sleep.mode !== "time") return;
+    const t = setInterval(() => {
+      if (Date.now() < sleep.at) return;
+      sleep.mode = "";
+      if (!st.paused) toggle();
+      toast("sleep timer: paused. goodnight", "info", undefined, 8000);
+    }, 1000);
+    return () => clearInterval(t);
+  });
+  let nowTick = $state(Date.now());
+  $effect(() => {
+    if (menu !== "more") return;
+    const t = setInterval(() => (nowTick = Date.now()), 1000);
+    return () => clearInterval(t);
+  });
+  const sleepLeft = $derived(sleep.mode === "time" ? Math.max(0, Math.ceil((sleep.at - nowTick) / 60_000)) : 0);
+
+  // ----------------------------------------------------- seek-bar stills
+  // one request at a time; stills are kept per 10 s of film
+  const stills = new Map<number, string>();
+  let still_ = $state<string | null>(null);
+  let stillBusy = false;
+  let stillFor = "";
+  $effect(() => {
+    // a new video: forget the old one's stills
+    const id = pb.videoId + pb.url;
+    if (id !== stillFor) {
+      stillFor = id;
+      stills.clear();
+      still_ = null;
+    }
+  });
+  const canStill = $derived(native && !pb.stream?.infoHash && st.duration > 60);
+  async function wantStill(t: number) {
+    if (!canStill) return;
+    const b = Math.floor(t / 10);
+    const have = stills.get(b);
+    if (have) return void (still_ = have);
+    if (stillBusy) return;
+    stillBusy = true;
+    const forId = stillFor;
+    const r = await api.thumb(t).catch(() => null);
+    stillBusy = false;
+    if (forId !== stillFor) return;
+    if (r) stills.set(b, r);
+    // show it if the pointer's still there; otherwise fetch where it is now
+    if (scrub) {
+      const nb = Math.floor(scrub.t / 10);
+      if (nb === b) still_ = r ?? still_;
+      else wantStill(scrub.t);
+    }
+  }
+  let stillTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    const t = scrub?.t;
+    clearTimeout(stillTimer);
+    if (t == null) return;
+    const have = stills.get(Math.floor(t / 10));
+    if (have) still_ = have;
+    else stillTimer = setTimeout(() => wantStill(t), 140);
+  });
+
+  // ------------------------------------------------------------ mini player
+  // the film keeps playing in the corner while you browse couch. mpv draws
+  // under the page, so the page gets a window cut into it and mpv squeezes
+  // its picture into that corner.
+  const mini = $derived(pb.mini);
+  const compact = $derived(mini || app.pip);
+  $effect(() => {
+    const html = document.documentElement;
+    html.classList.toggle("mini-player", mini);
+    if (!mini) {
+      if (native) cmd("margins", { l: 0, r: 0, t: 0, b: 0 }).catch(() => {});
+      return;
+    }
+    const fit = () => {
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const w = Math.round(Math.max(320, Math.min(460, vw * 0.27)));
+      const h = Math.round((w * 9) / 16);
+      const m = 24;
+      html.style.setProperty("--mini-w", `${w}px`);
+      html.style.setProperty("--mini-h", `${h}px`);
+      if (native) cmd("margins", { l: (vw - m - w) / vw, r: m / vw, t: (vh - m - h) / vh, b: m / vh }).catch(() => {});
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => {
+      window.removeEventListener("resize", fit);
+      html.classList.remove("mini-player");
+    };
+  });
+  function expand() {
+    if (app.pip) pip();
+    else restore();
   }
 
   // ------------------------------------------------------------- torrent
@@ -356,7 +508,7 @@
 
   // -------------------------------------------------------------- keyboard
   function onKey(e: KeyboardEvent) {
-    if (!pb.open || (e.target as HTMLElement)?.tagName === "INPUT") return;
+    if (!pb.open || pb.mini || ["INPUT", "TEXTAREA", "SELECT"].includes((e.target as HTMLElement)?.tagName)) return;
     const k = e.key;
     if (k === " " || k === "k") toggle();
     else if (k === "ArrowRight") seekBy(e.shiftKey ? pbs.seekLarge : pbs.seekSmall);
@@ -372,8 +524,9 @@
       if (menu) menu = "";
       else if (app.fullscreen) fullscreen();
       else if (app.pip) pip();
-      else close();
-    } else return;
+      else leave();
+    } else if (k === "i") minimize();
+    else return;
     e.preventDefault();
     poke();
   }
@@ -461,6 +614,11 @@
     document.documentElement.classList.toggle("chrome-off", chromeHidden || idleScreen);
     return () => document.documentElement.classList.remove("chrome-off");
   });
+  // back out of the player: the film carries on in the corner (✕ there stops it)
+  function leave() {
+    if (pb.error || pb.loading || pb.mode === "youtube" || app.platform === "ios") close();
+    else minimize();
+  }
   function dragWindow(e: MouseEvent) {
     if (e.button !== 0 || (e.target as Element).closest("button, select, input, a")) return;
     if (e.detail === 2) api.window("maximize");
@@ -494,18 +652,18 @@
 
 <svelte:window onkeydown={onKey} onmousemove={poke} onpointerdown={clickAway} />
 
-<div class="player" class:hide-cursor={chromeHidden} class:native ondblclick={dblFull} role="presentation" style:--scene={scene}>
+<div class="player" class:hide-cursor={chromeHidden} class:native class:compact class:mini class:pip={app.pip && !mini} ondblclick={(e) => (compact ? expand() : dblFull(e))} onwheel={onWheel} role="presentation" style:--scene={scene}>
   {#if pb.mode === "web" && pb.url}
     <!-- svelte-ignore a11y_media_has_caption -->
-    <video bind:this={video} src={pb.url} autoplay playsinline onclick={toggle}></video>
+    <video bind:this={video} src={pb.url} autoplay playsinline onclick={tapPicture}></video>
   {:else if pb.mode === "youtube" && pb.ytId}
-    <div class="yt"><YouTube id={pb.ytId} muted={false} onplaying={() => (pb.loading = false)} onended={close} /></div>
+    <div class="yt"><YouTube id={pb.ytId} muted={false} onplaying={() => ((pb.loading = false), (pb.state = { ...pb.state, buffering: false, paused: false }))} onended={close} /></div>
   {/if}
 
   <!-- click-catcher over the video for play/pause -->
-  {#if native}<div class="catch" onclick={toggle} role="presentation"></div>{/if}
+  {#if native}<div class="catch" onclick={tapPicture} role="presentation"></div>{/if}
 
-  {#if pb.loading || (st.buffering && st.pos < 1)}
+  {#if pb.loading || (pb.mode !== "youtube" && st.buffering && st.pos < 1)}
     <div class="loading" class:over-art={st.pos < 1}>
       {#if st.pos < 1 && bg}<img class="art" src={img(bg, "original")} alt="" />{/if}
       <div class="load-center">
@@ -557,7 +715,7 @@
   {#if pausedScreen && !idleScreen}
     <!-- paused: the episode up close, the season fanned on the right -->
     <!-- click anywhere on the paused picture (not the episodes) to play -->
-    <div class="paused" role="presentation" onclick={(e) => !(e.target as HTMLElement).closest(".carousel, button, a") && toggle()}>
+    <div class="paused" role="presentation" onclick={(e) => !(e.target as HTMLElement).closest(".carousel, button, a") && tapPicture()}>
       <div class="p-shade"></div>
       <div class="p-info">
         {#if isShow}<span class="p-show">{pb.meta?.name ?? ""}</span>{/if}
@@ -602,7 +760,7 @@
   <!-- up next -->
   {#if showUpNext && next}
     <div class="upnext glass strong">
-      {#if next.thumbnail}<img src={img(next.thumbnail)} alt="" />{/if}
+      {#if epArt(next)}<img src={epArt(next)} alt="" use:fallback={[imdbEpisode(next.id), bg ? img(bg, "w780") : null]} />{/if}
       <div class="un-txt">
         <span class="foot faint">up next · {episodeLabel(next.id)}</span>
         <span class="headline clamp-2">{next.title || next.name || `Episode ${next.episode}`}</span>
@@ -635,10 +793,55 @@
     </div>
   {/if}
 
+  {#if volHud && !compact}
+    <div class="vol-hud glass strong" aria-hidden="true">
+      <Icon name={st.muted || st.volume === 0 ? "mute" : "volume"} size={18} />
+      <span class="vh-bar"><i style:width="{Math.min(100, (st.volume / (pbs.volumeBoost ? 200 : 100)) * 100)}%"></i></span>
+      <b>{Math.round(st.volume)}</b>
+    </div>
+  {/if}
+
+  {#if compact}
+    <!-- picture-in-picture and the corner mini player: one small, clean set
+         of controls that only shows while the pointer is over the picture -->
+    <div class="cui" role="presentation" onmousedown={(e) => app.pip && !mini && !(e.target as Element).closest("button, .c-scrub") && api.window("drag")}>
+      <div class="c-top">
+        <button class="c-btn press" onclick={close} aria-label="Stop and close" title="Close"><Icon name="close" size={16} /></button>
+        <span class="c-title">{pb.meta?.name ?? ""}{#if epShort}<i> · {epShort}</i>{/if}</span>
+        <button class="c-btn press" onclick={expand} aria-label="Back to the full player" title="Expand"><Icon name="expand" size={15} /></button>
+      </div>
+      <div class="c-mid">
+        <button class="c-btn press" onclick={() => seekBy(-10)} aria-label="Back 10 seconds"><Icon name="replay10" size={20} /></button>
+        <button class="c-btn big press" onclick={toggle} aria-label={st.paused ? "Play" : "Pause"}><Icon name={st.paused ? "play" : "pause"} size={24} /></button>
+        <button class="c-btn press" onclick={() => seekBy(10)} aria-label="Forward 10 seconds"><Icon name="forward10" size={20} /></button>
+      </div>
+      <div class="c-bot">
+        <span class="tabular">{time(st.pos || 0)}</span>
+        <div
+          class="c-scrub"
+          role="slider"
+          tabindex="-1"
+          aria-label="Seek"
+          aria-valuemin={0}
+          aria-valuemax={st.duration}
+          aria-valuenow={st.pos}
+          onclick={(e) => {
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            seekTo(((e.clientX - r.left) / r.width) * (st.duration || 0));
+          }}
+        >
+          <i style:width="{progress}%"></i>
+        </div>
+        <span class="tabular">-{time(Math.max(0, (st.duration || 0) - (st.pos || 0)))}</span>
+      </div>
+    </div>
+    <div class="c-line" aria-hidden="true"><i style:width="{progress}%"></i></div>
+  {/if}
+
   <!-- top chrome -->
   <!-- the empty part of the top bar moves the window, like a title bar -->
   <header class="top" class:gone={chromeHidden || idleScreen} onmousedown={dragWindow} role="presentation">
-    <button class="round glass press" onclick={close} aria-label="Close player"><Icon name="back" size={20} /></button>
+    <button class="round glass press" onclick={leave} aria-label="Back (keeps playing in the corner)" title="Back · keeps playing in the corner"><Icon name="back" size={20} /></button>
     <div class="ttl">
       {#if !pausedScreen}
         {#if pb.meta?.logo && !logoBroken(pb.meta.logo)}<img src={img(pb.meta.logo)} alt={pb.meta.name} use:logoOk={{ src: pb.meta.logo, id: pb.meta.id }} />{:else}<span class="title3">{pb.meta?.name}</span>{/if}
@@ -679,7 +882,10 @@
           {/each}
         </div>
         {#if scrub}
-          <div class="tip glass strong" style:left="{scrub.x}px">{time(scrub.t)}</div>
+          <div class="tip" class:pic={!!still_ && canStill} style:left="clamp(96px, {scrub.x}px, calc(100% - 96px))">
+            {#if still_ && canStill}<img src={still_} alt="" />{/if}
+            <span>{time(scrub.t)}</span>
+          </div>
         {/if}
       </div>
     {/snippet}
@@ -707,7 +913,20 @@
         {#if epShort}<span class="now-ep">{epShort} {pb.episodeTitle}</span>{/if}
       </div>
       {/if}
-      {#if next}<button class="ic press" onclick={playNext} aria-label="Next episode" title="Next episode"><Icon name="next" size={20} /></button>{/if}
+      {#if next}
+        <span class="next-wrap" role="presentation" onmouseenter={() => (nextHover = true)} onmouseleave={() => (nextHover = false)}>
+          <button class="ic press" onclick={playNext} aria-label="Next episode"><Icon name="next" size={20} /></button>
+          {#if nextHover && !menu}
+            <span class="next-card glass strong">
+              {#if epArt(next)}<img src={epArt(next)} alt="" use:fallback={[imdbEpisode(next.id), bg ? img(bg, "w780") : null]} />{/if}
+              <span class="nc-txt">
+                <span class="nc-k">next · {episodeLabel(next.id)}</span>
+                <span class="nc-t">{next.title || next.name || `Episode ${next.episode}`}</span>
+              </span>
+            </span>
+          {/if}
+        </span>
+      {/if}
       <button class="ic press" class:on={menu === "volume"} onclick={(e) => openMenu("volume", e)} aria-label="Volume"><Icon name={st.muted || st.volume === 0 ? "mute" : "volume"} size={21} /></button>
       {#if native}<button class="ic press" class:on={menu === "tracks"} onclick={(e) => openMenu("tracks", e)} aria-label="Audio and subtitles"><Icon name="subtitles" size={21} /></button>{/if}
       {#if isShow}<button class="ic press" class:on={menu === "episodes"} onclick={(e) => openMenu("episodes", e)} aria-label="Episodes"><Icon name="stack" size={21} /></button>{/if}
@@ -728,19 +947,19 @@
           <div class="tracks">
             <div class="col">
               <h4 class="headline">Audio</h4>
-              {#each audio as t (t.id)}
-                <button class="opt" class:sel={isOn(t, st.aid)} onclick={() => cmd("aid", { value: t.id })}>{#if langFlag(t.lang)}<img class="flag" src={langFlag(t.lang)} alt="" />{/if}{trackName(t)}</button>
+              {#each audioNamed as { t, label } (t.id)}
+                <button class="opt" class:sel={isOn(t, st.aid)} onclick={() => cmd("aid", { value: t.id })}>{#if langFlag(t.lang)}<img class="flag" src={langFlag(t.lang)} alt="" />{/if}{label}</button>
               {/each}
             </div>
             <div class="col alt">
               <h4 class="headline">Subtitles</h4>
               <button class="opt" class:sel={!subsOn} onclick={() => cmd("sid", { value: "no" })}>Off</button>
-              {#each subs as t (t.id)}
-                <button class="opt" class:sel={subsOn && isOn(t, st.sid)} onclick={() => cmd("sid", { value: t.id })}>{#if langFlag(t.lang)}<img class="flag" src={langFlag(t.lang)} alt="" />{/if}{trackName(t)}{#if t.external}<span class="faint"> · addon</span>{/if}</button>
+              {#each subsNamed as { t, label } (t.id)}
+                <button class="opt" class:sel={subsOn && isOn(t, st.sid)} onclick={() => cmd("sid", { value: t.id })}>{#if langFlag(t.lang)}<img class="flag" src={langFlag(t.lang)} alt="" />{/if}{label}</button>
               {/each}
               {#if subsOn}
                 <div class="delay">
-                  <span class="foot dim">timing {st.subDelay.toFixed(1)} s</span>
+                  <span class="foot dim">out of sync? {st.subDelay > 0 ? "+" : ""}{st.subDelay.toFixed(1)} s</span>
                   <button class="btn tinted small press" onclick={() => cmd("sub-delay", { value: st.subDelay - 0.1 })}>−0.1</button>
                   <button class="btn tinted small press" onclick={() => cmd("sub-delay", { value: st.subDelay + 0.1 })}>+0.1</button>
                 </div>
@@ -752,25 +971,31 @@
         {:else if menu === "more"}
           <div class="more-pop">
             <h4 class="foot faint">Speed</h4>
-            <div class="seg-row">
-              {#each [0.5, 0.75, 1, 1.25, 1.5, 2] as s}
-                <button class="chip press" class:sel={st.speed === s} onclick={() => (native ? cmd("speed", { value: s }) : video && (video.playbackRate = s))}>{s}×</button>
+            <div class="speed">
+              <button class="sp-step press" onclick={() => setSpeed(st.speed - 0.25)} disabled={st.speed <= 0.5} aria-label="Slower">−</button>
+              <div class="sp-dial">
+                <b class="sp-now">{st.speed}<small>×</small></b>
+                <input type="range" min="0.5" max="2" step="0.25" value={st.speed} oninput={(e) => setSpeed(+(e.currentTarget as HTMLInputElement).value)} aria-label="Speed" style:--p="{((st.speed - 0.5) / 1.5) * 100}%" />
+                <div class="sp-ticks">
+                  {#each SPEEDS as v}<button class:on={st.speed === v} class:one={v === 1} onclick={() => setSpeed(v)} aria-label="{v}×"><i></i>{#if v === 0.5 || v === 1 || v === 1.5 || v === 2}<span>{v}</span>{/if}</button>{/each}
+                </div>
+              </div>
+              <button class="sp-step press" onclick={() => setSpeed(st.speed + 0.25)} disabled={st.speed >= 2} aria-label="Faster">+</button>
+            </div>
+            <h4 class="foot faint"><Icon name="moon" size={13} /> Sleep timer{#if sleep.mode === "time"} · {sleepLeft} min left{:else if sleep.mode === "episode"} · after this episode{/if}</h4>
+            <div class="segmented">
+              <button class:sel={!sleep.mode} onclick={() => setSleep("")}>Off</button>
+              {#if isShow}<button class:sel={sleep.mode === "episode"} onclick={() => setSleep("episode")}>This episode</button>{/if}
+              {#each [15, 30, 60] as m}
+                <button onclick={() => setSleep(m)}>{m} min</button>
               {/each}
             </div>
             <h4 class="foot faint">Picture</h4>
-            <div class="seg-row">
-              {#each [["fit", "Fit"], ["fill", "Fill screen"], ["stretch", "Stretch"]] as [v, l]}
-                <button class="chip press" onclick={() => cmd("aspect", { value: v })}>{l}</button>
+            <div class="segmented">
+              {#each [["fit", "Fit"], ["fill", "Fill"], ["stretch", "Stretch"]] as [v, l]}
+                <button class:sel={aspect === v} onclick={() => ((aspect = v), cmd("aspect", { value: v }))}>{l}</button>
               {/each}
             </div>
-            {#if native}
-              <h4 class="foot faint">3D</h4>
-              <div class="seg-row">
-                {#each [["auto", pb.stream?._couch?.threeD ? "Auto (3D)" : "Auto"], ["off", "Off"], ["sbs", "SBS"], ["ou", "OU"]] as [v, l]}
-                  <button class="chip press" class:sel={mode3d === v} onclick={() => (mode3d = v as typeof mode3d)}>{l}</button>
-                {/each}
-              </div>
-            {/if}
             <p class="foot faint info">{st.video.width}×{st.video.height} · {st.video.codec} · {st.video.hwdec && st.video.hwdec !== "no" ? `hardware (${st.video.hwdec})` : "software"} · {st.video.fps?.toFixed(2)} fps</p>
           </div>
         {/if}
@@ -1357,13 +1582,381 @@
   }
   .tip {
     position: absolute;
-    bottom: 26px;
+    bottom: 24px;
     transform: translateX(-50%);
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    pointer-events: none;
+  }
+  .tip span {
     padding: 4px 10px;
     border-radius: 8px;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     font-variant-numeric: tabular-nums;
+    background: rgb(0 0 0 / 0.72);
+    backdrop-filter: blur(10px);
+  }
+  .tip img {
+    width: 184px;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 10px;
+    background: #000;
+    box-shadow:
+      0 0 0 1.5px rgb(255 255 255 / 0.85),
+      0 14px 30px -10px #000;
+  }
+
+  /* wheel volume */
+  .vol-hud {
+    position: absolute;
+    z-index: 30;
+    top: 96px;
+    left: 50%;
+    translate: -50% 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    animation: hud-in 160ms ease both;
+  }
+  .vh-bar {
+    width: 150px;
+    height: 4px;
+    background: rgb(255 255 255 / 0.25);
+  }
+  .vh-bar i {
+    display: block;
+    height: 100%;
+    background: #fff;
+    transition: width 120ms ease;
+  }
+  .vol-hud b {
+    min-width: 3ch;
+    text-align: right;
+  }
+  @keyframes hud-in {
+    from {
+      opacity: 0;
+      translate: -50% -6px;
+    }
+  }
+
+  /* next episode, on hover */
+  .next-wrap {
+    position: relative;
+    display: inline-grid;
+  }
+  .next-card {
+    position: absolute;
+    bottom: calc(100% + 18px);
+    left: 50%;
+    translate: -50% 0;
+    width: 250px;
+    display: grid;
+    gap: 0;
+    border-radius: 16px;
+    overflow: hidden;
+    text-align: left;
+    pointer-events: none;
+    animation: nc-in 220ms var(--spring, ease) both;
+  }
+  .next-card img {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    display: block;
+  }
+  .nc-txt {
+    display: grid;
+    gap: 1px;
+    padding: 10px 12px 11px;
+  }
+  .nc-k {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--label-3);
+  }
+  .nc-t {
+    font-size: 14px;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  @keyframes nc-in {
+    from {
+      opacity: 0;
+      translate: -50% 8px;
+    }
+  }
+
+  /* speed: a dial you can drag, nudge or tap */
+  .speed {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 2px 2px 14px;
+  }
+  .sp-step {
+    width: 36px;
+    height: 36px;
+    flex: none;
+    border-radius: 50%;
+    background: rgb(255 255 255 / 0.1);
+    font: 600 20px var(--font-text);
+    line-height: 1;
+  }
+  .sp-step:disabled {
+    opacity: 0.3;
+  }
+  .sp-dial {
+    flex: 1;
+    display: grid;
+    gap: 6px;
+    min-width: 230px;
+  }
+  .sp-now {
+    justify-self: center;
+    font: 800 30px var(--font-display);
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+  .sp-now small {
+    font-size: 17px;
+    opacity: 0.6;
+    margin-left: 1px;
+  }
+  .sp-dial input {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, #fff var(--p), rgb(255 255 255 / 0.22) var(--p));
+    outline: none;
+    cursor: pointer;
+  }
+  .sp-dial input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.5);
+  }
+  .sp-ticks {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 1px;
+  }
+  .sp-ticks button {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    width: 16px;
+    font-size: 11px;
+    color: var(--label-3);
+  }
+  .sp-ticks i {
+    width: 1.5px;
+    height: 6px;
+    background: rgb(255 255 255 / 0.3);
+  }
+  .sp-ticks .one i {
+    height: 9px;
+    background: rgb(255 255 255 / 0.7);
+  }
+  .sp-ticks .on {
+    color: #fff;
+    font-weight: 700;
+  }
+  .sp-ticks .on i {
+    background: #fff;
+  }
+  /* joined options (picture, sleep timer) */
+  .segmented {
+    display: flex;
+    padding: 3px;
+    border-radius: 12px;
+    background: rgb(255 255 255 / 0.08);
+    margin: 0 2px 12px;
+  }
+  .segmented button {
+    flex: 1;
+    padding: 7px 10px;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--label-2);
+    white-space: nowrap;
+  }
+  .segmented button.sel {
+    background: rgb(255 255 255 / 0.9);
+    color: #000;
+  }
+  .more-pop h4 :global(svg) {
+    vertical-align: -2px;
+  }
+
+  /* ---------------------------------- picture-in-picture & mini player */
+  .player.compact {
+    container-type: size;
+  }
+  .player.compact > :global(:not(video):not(.yt):not(.catch):not(.cui):not(.c-line):not(.subs):not(.loading):not(.mini-ring):not(.error)) {
+    display: none !important;
+  }
+  .player.compact .subs :global(.cue) {
+    font-size: clamp(11px, 4.4cqw, 20px) !important;
+  }
+  .player.compact .subs {
+    bottom: 10% !important;
+  }
+  .player.mini {
+    inset: auto 24px 24px auto;
+    width: var(--mini-w, 400px);
+    height: var(--mini-h, 225px);
+    border-radius: 14px;
+    overflow: hidden;
+    animation: none;
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 0.12),
+      0 24px 60px -18px #000;
+  }
+  .player.mini.native {
+    background: transparent;
+  }
+  .player.mini .catch {
+    display: none;
+  }
+  .player.compact video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .cui {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    opacity: 0;
+    transition: opacity 180ms ease;
+    background: linear-gradient(180deg, rgb(0 0 0 / 0.62), rgb(0 0 0 / 0.12) 34%, rgb(0 0 0 / 0.12) 62%, rgb(0 0 0 / 0.72));
+  }
+  .player.compact:hover .cui,
+  .cui:focus-within {
+    opacity: 1;
+  }
+  .c-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+  }
+  .c-title {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-shadow: 0 1px 6px #000;
+  }
+  .c-title i {
+    font-style: normal;
+    font-weight: 500;
+    opacity: 0.75;
+  }
+  .c-btn {
+    width: 30px;
+    height: 30px;
+    flex: none;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background: rgb(0 0 0 / 0.45);
+    backdrop-filter: blur(8px);
+    transition:
+      background 150ms ease,
+      transform 150ms ease;
+  }
+  .c-btn:hover {
+    background: rgb(255 255 255 / 0.22);
+    transform: scale(1.08);
+  }
+  .c-mid {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+  }
+  .c-mid .c-btn {
+    width: 38px;
+    height: 38px;
+  }
+  .c-mid .c-btn.big {
+    width: 52px;
+    height: 52px;
+    background: rgb(255 255 255 / 0.94);
+    color: #000;
+  }
+  .c-bot {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 12px 11px;
+    font-size: 11px;
+    font-weight: 600;
+    text-shadow: 0 1px 4px #000;
+  }
+  .c-scrub {
+    flex: 1;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    position: relative;
+  }
+  .c-scrub::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: rgb(255 255 255 / 0.3);
+  }
+  .c-scrub i {
+    position: relative;
+    height: 3px;
+    background: var(--scene, #fff);
+  }
+  /* a hair of progress along the bottom while the controls are away */
+  .c-line {
+    position: absolute;
+    z-index: 19;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 2px;
+    background: rgb(255 255 255 / 0.18);
+    transition: opacity 180ms ease;
+  }
+  .c-line i {
+    display: block;
+    height: 100%;
+    background: var(--scene, #fff);
+  }
+  .player.compact:hover .c-line {
+    opacity: 0;
   }
   /* --------------------------------------------- control bar (image 3) */
   .scrub-row {

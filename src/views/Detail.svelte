@@ -122,8 +122,11 @@
 
   const videos = $derived(orderedVideos(meta));
   const seasons = $derived([...new Set(videos.map((v) => v.season ?? 0))].sort((a, b) => (a || 999) - (b || 999)));
-  const watched = $derived(watchedIds(id));
-  const item = $derived(itemOf(id));
+  // the library files a title under its own id (tt…), which isn't always the
+  // id the page was opened with (tmdb:…): ticks and "watched" follow the real one
+  const lid = $derived(m?.id ?? id);
+  const watched = $derived(watchedIds(lid));
+  const item = $derived(itemOf(lid));
   // rating (and reviewing) only once you've actually watched it
   const seenIt = $derived(rating != null || !!item?.state?.flaggedWatched || watched.size > 0 || ((item?.state as any)?.timesWatched ?? 0) > 0);
   void lib;
@@ -141,11 +144,11 @@
   const primary = $derived.by(() => {
     if (!meta) return null;
     if (meta.type !== "series" || !videos.length) {
-      const p = progressOf(id);
+      const p = progressOf(lid);
       return { label: p > 0.02 ? "Resume" : "Play", video: null as Video | null, sub: "" };
     }
     const vid = item?.state?.video_id;
-    if (vid && progressOf(id, vid) > 0.02) {
+    if (vid && progressOf(lid, vid) > 0.02) {
       const v = videos.find((x) => x.id === vid);
       if (v) return { label: "Resume", video: v, sub: episodeLabel(v.id).replace(/\s*·\s*/, " ") };
     }
@@ -166,6 +169,15 @@
 
   function trailerKey() {
     return extra?.videos?.find((v: any) => v.type === "Trailer")?.key ?? m?.trailers?.[0]?.source ?? extra?.videos?.[0]?.key;
+  }
+
+  // the whole thing: a film, or every episode that's out
+  function markAll() {
+    if (!m) return;
+    const on = !item?.state?.flaggedWatched;
+    const eps = m.type === "series" ? videos.filter((v) => (v.season ?? 0) > 0 && (!v.released || new Date(v.released).getTime() <= Date.now())).map((v) => v.id) : undefined;
+    setWatched(m, null, on, eps);
+    toast(on ? (eps?.length ? `marked all ${eps.length} episodes watched` : "marked watched") : "marked unwatched", "ok");
   }
 
   function playTrailer(key?: string, name = "Trailer") {
@@ -247,7 +259,7 @@
             <button class="act press" onclick={() => { haptic("light"); toggleLibrary(m); }} aria-label={owned ? "Remove from My List" : "Add to My List"}>
               <span class="act-ic glass"><Icon name={owned ? "check" : "plus"} size={20} /></span><span class="act-l">My List</span>
             </button>
-            <button class="act press" onclick={() => { haptic("light"); setWatched(m, null, !(item?.state?.flaggedWatched)); }} aria-label="Mark watched">
+            <button class="act press" onclick={() => { haptic("light"); markAll(); }} aria-label="Mark watched">
               <span class="act-ic glass" class:lit={item?.state?.flaggedWatched}><Icon name={item?.state?.flaggedWatched ? "checkCircle" : "eye"} size={20} /></span><span class="act-l">{item?.state?.flaggedWatched ? "Watched" : "Mark watched"}</span>
             </button>
             <button class="act press" onclick={() => { haptic("light"); toast(toggleFav(m) ? "added to favourites" : "removed from favourites", "ok"); }} aria-label="Favourite">
@@ -296,7 +308,7 @@
         </header>
         <div class="eps scroll-x">
           {#each episodes as v (v.id)}
-            {@const p = progressOf(id, v.id)}
+            {@const p = progressOf(lid, v.id)}
             {@const seen = watched.has(v.id)}
             {@const future = v.released && new Date(v.released).getTime() > Date.now()}
             {@const info = epInfo[`${v.season}:${v.episode ?? v.number}`]}
@@ -805,12 +817,29 @@
   }
   .thumb-wrap .seen {
     position: absolute;
+    z-index: 3;
     top: 8px;
     right: 8px;
+    opacity: 0;
+    transition: opacity 160ms ease, transform 160ms ease;
     color: var(--white);
     background: rgb(0 0 0 / 0.45);
     backdrop-filter: blur(8px);
     box-shadow: inset 0 0 0 1.5px rgb(255 255 255 / 0.7);
+  }
+  /* the tick shows once it's watched, or while you point at the picture */
+  .thumb-wrap:hover .seen,
+  .thumb-wrap .seen:focus-visible,
+  .thumb-wrap .seen.on {
+    opacity: 1;
+  }
+  .thumb-wrap .seen:hover {
+    transform: scale(1.12);
+  }
+  @media (hover: none) {
+    .thumb-wrap .seen {
+      opacity: 1;
+    }
   }
   .thumb-wrap .seen.on {
     background: #000;

@@ -72,6 +72,10 @@ pub struct Mpv {
     core: CoreRef,
     inner: Mutex<Option<Arc<libmpv2::Mpv>>>,
     state: Arc<Mutex<State>>,
+    /// what's loaded (url, header fields, user agent), for seek thumbnails
+    last: Mutex<Option<(String, String, String)>>,
+    /// a second, picture-less mpv that only makes seek-bar thumbnails
+    thumbs: Mutex<Option<Arc<libmpv2::Mpv>>>,
 }
 
 const OBSERVED: &[(&str, Format)] = &[
@@ -102,7 +106,7 @@ const OBSERVED: &[(&str, Format)] = &[
 
 impl Mpv {
     pub fn new(core: CoreRef) -> Self {
-        Self { core, inner: Mutex::new(None), state: Arc::new(Mutex::new(State { volume: 100.0, speed: 1.0, ..Default::default() })) }
+        Self { core, inner: Mutex::new(None), state: Arc::new(Mutex::new(State { volume: 100.0, speed: 1.0, ..Default::default() })), last: Mutex::new(None), thumbs: Mutex::new(None) }
     }
 
     fn window_handle(&self) -> Option<i64> {
@@ -318,6 +322,7 @@ impl Mpv {
         let _ = mpv.set_property("http-header-fields", fields.join(",").as_str());
         let ua = headers.iter().find(|(k, _)| k.eq_ignore_ascii_case("user-agent")).map(|(_, v)| v.clone()).unwrap_or_else(|| crate::http::UA.into());
         let _ = mpv.set_property("user-agent", ua.as_str());
+        *self.last.lock() = Some((url.to_string(), fields.join(","), ua.clone()));
         let start_opt = match (start, start_pct) {
             (Some(t), _) => format!("+{t:.2}"),
             (None, Some(p)) => format!("{:.2}%", p * 100.0),
@@ -413,7 +418,73 @@ impl Mpv {
     pub fn stop(&self) {
         if let Some(mpv) = self.inner.lock().clone() {
             let _ = mpv.command("stop", &[]);
+            for key in ["left", "right", "top", "bottom"] {
+                let _ = mpv.set_property(&format!("video-margin-ratio-{key}"), 0.0f64);
+            }
         }
+        *self.last.lock() = None;
+        if let Some(t) = self.thumbs.lock().clone() {
+            let _ = t.command("stop", &[]);
+        }
+    }
+
+    /// A small still of the film at `t` seconds, for the seek bar. A second
+    /// mpv (no window, no sound) opens the same stream at that spot and
+    /// writes one frame as a JPEG; stills are kept per 10 s so going back
+    /// over the bar is instant. None when it can't (torrents, odd streams).
+    pub fn thumb(&self, t: f64) -> Option<Vec<u8>> {
+        use sha2::{Digest, Sha256};
+        let (url, fields, ua) = self.last.lock().clone()?;
+        let bucket = (t.max(0.0) / 10.0).floor() as u64;
+        let key: String = Sha256::digest(url.as_bytes()).iter().take(8).map(|b| format!("{b:02x}")).collect();
+        let dir = self.core.cache_dir.join("thumbs").join(&key);
+        let file = dir.join(format!("{bucket}.jpg"));
+        if let Ok(b) = std::fs::read(&file) {
+            return Some(b);
+        }
+        let tmp = dir.join("_new");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).ok()?;
+        // one at a time: holding the lock is what queues requests
+        let mut slot = self.thumbs.lock();
+        if slot.is_none() {
+            let m = libmpv2::Mpv::with_initializer(|init| {
+                for (k, v) in [
+                    ("vo", "image"), ("vo-image-format", "jpg"), ("vo-image-jpeg-quality", "70"),
+                    ("ao", "null"), ("aid", "no"), ("sid", "no"), ("hwdec", "no"), ("hr-seek", "no"),
+                    ("vf", "scale=320:-2"), ("frames", "1"), ("idle", "yes"), ("ytdl", "no"), ("osc", "no"),
+                    ("input-default-bindings", "no"), ("cache", "no"), ("demuxer-readahead-secs", "0"),
+                    ("network-timeout", "8"), ("sub-auto", "no"), ("audio-display", "no"),
+                ] {
+                    let _ = init.set_property(k, v);
+                }
+                Ok(())
+            })
+            .ok()?;
+            *slot = Some(Arc::new(m));
+        }
+        let m = slot.clone()?;
+        let _ = m.set_property("vo-image-outdir", tmp.to_string_lossy().as_ref());
+        let _ = m.set_property("http-header-fields", fields.as_str());
+        let _ = m.set_property("user-agent", ua.as_str());
+        let _ = m.set_property("start", format!("{}", bucket * 10 + 2).as_str());
+        m.command("loadfile", &[url.as_str(), "replace"]).ok()?;
+        let deadline = std::time::Instant::now() + Duration::from_secs(6);
+        let mut found = None;
+        while std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(60));
+            if let Some(f) = std::fs::read_dir(&tmp).ok().and_then(|d| d.flatten().map(|e| e.path()).find(|p| p.extension().map_or(false, |x| x == "jpg"))) {
+                // let the writer finish
+                std::thread::sleep(Duration::from_millis(40));
+                found = Some(f);
+                break;
+            }
+        }
+        let _ = m.command("stop", &[]);
+        let f = found?;
+        let bytes = std::fs::read(&f).ok()?;
+        let _ = std::fs::rename(&f, &file);
+        (bytes.len() > 500).then_some(bytes)
     }
 
     pub fn state(&self) -> Value {
@@ -469,6 +540,13 @@ impl Mpv {
             "chapter" => mpv.command("add", &["chapter", &format!("{}", num("delta").unwrap_or(1.0) as i64)]),
             "screenshot" => mpv.command("screenshot", &["video"]),
             // a still of the current frame (the couch row's card art)
+            // mini player: the picture only fills a corner of the window
+            "margins" => {
+                for (k, key) in [("l", "left"), ("r", "right"), ("t", "top"), ("b", "bottom")] {
+                    let _ = mpv.set_property(&format!("video-margin-ratio-{key}"), num(k).unwrap_or(0.0).clamp(0.0, 0.95));
+                }
+                Ok(())
+            }
             "snap" => mpv.command("screenshot-to-file", &[a.get("path").and_then(|p| p.as_str()).unwrap_or(""), "video"]),
             "equalizer" => {
                 for k in ["brightness", "contrast", "saturation", "gamma"] {

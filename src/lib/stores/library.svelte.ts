@@ -38,9 +38,9 @@ export async function toggleLibrary(meta: Partial<Meta>) {
   }
 }
 
-export async function setWatched(meta: Partial<Meta>, videoId: string | null, watched: boolean) {
+export async function setWatched(meta: Partial<Meta>, videoId: string | null, watched: boolean, allVideos?: string[]) {
   try {
-    await api.setWatched(meta, videoId, watched);
+    await api.setWatched(meta, videoId, watched, allVideos);
     await loadLibrary();
   } catch (e) {
     toast(errorText(e), "error");

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fallback, imdbEpisode } from "../../lib/fallback";
   // The episode list in the player's bar: season header with arrows, one
   // row per episode with a little progress line; the one under the pointer
   // (or the one playing) opens up with its still and summary.
@@ -49,7 +50,7 @@
         </div>
         {#if isOpen}
           <div class="more">
-            {#if v.thumbnail}<img src={img(v.thumbnail)} alt="" loading="lazy" />{/if}
+            {#if v.thumbnail || imdbEpisode(v.id)}<img src={img(v.thumbnail ?? imdbEpisode(v.id) ?? undefined)} alt="" loading="lazy" use:fallback={[imdbEpisode(v.id)]} />{/if}
             <p class="foot dim">{v.overview ?? v.description ?? (released(v) ? "" : `Airs ${new Date(v.released!).toLocaleDateString()}`)}</p>
           </div>
         {/if}

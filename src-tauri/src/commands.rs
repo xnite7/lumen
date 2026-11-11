@@ -411,12 +411,41 @@ pub fn player_report(s: S<'_>, pos: f64, duration: f64, paused: bool) {
 #[tauri::command]
 pub async fn player_next(s: S<'_>, meta: Value, video_id: String, previous: Value, episode_title: Option<String>) -> AppResult<Value> {
     let kind = meta.get("type").and_then(|t| t.as_str()).unwrap_or("series").to_string();
-    let candidates = s.addons.streams_collect(&kind, &video_id).await;
+    // the next episode's streams are usually fetched already (player_prefetch)
+    let held = NEXT_STREAMS.lock().as_ref().filter(|(id, at, _)| id == &video_id && at.elapsed() < std::time::Duration::from_secs(40 * 60)).map(|(_, _, c)| c.clone());
+    let candidates = match held {
+        Some(c) if !c.is_empty() => c,
+        _ => s.addons.streams_collect(&kind, &video_id).await,
+    };
     let same = s.core.settings.read().playback.binge_same_source;
     let pick = if same { streams::pick_same_source(&candidates, &previous) } else { streams::best(&candidates) };
     let Some(stream) = pick.cloned() else { return Err(AppError::msg("No streams for the next episode")) };
     let r = s.player.open(PlayRequest { stream: stream.clone(), meta, video_id, start_at: None, episode_title }).await?;
     Ok(json!({ "open": r, "stream": stream }))
+}
+
+/// The next episode's streams, held ready so "next episode" starts at once.
+static NEXT_STREAMS: parking_lot::Mutex<Option<(String, std::time::Instant, Vec<Value>)>> = parking_lot::Mutex::new(None);
+
+/// Fetch the streams for an episode ahead of time (the one after what's on).
+#[tauri::command]
+pub async fn player_prefetch(s: S<'_>, kind: String, video_id: String) -> AppResult<usize> {
+    if NEXT_STREAMS.lock().as_ref().map_or(false, |(id, at, c)| id == &video_id && !c.is_empty() && at.elapsed() < std::time::Duration::from_secs(30 * 60)) {
+        return Ok(0);
+    }
+    let c = s.addons.streams_collect(&kind, &video_id).await;
+    let n = c.len();
+    *NEXT_STREAMS.lock() = Some((video_id, std::time::Instant::now(), c));
+    Ok(n)
+}
+
+/// A seek-bar thumbnail at `t` seconds, as a data: URL (null when there's none).
+#[tauri::command]
+pub async fn player_thumb(app: AppHandle, t: f64) -> AppResult<Option<String>> {
+    use base64::Engine;
+    let p = crate::state::player(&app);
+    let bytes = tauri::async_runtime::spawn_blocking(move || p.thumb(t)).await.ok().flatten();
+    Ok(bytes.map(|b| format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(b))))
 }
 
 #[tauri::command]
@@ -459,8 +488,11 @@ pub async fn library_remove(s: S<'_>, id: String, kind: String) -> AppResult<()>
 }
 
 #[tauri::command]
-pub async fn library_set_watched(s: S<'_>, meta: Value, video_id: Option<String>, watched: bool) -> AppResult<Value> {
-    let item = library::set_watched(&s.core, &meta, video_id.as_deref(), watched)?;
+pub async fn library_set_watched(s: S<'_>, meta: Value, video_id: Option<String>, watched: bool, all_videos: Option<Vec<String>>) -> AppResult<Value> {
+    let item = match (&video_id, &all_videos) {
+        (None, Some(all)) if !all.is_empty() => library::set_all_watched(&s.core, &meta, all, watched)?,
+        _ => library::set_watched(&s.core, &meta, video_id.as_deref(), watched)?,
+    };
     if simkl::connected(&s.core) {
         let kind = meta["type"].as_str().unwrap_or("movie").to_string();
         let id = video_id.unwrap_or_else(|| meta["id"].as_str().unwrap_or("").to_string());

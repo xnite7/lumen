@@ -40,6 +40,8 @@ export const pb = $state({
   loading: false,
   error: "",
   torrent: null as any,
+  /** playing in the corner while you browse couch */
+  mini: false,
   /** iPhone: AVPlayer has the video (pb.open stays false) */
   ios: false,
   /** a file AVPlayer can't open: offer VLC / Infuse */
@@ -240,6 +242,7 @@ export async function play(meta: Meta, stream: Stream, videoId: string, opts: { 
     if (pb.open && pb.loading && pb.state.pos < 1 && queue.length) tryNext("this one is taking forever.");
   }, 25_000);
   pb.open = true;
+  pb.mini = false;
   pb.loading = true;
   pb.error = "";
   pb.meta = meta;
@@ -290,7 +293,35 @@ function checkFinished(pos = pb.state.pos, dur = pb.state.duration) {
   askAfterFinish(m);
 }
 
+/** shrink the player into the corner and keep browsing */
+export function minimize() {
+  if (pb.open && !pb.error) pb.mini = true;
+}
+export function restore() {
+  pb.mini = false;
+}
+
+// ---------------------------------------------------------- sleep timer
+/** "episode": stop when this one ends. "time": stop at `at` (ms). */
+export const sleep = $state({ mode: "" as "" | "episode" | "time", at: 0 });
+export function setSleep(mode: "" | "episode" | number) {
+  if (mode === "") sleep.mode = "";
+  else if (mode === "episode") sleep.mode = "episode";
+  else {
+    sleep.mode = "time";
+    sleep.at = Date.now() + mode * 60_000;
+  }
+}
+/** time's up: pause where we are (the spot is saved) */
+export function sleepNow() {
+  sleep.mode = "";
+  cmd("pause", { value: true });
+  toast("sleep timer: paused. goodnight", "info", undefined, 8000);
+}
+
 export async function close() {
+  pb.mini = false;
+  sleep.mode = "";
   still.ask = false;
   autoStreak = 0;
   checkFinished();
@@ -326,6 +357,8 @@ export function nextVideo(): Video | null {
   const i = list.findIndex((v) => v.id === pb.videoId);
   if (i < 0 || i + 1 >= list.length) return null;
   const n = list[i + 1];
+  // the season finale isn't followed by specials / behind-the-scenes extras
+  if ((n.season ?? 0) === 0 && (list[i].season ?? 0) !== 0) return null;
   // Don't offer episodes that haven't aired yet.
   if (n.released && new Date(n.released).getTime() > Date.now()) return null;
   return n;
@@ -350,6 +383,7 @@ export function markActive() {
 /** the episode ended (or the up-next countdown ran out): next one, or ask */
 export function autoNext(idleMs?: number) {
   if (still.ask || !nextVideo()) return;
+  if (sleep.mode === "episode") return sleepNow();
   // Apple's own player (the AVPlayer path) can't ask or report touches
   if (pb.ios && idleMs == null) return void playNext();
   const now = Date.now();

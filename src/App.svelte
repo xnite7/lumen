@@ -264,7 +264,7 @@
   <div class="night" aria-hidden="true"></div>
   <div class="grain" aria-hidden="true"></div>
 
-  <Stack hidden={pb.open && !enteringPlayer} />
+  <Stack hidden={pb.open && !enteringPlayer && !pb.mini} />
 
   {#if ui.phone}<div class="edge-bottom" aria-hidden="true"></div>{/if}
   <TabBar />

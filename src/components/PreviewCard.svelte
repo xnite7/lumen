@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { pb } from "../lib/stores/playback.svelte";
   import { trimLogo } from "../lib/trimlogo";
   import { fallback, imdbArt } from "../lib/fallback";
   import { logoBroken, logoOk } from "../lib/badlogo.svelte";
@@ -93,6 +94,8 @@
     if (!m) return;
     // two frames: lay out at the poster's size first, then grow
     requestAnimationFrame(() => requestAnimationFrame(() => preview.token === token && (grown = true)));
+    // something's playing (the mini player): previews stay silent stills
+    if (app.playing || pb.open) return;
     // a short scene (ClipCafe, 20 s or so) beats a full trailer; trailer if none
     if (m.id.startsWith("tt")) {
       api.clipUrl(m.id, m.name, String((m as any).year ?? (m as any).releaseInfo ?? "").slice(0, 4) || undefined).then((c) => {

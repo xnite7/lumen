@@ -190,6 +190,28 @@ pub fn set_watched(core: &Core, meta: &Value, video_id: Option<&str>, watched: b
     Ok(item)
 }
 
+/// A whole show at once: every given episode ticked (or unticked).
+pub fn set_all_watched(core: &Core, meta: &Value, videos: &[String], watched: bool) -> AppResult<Value> {
+    let id = meta["id"].as_str().unwrap_or_default().to_string();
+    let mut item = get(core, &id).unwrap_or_else(|| {
+        let mut i = new_item(meta);
+        i["temp"] = json!(true);
+        i
+    });
+    item["state"]["flaggedWatched"] = json!(if watched { 1 } else { 0 });
+    if watched {
+        item["state"]["timesWatched"] = json!(item["state"]["timesWatched"].as_i64().unwrap_or(0).max(1));
+        item["state"]["timeOffset"] = json!(0);
+        item["state"]["watchedIds"] = json!(videos);
+    } else {
+        item["state"]["watchedIds"] = json!([]);
+        item["state"]["timesWatched"] = json!(0);
+    }
+    let t = touch(&mut item);
+    core.db.library_put(&id, &item, t, true)?;
+    Ok(item)
+}
+
 /// In progress, newest first: started, not finished, not dismissed.
 pub fn continue_watching(core: &Core) -> AppResult<Vec<Value>> {
     let th = core.settings.read().playback.watched_threshold as f64 / 100.0;

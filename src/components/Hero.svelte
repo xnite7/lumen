@@ -72,8 +72,26 @@
       slides = pick(items);
       return;
     }
-    api.hero().then((s) => (slides = pick(s)));
+    api.hero().then((s) => {
+      const l = pick(s);
+      // one title per visit: it stays put, and the next refresh (or the next
+      // time couch opens) shows the next one
+      if (l.length) i = turn(l.length);
+      slides = l;
+    });
   });
+  const TURN_KEY = "couch.heroTurn";
+  let turned = -1;
+  function turn(n: number) {
+    if (turned >= 0) return turned % n;
+    let v = 0;
+    try {
+      v = (Number(localStorage.getItem(TURN_KEY) ?? -1) + 1) % n;
+      localStorage.setItem(TURN_KEY, String(v));
+    } catch {}
+    turned = v;
+    return v;
+  }
 
   // (Movie of the Night art is kept for Continue Watching: its free quota
   // is shared by everyone, and the billboard rotates through too many titles.)
@@ -94,7 +112,6 @@
     trailerOn = false;
     if (!slides.length) return;
     if (held) return;
-    rotate = setTimeout(() => !paused && !trailerOn && next(), 9000);
     // After sitting at the top for a moment, the slide's trailer takes over.
     if (app.settings.general.heroTrailers && !app.playing && !ui.phone) {
       dwell = setTimeout(async () => {
@@ -246,9 +263,9 @@
           <img class="bg" src={img(bg, "original")} alt="" use:fallback={[imdbArt(cur.id, "background")]} />
         {/key}
         {#if clip}
-          <Clip src={clip} {muted} paused={below} onplaying={() => (trailerOn = true)} onended={() => setTimeout(next, 2500)} />
+          <Clip src={clip} {muted} paused={below} onplaying={() => (trailerOn = true)} onended={() => (trailerOn = false)} />
         {:else if trailer}
-          <YouTube id={trailer} {muted} fill paused={below} onplaying={() => (trailerOn = true)} onended={() => setTimeout(next, 2500)} />
+          <YouTube id={trailer} {muted} fill paused={below} onplaying={() => (trailerOn = true)} onended={() => (trailerOn = false)} />
         {/if}
       </div>
       <div class="hero-shade"></div>

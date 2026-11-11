@@ -225,6 +225,19 @@ impl Player {
         Ok(())
     }
 
+    /// A seek-bar still at `t` seconds (desktop mpv only).
+    pub fn thumb(&self, t: f64) -> Option<Vec<u8>> {
+        #[cfg(desktop)]
+        {
+            return self.backend.thumb(t);
+        }
+        #[cfg(not(desktop))]
+        {
+            let _ = t;
+            None
+        }
+    }
+
     /// Generic control surface: the UI sends small typed commands.
     pub fn command(&self, cmd: &str, args: &Value) -> AppResult<Value> {
         #[cfg(desktop)]

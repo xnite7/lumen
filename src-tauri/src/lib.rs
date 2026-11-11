@@ -284,6 +284,8 @@ pub fn run() {
             commands::player_tracks,
             commands::player_report,
             commands::player_next,
+            commands::player_prefetch,
+            commands::player_thumb,
             commands::torrent_stats,
             commands::library_list,
             commands::library_item,

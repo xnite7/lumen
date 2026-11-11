@@ -3,6 +3,7 @@
   // one you're on in the middle. Scroll (or arrow keys) to flip through,
   // click one to play it.
   import { img, type Video } from "../../lib/api";
+  import { fallback, imdbEpisode } from "../../lib/fallback";
   import Icon from "../Icon.svelte";
 
   let {
@@ -33,13 +34,23 @@
     }
   });
 
-  let wheelAt = 0;
+  // one episode per wheel notch, however fast you spin. Trackpads send a
+  // stream of small deltas, so those add up to a notch's worth first.
+  let acc = 0;
   function onWheel(e: WheelEvent) {
     e.preventDefault();
-    const now = performance.now();
-    if (now - wheelAt < 140) return;
-    wheelAt = now;
-    focus = Math.max(0, Math.min(videos.length - 1, focus + (e.deltaY > 0 ? 1 : -1)));
+    e.stopPropagation();
+    const d = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
+    let steps = 0;
+    if (Math.abs(d) >= 50) steps = Math.sign(d);
+    else {
+      acc += d;
+      if (Math.abs(acc) >= 60) {
+        steps = Math.sign(acc);
+        acc = 0;
+      }
+    }
+    if (steps) focus = Math.max(0, Math.min(videos.length - 1, focus + steps));
   }
   function onKey(e: KeyboardEvent) {
     if (e.key === "ArrowDown") focus = Math.min(videos.length - 1, focus + 1);
@@ -74,7 +85,7 @@
         aria-label="{v.episode ?? v.number}. {label(v)}"
       >
         <div class="art">
-          {#if v.thumbnail}<img src={img(v.thumbnail)} alt="" loading="lazy" />{/if}
+          {#if v.thumbnail || imdbEpisode(v.id)}<img src={img(v.thumbnail ?? imdbEpisode(v.id) ?? undefined)} alt="" loading="lazy" use:fallback={[imdbEpisode(v.id)]} />{/if}
           <div class="shade"></div>
           <div class="txt">
             <span class="t">{v.episode ?? v.number}. {label(v)}</span>
@@ -130,10 +141,7 @@
     transition: box-shadow 300ms ease;
   }
   .focus .art {
-    box-shadow:
-      0 0 0 2px rgb(var(--hi) / 0.85),
-      0 22px 50px -16px rgb(var(--lo) / 0.95),
-      0 18px 46px -18px rgb(var(--neon-rgb) / 0.5);
+    box-shadow: 0 22px 50px -16px rgb(var(--lo) / 0.95);
   }
   .art img {
     width: 100%;
@@ -183,7 +191,7 @@
     background: var(--progress);
   }
   .bar span.now {
-    background: var(--neon);
+    background: #fff;
   }
   .go {
     position: absolute;
