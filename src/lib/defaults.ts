@@ -14,6 +14,8 @@ export const DEFAULT_SETTINGS = {
     uiLanguage: "en",
     hoverPreviews: true,
     hoverDelayMs: 600,
+    episodeAlerts: true,
+    calendarHits: true,
     heroTrailers: true,
     heroMuted: true,
     previewMuted: true,

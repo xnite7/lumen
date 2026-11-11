@@ -20,6 +20,7 @@
   import Couch from "../views/Couch.svelte";
   import Member from "../views/Member.svelte";
   import Studio from "../views/Studio.svelte";
+  import Calendar from "../views/Calendar.svelte";
 
   let { route, active, index = 0, layer = $bindable() }: { route: Entry; active: boolean; index?: number; layer?: HTMLElement } = $props();
   let y = $state(0);
@@ -87,6 +88,8 @@
       <Settings section={route.section} />
     {:else if route.name === "vibe"}
       <Vibe q={route.q} />
+    {:else if route.name === "calendar"}
+      <Calendar />
     {:else if route.name === "couch"}
       <Couch />
     {:else if route.name === "studio"}

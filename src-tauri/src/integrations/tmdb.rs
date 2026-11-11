@@ -636,6 +636,114 @@ pub async fn company(core: &Core, id: u64) -> AppResult<Value> {
     }))
 }
 
+/// The release calendar: next episodes of your shows, films on your list
+/// coming out, new things from who you follow, and (unless turned off) the
+/// big releases everyone's talking about. From three days ago to 90 days out.
+pub async fn calendar(core: &Core, mine: Vec<(String, String)>, follows: Vec<Value>, hits: bool) -> Vec<Value> {
+    use futures::StreamExt;
+    let from = day_str(-3);
+    let to = day_str(90);
+    let in_range = |d: &str| !d.is_empty() && d >= from.as_str() && d <= to.as_str();
+    let mut out: Vec<Value> = vec![];
+
+    // a show's next (or just-aired) episode
+    let episode = |full: &Value, src: &str| -> Option<Value> {
+        let pick = ["next_episode_to_air", "last_episode_to_air"].iter().filter_map(|k| full.get(*k).filter(|e| !e.is_null())).find(|e| {
+            let d = e.get("air_date").and_then(|d| d.as_str()).unwrap_or("");
+            d >= from.as_str() && d <= to.as_str()
+        })?;
+        let d = pick.get("air_date").and_then(|d| d.as_str())?.to_string();
+        let (sn, en) = (pick.get("season_number").and_then(|v| v.as_u64()).unwrap_or(0), pick.get("episode_number").and_then(|v| v.as_u64()).unwrap_or(0));
+        let mut t = tile(full, "tv");
+        t["date"] = json!(d);
+        t["label"] = json!(if en == 1 { if sn == 1 { "series premiere".to_string() } else { format!("season {sn} premiere") } } else { format!("S{sn} E{en}") });
+        t["episode"] = json!(pick.get("name"));
+        t["still"] = json!(img(pick.get("still_path").and_then(|v| v.as_str()), "w780"));
+        t["source"] = json!(src);
+        if let Some(imdb) = full.pointer("/external_ids/imdb_id").and_then(|v| v.as_str()) {
+            t["imdb"] = json!(imdb);
+        }
+        Some(t)
+    };
+
+    // yours: shows (next episode) and films (when they come out)
+    let jobs = mine.into_iter().take(60).map(|(imdb, kind)| async move {
+        let k = if kind == "series" { "tv" } else { "movie" };
+        let tid = tmdb_id_for_imdb(core, &imdb, k).await.ok().flatten()?;
+        if k == "tv" {
+            let full = get(core, &format!("/tv/{tid}"), "&append_to_response=external_ids", Duration::from_secs(6 * 3600)).await.ok()?;
+            let mut e = episode(&full, "yours")?;
+            e["imdb"] = json!(imdb);
+            Some(e)
+        } else {
+            let full = get(core, &format!("/movie/{tid}"), "&append_to_response=release_dates", DAY).await.ok()?;
+            let theatre = full.get("release_date").and_then(|d| d.as_str()).unwrap_or("").to_string();
+            let home = home_release(&full).unwrap_or_default();
+            let (d, label) = if in_range(&home) { (home, "at home") } else if in_range(&theatre) { (theatre, "in cinemas") } else { return None };
+            let mut t = tile(&full, "movie");
+            t["date"] = json!(d);
+            t["label"] = json!(label);
+            t["source"] = json!("yours");
+            t["imdb"] = json!(imdb);
+            Some(t)
+        }
+    });
+    let mine: Vec<Option<Value>> = futures::stream::iter(jobs).buffer_unordered(8).collect().await;
+    out.extend(mine.into_iter().flatten());
+
+    // who you follow
+    for mut t in follow_feed(core, &follows).await {
+        let d = t.get("date").and_then(|d| d.as_str()).unwrap_or("").to_string();
+        if in_range(&d) {
+            let by = t.get("because").and_then(|b| b.as_str()).unwrap_or("").to_string();
+            t["label"] = json!(format!("from {by}"));
+            t["source"] = json!("follow");
+            out.push(t);
+        }
+    }
+
+    // the big ones, for everyone
+    if hits {
+        if let Ok(v) = get(core, "/movie/upcoming", "&page=1", DAY).await {
+            let mut films: Vec<Value> = v.get("results").and_then(|r| r.as_array()).cloned().unwrap_or_default();
+            films.sort_by(|a, b| b["popularity"].as_f64().unwrap_or(0.0).partial_cmp(&a["popularity"].as_f64().unwrap_or(0.0)).unwrap());
+            for r in films.into_iter().filter(|r| r.get("poster_path").map_or(false, |p| !p.is_null())).take(14) {
+                let d = r.get("release_date").and_then(|d| d.as_str()).unwrap_or("").to_string();
+                if in_range(&d) {
+                    let mut t = tile(&r, "movie");
+                    t["date"] = json!(d);
+                    t["label"] = json!("in cinemas");
+                    t["source"] = json!("hit");
+                    out.push(t);
+                }
+            }
+        }
+        if let Ok(v) = get(core, "/tv/on_the_air", "&page=1", Duration::from_secs(6 * 3600)).await {
+            let mut shows: Vec<Value> = v.get("results").and_then(|r| r.as_array()).cloned().unwrap_or_default();
+            shows.retain(|r| r["vote_count"].as_u64().unwrap_or(0) >= 150);
+            shows.sort_by(|a, b| b["popularity"].as_f64().unwrap_or(0.0).partial_cmp(&a["popularity"].as_f64().unwrap_or(0.0)).unwrap());
+            let jobs = shows.into_iter().take(14).map(|r| async move {
+                let id = r.get("id").and_then(|i| i.as_u64())?;
+                let full = get(core, &format!("/tv/{id}"), "&append_to_response=external_ids", Duration::from_secs(6 * 3600)).await.ok()?;
+                episode(&full, "hit")
+            });
+            let hits: Vec<Option<Value>> = futures::stream::iter(jobs).buffer_unordered(6).collect().await;
+            out.extend(hits.into_iter().flatten());
+        }
+    }
+
+    // one entry per title (yours beats follows beats hits), by date
+    let rank = |t: &Value| match t["source"].as_str() { Some("yours") => 0, Some("follow") => 1, _ => 2 };
+    out.sort_by(|a, b| a["date"].as_str().cmp(&b["date"].as_str()).then(rank(a).cmp(&rank(b))));
+    let mut seen = std::collections::HashSet::new();
+    out.into_iter().filter(|t| seen.insert(format!("{}|{}", t["id"].as_str().unwrap_or(""), t["label"].as_str().unwrap_or("")))).collect()
+}
+
+/// Today's date (YYYY-MM-DD, UTC), for "new episode today" alerts.
+pub fn today_str() -> String {
+    day_str(0)
+}
+
 /// New and upcoming things from the people and studios you follow: the last
 /// year and the next six months, newest first, each saying who it's from.
 pub async fn follow_feed(core: &Core, follows: &[Value]) -> Vec<Value> {

@@ -329,6 +329,7 @@ export const api = {
   simklCustomLists: () => invoke<{ paid: boolean; lists: any[] }>("simkl_custom_lists"),
   simklListItems: (id: number) => invoke<Meta[]>("simkl_list_items", { id }),
   company: (id: number) => invoke<Studio>("company_get", { id }),
+  calendar: (hits: boolean) => invoke<CalItem[]>("calendar_get", { hits }),
   wrappedData: (year: number) => invoke<WrapRow[]>("wrapped_data", { year }),
   follows: () => invoke<Follow[]>("follows_list"),
   followToggle: (f: Follow) => invoke<Follow[]>("follow_toggle", { kind: f.kind, id: f.id, name: f.name, img: f.img ?? null }),
@@ -381,6 +382,18 @@ export interface CrewRoom {
   guests: string[];
   /** the host lets everyone control playback */
   shared?: boolean;
+}
+
+/** one release on the calendar */
+export interface CalItem extends Meta {
+  date: string;
+  /** "S2 E5", "season 3 premiere", "in cinemas", "at home", "from A24" */
+  label: string;
+  /** the episode's name, when it has one */
+  episode?: string | null;
+  still?: string | null;
+  source: "yours" | "follow" | "hit";
+  imdb?: string;
 }
 
 /** one title watched in a year (Wrapped) */

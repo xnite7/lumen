@@ -278,6 +278,13 @@ export async function mock(cmd: string, args: any): Promise<any> {
       return ["Netflix", "Max", "Disney+", "Prime Video", "Apple TV+", "Hulu", "Paramount+", "Peacock", "Crunchyroll"].map((name, i) => ({ id: i + 1, name, logo: null }));
     case "discord_me":
       return { id: "me", name: "sultan", avatar: undefined };
+    case "calendar_get": {
+      const day = (k: number) => { const d = new Date(); d.setDate(d.getDate() + k); return d.toISOString().slice(0, 10); };
+      const L = ["S2 E5", "in cinemas", "season 3 premiere", "at home", "S1 E8", "from Glasshouse", "S4 E2", "in cinemas"];
+      const S = ["yours", "hit", "yours", "yours", "hit", "follow", "yours", "hit"];
+      return metas.slice(0, 16).map((m: any, k: number) => ({ ...m, date: day([-1, 0, 0, 1, 1, 2, 4, 4, 6, 9, 9, 12, 15, 18, 18, 20][k]), label: L[k % 8], episode: k % 2 ? null : "The Long Way Round", source: S[k % 8] }))
+        .filter((x: any) => args.hits || x.source !== "hit");
+    }
     case "wrapped_data": {
       const G = [["Drama", "Mystery"], ["Comedy"], ["Drama", "Thriller"], ["Sci-Fi", "Drama"], ["Animation", "Comedy"], ["Thriller"]];
       return metas.slice(0, 14).map((m: any, k: number) => ({

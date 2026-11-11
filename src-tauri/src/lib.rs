@@ -60,6 +60,7 @@ pub fn run() {
             }
         }));
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+        builder = builder.plugin(tauri_plugin_notification::init());
         builder = builder.plugin(
             tauri_plugin_window_state::Builder::default()
                 .with_state_flags(tauri_plugin_window_state::StateFlags::all() & !tauri_plugin_window_state::StateFlags::VISIBLE)
@@ -190,6 +191,8 @@ pub fn run() {
                     }
                     // my page on the couch follows what I watch
                     crew::publish_profile(&c2, false).await;
+                    // "new episode today" for the shows I'm watching
+                    alerts(&c2).await;
                     tokio::time::sleep(std::time::Duration::from_secs(300)).await;
                 }
             });
@@ -319,6 +322,7 @@ pub fn run() {
             commands::crew_profile_publish,
             commands::company_get,
             commands::wrapped_data,
+            commands::calendar_get,
             commands::follows_list,
             commands::follow_toggle,
             commands::follow_feed,
@@ -372,4 +376,63 @@ fn migrate_from_lumen(data_dir: &std::path::Path) {
         }
     }
     log::info!("migrated data from Lumen");
+}
+
+
+/// New-episode alerts: once an hour, look at what's out today from the shows
+/// you're watching (and films on your list), and tell you once per release:
+/// a system notification on the computer, a toast inside couch.
+async fn alerts(core: &Arc<Core>) {
+    static LAST: parking_lot::Mutex<Option<std::time::Instant>> = parking_lot::Mutex::new(None);
+    {
+        let mut l = LAST.lock();
+        if l.map_or(false, |t| t.elapsed() < std::time::Duration::from_secs(3600)) {
+            return;
+        }
+        *l = Some(std::time::Instant::now());
+    }
+    if !core.settings.read().general.episode_alerts {
+        return;
+    }
+    let mine = commands::calendar_mine(core);
+    if mine.is_empty() {
+        return;
+    }
+    let today = integrations::tmdb::today_str();
+    let cal = integrations::tmdb::calendar(core, mine, vec![], false).await;
+    let mut told: Vec<String> = core.db.get::<Vec<String>>("alerts_told").unwrap_or_default();
+    // first run: don't announce what was already out
+    let first = core.db.get::<bool>("alerts_seeded") != Some(true);
+    let mut fresh = vec![];
+    for t in cal.iter().filter(|t| t["date"].as_str() == Some(today.as_str())) {
+        let key = format!("{}|{}|{}", t["id"].as_str().unwrap_or(""), t["label"].as_str().unwrap_or(""), today);
+        if !told.contains(&key) {
+            told.push(key);
+            fresh.push(t.clone());
+        }
+    }
+    if told.len() > 300 {
+        told.drain(..told.len() - 300);
+    }
+    let _ = core.db.set("alerts_told", &told);
+    let _ = core.db.set("alerts_seeded", &true);
+    if first {
+        return;
+    }
+    for t in fresh.into_iter().take(4) {
+        let name = t["name"].as_str().unwrap_or("something").to_string();
+        let label = t["label"].as_str().unwrap_or("").to_string();
+        let ep = t["episode"].as_str().unwrap_or("").to_string();
+        let body = if t["type"] == "series" {
+            if ep.is_empty() { format!("{label} is out today") } else { format!("{label} · {ep} is out today") }
+        } else {
+            format!("out today {label}")
+        };
+        #[cfg(desktop)]
+        {
+            use tauri_plugin_notification::NotificationExt;
+            let _ = core.app.notification().builder().title(&name).body(&body).show();
+        }
+        let _ = core.app.emit("episode-alert", serde_json::json!({ "name": name, "body": body, "id": t.get("imdb").cloned().unwrap_or(t["id"].clone()), "type": t["type"] }));
+    }
 }

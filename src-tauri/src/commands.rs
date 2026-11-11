@@ -710,6 +710,44 @@ pub async fn simkl_list_items(s: S<'_>, id: u64) -> AppResult<Vec<Value>> {
 
 /// Favourites, reviews, the crew's activity and watch-together reactions
 /// live on the crew server (Simkl's API has none of them).
+/// What's "mine" for the calendar: shows I'm watching and films on my list.
+pub fn calendar_mine(core: &crate::core::Core) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = vec![];
+    if simkl::connected(core) && crate::integrations::simkl_sync::has_data(core) {
+        for (st, kind) in [("watching", "series"), ("plantowatch", "series"), ("plantowatch", "movie")] {
+            for e in crate::integrations::simkl_sync::list(core, st, kind) {
+                if let Some(m) = simkl::to_meta(&e, None) {
+                    if let Some(id) = m["id"].as_str() {
+                        out.push((id.to_string(), kind.to_string()));
+                    }
+                }
+            }
+        }
+    } else {
+        for i in crate::library::all(core).unwrap_or_default() {
+            if i["removed"].as_bool().unwrap_or(false) {
+                continue;
+            }
+            let id = i["_id"].as_str().unwrap_or("");
+            let kind = i["type"].as_str().unwrap_or("movie");
+            let done = i["state"]["flaggedWatched"].as_i64().unwrap_or(0) > 0 || i["state"]["timesWatched"].as_i64().unwrap_or(0) > 0;
+            if id.starts_with("tt") && (kind == "series" || !done) {
+                out.push((id.to_string(), kind.to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// The release calendar: your shows' next episodes, your list's films, who
+/// you follow, and (with `hits`) the big releases.
+#[tauri::command]
+pub async fn calendar_get(s: S<'_>, hits: bool) -> AppResult<Vec<Value>> {
+    let mine = calendar_mine(&s.core);
+    let follows: Vec<Value> = s.core.db.get::<Vec<Value>>("follows").unwrap_or_default();
+    Ok(crate::integrations::tmdb::calendar(&s.core, mine, follows, hits).await)
+}
+
 /// Everything watched in one year, for Wrapped: one row per title with when,
 /// your rating, runtime, genres, episodes. The slides are worked out from it.
 #[tauri::command]

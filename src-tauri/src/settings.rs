@@ -100,6 +100,10 @@ pub struct General {
     pub ui_language: String,
     pub hover_previews: bool,
     pub hover_delay_ms: u32,
+    /// tell me when a show I'm watching has a new episode out
+    pub episode_alerts: bool,
+    /// the calendar also shows the big releases (not just mine)
+    pub calendar_hits: bool,
     pub hero_trailers: bool,
     pub hero_muted: bool,
     pub preview_muted: bool,
@@ -133,6 +137,8 @@ impl Default for General {
             ui_language: "en".into(),
             hover_previews: true,
             hover_delay_ms: 450,
+            episode_alerts: true,
+            calendar_hits: true,
             hero_trailers: true,
             hero_muted: false,
             preview_muted: true,

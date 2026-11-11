@@ -19,6 +19,7 @@
     movies: { label: "Movies", icon: "film" },
     search: { label: "Search", icon: "search" },
     library: { label: "My Lists", icon: "library" },
+    calendar: { label: "Calendar", icon: "calendar" },
     couch: { label: "Couch", icon: "couch" },
     profile: { label: "Profile", icon: "personCircle" },
   };
@@ -33,7 +34,7 @@
   const initial = $derived(((user?.name || "") as string).trim().charAt(0).toUpperCase());
 
   // ---- iPhone app: Apple's own tab bar (Liquid Glass), not a web copy
-  const symbols: Record<Tab, string> = { shows: "tv", movies: "film", home: "house.fill", search: "magnifyingglass", library: "books.vertical.fill", couch: "sofa.fill", profile: "person.crop.circle" };
+  const symbols: Record<Tab, string> = { shows: "tv", movies: "film", home: "house.fill", search: "magnifyingglass", library: "books.vertical.fill", calendar: "calendar", couch: "sofa.fill", profile: "person.crop.circle" };
   let native = $state(false);
   const nativeTabs = $derived<NativeTab[]>(
     phoneTabs.map((t) => ({ id: t, title: items[t].label, symbol: symbols[t], search: t === "search", avatar: t === "profile" ? (user?.avatar ?? undefined) : undefined })),
@@ -56,7 +57,7 @@
   });
 
   // ---- wide: logo · [search] Home Library Couch · avatar
-  const wideTabs: Tab[] = ["home", "shows", "movies", "library", "couch"];
+  const wideTabs: Tab[] = ["home", "shows", "movies", "library", "calendar", "couch"];
   let field: HTMLInputElement | undefined = $state();
   let backTo: Tab = "home";
   let menuOpen = $state(false);

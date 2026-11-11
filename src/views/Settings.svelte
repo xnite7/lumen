@@ -324,6 +324,10 @@
           {/if}
         {:else if section === "about"}
           <p class="dim lead">Version {app.version}. Built for one person.</p>
+          <div class="group">
+            <Cell label="New episode alerts" hint="A notification when a show you're watching (or a film on your list) is out today."><Controls kind="switch" bind:value={s.general.episodeAlerts} onchange={changed} /></Cell>
+            <Cell label="Big releases on the calendar" hint="The calendar also shows the hits everyone's waiting for, not just yours."><Controls kind="switch" bind:value={s.general.calendarHits} onchange={changed} /></Cell>
+          </div>
           {#if app.platform === "windows" || app.platform === "linux"}
             <div class="group">
               <Cell label="Updates" hint={updates.installing ? `installing ${updates.available}…` : updates.available ? `couch ${updates.available} is ready` : "you're on the newest couch"}>

@@ -59,6 +59,10 @@
     listen("library-changed", () => loadLibrary());
     // kicked from the midnite server: lock the app right away
     listen<string>("discord-gate", (g) => (g === "outsider" || g === "signin") && (gate = g));
+    // a show you're watching has a new episode out today
+    listen<{ name: string; body: string; id: string; type: string }>("episode-alert", (a) =>
+      toast(`${a.name}: ${a.body}`, "info", { label: "open", run: () => go({ name: "detail", type: a.type, id: a.id }) }, 9000),
+    );
     setInterval(() => app.settings.general.onboarded && !ui.onboarding && checkGate(), 60_000);
     // Coming back to couch: ask Simkl what changed (one tiny request; the
     // real fetch only happens when something did).

@@ -84,6 +84,8 @@ M = {
     "minimize": (["minimize-rounded"], []),
     "maximize": (["crop-square-outline-rounded"], []),
     "film": (["movie-outline-rounded"], ["movie-rounded"]),
+    "calendar": (["calendar-month-outline-rounded", "calendar-month-outline"], ["calendar-month-rounded", "calendar-month"]),
+    "bell": (["notifications-outline-rounded", "notifications-outline"], ["notifications-rounded", "notifications"]),
     "couch": (["weekend-outline-rounded"], ["weekend-rounded"]),
     "tv": (["tv-outline-rounded"], ["tv-rounded"]),
     "person": (["person-outline-rounded"], ["person-rounded"]),

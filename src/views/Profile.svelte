@@ -124,6 +124,7 @@
     {/each}
 
     <div class="group">
+      <Item label="Release calendar" detail="new episodes and what's coming" icon="calendar" tint="var(--lamp)" chevron onclick={() => go({ name: "calendar" })} />
       <Item label="Your {new Date().getFullYear()} on the couch" detail="wrapped" icon="sparkles" tint="var(--neon)" chevron onclick={() => openWrapped()} />
     </div>
 

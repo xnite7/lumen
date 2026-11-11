@@ -131,12 +131,27 @@
     setTimeout(() => (played = true), 450); // let it fade out first
   }
 
+  // Glide instead of jumping: wheel notches arrive as big steps, so the first
+  // one is eased by hand; after that the card is out of the pointer's way and
+  // the page scrolls natively (smooth) while the card closes.
+  let glide = 0;
+  function ease(target: HTMLElement, dx: number, dy: number) {
+    cancelAnimationFrame(glide);
+    const x0 = target.scrollLeft, y0 = target.scrollTop, t0 = performance.now(), dur = 260;
+    const step = (now: number) => {
+      const k = Math.min(1, (now - t0) / dur);
+      const e = 1 - Math.pow(1 - k, 3);
+      target.scrollLeft = x0 + dx * e;
+      target.scrollTop = y0 + dy * e;
+      if (k < 1) glide = requestAnimationFrame(step);
+    };
+    glide = requestAnimationFrame(step);
+  }
   function passWheel(e: WheelEvent) {
     if (!card) return;
     e.preventDefault();
-    card.style.pointerEvents = "none";
+    card.style.pointerEvents = "none"; // later wheel events go straight to the page
     let el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
-    card.style.pointerEvents = "";
     const sideways = Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey;
     while (el && el !== document.body) {
       const cs = getComputedStyle(el);
@@ -146,8 +161,9 @@
     const target = el && el !== document.body ? el : (document.querySelector("[data-scroller]") as HTMLElement | null);
     const dy = e.deltaMode === 1 ? e.deltaY * 32 : e.deltaY;
     const dx = e.deltaMode === 1 ? e.deltaX * 32 : e.deltaX;
-    target?.scrollBy({ top: sideways ? 0 : dy, left: sideways ? dx || dy : 0 });
-    closePreview(0);
+    // the card must be gone before the page moves, or the scroll looks torn
+    closePreview(0, false);
+    if (target) ease(target, sideways ? dx || dy : 0, sideways ? 0 : dy);
   }
 
   function onKey(e: KeyboardEvent) {
