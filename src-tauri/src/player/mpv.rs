@@ -638,6 +638,9 @@ mod zorder {
         let class = String::from_utf16_lossy(&buf[..n.max(0) as usize]);
         let is_direct = GetParent(child).map(|p| p.0 as isize == parent.0).unwrap_or(false);
         if is_direct && class.to_ascii_lowercase().starts_with("mpv") {
+            // the picture never takes the mouse: clicks and moves go to the
+            // UI drawn over it (the new app has no webview above mpv)
+            let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(child, false);
             let mut r = RECT::default();
             let ph = HWND(parent.0 as *mut _);
             if GetClientRect(ph, &mut r).is_ok() && r.right > 0 && r.bottom > 0 {
