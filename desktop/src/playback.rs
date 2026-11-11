@@ -20,6 +20,7 @@ pub struct State {
     pub cache_ahead: f64,
     pub aid: String,
     pub sid: String,
+    pub ended: bool,
 }
 
 #[derive(Default)]
@@ -63,12 +64,18 @@ pub fn init(cx: &mut App) {
                     cache_ahead: v["cacheAhead"].as_f64().unwrap_or(0.),
                     aid: v["aid"].as_str().map(|s| s.to_string()).unwrap_or_else(|| v["aid"].to_string()),
                     sid: v["sid"].as_str().map(|s| s.to_string()).unwrap_or_else(|| v["sid"].to_string()),
+                    ended: v["ended"].as_bool().unwrap_or(false),
                 };
                 let _ = this.update(cx, |p, cx| {
                     if p.loading && !s.buffering && s.duration > 0. {
                         p.loading = false;
                     }
+                    // reached the end: the next episode by itself
+                    let finished = s.ended && !p.state.ended;
                     p.state = s;
+                    if finished && p.open && couch::state::get().core.settings().playback.autoplay_next {
+                        p.play_next(cx);
+                    }
                     cx.notify();
                 });
             }
@@ -111,14 +118,6 @@ pub fn init(cx: &mut App) {
                 while let Some(v) = rx.next().await {
                     let msg = v["message"].as_str().or(v["reason"].as_str()).unwrap_or("").to_string();
                     if ev == "player://end" && !msg.to_lowercase().contains("error") {
-                        // reached the end: the next episode by itself
-                        if msg == "eof" && couch::state::get().core.settings().playback.autoplay_next {
-                            let _ = this.update(cx, |p, cx| {
-                                if p.open && p.state.duration > 0. && p.state.pos / p.state.duration > 0.9 {
-                                    p.play_next(cx);
-                                }
-                            });
-                        }
                         continue;
                     }
                     let _ = this.update(cx, |p, cx| {
