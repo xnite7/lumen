@@ -46,7 +46,7 @@
     align-items: center;
     pointer-events: none;
   }
-  :global(html.playing) .navbar {
+  :global(html.playing:not(.mini-player)) .navbar {
     opacity: 0;
   }
   .lead,

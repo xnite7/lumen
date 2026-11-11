@@ -27,7 +27,16 @@
   // Host: a guest with the remote paused / played / seeked
   $effect(() => {
     let un: (() => void) | undefined;
-    listen<{ name: string; action: string; pos?: number }>("together-cmd", (c) => {
+    const onLine = (e: Event) => handleRemote((e as CustomEvent).detail);
+    window.addEventListener("together-cmd", onLine);
+    listen<{ name: string; action: string; pos?: number }>("together-cmd", (c) => handleRemote(c)).then((u) => (un = u));
+    return () => {
+      un?.();
+      window.removeEventListener("together-cmd", onLine);
+    };
+  });
+  function handleRemote(c: { name: string; action: string; pos?: number }) {
+    {
       if (c.action === "seek" && c.pos != null) {
         if (native) cmd("seek", { to: c.pos });
         else if (video) video.currentTime = c.pos;
@@ -40,9 +49,8 @@
           toast(`${c.name} ${want ? "paused" : "pressed play"}`, "info");
         }
       }
-    }).then((u) => (un = u));
-    return () => un?.();
-  });
+    }
+  }
   // bars hidden = the reactions button goes too
   $effect(() => {
     document.documentElement.classList.toggle("chrome-hidden", chromeHidden || idleScreen);
@@ -1719,7 +1727,7 @@
     flex: 1;
     display: grid;
     gap: 6px;
-    min-width: 230px;
+    min-width: 0;
   }
   .sp-now {
     justify-self: center;
@@ -1816,6 +1824,10 @@
   }
   .player.compact .subs {
     bottom: 10% !important;
+    transition: opacity 180ms ease;
+  }
+  .player.compact:hover .subs {
+    opacity: 0;
   }
   .player.mini {
     inset: auto 24px 24px auto;
@@ -2045,6 +2057,12 @@
     animation: menu-in var(--t-med) var(--spring) both;
     transform-origin: bottom center;
     z-index: 5;
+  }
+  /* speed / sleep / picture: wider, pinned to the right end of the bar */
+  .pop:has(.more-pop) {
+    left: auto;
+    right: var(--gutter);
+    width: 360px;
   }
   .pop.wide {
     left: clamp(12px, calc(var(--x) - 260px), calc(100vw - 532px));

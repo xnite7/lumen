@@ -315,6 +315,7 @@ export const api = {
   crewCancelAsk: (id: string) => invoke<void>("crew_cancel_ask", { id }),
   crewInbox: () => invoke<{ asks: CrewAsk[] }>("crew_inbox"),
   crewAnswer: (id: string, accept: boolean) => invoke<void>("crew_answer", { id, accept }),
+  crewLine: (host: string) => invoke<string>("crew_line", { host }),
   crewRoom: (host: string) => invoke<{ room: CrewRoom | null }>("crew_room", { host }),
   crewLeave: (host: string) => invoke<void>("crew_leave", { host }),
   simklSync: () => invoke<boolean>("simkl_sync"),

@@ -254,7 +254,7 @@
       padding var(--t-med) var(--spring),
       opacity var(--t-med) ease;
   }
-  :global(html.playing) .tabbar,
+  :global(html.playing:not(.mini-player)) .tabbar,
   :global(html.onboarding) .tabbar {
     opacity: 0;
     pointer-events: none;
@@ -366,7 +366,7 @@
     opacity: var(--fade);
     transition: opacity 380ms ease;
   }
-  :global(html.playing) .top,
+  :global(html.playing:not(.mini-player)) .top,
   :global(html.onboarding) .top {
     opacity: 0;
   }

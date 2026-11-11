@@ -419,6 +419,21 @@ pub async fn social(core: &Core, method: &str, path: &str, body: Option<Value>) 
     call(core, m, path, body).await
 }
 
+/// The live watch-together line for a room (wss://…?t=session).
+pub async fn line_url(core: &Core, host: &str) -> AppResult<String> {
+    login(core).await?;
+    let (url, auth) = server(core).ok_or_else(|| AppError::msg("the crew isn't set up"))?;
+    let ws = url.replacen("https://", "wss://", 1).replacen("http://", "ws://", 1);
+    Ok(format!("{ws}/v1/room/{host}/ws?t={}", urlencoding::encode(auth.trim_start_matches("Bearer "))))
+}
+
+/// The host's player reported from the page's live line: the 1/s report
+/// from Rust stands back so the two don't fight.
+pub fn host_live(on: bool) {
+    HOST_LIVE.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+static HOST_LIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub async fn room(core: &Core, host: &str) -> AppResult<Value> {
     call(core, reqwest::Method::GET, &format!("/v1/room/{host}"), None).await
 }

@@ -4,6 +4,7 @@
 
 import { api, listen, type Meta, type PlayerState, type Stream, type Track, type Video } from "../api";
 import { askAfterFinish } from "./social.svelte";
+import { together, startHosting } from "./together.svelte";
 import { app } from "./app.svelte";
 import { setAmbient } from "./ambient.svelte";
 import { loadLibrary, progressOf, watchedIds } from "./library.svelte";
@@ -275,6 +276,7 @@ export async function play(meta: Meta, stream: Stream, videoId: string, opts: { 
       app.playing = true;
       document.documentElement.classList.add("playing");
     }
+    if (together.hosting) startHosting(together.hosting);
   } catch (e) {
     if (tryNext()) return;
     pb.loading = false;

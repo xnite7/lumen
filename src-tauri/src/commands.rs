@@ -1163,6 +1163,12 @@ pub async fn crew_answer(s: S<'_>, id: String, accept: bool) -> AppResult<Value>
 pub async fn crew_room(s: S<'_>, host: String) -> AppResult<Value> {
     crate::crew::room(&s.core, &host).await
 }
+
+/// Watch together's live line (a WebSocket URL for this room).
+#[tauri::command]
+pub async fn crew_line(s: S<'_>, host: String) -> AppResult<String> {
+    crate::crew::line_url(&s.core, &host).await
+}
 #[tauri::command]
 pub async fn crew_leave(s: S<'_>, host: String) -> AppResult<Value> {
     crate::crew::leave(&s.core, &host).await

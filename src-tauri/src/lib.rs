@@ -267,6 +267,7 @@ pub fn run() {
             commands::crew_room_cmd,
             commands::crew_answer,
             commands::crew_room,
+            commands::crew_line,
             commands::crew_leave,
             commands::art_get,
             commands::palette_get,

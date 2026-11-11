@@ -125,7 +125,7 @@
   $effect(() => {
     if (!app.ready || ui.phone || app.platform === "ios") return;
     return installTvNav({
-      blocked: () => pb.open || ui.onboarding || splashing || !!document.querySelector(".sheet, .menu"),
+      blocked: () => (pb.open && !pb.mini) || ui.onboarding || splashing || !!document.querySelector(".sheet, .menu"),
       back: () => back(),
     });
   });
@@ -228,7 +228,7 @@
   function onKey(e: KeyboardEvent) {
     devKeys(e);
     if (e.defaultPrevented) return;
-    if (pb.open) return;
+    if (pb.open && !pb.mini) return;
     const typing = (e.target as HTMLElement)?.closest("input, textarea");
     if (e.key === "Escape" && !typing) back();
     else if ((e.key === "/" || (e.ctrlKey && e.key === "k")) && !typing) {
@@ -244,7 +244,7 @@
   function onMouse(e: MouseEvent) {
     if (e.button === 3) {
       e.preventDefault();
-      if (!pb.open) back();
+      if (!pb.open || pb.mini) back();
     }
   }
 </script>

@@ -215,7 +215,7 @@ type Member = {
 /** "can I join your couch?" */
 type Ask = { id: string; from: string; fromName: string; fromAvatar?: string; to: string; at: number; status: "pending" | "accepted" | "declined" | "ended" };
 /** a host's playback, followed by the guests they let in */
-type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[]; shared?: boolean; cmds?: Cmd[] };
+type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[]; shared?: boolean; cmds?: Cmd[]; stalled?: boolean; wsAt?: number };
 /** a guest steering the host's player (only when the host shares control) */
 type Cmd = { from: string; name: string; action: "pause" | "play" | "seek"; pos?: number; at: number };
 type React = { n: number; who: string; name: string; avatar?: string; emoji: string; at: number };
@@ -278,7 +278,10 @@ export default {
     if (req.method === "POST" && url.pathname === "/v1/auth") return auth(req, env);
     if (req.method === "POST" && url.pathname === "/v1/discord/exchange") return discordToken(req, env, "exchange");
     if (req.method === "POST" && url.pathname === "/v1/discord/refresh") return discordToken(req, env, "refresh");
-    const who = await verify(env, req.headers.get("authorization"));
+    // watch together's live line: a WebSocket can't send headers, so the
+    // session rides in the URL (like the clip video)
+    const isWs = /^\/v1\/room\/[A-Za-z0-9_-]{1,40}\/ws$/.test(url.pathname) && req.headers.get("upgrade") === "websocket";
+    const who = await verify(env, isWs ? `Bearer ${url.searchParams.get("t") ?? ""}` : req.headers.get("authorization"));
     if (!who) return json({ error: "sign in again" }, 401);
     const clipAsk = url.pathname.match(/^\/v1\/clip\/(tt\d{5,10})$/);
     if (clipAsk) return json({ clip: !!(await clipPick(env, clipAsk[1], url.searchParams.get("title"), url.searchParams.get("year"))) });
@@ -461,6 +464,104 @@ export class Crew {
   members = new Map<string, Member>();
   asks = new Map<string, Ask>();
   rooms = new Map<string, Room>();
+  /** live lines per room: the host's socket and each guest's */
+  socks = new Map<string, { host: WebSocket | null; guests: Map<WebSocket, string> }>();
+
+  /** where the host is right now, by the server's clock */
+  roomNow(r: Room) {
+    return r.paused || r.stalled ? r.pos : r.pos + (Date.now() - r.at) / 1000;
+  }
+  /** tell every guest on this couch where the host is, at once */
+  pushRoom(hostId: string, only?: WebSocket) {
+    const r = this.rooms.get(hostId);
+    const s = this.socks.get(hostId);
+    if (!r || !s) return;
+    const msg = JSON.stringify({ k: "s", v: r.videoId, m: r.metaId, ty: r.type, ti: r.title, p: this.roomNow(r), pa: r.paused, st: !!r.stalled, sh: !!r.shared });
+    for (const ws of only ? [only] : s.guests.keys()) {
+      try {
+        ws.send(msg);
+      } catch {
+        s.guests.delete(ws);
+      }
+    }
+  }
+  /** a socket for watch together: host sends state, guests get it pushed */
+  openLine(hostId: string, who: Who): Response {
+    const r = this.rooms.get(hostId);
+    const isHost = hostId === who.id;
+    if (!isHost && !(r && r.guests.includes(who.id))) return json({ error: "not in this room" }, 403);
+    const pair = new WebSocketPair();
+    const [client, server] = [pair[0], pair[1]];
+    server.accept();
+    const s = this.socks.get(hostId) ?? { host: null, guests: new Map<WebSocket, string>() };
+    this.socks.set(hostId, s);
+    if (isHost) {
+      try {
+        s.host?.close(1000, "replaced");
+      } catch {}
+      s.host = server;
+    } else {
+      s.guests.set(server, who.id);
+      this.pushRoom(hostId, server);
+    }
+    server.addEventListener("message", (ev: MessageEvent) => {
+      let d: any;
+      try {
+        d = JSON.parse(typeof ev.data === "string" ? ev.data : "");
+      } catch {
+        return;
+      }
+      // clock check: the guest times the round trip to aim at the right moment
+      if (d?.k === "ping") {
+        try {
+          server.send(JSON.stringify({ k: "pong", c: num(d.c) }));
+        } catch {}
+        return;
+      }
+      if (isHost && d?.k === "s") {
+        const room = this.rooms.get(hostId);
+        if (!room) return;
+        Object.assign(room, {
+          videoId: str(d.v, 200) ?? room.videoId,
+          metaId: str(d.m, 100) ?? room.metaId,
+          type: str(d.ty, 20) ?? room.type,
+          title: str(d.ti, 200) ?? room.title,
+          pos: num(d.p),
+          paused: !!d.pa,
+          stalled: !!d.st,
+          shared: !!d.sh,
+          // the host's own one-way delay, so "pos" lines up with the server clock
+          at: Date.now() - Math.max(0, Math.min(1500, num(d.lag))),
+          wsAt: Date.now(),
+        });
+        this.pushRoom(hostId);
+        return;
+      }
+      // a guest with the remote: straight to the host's player
+      if (!isHost && d?.k === "cmd") {
+        const room = this.rooms.get(hostId);
+        const action = d.a === "pause" || d.a === "play" || d.a === "seek" ? d.a : null;
+        if (!room || !room.shared || !action) return;
+        const c: Cmd = { from: who.id, name: who.name, action, pos: action === "seek" ? num(d.p) : undefined, at: Date.now() };
+        if (s.host) {
+          try {
+            s.host.send(JSON.stringify({ k: "cmd", ...c }));
+            return;
+          } catch {}
+        }
+        room.cmds = [...(room.cmds ?? []).slice(-10), c];
+      }
+    });
+    const gone = () => {
+      if (isHost) {
+        if (s.host === server) s.host = null;
+      } else s.guests.delete(server);
+      if (!s.host && !s.guests.size) this.socks.delete(hostId);
+    };
+    server.addEventListener("close", gone);
+    server.addEventListener("error", gone);
+    return new Response(null, { status: 101, webSocket: client });
+  }
   /** a still of what each person's watching right now (JPEG data URL) */
   frames = new Map<string, { img: string; at: number }>();
   storage: DurableObjectStorage;
@@ -670,7 +771,9 @@ export class Crew {
     if (req.method === "PUT" && p === "/v1/room") {
       const r = this.rooms.get(who.id);
       if (!r || !r.guests.length) return json({ error: "no room" }, 404);
-      Object.assign(r, {
+      // the live line is newer and exact: the 1/s report only fills in when it's quiet
+      const live = r.wsAt && Date.now() - r.wsAt < 4000;
+      if (!live) Object.assign(r, {
         metaId: str(b.metaId, 100) ?? r.metaId,
         type: str(b.type, 20) ?? r.type,
         videoId: str(b.videoId, 200) ?? r.videoId,
@@ -678,8 +781,10 @@ export class Crew {
         pos: num(b.pos),
         paused: !!b.paused,
         shared: !!b.shared,
-        at: Date.now(),
+        stalled: !!b.stalled,
+        at: Date.now() - Math.max(0, Math.min(1500, num(b.lag))),
       });
+      if (!live) this.pushRoom(who.id);
       // hand the host whatever the guests asked for since last time
       const cmds = r.cmds ?? [];
       r.cmds = [];
@@ -721,8 +826,7 @@ export class Crew {
       if (req.method === "GET") {
         if (!r || !r.videoId) return json({ room: null });
         // where the host is right now, by the server's clock
-        const now = r.paused ? r.pos : r.pos + (Date.now() - r.at) / 1000;
-        return json({ room: { ...r, now } });
+        return json({ room: { ...r, now: this.roomNow(r) } });
       }
       if (req.method === "DELETE") {
         // a guest leaves, or the host ends it
@@ -743,6 +847,9 @@ export class Crew {
     } catch {
       return json({ error: "sign in again" }, 401);
     }
+
+    const line = url.pathname.match(/^\/v1\/room\/([A-Za-z0-9_-]{1,40})\/ws$/);
+    if (line && req.headers.get("upgrade") === "websocket") return this.openLine(line[1], who);
 
     if (req.method === "GET" && url.pathname === "/v1/presence") {
       const members = [...this.members.values()].sort((a, b) => b.at - a.at).map((m) => ({ ...m, frameAt: this.frames.get(m.id)?.at }));
