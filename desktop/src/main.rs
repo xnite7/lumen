@@ -119,6 +119,7 @@ pub struct Root {
     search: Option<Entity<views::search::Search>>,
     library: Option<Entity<views::library::Library>>,
     calendar: Option<Entity<views::calendar::Calendar>>,
+    couch: Option<Entity<views::couch::Couch>>,
     focus: gpui::FocusHandle,
     last_size: gpui::Size<gpui::Pixels>,
 }
@@ -284,6 +285,7 @@ impl Render for Root {
             Route::Home => self.home.clone().into_any_element(),
             Route::Player => self.player.clone().into_any_element(),
             Route::Calendar => self.calendar.get_or_insert_with(|| cx.new(views::calendar::Calendar::new)).clone().into_any_element(),
+            Route::Couch => self.couch.get_or_insert_with(|| cx.new(views::couch::Couch::new)).clone().into_any_element(),
             Route::Lists => self.library.get_or_insert_with(|| cx.new(views::library::Library::new)).clone().into_any_element(),
             Route::Search => {
                 let s = self.search.get_or_insert_with(|| cx.new(views::search::Search::new)).clone();
@@ -412,6 +414,7 @@ fn main() {
                                 ["search"] => Some(Route::Search),
                                 ["lists"] => Some(Route::Lists),
                                 ["calendar"] => Some(Route::Calendar),
+                                ["couch"] => Some(Route::Couch),
                                 ["shows"] => Some(Route::Shows),
                                 ["movies"] => Some(Route::Movies),
                                 _ => None,
@@ -430,6 +433,7 @@ fn main() {
                             search: None,
                             library: None,
                             calendar: None,
+                            couch: None,
                             focus,
                             last_size: gpui::Size::default(),
                         }
