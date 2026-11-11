@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { parties } from "../lib/stores/parties.svelte";
   import { addTo } from "../lib/stores/lists.svelte";
   import EmojiText from "../components/EmojiText.svelte";
   import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
@@ -265,6 +266,9 @@
             </button>
             <button class="act press" onclick={() => { haptic("light"); toast(toggleFav(m) ? "added to favourites" : "removed from favourites", "ok"); }} aria-label="Favourite">
               <span class="act-ic glass" class:fav={isFav(m.id)}><Icon name="heart" size={19} fill={isFav(m.id)} /></span><span class="act-l">Favourite</span>
+            </button>
+            <button class="act press" onclick={() => m && (parties.plan = { meta: m })} aria-label="Throw a watch party">
+              <span class="act-ic glass"><Icon name="couch" size={20} /></span><span class="act-l">Watch party</span>
             </button>
             <button class="act press" onclick={doShare} aria-label="Share">
               <span class="act-ic glass"><Icon name="share" size={19} /></span><span class="act-l">Share</span>

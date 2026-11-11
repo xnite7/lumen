@@ -401,7 +401,8 @@ pub async fn clip_url(core: &Core, id: &str, title: Option<&str>, year: Option<&
 }
 
 pub async fn social(core: &Core, method: &str, path: &str, body: Option<Value>) -> AppResult<Value> {
-    let ok = ["/v1/favs", "/v1/activity", "/v1/people", "/v1/profile"].contains(&path)
+    let ok = ["/v1/favs", "/v1/activity", "/v1/people", "/v1/profile", "/v1/parties", "/v1/party"].contains(&path)
+        || path.starts_with("/v1/party/")
         || path.starts_with("/v1/reviews/")
         || path.starts_with("/v1/react/")
         || path.starts_with("/v1/frame/")

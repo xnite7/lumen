@@ -2,6 +2,9 @@
   import UpdatePrompt from "./ui/UpdatePrompt.svelte";
   import Wrapped from "./components/Wrapped.svelte";
   import ListNamer from "./ui/ListNamer.svelte";
+  import PartyInvite from "./components/party/PartyInvite.svelte";
+  import PartyPlanner from "./components/party/PartyPlanner.svelte";
+  import { startParties } from "./lib/stores/parties.svelte";
   import { api, listen, type Meta, type Stream } from "./lib/api";
   import { app, boot, refreshSecrets } from "./lib/stores/app.svelte";
   import { applyCurrent } from "./lib/stores/theme.svelte";
@@ -53,6 +56,7 @@
       startUpdates();
       installRails();
       startLive();
+      startParties();
       if (!app.settings.general.onboarded) ui.onboarding = true;
       else checkGate();
     })();
@@ -306,6 +310,8 @@
   <UpdatePrompt />
   <Wrapped />
   <ListNamer />
+  <PartyPlanner />
+  {#if !pb.open || pb.mini}<PartyInvite />{/if}
 {/if}
 {#if splashing}<Splash ondone={() => (splashing = false)} />{/if}
 

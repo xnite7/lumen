@@ -4,6 +4,7 @@ import type { MenuItem } from "./menu.svelte";
 import { openDetail } from "./open";
 import { inLibrary, toggleLibrary, setWatched, itemOf } from "./stores/library.svelte";
 import { lists, inList, toggleInList } from "./stores/lists.svelte";
+import { parties } from "./stores/parties.svelte";
 import { share } from "./native";
 import { toast } from "./stores/toast.svelte";
 
@@ -13,6 +14,7 @@ export function posterMenu(m: Meta, extra: MenuItem[] = []) {
   const items: MenuItem[] = [
     { label: "Open", icon: "info", run: () => openDetail(m) },
     { label: owned ? "Remove from My List" : "Add to My List", icon: owned ? "check" : "plus", run: () => toggleLibrary(m) },
+    { label: "Throw a watch party", icon: "couch", run: () => (parties.plan = { meta: m as Meta }) },
     ...lists.all.map((l) => ({ label: inList(l, m.id) ? `Remove from ${l.name}` : `Add to ${l.name}`, icon: inList(l, m.id) ? "check" : "plus", run: () => toggleInList(l, m) })),
     {
       label: watched ? "Mark as unwatched" : "Mark as watched",

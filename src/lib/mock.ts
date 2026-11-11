@@ -310,6 +310,18 @@ export async function mock(cmd: string, args: any): Promise<any> {
       if (p === "/v1/favs") return { favs: [] };
       if (p.startsWith("/v1/reviews/")) return { reviews: [] };
       if (p.startsWith("/v1/react/")) return { reactions: [] };
+      if (p === "/v1/parties") {
+        const now = Date.now();
+        const t = (i: number) => ({ id: metas[i % metas.length].id, type: metas[i % metas.length].type, name: metas[i % metas.length].name, poster: metas[i % metas.length].poster, background: metas[i % metas.length].background, logo: (metas[i % metas.length] as any).logo, year: "2025", runtime: "1h 52m" });
+        return { parties: [
+          { id: "pty1", host: "100000000000000001", hostName: "nora", title: t(1), at: now + 3 * 3600_000, note: "bring snacks. no phones.", invited: "all", rsvp: { "100000000000000001": { yes: true, name: "nora" }, "100000000000000003": { yes: true, name: "mika" } }, created: now - 6e4 },
+          { id: "pty2", host: "100000000000000002", hostName: "dex", title: t(3), at: now + 2 * 86400_000, invited: "all", rsvp: { "100000000000000002": { yes: true, name: "dex" } }, created: now - 9e6 },
+        ] };
+      }
+      if (p.startsWith("/v1/party/") && p.endsWith("/rsvp")) {
+        return { party: { id: p.split("/")[3], host: "100000000000000001", hostName: "nora", title: { id: metas[1].id, type: metas[1].type, name: metas[1].name, poster: metas[1].poster, background: metas[1].background }, at: Date.now() + 3 * 3600_000, invited: "all", rsvp: { me: { yes: !!args.body?.yes, name: "you" } }, created: Date.now() } };
+      }
+      if (p === "/v1/party") return { party: { id: "pty" + Date.now(), host: "me", hostName: "you", title: args.body?.title ?? {}, at: args.body?.at ?? Date.now(), invited: "all", rsvp: {}, created: Date.now() } };
       if (p === "/v1/people") {
         const now = Date.now();
         return { people: [

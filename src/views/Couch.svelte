@@ -5,6 +5,7 @@
   import { app, saveSettings } from "../lib/stores/app.svelte";
   import { crew, refreshCrew } from "../lib/stores/crew.svelte";
   import CouchRow from "../components/CouchRow.svelte";
+  import PartyRow from "../components/party/PartyRow.svelte";
   import Controls from "../components/Controls.svelte";
   import Cell from "../components/Cell.svelte";
   import Icon from "../components/Icon.svelte";
@@ -49,6 +50,7 @@
     {:else}
       <div class="state"><img src={boil} alt="" /><p class="bump-text">nobody's on the couch.</p></div>
     {/if}
+    <PartyRow />
     {#if crewList.length}
       <section class="people">
         <h2 class="title3">the crew</h2>

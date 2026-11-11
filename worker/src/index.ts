@@ -230,6 +230,20 @@ type Taste = { ids: string[]; ratings: Record<string, number>; loved: PItem[] };
 type Profile = { watching: PItem[]; recent: PItem[]; plan: PItem[]; follows?: Follow[]; taste?: Taste; stats: Record<string, number>; source: "simkl" | "couch"; at: number };
 /** the bits of their page they pick themselves */
 type Style = { accent?: string; glow?: boolean };
+/** a watch party: a title, a time, who's invited and who's coming */
+type Party = {
+  id: string;
+  host: string;
+  hostName: string;
+  hostAvatar?: string;
+  title: { id: string; type: string; name: string; poster?: string; background?: string; logo?: string; year?: string; runtime?: string };
+  videoId?: string;
+  at: number;
+  note?: string;
+  invited: string[] | "all";
+  rsvp: Record<string, { yes: boolean; name: string; avatar?: string }>;
+  created: number;
+};
 type Person = { id: string; name: string; avatar?: string; accent?: string; at: number };
 const FEED_MAX = 150;
 const REACTIONS = ["😂", "😭", "😱", "🔥", "❤️", "👀", "💀", "🍿", "👏", "🤯"];
@@ -601,6 +615,55 @@ export class Crew {
         return json({ ok: true });
       }
     }
+    // ---- watch parties
+    if (p === "/v1/parties" && req.method === "GET") {
+      const now = Date.now();
+      const all = ((await this.storage.get<Party[]>("parties")) ?? []).filter((x) => x.at > now - 4 * 3600_000);
+      const mine = all.filter((x) => x.host === who.id || x.invited === "all" || x.invited.includes(who.id));
+      return json({ parties: mine.sort((a, b) => a.at - b.at) });
+    }
+    if (p === "/v1/party" && req.method === "POST") {
+      const t = title(b?.title);
+      const at = num(b?.at);
+      if (!t || at < Date.now() - 5 * 60_000 || at > Date.now() + 90 * 86400_000) return json({ error: "pick a title and a time" }, 400);
+      const invited = b?.invite === "all" ? "all" : (Array.isArray(b?.invite) ? b.invite : []).filter((x: unknown) => typeof x === "string" && /^[0-9]{5,25}$/.test(x)).slice(0, 50);
+      const party: Party = {
+        id: Math.random().toString(36).slice(2, 10),
+        host: who.id,
+        hostName: who.name,
+        hostAvatar: who.avatar,
+        title: { ...t, year: str(b?.title?.year, 10), runtime: str(b?.title?.runtime, 20) },
+        videoId: str(b?.videoId, 200),
+        at,
+        note: str(b?.note, 140),
+        invited,
+        rsvp: { [who.id]: { yes: true, name: who.name, avatar: who.avatar } },
+        created: Date.now(),
+      };
+      const now = Date.now();
+      const list = ((await this.storage.get<Party[]>("parties")) ?? []).filter((x) => x.at > now - 4 * 3600_000).slice(-99);
+      list.push(party);
+      await this.storage.put("parties", list);
+      return json({ party });
+    }
+    const pm2 = p.match(/^\/v1\/party\/([a-z0-9]{4,16})(\/rsvp)?$/);
+    if (pm2) {
+      const list = (await this.storage.get<Party[]>("parties")) ?? [];
+      const party = list.find((x) => x.id === pm2[1]);
+      if (!party) return json({ error: "that party's over" }, 404);
+      if (pm2[2] && req.method === "POST") {
+        if (party.invited !== "all" && !party.invited.includes(who.id) && party.host !== who.id) return json({ error: "not invited" }, 403);
+        party.rsvp[who.id] = { yes: !!b?.yes, name: who.name, avatar: who.avatar };
+        await this.storage.put("parties", list);
+        return json({ party });
+      }
+      if (!pm2[2] && req.method === "DELETE") {
+        if (party.host !== who.id) return json({ error: "only the host can call it off" }, 403);
+        await this.storage.put("parties", list.filter((x) => x.id !== party.id));
+        return json({ ok: true });
+      }
+    }
+
     // ---- profiles: everyone's page on the couch
     if (p === "/v1/profile" && req.method === "PUT") {
       const items = (a: unknown, max: number): PItem[] => {

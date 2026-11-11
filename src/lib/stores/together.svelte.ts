@@ -9,6 +9,7 @@ import { quickPlay } from "../quickplay";
 import { toast } from "./toast.svelte";
 import { haptic } from "../native";
 import { loadMe } from "./social.svelte";
+import { guestOfMyParty } from "./parties.svelte";
 
 export const together = $state({
   /** people asking to join my couch */
@@ -159,9 +160,13 @@ export function startTogether() {
     if (!crew.setup || document.visibilityState !== "visible") return;
     try {
       const r = await api.crewInbox();
-      const fresh = (r.asks ?? []).filter((a) => !together.inbox.some((x) => x.id === a.id));
+      const asks = r.asks ?? [];
+      // people who said yes to my watch party that's on now: straight in
+      for (const a of asks.filter((x) => guestOfMyParty(x.from))) answer(a, true);
+      const rest = asks.filter((x) => !guestOfMyParty(x.from));
+      const fresh = rest.filter((a) => !together.inbox.some((x) => x.id === a.id));
       if (fresh.length) haptic("success");
-      together.inbox = r.asks ?? [];
+      together.inbox = rest;
     } catch {
       /* the couch is quiet */
     }

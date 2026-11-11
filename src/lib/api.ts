@@ -423,6 +423,21 @@ export interface Taste {
   loved: ProfileItem[];
 }
 
+/** a scheduled watch party */
+export interface Party {
+  id: string;
+  host: string;
+  hostName: string;
+  hostAvatar?: string;
+  title: { id: string; type: string; name: string; poster?: string; background?: string; logo?: string; year?: string; runtime?: string };
+  videoId?: string;
+  at: number;
+  note?: string;
+  invited: string[] | "all";
+  rsvp: Record<string, { yes: boolean; name: string; avatar?: string }>;
+  created: number;
+}
+
 /** one of couch's own lists */
 export interface CouchList {
   id: string;
