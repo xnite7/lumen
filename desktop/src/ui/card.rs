@@ -8,9 +8,20 @@ pub const W: f32 = 300.0;
 pub const H: f32 = 169.0;
 
 pub fn card(id: SharedString, m: &Meta, on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> AnyElement {
+    card_with(id, m, None, None, on_click)
+}
+
+/// A card with a progress bar and a line under it (Continue watching).
+pub fn card_with(
+    id: SharedString,
+    m: &Meta,
+    progress: Option<f32>,
+    sub: Option<String>,
+    on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
+) -> AnyElement {
     let art = m.background.clone().or(m.poster.clone()).map(|u| sized(&u, "w780"));
     let logo = m.logo.clone().map(|u| sized(&u, "w500"));
-    div()
+    let el = div()
         .id(id)
         .flex_none()
         .w(px(W))
@@ -56,7 +67,14 @@ pub fn card(id: SharedString, m: &Meta, on_click: impl Fn(&gpui::ClickEvent, &mu
                     None => title_text(&m.name).into_any_element(),
                 }),
         )
-        .into_any_element()
+        .when_some(progress, |d, p| {
+            d.child(div().absolute().left(px(14.)).right(px(14.)).bottom(px(6.)).h(px(4.)).rounded_full().bg(theme::white(0.25)).child(div().h_full().rounded_full().w(px((W - 28.) * p.clamp(0., 1.))).bg(theme::lamp())))
+        })
+        .into_any_element();
+    match sub {
+        Some(t) => div().flex_none().flex().flex_col().gap(px(6.)).child(el).child(div().text_size(px(13.)).text_color(theme::label2()).truncate().w(px(W)).child(t)).into_any_element(),
+        None => el,
+    }
 }
 
 fn title_text(name: &str) -> impl IntoElement {

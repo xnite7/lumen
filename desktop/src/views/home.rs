@@ -11,6 +11,8 @@ pub struct Row {
     pub key: String,
     pub title: String,
     pub items: Vec<Meta>,
+    /// Continue watching: (progress, "S2 E4 · title") per item
+    pub extra: Vec<(Option<f32>, Option<String>)>,
 }
 
 pub struct Home {
@@ -47,14 +49,33 @@ impl Home {
             // continue watching first (Home only)
             if scope != "all" {
             } else if let Ok(items) = api::call::<Vec<Value>>("continue_watching", json!({})).await {
-                let metas: Vec<Meta> = items
-                    .into_iter()
-                    .filter_map(|v| serde_json::from_value::<Meta>(v.get("meta").cloned().unwrap_or(v)).ok())
-                    .filter(|m| !m.id.is_empty())
-                    .collect();
+                let mut metas: Vec<Meta> = vec![];
+                let mut extra = vec![];
+                for v in items {
+                    let m = Meta {
+                        id: v["_id"].as_str().or(v["id"].as_str()).unwrap_or("").into(),
+                        kind: v["type"].as_str().unwrap_or("").into(),
+                        name: v["name"].as_str().unwrap_or("").into(),
+                        poster: v["poster"].as_str().map(|s| s.into()),
+                        background: v["background"].as_str().map(|s| s.into()),
+                        logo: v["logo"].as_str().map(|s| s.into()),
+                        ..Default::default()
+                    };
+                    if m.id.is_empty() {
+                        continue;
+                    }
+                    let st = &v["state"];
+                    let d = st["duration"].as_f64().unwrap_or(0.);
+                    let p = (d > 0.).then(|| (st["timeOffset"].as_f64().unwrap_or(0.) / d) as f32);
+                    let vid = st["video_id"].as_str().unwrap_or("");
+                    let parts: Vec<&str> = vid.split(':').collect();
+                    let sub = (parts.len() == 3).then(|| format!("S{} E{}", parts[1], parts[2]));
+                    metas.push(m);
+                    extra.push((p, sub));
+                }
                 if !metas.is_empty() {
                     let _ = this.update(cx, |v, cx| {
-                        v.rows.insert(0, Row { key: "cw".into(), title: "continue watching".into(), items: metas });
+                        v.rows.insert(0, Row { key: "cw".into(), title: "continue watching".into(), items: metas, extra });
                         cx.notify();
                     });
                 }
@@ -109,7 +130,7 @@ impl Home {
                     let key = cat["key"].as_str().unwrap_or("").to_string();
                     let title = cat["name"].as_str().unwrap_or("").to_lowercase();
                     let items = api::call::<Vec<Meta>>("catalog_fetch", json!({ "catalog": cat, "extra": extra })).await.unwrap_or_default();
-                    Row { key, title, items }
+                    Row { key, title, items, extra: vec![] }
                 })
                 .collect();
             let rows = futures::future::join_all(tasks).await;
@@ -157,7 +178,13 @@ impl Render for Home {
                             .px(px(theme::GUTTER))
                             .children(r.items.iter().enumerate().map(|(i, m)| {
                                 let mm = m.clone();
-                                card::card(SharedString::from(format!("c-{ri}-{i}")), m, move |_, _, cx| Nav::detail(&mm, cx))
+                                let (p, sub) = r.extra.get(i).cloned().unwrap_or((None, None));
+                                if r.key == "cw" {
+                                    // straight back in where you left off
+                                    card::card_with(SharedString::from(format!("c-{ri}-{i}")), m, p, sub, move |_, _, cx| Nav::play(&mm, cx))
+                                } else {
+                                    card::card(SharedString::from(format!("c-{ri}-{i}")), m, move |_, _, cx| Nav::detail(&mm, cx))
+                                }
                             })),
                     ),
             );
