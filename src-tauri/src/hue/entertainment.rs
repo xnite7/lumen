@@ -60,7 +60,7 @@ pub async fn start(core: CoreRef, ip: String, user: String, psk_hex: String, are
 
     let stop = Arc::new(AtomicBool::new(false));
     let stop2 = stop.clone();
-    tauri::async_runtime::spawn(async move {
+    crate::rt::spawn(async move {
         let mut seq: u8 = 0;
         let mut current: Vec<[f32; 3]> = vec![[0.0; 3]; channels.len()];
         let mut sampler = sampler::Sampler::new(core.clone());

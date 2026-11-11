@@ -35,12 +35,12 @@ impl Relay {
         let port = listener.local_addr()?.port();
         let relay = Arc::new(Self { port, targets: Mutex::new(HashMap::new()) });
         let r = relay.clone();
-        tauri::async_runtime::spawn(async move {
+        crate::rt::spawn(async move {
             loop {
                 let Ok((sock, _)) = listener.accept().await else { continue };
                 let r = r.clone();
                 let http = client();
-                tauri::async_runtime::spawn(async move {
+                crate::rt::spawn(async move {
                     if let Err(e) = r.serve(http, sock).await {
                         log::debug!("relay: {e}");
                     }

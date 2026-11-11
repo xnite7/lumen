@@ -159,7 +159,7 @@ impl Player {
             let vid = req.video_id.clone();
             let filename = req.stream.pointer("/behaviorHints/filename").and_then(|f| f.as_str()).map(|s| s.to_string());
             let size = req.stream.pointer("/behaviorHints/videoSize").and_then(|s| s.as_u64());
-            tauri::async_runtime::spawn(async move {
+            crate::rt::spawn(async move {
                 let mut extra = vec![];
                 if let Some(f) = filename {
                     extra.push(("filename".to_string(), f));
@@ -167,7 +167,7 @@ impl Player {
                 if let Some(s) = size {
                     extra.push(("videoSize".to_string(), s.to_string()));
                 }
-                let addons = crate::state::addons(&this.core.app);
+                let addons = crate::state::addons();
                 let subs = addons.subtitles(&kind, &vid, &extra).await;
                 this.backend.add_subtitles(&subs);
                 this.core.emit("player://subtitles", subs);

@@ -80,8 +80,7 @@ impl Sampler {
     pub fn new(core: CoreRef) -> Self {
         #[cfg(target_os = "windows")]
         {
-            use tauri::Manager;
-            let hwnd = core.app.get_webview_window("main").and_then(|w| w.hwnd().ok()).map(|h| h.0 as isize);
+            let hwnd = core.host.main_window();
             return Self { core, hwnd };
         }
         #[cfg(not(target_os = "windows"))]

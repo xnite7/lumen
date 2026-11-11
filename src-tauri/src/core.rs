@@ -7,10 +7,10 @@ use crate::settings::Settings;
 use parking_lot::RwLock;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
+use crate::host::Host;
 
 pub struct Core {
-    pub app: AppHandle,
+    pub host: Arc<dyn Host>,
     pub db: Arc<Db>,
     pub http: Arc<Http>,
     pub settings: RwLock<Settings>,
@@ -24,7 +24,7 @@ impl Core {
     }
 
     pub fn emit<S: serde::Serialize + Clone>(&self, event: &str, payload: S) {
-        let _ = self.app.emit(event, payload);
+        self.host.emit(event, serde_json::to_value(payload).unwrap_or(serde_json::Value::Null));
     }
 
     /// Keys with a sensible public default fall back to it so the app works

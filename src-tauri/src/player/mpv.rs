@@ -8,7 +8,6 @@ use parking_lot::Mutex;
 use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tauri::Manager;
 
 #[derive(Debug, Clone, Default)]
 struct State {
@@ -110,16 +109,7 @@ impl Mpv {
     }
 
     fn window_handle(&self) -> Option<i64> {
-        let w = self.core.app.get_webview_window("main")?;
-        #[cfg(target_os = "windows")]
-        {
-            return w.hwnd().ok().map(|h| h.0 as i64);
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let _ = w;
-            None
-        }
+        self.core.host.main_window().map(|h| h as i64)
     }
 
     fn ensure(&self) -> AppResult<Arc<libmpv2::Mpv>> {
@@ -671,10 +661,10 @@ mod zorder {
 /// The window changed size (fullscreen, maximise, DPI): make mpv's child
 /// window match it again. Done twice, because Windows settles the size a
 /// moment after the event.
-pub fn refit(window: &tauri::Window) {
+pub fn refit(main: Option<isize>) {
     #[cfg(target_os = "windows")]
-    if let Ok(h) = window.hwnd() {
-        let main = h.0 as i64;
+    if let Some(h) = main {
+        let main = h as i64;
         zorder::send_mpv_to_back(main);
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(180));
@@ -682,7 +672,7 @@ pub fn refit(window: &tauri::Window) {
         });
     }
     #[cfg(not(target_os = "windows"))]
-    let _ = window;
+    let _ = main;
 }
 
 /// mpv's error codes, in words a person can act on.

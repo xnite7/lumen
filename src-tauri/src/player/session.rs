@@ -70,25 +70,23 @@ impl Session {
         if self.scrobbled {
             let p = if self.ended || self.progress() > 0.985 { 1.0 } else { self.progress() };
             let _ = simkl::scrobble(core, "stop", &self.req.meta, &self.req.video_id, p, self.ident.as_ref()).await;
-            let c = core.app.clone();
-            tauri::async_runtime::spawn(async move {
+            crate::rt::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(3)).await;
-                let core = crate::state::get(&c).core.clone();
+                let core = crate::state::get().core.clone();
                 if crate::integrations::simkl_sync::sync(&core).await.unwrap_or(false) {
-                    use tauri::Emitter;
-                    let _ = c.emit("library-changed", ());
+                    core.emit("library-changed", ());
                 }
             });
         }
         crate::discord::update(core, crate::discord::Msg::Clear);
         crate::crew::stopped(core);
-        crate::state::hue(&core.app).on_playback(false).await;
+        crate::state::hue().on_playback(false).await;
     }
 }
 
 pub fn spawn_tracker(player: Arc<Player>) {
     let Some(sid) = player.session().map(|s| s.id) else { return };
-    tauri::async_runtime::spawn(async move {
+    crate::rt::spawn(async move {
         let mut last_save = Instant::now();
         let mut was_paused: Option<bool> = None;
         let mut was_hue: Option<bool> = None;
@@ -178,7 +176,7 @@ pub fn spawn_tracker(player: Arc<Player>) {
             // couch mode: lights go down when playback starts, come up a
             // little on pause, and are restored when the session ends
             if was_hue != Some(s.paused) {
-                let hue = crate::state::hue(&core.app);
+                let hue = crate::state::hue();
                 if was_hue.is_none() {
                     hue.on_playback(true).await;
                 }

@@ -9,13 +9,14 @@ use crate::settings::Settings;
 use crate::state::AppState;
 use crate::{images, library, streams};
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter, Manager, State};
-
-type S<'a> = State<'a, AppState>;
+#[cfg(feature = "tauri-app")]
+pub type S<'a> = tauri::State<'a, AppState>;
+#[cfg(not(feature = "tauri-app"))]
+pub type S<'a> = &'a AppState;
 
 // ------------------------------------------------------------------ app
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn app_info(s: S<'_>) -> Value {
     json!({
         "version": env!("CARGO_PKG_VERSION"),
@@ -25,12 +26,12 @@ pub fn app_info(s: S<'_>) -> Value {
     })
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn settings_get(s: S<'_>) -> Settings {
     s.core.settings()
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn settings_set(s: S<'_>, mut settings: Settings) -> AppResult<()> {
     settings.pin();
     let prev = s.core.settings();
@@ -54,7 +55,7 @@ pub fn settings_set(s: S<'_>, mut settings: Settings) -> AppResult<()> {
 
 const SECRETS: &[&str] = &["tmdb", "simkl_client_id", "simkl_token", "anthropic", "tidb", "motn", "art_worker", "stremio_auth", "hue_username"];
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn secret_set(s: S<'_>, name: String, value: Option<String>) -> AppResult<()> {
     if !SECRETS.contains(&name.as_str()) {
         return Err(AppError::msg("unknown secret"));
@@ -63,7 +64,7 @@ pub fn secret_set(s: S<'_>, name: String, value: Option<String>) -> AppResult<()
 }
 
 /// Which secrets are set -- never their values.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn secrets_status(s: S<'_>) -> Value {
     let mut m = serde_json::Map::new();
     for k in SECRETS {
@@ -81,39 +82,38 @@ pub fn secrets_status(s: S<'_>) -> Value {
     Value::Object(m)
 }
 
-#[tauri::command]
-pub async fn open_external(app: AppHandle, url: String) -> AppResult<()> {
-    use tauri_plugin_opener::OpenerExt;
-    app.opener().open_url(url, None::<&str>).map_err(|e| AppError::msg(e.to_string()))
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn open_external(url: String) -> AppResult<()> {
+    crate::state::get().core.host.open_url(&url).map_err(AppError::msg)
 }
 
 // --------------------------------------------------------------- addons
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn addons_list(s: S<'_>) -> Vec<AddonDescriptor> {
     s.addons.effective()
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn addon_preview(s: S<'_>, url: String) -> AppResult<AddonDescriptor> {
     s.addons.fetch_descriptor(&url).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn addons_install(s: S<'_>, url: String) -> AppResult<AddonDescriptor> {
     let d = s.addons.install(&url).await?;
     push_addons_quietly(&s).await;
     Ok(d)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn addons_uninstall(s: S<'_>, transport_url: String) -> AppResult<()> {
     s.addons.uninstall(&transport_url);
     push_addons_quietly(&s).await;
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn addons_reorder(s: S<'_>, order: Vec<String>) -> AppResult<()> {
     s.addons.reorder(&order);
     push_addons_quietly(&s).await;
@@ -126,23 +126,23 @@ async fn push_addons_quietly(s: &S<'_>) {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn addons_refresh(s: S<'_>) -> AppResult<()> {
     s.addons.refresh_manifests().await;
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn addons_health(s: S<'_>) -> AppResult<Vec<health::Health>> {
     Ok(health::check_all(s.addons.clone()).await)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn addons_export(s: S<'_>) -> Value {
     json!({ "couch": 1, "addons": s.addons.list().iter().map(|a| a.transport_url.clone()).collect::<Vec<_>>() })
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn addons_import(s: S<'_>, urls: Vec<String>) -> AppResult<usize> {
     let mut n = 0;
     for u in urls {
@@ -155,17 +155,17 @@ pub async fn addons_import(s: S<'_>, urls: Vec<String>) -> AppResult<usize> {
 
 // ------------------------------------------------------------- browsing
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn catalogs_list(s: S<'_>) -> Vec<CatalogRef> {
     s.addons.catalogs()
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn catalog_fetch(s: S<'_>, catalog: CatalogRef, extra: Vec<(String, String)>) -> AppResult<Vec<Value>> {
     s.addons.catalog(&catalog, &extra).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn meta_get(s: S<'_>, kind: String, id: String, hint: Option<String>) -> AppResult<Value> {
     // tmdb:* ids (from recommendation tiles) are resolved to IMDb first.
     let (kind, id) = resolve_tmdb_id(&s, &kind, &id).await?;
@@ -183,23 +183,23 @@ async fn resolve_tmdb_id(s: &S<'_>, kind: &str, id: &str) -> AppResult<(String, 
     Ok((kind.to_string(), id.to_string()))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn tmdb_resolve(s: S<'_>, kind: String, id: String) -> AppResult<Value> {
     let (k, i) = resolve_tmdb_id(&s, &kind, &id).await?;
     Ok(json!({ "type": k, "id": i }))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn meta_enrich(s: S<'_>, kind: String, id: String) -> AppResult<Value> {
     tmdb::enrich(&s.core, &kind, &id).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn trailer_get(s: S<'_>, kind: String, id: String) -> AppResult<Option<String>> {
     tmdb::trailer(&s.core, &kind, &id).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn person_get(s: S<'_>, name: String, tmdb_id: Option<u64>, adult: bool) -> AppResult<Value> {
     // Adult performers aren't on TMDB; addons that know them expose a
     // /performer/{name}.json route (your PDB Debrid addon does).
@@ -243,36 +243,36 @@ pub async fn person_get(s: S<'_>, name: String, tmdb_id: Option<u64>, adult: boo
 }
 
 /// Is there a newer couch? { current, available, notes }
-#[tauri::command]
-pub async fn update_check(app: AppHandle, s: S<'_>) -> AppResult<Value> {
-    crate::updates::check(&app, &s.core).await
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn update_check(s: S<'_>) -> AppResult<Value> {
+    crate::updates::check(&s.core).await
 }
 
 /// Download and install the newer couch, then restart.
-#[tauri::command]
-pub async fn update_install(app: AppHandle, s: S<'_>) -> AppResult<()> {
-    crate::updates::install(&app, &s.core).await
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn update_install(s: S<'_>) -> AppResult<()> {
+    crate::updates::install(&s.core).await
 }
 
 /// Download the update now, install it when couch closes.
-#[tauri::command]
-pub async fn update_on_exit(app: AppHandle, s: S<'_>) -> AppResult<()> {
-    crate::updates::install_on_exit(&app, &s.core).await
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn update_on_exit(s: S<'_>) -> AppResult<()> {
+    crate::updates::install_on_exit(&s.core).await
 }
 
 /// Simkl's trending for one genre (genre pages' billboard).
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn genre_trending(s: S<'_>, kind: String, genre: String) -> AppResult<Vec<Value>> {
     crate::integrations::simkl::genre_trending(&s.core, &kind, &genre).await
 }
 
 /// Curated Home rows ("all"), or the Shows / Movies tabs' ("series" / "movie").
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn home_rows(s: S<'_>, scope: String) -> Vec<Value> {
     crate::addons::curated::rows(&s.core, &scope)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn hero_items(s: S<'_>) -> AppResult<Vec<Value>> {
     // Simkl's trending data file needs no account, so this works signed out
     {
@@ -298,28 +298,28 @@ pub async fn hero_items(s: S<'_>) -> AppResult<Vec<Value>> {
     Ok(out)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn art_get(s: S<'_>, imdb: String) -> AppResult<Value> {
     motn::art(&s.core, &imdb).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn palette_get(s: S<'_>, url: String) -> AppResult<images::Palette> {
     images::palette(&s.core, &url).await
 }
 
 // --------------------------------------------------------------- search
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn search_start(s: S<'_>, query: String, req_id: String) {
     let q = query.trim().to_string();
     if q.len() >= 2 {
         s.core.db.recent_add(&q);
     }
-    tauri::async_runtime::spawn(s.addons.clone().search(q, req_id));
+    crate::rt::spawn(s.addons.clone().search(q, req_id));
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn search_suggest(s: S<'_>, query: String) -> AppResult<Vec<Value>> {
     let q = query.trim().to_lowercase();
     if q.is_empty() {
@@ -348,67 +348,67 @@ pub async fn search_suggest(s: S<'_>, query: String) -> AppResult<Vec<Value>> {
         .collect())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn recents_get(s: S<'_>) -> Vec<String> {
     s.core.db.recents(12)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn recents_clear(s: S<'_>) {
     s.core.db.recents_clear()
 }
 
 // -------------------------------------------------------------- streams
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn streams_fetch(s: S<'_>, kind: String, id: String, req_id: String) {
-    tauri::async_runtime::spawn(s.addons.clone().streams(kind, id, req_id));
+    crate::rt::spawn(s.addons.clone().streams(kind, id, req_id));
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn subtitles_fetch(s: S<'_>, kind: String, id: String) -> AppResult<Vec<Value>> {
     Ok(s.addons.subtitles(&kind, &id, &[]).await)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn skip_segments(s: S<'_>, video_id: String, duration_ms: Option<u64>) -> AppResult<Value> {
     tidb::segments(&s.core, &video_id, duration_ms).await
 }
 
 // --------------------------------------------------------------- player
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn player_open(s: S<'_>, req: PlayRequest) -> AppResult<crate::player::OpenResult> {
     s.player.open(req).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn player_cmd(s: S<'_>, cmd: String, args: Option<Value>) -> AppResult<Value> {
     s.player.command(&cmd, &args.unwrap_or(Value::Null))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn player_stop(s: S<'_>) -> AppResult<()> {
     s.player.stop().await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn player_state(s: S<'_>) -> Value {
     s.player.state()
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn player_tracks(s: S<'_>) -> Value {
     s.player.tracks()
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn player_report(s: S<'_>, pos: f64, duration: f64, paused: bool) {
     s.player.report(pos, duration, paused)
 }
 
 /// Next episode, same source: no picker, no wait.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn player_next(s: S<'_>, meta: Value, video_id: String, previous: Value, episode_title: Option<String>) -> AppResult<Value> {
     let kind = meta.get("type").and_then(|t| t.as_str()).unwrap_or("series").to_string();
     // the next episode's streams are usually fetched already (player_prefetch)
@@ -428,7 +428,7 @@ pub async fn player_next(s: S<'_>, meta: Value, video_id: String, previous: Valu
 static NEXT_STREAMS: parking_lot::Mutex<Option<(String, std::time::Instant, Vec<Value>)>> = parking_lot::Mutex::new(None);
 
 /// Fetch the streams for an episode ahead of time (the one after what's on).
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn player_prefetch(s: S<'_>, kind: String, video_id: String) -> AppResult<usize> {
     if NEXT_STREAMS.lock().as_ref().map_or(false, |(id, at, c)| id == &video_id && !c.is_empty() && at.elapsed() < std::time::Duration::from_secs(30 * 60)) {
         return Ok(0);
@@ -440,54 +440,54 @@ pub async fn player_prefetch(s: S<'_>, kind: String, video_id: String) -> AppRes
 }
 
 /// A seek-bar thumbnail at `t` seconds, as a data: URL (null when there's none).
-#[tauri::command]
-pub async fn player_thumb(app: AppHandle, t: f64) -> AppResult<Option<String>> {
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn player_thumb(t: f64) -> AppResult<Option<String>> {
     use base64::Engine;
-    let p = crate::state::player(&app);
-    let bytes = tauri::async_runtime::spawn_blocking(move || p.thumb(t)).await.ok().flatten();
+    let p = crate::state::player();
+    let bytes = crate::rt::spawn_blocking(move || p.thumb(t)).await.ok().flatten();
     Ok(bytes.map(|b| format!("data:image/jpeg;base64,{}", base64::engine::general_purpose::STANDARD.encode(b))))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn torrent_stats(s: S<'_>) -> Value {
     s.player.torrents.stats()
 }
 
 // -------------------------------------------------------------- library
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn library_list(s: S<'_>) -> AppResult<Vec<Value>> {
     library::all(&s.core)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn library_item(s: S<'_>, id: String) -> Option<Value> {
     library::get(&s.core, &id)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn library_add(s: S<'_>, meta: Value) -> AppResult<Value> {
     let item = library::add(&s.core, &meta)?;
     let kind = meta["type"].as_str().unwrap_or("movie").to_string();
     let id = meta["id"].as_str().unwrap_or("").to_string();
     let core = s.core.clone();
-    tauri::async_runtime::spawn(async move {
+    crate::rt::spawn(async move {
         let _ = simkl::watchlist(&core, &kind, &id, true).await;
     });
     Ok(item)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn library_remove(s: S<'_>, id: String, kind: String) -> AppResult<()> {
     library::remove(&s.core, &id)?;
     let core = s.core.clone();
-    tauri::async_runtime::spawn(async move {
+    crate::rt::spawn(async move {
         let _ = simkl::watchlist(&core, &kind, &id, false).await;
     });
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn library_set_watched(s: S<'_>, meta: Value, video_id: Option<String>, watched: bool, all_videos: Option<Vec<String>>) -> AppResult<Value> {
     let item = match (&video_id, &all_videos) {
         (None, Some(all)) if !all.is_empty() => library::set_all_watched(&s.core, &meta, all, watched)?,
@@ -497,14 +497,14 @@ pub async fn library_set_watched(s: S<'_>, meta: Value, video_id: Option<String>
         let kind = meta["type"].as_str().unwrap_or("movie").to_string();
         let id = video_id.unwrap_or_else(|| meta["id"].as_str().unwrap_or("").to_string());
         let core = s.core.clone();
-        tauri::async_runtime::spawn(async move {
+        crate::rt::spawn(async move {
             let _ = simkl::set_watched(&core, &kind, &id, watched).await;
         });
     }
     Ok(item)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn continue_watching(s: S<'_>) -> AppResult<Vec<Value>> {
     let mut v = library::continue_watching(&s.core)?;
     // Pauses from any other Simkl app (phone, TV, Plex...) join the row.
@@ -516,7 +516,7 @@ pub fn continue_watching(s: S<'_>) -> AppResult<Vec<Value>> {
     Ok(v)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn cw_dismiss(s: S<'_>, id: String) -> AppResult<()> {
     library::dismiss(&s.core, &id)?;
     if simkl::connected(&s.core) {
@@ -526,18 +526,18 @@ pub async fn cw_dismiss(s: S<'_>, id: String) -> AppResult<()> {
 }
 
 /// Check Simkl for changes now (cheap when nothing moved).
-#[tauri::command]
-pub async fn simkl_sync(app: AppHandle, s: S<'_>) -> AppResult<bool> {
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn simkl_sync(s: S<'_>) -> AppResult<bool> {
     let changed = crate::integrations::simkl_sync::sync(&s.core).await?;
     if changed {
-        let _ = app.emit("library-changed", ());
+        s.core.emit("library-changed", ());
     }
     Ok(changed)
 }
 
 // ------------------------------------------------------------- accounts
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn stremio_login(s: S<'_>, email: String, password: String) -> AppResult<Value> {
     let u = stremio::login(&s.core, &email, &password).await?;
     let _ = stremio::pull_addons(&s.core, &s.addons).await;
@@ -545,12 +545,12 @@ pub async fn stremio_login(s: S<'_>, email: String, password: String) -> AppResu
     Ok(u)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn stremio_link_start(s: S<'_>) -> AppResult<Value> {
     stremio::link_start(&s.core).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn stremio_link_poll(s: S<'_>, code: String) -> AppResult<bool> {
     if !stremio::link_poll(&s.core, &code).await? {
         return Ok(false);
@@ -560,12 +560,12 @@ pub async fn stremio_link_poll(s: S<'_>, code: String) -> AppResult<bool> {
     Ok(true)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn stremio_logout(s: S<'_>) -> AppResult<()> {
     stremio::logout(&s.core)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn stremio_sync(s: S<'_>, pull_addons: bool) -> AppResult<Value> {
     if pull_addons {
         stremio::pull_addons(&s.core, &s.addons).await?;
@@ -574,17 +574,17 @@ pub async fn stremio_sync(s: S<'_>, pull_addons: bool) -> AppResult<Value> {
     Ok(json!({ "pulled": pulled, "pushed": pushed }))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn simkl_pin_start(s: S<'_>) -> AppResult<Value> {
     simkl::pin_start(&s.core).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn simkl_pin_poll(s: S<'_>, code: String) -> AppResult<bool> {
     simkl::pin_poll(&s.core, &code).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn simkl_logout(s: S<'_>) -> AppResult<()> {
     simkl::logout(&s.core).await
 }
@@ -592,17 +592,16 @@ pub async fn simkl_logout(s: S<'_>) -> AppResult<()> {
 /// One-tap Simkl sign-in (AUTH V2). On a computer the browser comes back to
 /// a tiny server on this machine; on iPhone it comes back through
 /// `lumen://auth/simkl`, which the page passes to `simkl_oauth_finish`.
-#[tauri::command]
-pub async fn simkl_oauth_start(app: AppHandle, s: S<'_>) -> AppResult<()> {
-    use tauri_plugin_opener::OpenerExt;
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn simkl_oauth_start(s: S<'_>) -> AppResult<()> {
     #[cfg(desktop)]
     {
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
         let port = listener.local_addr()?.port();
         let url = simkl::oauth_start(&s.core, &format!("http://127.0.0.1:{port}/auth/simkl"));
         let core = s.core.clone();
-        let h = app.clone();
-        tauri::async_runtime::spawn(async move {
+        let h = core.clone();
+        crate::rt::spawn(async move {
             use tokio::io::{AsyncReadExt, AsyncWriteExt};
             let accept = tokio::time::timeout(std::time::Duration::from_secs(600), listener.accept()).await;
             let Ok(Ok((mut sock, _))) = accept else { return };
@@ -621,32 +620,32 @@ pub async fn simkl_oauth_start(app: AppHandle, s: S<'_>) -> AppResult<()> {
             let _ = sock.write_all(format!("HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{page}", page.len()).as_bytes()).await;
             let _ = h.emit("simkl-auth", json!({ "ok": result.is_ok(), "error": result.err().map(|e| e.to_string()) }));
         });
-        app.opener().open_url(url, None::<&str>).map_err(|e| AppError::msg(e.to_string()))?;
+        crate::state::get().core.host.open_url(&url).map_err(AppError::msg)?;
     }
     #[cfg(mobile)]
     {
         let url = simkl::oauth_start(&s.core, "lumen://auth/simkl");
-        app.opener().open_url(url, None::<&str>).map_err(|e| AppError::msg(e.to_string()))?;
+        crate::state::get().core.host.open_url(&url).map_err(AppError::msg)?;
     }
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn simkl_oauth_finish(s: S<'_>, url: String) -> AppResult<()> {
     simkl::oauth_finish(&s.core, &url).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn simkl_device_start(s: S<'_>) -> AppResult<Value> {
     simkl::device_start(&s.core).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn simkl_device_poll(s: S<'_>) -> AppResult<bool> {
     simkl::device_poll(&s.core).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn simkl_rate(s: S<'_>, kind: String, id: String, rating: Option<u8>) -> AppResult<()> {
     // kept here too, so ratings work (and show in My Lists) without Simkl
     let key = id.split(':').next().unwrap_or(&id).to_string();
@@ -662,12 +661,12 @@ pub async fn simkl_rate(s: S<'_>, kind: String, id: String, rating: Option<u8>) 
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn local_ratings(s: S<'_>) -> Value {
     s.core.db.get::<Value>("local_ratings").unwrap_or_else(|| json!({}))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn simkl_item_status(s: S<'_>, kind: String, id: String) -> AppResult<Value> {
     let v = simkl::status_of(&s.core, &kind, &id).await?;
     if v.is_null() {
@@ -680,7 +679,7 @@ pub async fn simkl_item_status(s: S<'_>, kind: String, id: String) -> AppResult<
 
 /// My Lists from Simkl (Plan to Watch / Watching / Completed, both kinds),
 /// with your rating and dates on each. `simkl: false` = build it locally.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn my_lists(s: S<'_>) -> Value {
     lists_value(&s.core)
 }
@@ -716,7 +715,7 @@ pub fn lists_value(core: &crate::core::Core) -> Value {
 }
 
 /// Your custom lists on Simkl (PRO / VIP; read-only in Simkl's API).
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn simkl_custom_lists(s: S<'_>) -> AppResult<Value> {
     let core = &s.core;
     if !simkl::paid(core) {
@@ -734,7 +733,7 @@ pub async fn simkl_custom_lists(s: S<'_>) -> AppResult<Value> {
     Ok(json!({ "lists": v.get("lists").cloned().unwrap_or(json!([])), "paid": true }))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn simkl_list_items(s: S<'_>, id: u64) -> AppResult<Vec<Value>> {
     let v = simkl::get(&s.core, &format!("/lists/{id}?limit=300")).await?;
     Ok(v.get("items").and_then(|i| i.as_array()).into_iter().flatten().filter_map(|e| simkl::to_meta(e, None)).collect())
@@ -773,7 +772,7 @@ pub fn calendar_mine(core: &crate::core::Core) -> Vec<(String, String)> {
 
 /// The release calendar: your shows' next episodes, your list's films, who
 /// you follow, and (with `hits`) the big releases.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn calendar_get(s: S<'_>, hits: bool) -> AppResult<Vec<Value>> {
     let mine = calendar_mine(&s.core);
     let follows: Vec<Value> = s.core.db.get::<Vec<Value>>("follows").unwrap_or_default();
@@ -782,7 +781,7 @@ pub async fn calendar_get(s: S<'_>, hits: bool) -> AppResult<Vec<Value>> {
 
 /// Everything watched in one year, for Wrapped: one row per title with when,
 /// your rating, runtime, genres, episodes. The slides are worked out from it.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn wrapped_data(s: S<'_>, year: i32) -> Vec<Value> {
     let core = &s.core;
     let ys = format!("{year:04}-");
@@ -826,18 +825,18 @@ pub fn wrapped_data(s: S<'_>, year: i32) -> Vec<Value> {
 }
 
 /// A studio's page (TMDB company): logo, films, shows.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn company_get(s: S<'_>, id: u64) -> AppResult<Value> {
     crate::integrations::tmdb::company(&s.core, id).await
 }
 
 /// couch's own custom lists: [{ id, name, items: [meta], at }]
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn couch_lists_get(s: S<'_>) -> Value {
     s.core.db.get::<Value>("couch_lists").unwrap_or(json!([]))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn couch_lists_set(s: S<'_>, lists: Value) -> AppResult<()> {
     if !lists.is_array() {
         return Err(AppError::msg("lists must be a list"));
@@ -847,13 +846,13 @@ pub fn couch_lists_set(s: S<'_>, lists: Value) -> AppResult<()> {
 }
 
 /// People and studios you follow: [{ kind: "person"|"studio", id, name, img }]
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn follows_list(s: S<'_>) -> Value {
     s.core.db.get::<Value>("follows").unwrap_or(json!([]))
 }
 
 /// Follow or unfollow; returns the new list. Your couch page shows it too.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn follow_toggle(s: S<'_>, kind: String, id: u64, name: String, img: Option<String>) -> AppResult<Value> {
     let mut list: Vec<Value> = s.core.db.get::<Vec<Value>>("follows").unwrap_or_default();
     let had = list.iter().any(|f| f["kind"] == kind.as_str() && f["id"].as_u64() == Some(id));
@@ -864,12 +863,12 @@ pub async fn follow_toggle(s: S<'_>, kind: String, id: u64, name: String, img: O
     }
     s.core.db.set("follows", &list)?;
     let core = s.core.clone();
-    tauri::async_runtime::spawn(async move { crate::crew::publish_profile(&core, true).await });
+    crate::rt::spawn(async move { crate::crew::publish_profile(&core, true).await });
     Ok(json!(list))
 }
 
 /// "new from who you follow": recent and upcoming releases.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn follow_feed(s: S<'_>) -> AppResult<Vec<Value>> {
     let list: Vec<Value> = s.core.db.get::<Vec<Value>>("follows").unwrap_or_default();
     if list.is_empty() {
@@ -879,19 +878,19 @@ pub async fn follow_feed(s: S<'_>) -> AppResult<Vec<Value>> {
 }
 
 /// Push my profile (watching / recent / plan / stats) to the crew now.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_profile_publish(s: S<'_>) -> AppResult<()> {
     crate::crew::publish_profile(&s.core, true).await;
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_social(s: S<'_>, method: String, path: String, body: Option<Value>) -> AppResult<Value> {
     crate::crew::social(&s.core, &method, &path, body).await
 }
 
 /// Episode runtimes and finale markers from Simkl (empty without it).
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn simkl_episode_info(s: S<'_>, id: String) -> AppResult<Value> {
     let imdb = id.split(':').next().unwrap_or(&id);
     if !imdb.starts_with("tt") || simkl::client_id(&s.core).is_none() {
@@ -902,7 +901,7 @@ pub async fn simkl_episode_info(s: S<'_>, id: String) -> AppResult<Value> {
 
 /// The picture's overall colour right now (Windows: read from the window
 /// like the Hue ambilight does), as "#rrggbb"; None where it can't be read.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn scene_color(s: S<'_>) -> Option<String> {
     #[cfg(not(desktop))]
     {
@@ -921,34 +920,34 @@ pub fn scene_color(s: S<'_>) -> Option<String> {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn did_you_mean(s: S<'_>, query: String) -> AppResult<Option<String>> {
     Ok(ai::did_you_mean(&s.core, &query).await)
 }
 
 /// Netflix, Max, Disney+… with their logos, for the services row.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn streaming_services(s: S<'_>) -> AppResult<Vec<Value>> {
     Ok(tmdb::services(&s.core).await)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn clip_url(s: S<'_>, id: String, title: Option<String>, year: Option<String>) -> AppResult<Option<String>> {
     Ok(crate::crew::clip_url(&s.core, &id, title.as_deref(), year.as_deref()).await)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn discord_rpc_status() -> String {
     crate::discord::status()
 }
 
 /// Who you are on the couch (your Discord name and picture).
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn discord_me(s: S<'_>) -> Value {
     s.core.db.get::<Value>("discord_user").unwrap_or(Value::Null)
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn share_link(kind: String, id: String, name: String) -> String {
     format!(
         "{}/t/{}/{}?n={}",
@@ -961,45 +960,45 @@ pub fn share_link(kind: String, id: String, name: String) -> String {
 
 // ------------------------------------------------------------------- AI
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn ai_vibe(s: S<'_>, query: String) -> AppResult<Value> {
     ai::vibe(&s.core, &query).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn ai_prompts(s: S<'_>) -> AppResult<Value> {
     ai::prompts(&s.core).await
 }
 
 // ------------------------------------------------------------------ Hue
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn hue_discover(s: S<'_>) -> AppResult<Value> {
     s.hue.discover().await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn hue_pair(s: S<'_>, ip: String) -> AppResult<Value> {
     s.hue.pair(&ip).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn hue_overview(s: S<'_>) -> AppResult<Value> {
     s.hue.overview().await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn hue_identify(s: S<'_>) -> AppResult<()> {
     s.hue.identify().await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn hue_test(s: S<'_>, on: bool) -> AppResult<()> {
     s.hue.on_playback(on).await;
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn hue_mood(s: S<'_>, url: String) -> AppResult<()> {
     if !s.hue.enabled() {
         return Ok(());
@@ -1010,7 +1009,7 @@ pub async fn hue_mood(s: S<'_>, url: String) -> AppResult<()> {
 
 // ---------------------------------------------------------------- Tobii
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn tobii_status(s: S<'_>) -> Value {
     #[cfg(desktop)]
     {
@@ -1023,7 +1022,7 @@ pub fn tobii_status(s: S<'_>) -> Value {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn tobii_start(s: S<'_>) -> AppResult<()> {
     #[cfg(desktop)]
     {
@@ -1036,7 +1035,7 @@ pub fn tobii_start(s: S<'_>) -> AppResult<()> {
     }
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn tobii_stop(s: S<'_>) {
     #[cfg(desktop)]
     s.tobii.stop();
@@ -1046,83 +1045,24 @@ pub fn tobii_stop(s: S<'_>) {
 
 // --------------------------------------------------------------- window
 
-#[tauri::command]
-pub fn window_action(app: AppHandle, action: String) -> AppResult<()> {
-    #[cfg(desktop)]
-    {
-        let w = app.get_webview_window("main").ok_or_else(|| AppError::msg("no window"))?;
-        match action.as_str() {
-            "minimize" => w.minimize()?,
-            "maximize" => {
-                if w.is_maximized()? {
-                    w.unmaximize()?
-                } else {
-                    w.maximize()?
-                }
-            }
-            "close" => w.close()?,
-            "fullscreen" => w.set_fullscreen(!w.is_fullscreen()?)?,
-            "exit-fullscreen" => w.set_fullscreen(false)?,
-            "drag" => w.start_dragging()?,
-            _ => {}
-        }
-    }
-    #[cfg(mobile)]
-    let _ = (app, action);
-    Ok(())
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub fn window_action(action: String) -> AppResult<()> {
+    crate::state::get().core.host.window(&action, Value::Null).map_err(AppError::msg)
 }
 
 /// Picture-in-picture for a native player is just a small, always-on-top,
 /// borderless window in the corner -- mpv keeps rendering into it.
-#[tauri::command]
-pub fn window_pip(app: AppHandle, on: bool) -> AppResult<()> {
-    #[cfg(desktop)]
-    {
-        use tauri::{LogicalPosition, LogicalSize, Position, Size};
-        let w = app.get_webview_window("main").ok_or_else(|| AppError::msg("no window"))?;
-        let core = crate::state::get(&app).core.clone();
-        if on {
-            if w.is_fullscreen()? {
-                w.set_fullscreen(false)?;
-            }
-            let scale = w.scale_factor()?;
-            let pos = w.outer_position()?.to_logical::<f64>(scale);
-            let size = w.inner_size()?.to_logical::<f64>(scale);
-            core.db.set("pip_restore", &json!({ "x": pos.x, "y": pos.y, "w": size.width, "h": size.height, "max": w.is_maximized()? }))?;
-            if w.is_maximized()? {
-                w.unmaximize()?;
-            }
-            let (pw, ph) = (480.0, 270.0);
-            let mon = w.current_monitor()?.ok_or_else(|| AppError::msg("no monitor"))?;
-            let ms = mon.size().to_logical::<f64>(mon.scale_factor());
-            let mp = mon.position().to_logical::<f64>(mon.scale_factor());
-            w.set_always_on_top(true)?;
-            w.set_size(Size::Logical(LogicalSize::new(pw, ph)))?;
-            w.set_position(Position::Logical(LogicalPosition::new(mp.x + ms.width - pw - 28.0, mp.y + ms.height - ph - 72.0)))?;
-        } else {
-            w.set_always_on_top(false)?;
-            if let Some(r) = core.db.get::<Value>("pip_restore") {
-                w.set_size(Size::Logical(LogicalSize::new(r["w"].as_f64().unwrap_or(1280.0), r["h"].as_f64().unwrap_or(800.0))))?;
-                w.set_position(Position::Logical(LogicalPosition::new(r["x"].as_f64().unwrap_or(80.0), r["y"].as_f64().unwrap_or(80.0))))?;
-                if r["max"].as_bool().unwrap_or(false) {
-                    w.maximize()?;
-                }
-            }
-        }
-    }
-    #[cfg(mobile)]
-    let _ = (app, on);
-    Ok(())
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub fn window_pip(on: bool) -> AppResult<()> {
+    crate::state::get().core.host.window("pip", json!(on)).map_err(AppError::msg)
 }
 
-// ---------------------------------------------------------------- cache
-
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn cache_info(s: S<'_>) -> AppResult<Value> {
     Ok(json!({ "images": images::cache_size(&s.core).await }))
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn cache_clear(s: S<'_>) -> AppResult<()> {
     images::clear(&s.core).await?;
     s.core.db.cache_clear()
@@ -1130,67 +1070,67 @@ pub async fn cache_clear(s: S<'_>) -> AppResult<()> {
 
 // ------------------------------------------------------------ migration
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn import_stremio_enhanced(s: S<'_>) -> AppResult<Value> {
     crate::migrate::import(&s.core)
 }
 
 // ------------------------------------------------------------------ crew
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_list(s: S<'_>) -> AppResult<Value> {
     crate::crew::list(&s.core).await
 }
 
 /// Watch together: ask to join someone's couch, and the rest of the dance.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_ask(s: S<'_>, to: String) -> AppResult<Value> {
     crate::crew::ask(&s.core, &to).await
 }
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_ask_status(s: S<'_>, id: String) -> AppResult<Value> {
     crate::crew::ask_status(&s.core, &id).await
 }
 /// Host: let everyone in the room control playback (or take the remote back).
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn crew_share_control(on: bool) {
     crate::crew::SHARED.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_room_cmd(s: S<'_>, host: String, action: String, pos: Option<f64>) -> AppResult<Value> {
     crate::crew::room_cmd(&s.core, &host, &action, pos).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_cancel_ask(s: S<'_>, id: String) -> AppResult<Value> {
     crate::crew::cancel_ask(&s.core, &id).await
 }
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_inbox(s: S<'_>) -> AppResult<Value> {
     crate::crew::inbox(&s.core).await
 }
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_answer(s: S<'_>, id: String, accept: bool) -> AppResult<Value> {
     crate::crew::answer(&s.core, &id, accept).await
 }
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_room(s: S<'_>, host: String) -> AppResult<Value> {
     crate::crew::room(&s.core, &host).await
 }
 
 /// Watch together's live line (a WebSocket URL for this room).
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_line(s: S<'_>, host: String) -> AppResult<String> {
     crate::crew::line_url(&s.core, &host).await
 }
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_leave(s: S<'_>, host: String) -> AppResult<Value> {
     crate::crew::leave(&s.core, &host).await
 }
 
 /// Join with a crew server URL and code (parsed from an invite link).
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_join(s: S<'_>, url: String, code: String) -> AppResult<Value> {
     let url = url.trim().trim_end_matches('/').to_string();
     if !url.starts_with("https://") {
@@ -1205,7 +1145,7 @@ pub async fn crew_join(s: S<'_>, url: String, code: String) -> AppResult<Value> 
     crate::crew::list(&s.core).await
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn crew_invite(s: S<'_>) -> Option<String> {
     let url = s.core.settings.read().integrations.crew_url.clone();
     let code = s.core.db.secret("crew_code")?;
@@ -1220,15 +1160,15 @@ pub fn crew_invite(s: S<'_>) -> Option<String> {
 /// Sign in with Discord. Computer: the browser returns to a tiny server on
 /// port 53682 here. iPhone: it returns through couch://auth/discord, which
 /// the page hands to `discord_finish`.
-#[tauri::command]
-pub async fn discord_start(app: AppHandle, s: S<'_>) -> AppResult<()> {
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn discord_start(s: S<'_>) -> AppResult<()> {
     // Computer: the Discord app's own prompt first; the browser if that
     // can't happen (Discord closed, not a tester yet, ...).
     #[cfg(desktop)]
     {
         let core = s.core.clone();
-        let h = app.clone();
-        tauri::async_runtime::spawn(async move {
+        let h = core.clone();
+        crate::rt::spawn(async move {
             let _ = h.emit("discord-auth-stage", "app");
             match crate::integrations::discord_auth::desktop_app(&core).await {
                 Ok(_) => {
@@ -1237,7 +1177,7 @@ pub async fn discord_start(app: AppHandle, s: S<'_>) -> AppResult<()> {
                 Err(e) => {
                     log::info!("discord app sign-in unavailable ({e}); using the browser");
                     let _ = h.emit("discord-auth-stage", "browser");
-                    if let Err(e) = discord_browser(h.clone(), core).await {
+                    if let Err(e) = discord_browser(core).await {
                         let _ = h.emit("discord-auth", json!({ "ok": false, "error": e.to_string() }));
                     }
                 }
@@ -1247,21 +1187,20 @@ pub async fn discord_start(app: AppHandle, s: S<'_>) -> AppResult<()> {
     }
     #[cfg(mobile)]
     {
-        return discord_browser(app, s.core.clone()).await;
+        return discord_browser(s.core.clone()).await;
     }
 }
 
-async fn discord_browser(app: AppHandle, core: crate::core::CoreRef) -> AppResult<()> {
+async fn discord_browser(core: crate::core::CoreRef) -> AppResult<()> {
     use crate::integrations::discord_auth as d;
-    use tauri_plugin_opener::OpenerExt;
     #[cfg(desktop)]
     {
         let listener = tokio::net::TcpListener::bind(("127.0.0.1", d::DESKTOP_PORT))
             .await
             .map_err(|e| AppError::msg(format!("port {} is busy ({e}); close other sign-ins and try again", d::DESKTOP_PORT)))?;
         let url = d::start(d::DESKTOP_REDIRECT);
-        let h = app.clone();
-        tauri::async_runtime::spawn(async move {
+        let h = core.clone();
+        crate::rt::spawn(async move {
             use tokio::io::{AsyncReadExt, AsyncWriteExt};
             // skip stray requests (favicon) until the real callback arrives
             for _ in 0..4 {
@@ -1288,30 +1227,30 @@ async fn discord_browser(app: AppHandle, core: crate::core::CoreRef) -> AppResul
                 return;
             }
         });
-        app.opener().open_url(url, None::<&str>).map_err(|e| AppError::msg(e.to_string()))?;
+        crate::state::get().core.host.open_url(&url).map_err(AppError::msg)?;
     }
     #[cfg(mobile)]
     {
         let _ = &core;
         let url = d::start(d::MOBILE_REDIRECT);
-        app.opener().open_url(url, None::<&str>).map_err(|e| AppError::msg(e.to_string()))?;
+        crate::state::get().core.host.open_url(&url).map_err(AppError::msg)?;
     }
     Ok(())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn discord_finish(s: S<'_>, url: String) -> AppResult<Value> {
     crate::integrations::discord_auth::finish(&s.core, &url).await
 }
 
 /// "member" | "outsider" | "signin" | "unknown": is this person in the
 /// midnite Discord server? couch is only for the server.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn discord_membership(s: S<'_>) -> AppResult<String> {
     Ok(crate::integrations::discord_auth::membership(&s.core).await.to_string())
 }
 
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn discord_logout(s: S<'_>) -> AppResult<()> {
     crate::integrations::discord_auth::logout(&s.core)
 }
@@ -1323,7 +1262,7 @@ static SPEED: parking_lot::Mutex<Option<(std::time::Instant, f64)>> = parking_lo
 /// How fast this connection is right now, in megabits per second: a few
 /// seconds of download from Cloudflare's speed test (cached for 10 min).
 /// Used to pick a stream your Wi-Fi can actually keep up with.
-#[tauri::command]
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn net_speed(s: S<'_>, fresh: Option<bool>) -> AppResult<f64> {
     if !fresh.unwrap_or(false) {
         if let Some((at, mbps)) = *SPEED.lock() {

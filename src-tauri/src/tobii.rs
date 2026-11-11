@@ -23,7 +23,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tauri::Manager;
 
 #[repr(C)]
 #[derive(Default, Clone, Copy)]
@@ -248,7 +247,7 @@ impl Tobii {
                     present = p;
                     self.core.emit("tobii://presence", json!({ "present": p }));
                     if cfg.presence_pause {
-                        let player = crate::state::player(&self.core.app);
+                        let player = crate::state::player();
                         let st = player.state();
                         let playing = !st["paused"].as_bool().unwrap_or(true) && player.session().is_some();
                         if !p && playing {
@@ -266,17 +265,12 @@ impl Tobii {
 
     /// Normalised display coords -> CSS pixels inside the main window.
     fn to_client(&self, nx: f32, ny: f32) -> Option<(f64, f64, bool)> {
-        let w = self.core.app.get_webview_window("main")?;
-        let mon = w.current_monitor().ok()??;
-        let scale = w.scale_factor().ok()?;
-        let (mp, ms) = (mon.position(), mon.size());
-        let gx = mp.x as f64 + nx as f64 * ms.width as f64;
-        let gy = mp.y as f64 + ny as f64 * ms.height as f64;
-        let ip = w.inner_position().ok()?;
-        let is = w.inner_size().ok()?;
-        let (cx, cy) = (gx - ip.x as f64, gy - ip.y as f64);
-        let inside = cx >= 0.0 && cy >= 0.0 && cx <= is.width as f64 && cy <= is.height as f64;
-        Some((cx / scale, cy / scale, inside))
+        let g = self.core.host.geometry()?;
+        let gx = g.monitor_x + nx as f64 * g.monitor_w;
+        let gy = g.monitor_y + ny as f64 * g.monitor_h;
+        let (cx, cy) = (gx - g.inner_x, gy - g.inner_y);
+        let inside = cx >= 0.0 && cy >= 0.0 && cx <= g.inner_w && cy <= g.inner_h;
+        Some((cx / g.scale, cy / g.scale, inside))
     }
 }
 

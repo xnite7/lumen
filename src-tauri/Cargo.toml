@@ -10,14 +10,19 @@ rust-version = "1.90"
 name = "couch_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "couch"
+path = "src/main.rs"
+required-features = ["tauri-app"]
+
 [build-dependencies]
-tauri-build = { version = "2.7", features = [] }
+tauri-build = { version = "2.7", features = [], optional = true }
 
 [dependencies]
-tauri-plugin-couch-native = { path = "plugins/couch-native" }
-tauri = { version = "2.12", features = ["protocol-asset", "tray-icon", "image-png"] }
-tauri-plugin-opener = "2.7"
-tauri-plugin-deep-link = "2.6"
+tauri-plugin-couch-native = { path = "plugins/couch-native", optional = true }
+tauri = { version = "2.12", features = ["protocol-asset", "tray-icon", "image-png"], optional = true }
+tauri-plugin-opener = { version = "2.7", optional = true }
+tauri-plugin-deep-link = { version = "2.6", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "net", "io-util"] }
@@ -49,10 +54,10 @@ librqbit-dualstack-sockets = "0.7"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 libmpv2 = "6"
 discord-rich-presence = "1.1"
-tauri-plugin-single-instance = { version = "2.5", features = ["deep-link"] }
-tauri-plugin-window-state = "2.5"
-tauri-plugin-updater = "2"
-tauri-plugin-notification = "2"
+tauri-plugin-single-instance = { version = "2.5", features = ["deep-link"], optional = true }
+tauri-plugin-window-state = { version = "2.5", optional = true }
+tauri-plugin-updater = { version = "2", optional = true }
+tauri-plugin-notification = { version = "2", optional = true }
 libloading = "0.8"
 webrtc-dtls = "0.12"
 webrtc-util = { version = "0.11", default-features = false, features = ["conn"] }
@@ -66,8 +71,13 @@ windows = { version = "0.61", features = [
 ] }
 
 [features]
-default = ["custom-protocol"]
-custom-protocol = ["tauri/custom-protocol"]
+default = ["custom-protocol", "tauri-app"]
+custom-protocol = ["tauri-app", "tauri/custom-protocol"]
+# the Tauri (webview) app; off for the engine on its own (the GPUI app)
+tauri-app = [
+  "dep:tauri", "dep:tauri-build", "dep:tauri-plugin-couch-native", "dep:tauri-plugin-opener", "dep:tauri-plugin-deep-link",
+  "dep:tauri-plugin-single-instance", "dep:tauri-plugin-window-state", "dep:tauri-plugin-updater", "dep:tauri-plugin-notification",
+]
 
 [profile.release]
 codegen-units = 1

@@ -128,10 +128,8 @@ pub fn playing(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f6
     if server(core).is_none() {
         static BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if !BUSY.swap(true, std::sync::atomic::Ordering::Relaxed) {
-            let h = core.app.clone();
-            tauri::async_runtime::spawn(async move {
-                use tauri::Manager;
-                let c = h.state::<crate::state::AppState>().core.clone();
+            crate::rt::spawn(async move {
+                let c = crate::state::get().core.clone();
                 let _ = login(&c).await;
                 BUSY.store(false, std::sync::atomic::Ordering::Relaxed);
             });
@@ -170,7 +168,7 @@ pub fn playing(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f6
     });
     let client = core.http.client();
     let (u2, c2) = (url.clone(), code.clone());
-    tauri::async_runtime::spawn(async move {
+    crate::rt::spawn(async move {
         let _ = client.put(format!("{url}/v1/presence")).header("authorization", code).json(&body).timeout(Duration::from_secs(8)).send().await;
     });
     if !gate && !paused {
@@ -190,17 +188,15 @@ fn send_frame(core: &Core, url: String, code: String) {
         }
         *last = Some(Instant::now());
     }
-    let app = core.app.clone();
     let client = core.http.client();
-    tauri::async_runtime::spawn(async move {
-        use tauri::Manager;
+    crate::rt::spawn(async move {
         let path = std::env::temp_dir().join("couch-frame.jpg");
         let _ = std::fs::remove_file(&path);
-        let player = app.state::<crate::state::AppState>().player.clone();
+        let player = crate::state::player();
         if player.command("snap", &json!({ "path": path.to_string_lossy() })).is_err() {
             return;
         }
-        let img = tauri::async_runtime::spawn_blocking(move || -> Option<String> {
+        let img = crate::rt::spawn_blocking(move || -> Option<String> {
             // mpv writes the file a moment after the command returns
             for _ in 0..20 {
                 if path.metadata().map_or(false, |m| m.len() > 0) {
@@ -236,7 +232,7 @@ pub fn stopped(core: &Core) {
     let Some((url, code)) = server(core) else { return };
     let id = member_id(core);
     let client = core.http.client();
-    tauri::async_runtime::spawn(async move {
+    crate::rt::spawn(async move {
         let _ = client.delete(format!("{url}/v1/presence/{id}")).header("authorization", code).timeout(Duration::from_secs(8)).send().await;
     });
 }
@@ -278,7 +274,7 @@ fn send(core: &Core, method: reqwest::Method, path: &str, body: Option<Value>) -
     let (url, code) = server(core)?;
     let client = core.http.client();
     let path = path.to_string();
-    tauri::async_runtime::spawn(async move {
+    crate::rt::spawn(async move {
         let mut r = client.request(method, format!("{url}{path}")).header("authorization", code).timeout(Duration::from_secs(8));
         if let Some(b) = body {
             r = r.json(&b);
@@ -327,8 +323,8 @@ fn host_tick(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f64,
         "shared": SHARED.load(std::sync::atomic::Ordering::Relaxed),
     });
     let client = core.http.client();
-    let app = core.app.clone();
-    tauri::async_runtime::spawn(async move {
+    let host = core.host.clone();
+    crate::rt::spawn(async move {
         if let Ok(r) = client.put(format!("{url}/v1/room")).header("authorization", code).json(&body).timeout(Duration::from_secs(5)).send().await {
             if r.status().as_u16() == 404 {
                 HOSTING.store(false, std::sync::atomic::Ordering::Relaxed); // everyone left
@@ -336,9 +332,8 @@ fn host_tick(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f64,
             }
             // guests steering (shared control): the player does what they asked
             if let Ok(v) = r.json::<Value>().await {
-                use tauri::Emitter;
                 for c in v.get("cmds").and_then(|c| c.as_array()).into_iter().flatten() {
-                    let _ = app.emit("together-cmd", c);
+                    host.emit("together-cmd", c.clone());
                 }
             }
         }
