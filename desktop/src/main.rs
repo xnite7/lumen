@@ -31,6 +31,7 @@ pub enum Route {
     Search,
     Detail(Meta),
     Player,
+    Settings,
 }
 
 /// Getting around from anywhere: `Nav::detail(&meta, cx)`.
@@ -120,6 +121,7 @@ pub struct Root {
     library: Option<Entity<views::library::Library>>,
     calendar: Option<Entity<views::calendar::Calendar>>,
     couch: Option<Entity<views::couch::Couch>>,
+    settings: Option<Entity<views::settings::Settings>>,
     focus: gpui::FocusHandle,
     last_size: gpui::Size<gpui::Pixels>,
 }
@@ -194,9 +196,12 @@ impl Root {
             )
             .child(
                 div()
+                    .id("nav-settings")
                     .absolute()
                     .right(px(theme::GUTTER + 108.))
                     .top(px(20.))
+                    .cursor_pointer()
+                    .on_click(|_, _, cx| Nav::go(Route::Settings, cx))
                     .size(px(36.))
                     .rounded(px(10.))
                     .bg(theme::neon())
@@ -286,6 +291,7 @@ impl Render for Root {
             Route::Player => self.player.clone().into_any_element(),
             Route::Calendar => self.calendar.get_or_insert_with(|| cx.new(views::calendar::Calendar::new)).clone().into_any_element(),
             Route::Couch => self.couch.get_or_insert_with(|| cx.new(views::couch::Couch::new)).clone().into_any_element(),
+            Route::Settings => self.settings.get_or_insert_with(|| cx.new(views::settings::Settings::new)).clone().into_any_element(),
             Route::Lists => self.library.get_or_insert_with(|| cx.new(views::library::Library::new)).clone().into_any_element(),
             Route::Search => {
                 let s = self.search.get_or_insert_with(|| cx.new(views::search::Search::new)).clone();
@@ -415,6 +421,7 @@ fn main() {
                                 ["lists"] => Some(Route::Lists),
                                 ["calendar"] => Some(Route::Calendar),
                                 ["couch"] => Some(Route::Couch),
+                                ["settings"] => Some(Route::Settings),
                                 ["shows"] => Some(Route::Shows),
                                 ["movies"] => Some(Route::Movies),
                                 _ => None,
@@ -434,6 +441,7 @@ fn main() {
                             library: None,
                             calendar: None,
                             couch: None,
+                            settings: None,
                             focus,
                             last_size: gpui::Size::default(),
                         }

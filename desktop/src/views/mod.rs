@@ -1,4 +1,5 @@
 pub mod home;
+pub mod settings;
 pub mod couch;
 pub mod calendar;
 pub mod library;
