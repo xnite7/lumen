@@ -299,6 +299,10 @@ export async function mock(cmd: string, args: any): Promise<any> {
       return `https://midnite-couch.xnite7.workers.dev/t/${args.kind}/${args.id}`;
     case "simkl_episode_info":
       return { "1:6": { runtime: 52, finale: 1 }, "1:10": { runtime: 61, finale: 2 } };
+    case "beta_latest":
+      return { version: "0.9.3" };
+    case "beta_install":
+      return null;
     case "my_lists":
       return { simkl: false };
     case "simkl_custom_lists":

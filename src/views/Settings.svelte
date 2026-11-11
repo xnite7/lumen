@@ -19,6 +19,21 @@
   import { SECTIONS, sectionById } from "../lib/sections";
 
   let { section = "playback" }: { section?: string } = $props();
+  // the new couch (GPUI), installed next to this one
+  let beta = $state({ version: "", busy: false });
+  $effect(() => {
+    if (section === "about" && app.platform === "windows") api.betaLatest().then((r) => (beta.version = r?.version ?? "")).catch(() => {});
+  });
+  async function tryBeta() {
+    beta.busy = true;
+    try {
+      await api.betaInstall();
+      toast("the new couch is open — it's on your desktop and Start menu too", "ok");
+    } catch (e) {
+      toast(String(e), "error");
+    }
+    beta.busy = false;
+  }
   const meta = $derived(sectionById(section) ?? SECTIONS[0]);
 
   const s = app.settings;
@@ -328,6 +343,13 @@
             <Cell label="New episode alerts" hint="A notification when a show you're watching (or a film on your list) is out today."><Controls kind="switch" bind:value={s.general.episodeAlerts} onchange={changed} /></Cell>
             <Cell label="Big releases on the calendar" hint="The calendar also shows the hits everyone's waiting for, not just yours."><Controls kind="switch" bind:value={s.general.calendarHits} onchange={changed} /></Cell>
           </div>
+          {#if app.platform === "windows"}
+            <div class="group">
+              <Cell label="The new couch (beta)" hint={beta.busy ? "downloading…" : beta.version ? `a rebuilt, faster couch · ${beta.version} · runs next to this one` : "a rebuilt, faster couch. runs next to this one."}>
+                <button class="btn small primary press" disabled={beta.busy} onclick={tryBeta}>{beta.busy ? "…" : "Try it"}</button>
+              </Cell>
+            </div>
+          {/if}
           {#if app.platform === "windows" || app.platform === "linux"}
             <div class="group">
               <Cell label="Updates" hint={updates.installing ? `installing ${updates.available}…` : updates.available ? `couch ${updates.available} is ready` : "you're on the newest couch"}>
