@@ -5,6 +5,7 @@ mod api;
 mod assets;
 mod host;
 mod net;
+mod parties;
 mod playback;
 mod together;
 mod theme;
@@ -127,6 +128,7 @@ pub struct Root {
     settings: Option<Entity<views::settings::Settings>>,
     signin: Option<Entity<views::signin::SignIn>>,
     person: Option<Entity<views::person::Person>>,
+    invite: Entity<views::invite::Invite>,
     me: serde_json::Value,
     focus: gpui::FocusHandle,
     last_size: gpui::Size<gpui::Pixels>,
@@ -437,6 +439,7 @@ impl Render for Root {
             .when(self.route == Route::SignIn, |d| d.child(window_controls()))
             .when(playing, |d| d.child(window_controls()))
             .child(self.together_cards(cx))
+            .when(!playing && self.route != Route::SignIn, |d| d.child(self.invite.clone()))
             .children(self.toast.clone().map(|t| {
                 div().absolute().bottom(px(28.)).left_0().w_full().flex().justify_center().child(
                     div()
@@ -490,6 +493,7 @@ fn main() {
         cx.set_http_client(net::CouchHttp::new(st.core.clone()));
         playback::init(cx);
         together::init(cx);
+        parties::init(cx);
 
         let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
         let window = cx
@@ -530,6 +534,7 @@ fn main() {
                                 ["couch"] => Some(Route::Couch),
                                 ["settings"] => Some(Route::Settings),
                                 ["shows"] => Some(Route::Shows),
+                                ["home"] => Some(Route::Home),
                                 ["movies"] => Some(Route::Movies),
                                 _ => None,
                             }
@@ -554,6 +559,7 @@ fn main() {
                             settings: None,
                             signin: None,
                             person: None,
+                            invite: cx.new(views::invite::Invite::new),
                             me: me.clone(),
                             focus,
                             last_size: gpui::Size::default(),
