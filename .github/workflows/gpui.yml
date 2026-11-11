@@ -1,0 +1,47 @@
+name: Build couch (GPUI)
+
+on:
+  push:
+    branches: [gpui]
+  workflow_dispatch:
+
+env:
+  COUCH_TMDB_KEY: ${{ secrets.COUCH_TMDB_KEY }}
+  COUCH_TIDB_KEY: ${{ secrets.COUCH_TIDB_KEY }}
+  COUCH_MOTN_KEY: ${{ secrets.COUCH_MOTN_KEY }}
+  COUCH_AI_KEY: ${{ secrets.COUCH_AI_KEY }}
+  COUCH_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+  COUCH_ROLES: ${{ secrets.ALLOWED_ROLE_IDS }}
+
+concurrency:
+  group: gpui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Fetch libmpv
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/fetch-mpv.ps1
+      - name: Build
+        working-directory: desktop
+        run: cargo build --release
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item desktop/target/release/couch.exe dist/
+          Copy-Item src-tauri/mpv/libmpv-2.dll dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: couch-gpui-windows
+          path: dist/

@@ -1,0 +1,70 @@
+//! Calling the engine from the UI: the same commands the old webview used,
+//! by name, run on couch's own runtime.
+use serde::de::DeserializeOwned;
+use serde_json::Value;
+
+/// `api::call::<Vec<Meta>>("hero_items", json!({})).await`
+pub async fn call<T: DeserializeOwned + Send + 'static>(cmd: &'static str, args: Value) -> Result<T, String> {
+    let h = couch::rt::spawn(async move {
+        let v = couch::dispatch::invoke(cmd, args).await?;
+        serde_json::from_value::<T>(v).map_err(|e| format!("{cmd}: {e}"))
+    });
+    h.await.map_err(|e| e.to_string())?
+}
+
+/// A title in a row or the billboard (the fields the UI uses).
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Meta {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub name: String,
+    pub poster: Option<String>,
+    pub background: Option<String>,
+    pub logo: Option<String>,
+    pub description: Option<String>,
+    pub release_info: Option<Value>,
+    pub imdb_rating: Option<Value>,
+    pub genres: Option<Vec<String>>,
+    pub runtime: Option<Value>,
+}
+
+impl Meta {
+    pub fn year(&self) -> Option<String> {
+        match &self.release_info {
+            Some(Value::String(s)) => Some(s.chars().take(4).collect()),
+            Some(Value::Number(n)) => Some(n.to_string()),
+            _ => None,
+        }
+    }
+}
+
+/// Same sizing rules as the webview's img(): TMDB and metahub sizes.
+pub fn sized(url: &str, size: &str) -> String {
+    if url.contains("image.tmdb.org/t/p/") && size.starts_with('w') {
+        if let Some(i) = url.find("/t/p/") {
+            let rest = &url[i + 5..];
+            if let Some(j) = rest.find('/') {
+                return format!("{}/t/p/{}{}", &url[..i], size, &rest[j..]);
+            }
+        }
+    }
+    if url.contains("images.metahub.space") {
+        let m = match size {
+            "small" | "w342" => "small",
+            "medium" | "w500" | "w780" => "medium",
+            _ => "large",
+        };
+        for s in ["/small/", "/medium/", "/large/"] {
+            if url.contains(s) {
+                return url.replacen(s, &format!("/{m}/"), 1);
+            }
+        }
+    }
+    url.to_string()
+}
+
+pub fn json(v: Value) -> Value {
+    v
+}

@@ -1,0 +1,34 @@
+[package]
+name = "couch-desktop"
+version = "0.1.0"
+edition = "2021"
+description = "midnite™ couch — the native GPUI app for Windows"
+
+[[bin]]
+name = "couch"
+path = "src/main.rs"
+
+[dependencies]
+couch = { package = "couch", path = "../src-tauri", default-features = false }
+gpui = "0.2.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+parking_lot = "0.12"
+once_cell = "1"
+log = "0.4"
+env_logger = "0.11"
+dirs = "6"
+futures = "0.3"
+raw-window-handle = "0.6"
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = 3
+strip = true
+
+[patch.crates-io]
+librqbit-dualstack-sockets = { path = "../src-tauri/patches/librqbit-dualstack-sockets" }
+# newer libc dropped ENOATTR on Linux; gpui's tar helper still uses it
+xattr = { path = "patches/xattr" }
