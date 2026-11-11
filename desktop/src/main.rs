@@ -34,6 +34,7 @@ pub enum Route {
     Player,
     Settings,
     SignIn,
+    Person(String, Option<u64>),
 }
 
 /// Getting around from anywhere: `Nav::detail(&meta, cx)`.
@@ -125,6 +126,7 @@ pub struct Root {
     couch: Option<Entity<views::couch::Couch>>,
     settings: Option<Entity<views::settings::Settings>>,
     signin: Option<Entity<views::signin::SignIn>>,
+    person: Option<Entity<views::person::Person>>,
     me: serde_json::Value,
     focus: gpui::FocusHandle,
     last_size: gpui::Size<gpui::Pixels>,
@@ -385,6 +387,14 @@ impl Render for Root {
             Route::Couch => self.couch.get_or_insert_with(|| cx.new(views::couch::Couch::new)).clone().into_any_element(),
             Route::Settings => self.settings.get_or_insert_with(|| cx.new(views::settings::Settings::new)).clone().into_any_element(),
             Route::SignIn => self.signin.get_or_insert_with(|| cx.new(views::signin::SignIn::new)).clone().into_any_element(),
+            Route::Person(name, id) => {
+                let key = format!("{name}{id:?}");
+                if self.person.as_ref().map_or(true, |p| p.read(cx).key != key) {
+                    let (n, i) = (name.clone(), *id);
+                    self.person = Some(cx.new(|cx| views::person::Person::new(n, i, cx)));
+                }
+                self.person.clone().unwrap().into_any_element()
+            }
             Route::Lists => self.library.get_or_insert_with(|| cx.new(views::library::Library::new)).clone().into_any_element(),
             Route::Search => {
                 let s = self.search.get_or_insert_with(|| cx.new(views::search::Search::new)).clone();
@@ -543,6 +553,7 @@ fn main() {
                             couch: None,
                             settings: None,
                             signin: None,
+                            person: None,
                             me: me.clone(),
                             focus,
                             last_size: gpui::Size::default(),

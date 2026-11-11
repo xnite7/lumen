@@ -450,7 +450,11 @@ impl Render for Detail {
                     .child(div().id("cast").overflow_x_scroll().flex().gap(px(16.)).px(px(g)).children(cast.iter().take(20).map(|c| {
                         let photo = c["profile"].as_str().map(|s| s.to_string());
                         let nm = c["name"].as_str().unwrap_or("").to_string();
+                        let (pn, pid) = (nm.clone(), c["id"].as_u64());
                         div()
+                            .id(SharedString::from(format!("cast-{nm}")))
+                            .cursor_pointer()
+                            .on_click(move |_, _, cx| Nav::go(crate::Route::Person(pn.clone(), pid), cx))
                             .flex_none()
                             .w(px(110.))
                             .flex()
@@ -503,7 +507,7 @@ impl Render for Detail {
 }
 
 /// TMDB recommendations carry tmdb: ids; find the real one first.
-fn open_rec(r: &Meta, cx: &mut gpui::App) {
+pub fn open_rec(r: &Meta, cx: &mut gpui::App) {
     if !r.id.starts_with("tmdb:") {
         return Nav::detail(r, cx);
     }
