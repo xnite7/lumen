@@ -80,6 +80,7 @@ impl Home {
                     let pick = list[turn % list.len()].clone();
                     let _ = this.update(cx, |v, cx| {
                         v.hero = Some(pick.clone());
+                        crate::views::detail::prefetch(&pick, cx);
                         cx.notify();
                     });
                     // a couple of seconds in, the billboard plays a clip (muted)
@@ -587,8 +588,13 @@ fn feed_card(i: usize, acts: &[&Value]) -> gpui::AnyElement {
     let when = acts.iter().filter_map(|a| a["at"].as_f64()).fold(0f64, f64::max);
     let when = if when > 0. { ago(when) } else { String::new() };
     let mm = m.clone();
+    let pre = m.clone();
     let review = acts.iter().find(|a| a["text"].as_str().map_or(false, |t| !t.is_empty())).copied();
-    let base = div().id(("feed", i)).flex_none().relative().rounded(px(16.)).overflow_hidden().bg(theme::surface2()).cursor_pointer().on_click(move |_, _, cx| Nav::detail(&mm, cx));
+    let base = div().id(("feed", i)).flex_none().relative().rounded(px(16.)).overflow_hidden().bg(theme::surface2()).cursor_pointer().on_hover(move |on, _, cx| {
+        if *on {
+            crate::views::detail::prefetch(&pre, cx);
+        }
+    }).on_click(move |_, _, cx| Nav::detail(&mm, cx));
     // everyone else on this title: little faces with their scores
     let others = |skip: Option<&Value>| {
         div().flex().gap(px(10.)).children(acts.iter().filter(|a| skip.map_or(true, |s| !std::ptr::eq(**a, s))).take(4).map(|a| {

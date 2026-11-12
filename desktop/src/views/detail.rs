@@ -28,57 +28,113 @@ pub struct Detail {
     writing: bool,
     review_text: gpui::Entity<crate::ui::input::TextInput>,
     scroll: ScrollHandle,
+    /// when the rest of the page arrived (it eases in rather than popping)
+    shown: Option<std::time::Instant>,
+}
+
+type Studio = (u64, String, Option<std::sync::Arc<gpui::Image>>, Option<String>);
+
+/// everything a title page shows, fetched together
+#[derive(Clone)]
+pub struct Loaded {
+    full: Option<Value>,
+    extra: Option<Value>,
+    item: Option<Value>,
+    favs: Option<Vec<Value>>,
+    rating: Option<u8>,
+    studio: Option<Studio>,
+    reviews: Vec<Value>,
+}
+
+thread_local! {
+    static LOADED: std::cell::RefCell<std::collections::HashMap<String, Loaded>> = std::cell::RefCell::new(std::collections::HashMap::new());
+    static FETCHING: std::cell::RefCell<std::collections::HashSet<String>> = std::cell::RefCell::new(std::collections::HashSet::new());
+}
+
+/// Start fetching a title's page (on hovering its card) so opening it is instant.
+pub fn prefetch(m: &Meta, cx: &mut gpui::App) {
+    let id = m.id.clone();
+    if id.is_empty() || LOADED.with(|c| c.borrow().contains_key(&id)) || !FETCHING.with(|f| f.borrow_mut().insert(id.clone())) {
+        return;
+    }
+    let kind = m.kind.clone();
+    cx.spawn(async move |_| {
+        let l = load(kind, id.clone()).await;
+        LOADED.with(|c| {
+            let mut c = c.borrow_mut();
+            if c.len() > 80 {
+                c.clear();
+            }
+            c.insert(id.clone(), l);
+        });
+        FETCHING.with(|f| f.borrow_mut().remove(&id));
+    })
+    .detach();
+}
+
+/// all of it at once (not one after another)
+async fn load(kind: String, id: String) -> Loaded {
+    let rid = id.split(':').next().unwrap_or("").to_string();
+    let (full, extra, favs, reviews) = futures::join!(
+        api::call::<Value>("meta_get", json!({ "kind": kind, "id": id, "hint": Value::Null })),
+        api::call::<Value>("meta_enrich", json!({ "kind": kind, "id": id })),
+        api::call::<Value>("crew_social", json!({ "method": "GET", "path": "/v1/favs", "body": Value::Null })),
+        api::call::<Value>("crew_social", json!({ "method": "GET", "path": format!("/v1/reviews/{}", urlencoding::encode(&rid)), "body": Value::Null })),
+    );
+    let lid = full.as_ref().ok().and_then(|f| f["id"].as_str().map(|s| s.to_string())).unwrap_or(id.clone());
+    let studio_c = extra.as_ref().ok().and_then(|e| e["companies"].as_array()?.first().cloned());
+    let studio_f = async move {
+        let c = studio_c?;
+        let (cid, cname, logo) = (c["id"].as_u64().unwrap_or(0), c["name"].as_str().unwrap_or("").to_string(), c["logo"].as_str().map(String::from));
+        let pic = match &logo {
+            Some(u) if !u.ends_with(".svg") => {
+                let u = u.clone();
+                couch::rt::spawn(async move {
+                    let core = couch::state::get().core.clone();
+                    couch::images::load(&core, &u).await.ok().and_then(|(b, _)| crate::ui::readable_logo(&b))
+                })
+                .await
+                .ok()
+                .flatten()
+            }
+            _ => None,
+        };
+        Some((cid, cname, pic, logo.filter(|u| u.ends_with(".svg"))))
+    };
+    let (item, rating, studio) = futures::join!(
+        api::call::<Value>("library_item", json!({ "id": lid })),
+        api::call::<Value>("simkl_item_status", json!({ "kind": kind, "id": lid })),
+        studio_f,
+    );
+    Loaded {
+        full: full.ok(),
+        extra: extra.ok(),
+        item: item.ok(),
+        favs: favs.ok().and_then(|v| v["favs"].as_array().cloned()),
+        rating: rating.ok().and_then(|v| v["rating"].as_u64()).map(|r| r as u8),
+        studio,
+        reviews: reviews.ok().map(|r| r["reviews"].as_array().cloned().unwrap_or_default()).unwrap_or_default(),
+    }
 }
 
 
 impl Detail {
     pub fn new(base: Meta, cx: &mut Context<Self>) -> Self {
         let (kind, id) = (base.kind.clone(), base.id.clone());
-        cx.spawn(async move |this, cx| {
-            let (full, extra) = futures::join!(
-                api::call::<Value>("meta_get", json!({ "kind": kind, "id": id, "hint": Value::Null })),
-                api::call::<Value>("meta_enrich", json!({ "kind": kind, "id": id })),
-            );
-            let lid = full.as_ref().ok().and_then(|f| f["id"].as_str().map(|s| s.to_string())).unwrap_or(id.clone());
-            let item = api::call::<Value>("library_item", json!({ "id": lid })).await.ok();
-            let favs = api::call::<Value>("crew_social", json!({ "method": "GET", "path": "/v1/favs", "body": Value::Null })).await.ok().and_then(|v| v["favs"].as_array().cloned());
-            let rating = api::call::<Value>("simkl_item_status", json!({ "kind": kind, "id": lid })).await.ok().and_then(|v| v["rating"].as_u64()).map(|r| r as u8);
-            // the main studio's logo, made readable
-            let studio = extra.as_ref().ok().and_then(|e| e["companies"].as_array()?.first().cloned());
-            if let Some(c) = studio {
-                let (cid, cname, logo) = (c["id"].as_u64().unwrap_or(0), c["name"].as_str().unwrap_or("").to_string(), c["logo"].as_str().map(String::from));
-                let pic = match &logo {
-                    Some(u) if !u.ends_with(".svg") => {
-                        let u = u.clone();
-                        couch::rt::spawn(async move {
-                            let core = couch::state::get().core.clone();
-                            couch::images::load(&core, &u).await.ok().and_then(|(b, _)| crate::ui::readable_logo(&b))
-                        })
-                        .await
-                        .ok()
-                        .flatten()
-                    }
-                    _ => None,
-                };
-                let svg = logo.filter(|u| u.ends_with(".svg"));
-                let _ = this.update(cx, |d, _| d.studio = Some((cid, cname, pic, svg)));
-            }
-            let _ = this.update(cx, |d, cx| {
-                d.full = full.ok();
-                d.extra = extra.ok();
-                d.item = item.filter(|v| !v.is_null());
-                d.rating = rating;
-                d.favs = favs;
-                // open on the season you're in
-                if let Some(f) = &d.full {
-                    let at = d.item.as_ref().and_then(|i| i["state"]["season"].as_i64());
-                    let seasons = seasons(f);
-                    d.season = at.filter(|s| seasons.contains(s)).or_else(|| seasons.iter().copied().find(|s| *s > 0)).or(seasons.first().copied());
-                }
-                cx.notify();
-            });
-        })
-        .detach();
+        // fetched already (hovering its card starts that): the page is whole at once
+        let ready = LOADED.with(|c| c.borrow().get(&id).cloned());
+        if ready.is_none() {
+            cx.spawn(async move |this, cx| {
+                let l = load(kind, id.clone()).await;
+                LOADED.with(|c| c.borrow_mut().insert(id, l.clone()));
+                let _ = this.update(cx, |d, cx| {
+                    d.fill(l);
+                    d.shown = Some(std::time::Instant::now());
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
         cx.observe(&crate::ui::video::get(cx), |_, _, cx| cx.notify()).detach();
         let (k2, i2) = (base.kind.clone(), base.id.clone());
         cx.spawn(async move |this, cx| {
@@ -116,19 +172,42 @@ impl Detail {
             }
         })
         .detach();
-        // the crew's reviews of this title
-        let rid = base.id.split(':').next().unwrap_or("").to_string();
-        cx.spawn(async move |this, cx| {
-            let r = api::call::<Value>("crew_social", json!({ "method": "GET", "path": format!("/v1/reviews/{}", urlencoding::encode(&rid)), "body": Value::Null })).await.unwrap_or_default();
-            let _ = this.update(cx, |d, cx| {
-                d.reviews = r["reviews"].as_array().cloned().unwrap_or_default();
-                cx.notify();
-            });
-        })
-        .detach();
         let review_text = cx.new(|cx| crate::ui::input::TextInput::new("what did you think? (emoji welcome)", cx));
         cx.subscribe(&review_text, |d: &mut Self, _, _: &crate::ui::input::Submitted, cx| d.post_review(cx)).detach();
-        Self { base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, favs: None, trailer: None, studio: None, reviews: vec![], writing: false, review_text, scroll: ScrollHandle::new() }
+        let mut me = Self { base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, favs: None, trailer: None, studio: None, reviews: vec![], writing: false, review_text, scroll: ScrollHandle::new(), shown: None };
+        if let Some(l) = ready {
+            me.fill(l);
+            // fresh copy in the background (your progress, ratings, reviews may have moved)
+            let (kind, id) = (me.base.kind.clone(), me.base.id.clone());
+            cx.spawn(async move |this, cx| {
+                let l = load(kind, id.clone()).await;
+                LOADED.with(|c| c.borrow_mut().insert(id, l.clone()));
+                let _ = this.update(cx, |d, cx| {
+                    let season = d.season;
+                    d.fill(l);
+                    d.season = season.or(d.season);
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
+        me
+    }
+
+    fn fill(&mut self, l: Loaded) {
+        self.full = l.full;
+        self.extra = l.extra;
+        self.item = l.item.filter(|v| !v.is_null());
+        self.rating = l.rating;
+        self.favs = l.favs;
+        self.studio = l.studio;
+        self.reviews = l.reviews;
+        // open on the season you're in
+        if let Some(f) = &self.full {
+            let at = self.item.as_ref().and_then(|i| i["state"]["season"].as_i64());
+            let seasons = seasons(f);
+            self.season = at.filter(|s| seasons.contains(s)).or_else(|| seasons.iter().copied().find(|s| *s > 0)).or(seasons.first().copied());
+        }
     }
 
     /// post your review (with your rating) to the couch
@@ -627,14 +706,24 @@ impl Render for Detail {
                     }),
             );
 
-        let mut page = div().id("detail").size_full().overflow_y_scroll().track_scroll(&self.scroll)
+        let page = div().id("detail").size_full().overflow_y_scroll().track_scroll(&self.scroll)
             .child(crate::ui::smooth::wheel(&self.scroll, "detail")).child(hero);
+        // what arrived after the page opened eases in instead of popping
+        let fade = match self.shown {
+            Some(t) if t.elapsed().as_secs_f32() < 0.35 => {
+                window.request_animation_frame();
+                let e = t.elapsed().as_secs_f32() / 0.35;
+                1. - (1. - e).powi(3)
+            }
+            _ => 1.,
+        };
+        let mut rest = div().flex().flex_col().relative().top(px((1. - fade) * 16.)).opacity(fade);
 
         // ------------------------------------------------- what the crew said
         let said: Vec<&Value> = self.reviews.iter().filter(|r| r["text"].as_str().map_or(false, |t| !t.is_empty()) || r["rating"].is_number()).collect();
         if !said.is_empty() {
             let me = self.me_id();
-            page = page.child(
+            rest = rest.child(
                 // the crew's reviews, no heading: snug cards, the avatar beside the words
                 div().mt(px(4.)).px(px(g)).flex().flex_wrap().items_start().gap(px(10.)).children(said.into_iter().map(|r| {
                     let who = if r["who"].as_str() == Some(me.as_str()) { "you".to_string() } else { r["name"].as_str().unwrap_or("someone").to_string() };
@@ -685,7 +774,7 @@ impl Render for Detail {
                 let watched = self.watched();
                 let today = chrono_now();
                 let back_art = m.background.clone().map(|u| sized(&u, "w780"));
-                page = page.child(
+                rest = rest.child(
                     div()
                         .flex()
                         .flex_col()
@@ -816,7 +905,7 @@ impl Render for Detail {
 
         // -------------------------------------------------------------- cast
         if let Some(cast) = ex["cast"].as_array().filter(|c| !c.is_empty()) {
-            page = page.child(
+            rest = rest.child(
                 div()
                     .flex()
                     .flex_col()
@@ -865,7 +954,7 @@ impl Render for Detail {
         // -------------------------------------------------------- more like it
         if let Some(recs) = ex["recommendations"].as_array().filter(|c| !c.is_empty()) {
             let recs: Vec<Meta> = recs.iter().filter_map(|r| serde_json::from_value(r.clone()).ok()).collect();
-            page = page.child(
+            rest = rest.child(
                 div()
                     .flex()
                     .flex_col()
@@ -878,7 +967,7 @@ impl Render for Detail {
                     })))),
             );
         }
-        page.child(div().h(px(90.)))
+        page.child(rest).child(div().h(px(90.)))
     }
 }
 

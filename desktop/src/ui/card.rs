@@ -60,7 +60,18 @@ pub fn card_with(
             cx.stop_propagation();
             crate::Nav::menu(&menu_meta, e.position, cx)
         })
-        .when(preview.is_some(), |d| d.on_hover(move |on, _, cx| crate::ui::video::hover(&hover_meta, *on, cx)))
+        // hovering a card starts fetching its page, so opening it is instant
+        .on_hover({
+            let previews = preview.is_some();
+            move |on, _, cx| {
+                if *on {
+                    crate::views::detail::prefetch(&hover_meta, cx);
+                }
+                if previews {
+                    crate::ui::video::hover(&hover_meta, *on, cx);
+                }
+            }
+        })
         .children(match &clip {
             Some((p, a, _)) => crate::ui::video::layers(art.clone(), p, *a, 12.),
             None => art.clone().map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).into_any_element()).into_iter().collect(),
@@ -130,8 +141,14 @@ pub fn poster(id: SharedString, m: &Meta, w: f32, on_click: impl Fn(&gpui::Click
     let art = m.poster.clone().map(|u| crate::net::fit(&sized(&u, "w342"), w));
     let name = m.name.clone();
     let menu_meta = m.clone();
+    let pre = m.clone();
     div()
         .id(id)
+        .on_hover(move |on, _, cx| {
+            if *on {
+                crate::views::detail::prefetch(&pre, cx);
+            }
+        })
         .on_mouse_down(gpui::MouseButton::Right, move |e, _, cx| {
             cx.stop_propagation();
             crate::Nav::menu(&menu_meta, e.position, cx)

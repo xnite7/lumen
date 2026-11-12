@@ -211,10 +211,18 @@ impl Root {
             .left_0()
             .w_full()
             .h(px(96.))
-            // a soft shade at the top of a page, deep black once you scroll
-            .bg({
-                let k = (ui::smooth::scrolled() / 140.).clamp(0., 1.);
-                gpui::linear_gradient(180., gpui::linear_color_stop(theme::black(0.55 + 0.4 * k), 0.), gpui::linear_color_stop(theme::black(0.0), 1.))
+            // once you scroll: black behind the whole bar, fading out just below it;
+            // all the way at the top there's none (the picture shows clean)
+            .child({
+                let k = (ui::smooth::scrolled() / 120.).clamp(0., 1.);
+                let k = k * k * (3. - 2. * k);
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .w_full()
+                    .h(px(150.))
+                    .bg(gpui::linear_gradient(180., gpui::linear_color_stop(theme::black(0.94 * k), 0.58), gpui::linear_color_stop(theme::black(0.0), 1.)))
             })
             .child(div().absolute().top_0().left_0().size_full().window_control_area(WindowControlArea::Drag))
             .child(
