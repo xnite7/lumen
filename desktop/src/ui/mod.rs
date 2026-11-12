@@ -76,15 +76,24 @@ pub fn set_scale(s: f32, w: f32) {
     VIEW_W.store(((w / 320.).ceil() * 320.) as u32, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// A studio logo, readable on a dark picture: dark logos become white.
+/// A studio logo, readable on a dark picture: its black and dark-grey parts
+/// turn white; coloured parts (Marvel's red box) keep their colour.
 pub fn readable_logo(bytes: &[u8]) -> Option<std::sync::Arc<gpui::Image>> {
     let mut im = image::load_from_memory(bytes).ok()?.to_rgba8();
-    let (mut lum, mut n, mut opaque) = (0f64, 0u64, 0u64);
+    let dark = |p: &image::Rgba<u8>| {
+        let (r, g, b) = (p[0] as f32 / 255., p[1] as f32 / 255., p[2] as f32 / 255.);
+        let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        let sat = r.max(g).max(b) - r.min(g).min(b);
+        lum < 0.4 && sat < 0.22
+    };
+    let (mut n, mut d, mut opaque) = (0u64, 0u64, 0u64);
     let total = (im.width() as u64 * im.height() as u64).max(1);
     for p in im.pixels() {
         if p[3] > 128 {
-            lum += (0.299 * p[0] as f64 + 0.587 * p[1] as f64 + 0.114 * p[2] as f64) / 255.;
             n += 1;
+            if dark(p) {
+                d += 1;
+            }
         }
         if p[3] > 250 {
             opaque += 1;
@@ -92,11 +101,13 @@ pub fn readable_logo(bytes: &[u8]) -> Option<std::sync::Arc<gpui::Image>> {
     }
     // a logo on its own box (no transparency): leave it be
     let boxed = opaque as f64 / total as f64 > 0.9;
-    if n > 0 && !boxed && lum / (n as f64) < 0.5 {
+    if n > 0 && !boxed && d as f64 / n as f64 > 0.12 {
         for p in im.pixels_mut() {
-            p[0] = 255;
-            p[1] = 255;
-            p[2] = 255;
+            if p[3] > 0 && dark(p) {
+                p[0] = 255;
+                p[1] = 255;
+                p[2] = 255;
+            }
         }
     }
     let mut out = std::io::Cursor::new(Vec::new());
