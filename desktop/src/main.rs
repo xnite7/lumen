@@ -14,6 +14,8 @@ mod theme;
 mod mini;
 mod jump;
 mod tile;
+mod media;
+mod notify;
 mod timer;
 mod ui;
 mod views;
@@ -864,7 +866,10 @@ impl Render for Root {
 
 /// A page by name: "detail:series:tt123", "search", "couch", …
 fn route_of(spec: &str) -> Option<Route> {
-    let p: Vec<&str> = spec.trim().trim_matches('"').split(':').collect();
+    // (a couch: link from a notification carries the same spec)
+    let spec = spec.trim().trim_matches('"');
+    let spec = spec.strip_prefix("couch://").or(spec.strip_prefix("couch:")).unwrap_or(spec).trim_end_matches('/');
+    let p: Vec<&str> = spec.split(':').collect();
     match p.as_slice() {
         ["detail", k, i @ ..] if !i.is_empty() => Some(Route::Detail(Meta { kind: (*k).into(), id: i.join(":"), ..Default::default() })),
         ["search"] => Some(Route::Search),
@@ -975,6 +980,8 @@ fn main() {
         parties::init(cx);
         update::start(cx);
         tile::start(cx);
+        media::start(cx);
+        notify::start(cx);
         // billboard + previews play with sound in the new couch (once; the speaker button changes it)
         {
             let core = couch::state::get().core.clone();

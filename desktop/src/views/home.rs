@@ -267,6 +267,19 @@ impl Home {
                 v.rows.extend(rows.into_iter().filter(|r| !r.items.is_empty()));
                 cx.notify();
             });
+            // because you watched …: your last two finishes, and what's like them
+            if scope == "all" {
+                let byw = because_you_watched().await;
+                let _ = this.update(cx, |v, cx| {
+                    // a little way down: after the first couple of regular rows
+                    let lead = v.rows.iter().take_while(|r| matches!(r.key.as_str(), "cw" | "follow" | "crewpicks")).count();
+                    for (k, r) in byw.into_iter().enumerate() {
+                        let at = (lead + 2 + k * 3).min(v.rows.len());
+                        v.rows.insert(at, r);
+                    }
+                    cx.notify();
+                });
+            }
         })
         .detach();
         me
@@ -795,4 +808,53 @@ fn streak_card(i: usize, s: &crate::views::crewx::Streak) -> gpui::AnyElement {
                 ),
         )
         .into_any_element()
+}
+
+/// "because you watched X": recommendations for your two latest finishes,
+/// without anything you've already seen or started
+async fn because_you_watched() -> Vec<Row> {
+    let simkl = api::call::<Value>("my_lists", json!({})).await.unwrap_or_default();
+    let (done, mut seen): (Vec<Meta>, std::collections::HashSet<String>) = if simkl["simkl"].as_bool() == Some(true) {
+        let list = |k: &str| -> Vec<Meta> { simkl[k].as_array().into_iter().flatten().filter_map(|m| serde_json::from_value::<Meta>(m.clone()).ok()).filter(|m| !m.id.is_empty()).collect() };
+        let done = list("completed");
+        let seen = done.iter().chain(list("watching").iter()).map(|m| m.id.clone()).collect();
+        (done, seen)
+    } else {
+        let mut items = api::call::<Vec<Value>>("library_list", json!({})).await.unwrap_or_default();
+        items.sort_by(|a, b| b["state"]["lastWatched"].as_str().unwrap_or("").cmp(a["state"]["lastWatched"].as_str().unwrap_or("")));
+        let seen = items.iter().filter_map(|i| i["_id"].as_str().map(String::from)).collect();
+        let done = items
+            .iter()
+            .filter(|i| i["state"]["timesWatched"].as_i64().unwrap_or(0) > 0 || i["state"]["flaggedWatched"].as_bool() == Some(true))
+            .map(|i| Meta { id: i["_id"].as_str().unwrap_or("").into(), kind: i["type"].as_str().unwrap_or("").into(), name: i["name"].as_str().unwrap_or("").into(), ..Default::default() })
+            .filter(|m| !m.id.is_empty())
+            .collect();
+        (done, seen)
+    };
+    let mut rows = vec![];
+    for m in done.into_iter().take(2) {
+        let ex = api::call::<Value>("meta_enrich", json!({ "kind": m.kind, "id": m.id })).await.unwrap_or_default();
+        let recs: Vec<Meta> = ex["recommendations"].as_array().into_iter().flatten().filter_map(|r| serde_json::from_value::<Meta>(r.clone()).ok()).take(18).collect();
+        // TMDB's ids to the real ones (so they open, show logos, and can be checked against what you've seen)
+        let jobs = recs.into_iter().map(|r| async move {
+            if !r.id.starts_with("tmdb:") {
+                return Some(r);
+            }
+            let v = api::call::<Value>("tmdb_resolve", json!({ "kind": r.kind, "id": r.id })).await.ok()?;
+            let mut r = r;
+            r.id = v["id"].as_str()?.to_string();
+            r.kind = v["type"].as_str().unwrap_or(&r.kind).to_string();
+            Some(r)
+        });
+        let items: Vec<Meta> = futures::future::join_all(jobs).await.into_iter().flatten().filter(|r| !seen.contains(&r.id)).collect();
+        for r in &items {
+            seen.insert(r.id.clone());
+        }
+        if items.len() >= 4 {
+            let title = format!("because you watched {}", m.name);
+            let spec = views_catalog::Spec { title: title.clone(), fixed: Some(items.clone()), ..Default::default() };
+            rows.push(Row { key: format!("byw-{}", m.id), title, items, extra: vec![], spec: Some(spec) });
+        }
+    }
+    rows
 }
