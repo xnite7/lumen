@@ -99,14 +99,25 @@ pub fn card_with(
         )
         // sound on/off while it previews
         .children(clip.is_some().then(|| div().absolute().top(px(10.)).right(px(10.)).child(crate::ui::video::sound_button("card:".into(), 32.))))
-        .when_some(progress, |d, p| {
-            d.child(div().absolute().left(px(14.)).right(px(14.)).bottom(px(6.)).h(px(4.)).rounded_full().bg(theme::white(0.25)).child(div().h_full().rounded_full().w(px((W - 28.) * p.clamp(0., 1.))).bg(theme::lamp())))
-        })
         .into_any_element();
-    match sub {
-        Some(t) => div().flex_none().flex().flex_col().gap(px(6.)).child(el).child(div().text_size(px(13.)).text_color(theme::label2()).truncate().w(px(W)).child(t)).into_any_element(),
-        None => el,
+    // under the picture: the progress bar, then "S1 E2" on the left and the
+    // time left on the right (a tab in `sub` splits the two)
+    let bar = progress.map(|p| div().w(px(W)).h(px(4.)).rounded_full().bg(theme::white(0.16)).child(div().h_full().rounded_full().w(px(W * p.clamp(0., 1.))).bg(theme::lamp())));
+    let line = sub.map(|t| {
+        let (l, r) = t.split_once('\t').map_or((t.clone(), String::new()), |(a, b)| (a.to_string(), b.to_string()));
+        div()
+            .w(px(W))
+            .flex()
+            .justify_between()
+            .gap(px(10.))
+            .text_size(px(13.))
+            .child(div().min_w_0().truncate().text_color(theme::label2()).child(l))
+            .child(div().flex_none().text_color(theme::label3()).child(r))
+    });
+    if bar.is_none() && line.is_none() {
+        return el;
     }
+    div().flex_none().flex().flex_col().gap(px(8.)).child(el).children(bar).children(line).into_any_element()
 }
 
 fn title_text(name: &str) -> impl IntoElement {

@@ -125,7 +125,14 @@ impl Home {
                     let p = (d > 0.).then(|| (st["timeOffset"].as_f64().unwrap_or(0.) / d) as f32);
                     let vid = st["video_id"].as_str().unwrap_or("");
                     let parts: Vec<&str> = vid.split(':').collect();
-                    let sub = (parts.len() == 3).then(|| format!("S{} E{}", parts[1], parts[2]));
+                    let ep = if parts.len() == 3 { format!("S{} E{}", parts[1], parts[2]) } else { String::new() };
+                    // what's left, like "2h 43m left"
+                    let left = (d > 0.).then(|| ((d - st["timeOffset"].as_f64().unwrap_or(0.)).max(0.) / 60000.).round() as i64).map(|m| match m {
+                        0 => "almost done".to_string(),
+                        m if m >= 60 => format!("{}h {}m left", m / 60, m % 60),
+                        m => format!("{m}m left"),
+                    });
+                    let sub = (!ep.is_empty() || left.is_some()).then(|| format!("{ep}\t{}", left.unwrap_or_default()));
                     metas.push(m);
                     extra.push((p, sub));
                 }
