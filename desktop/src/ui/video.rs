@@ -417,7 +417,8 @@ pub fn hover(m: &crate::api::Meta, on: bool, cx: &mut App) {
         return;
     }
     cx.set_global(Pending(owner.clone()));
-    let delay = couch::state::get().core.settings().general.hover_delay_ms.max(300) as u64;
+    // half the hover delay setting: previews start sooner here than in the old app
+    let delay = (couch::state::get().core.settings().general.hover_delay_ms / 2).max(150) as u64;
     let (id, name, year) = (m.id.clone(), m.name.clone(), m.year());
     cx.spawn(async move |cx| {
         crate::timer::after(std::time::Duration::from_millis(delay)).await;
