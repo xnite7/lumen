@@ -45,7 +45,7 @@ pub fn live() -> bool {
 }
 
 /// the package's manifest version (resources/package/AppxManifest.xml)
-const PKG_VER: &str = "1.0.1.0";
+const PKG_VER: &str = "1.0.2.0";
 
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
