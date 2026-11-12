@@ -519,7 +519,8 @@ impl Render for PlayerView {
         let root = root.children(skip.map(|b| div().absolute().right(px(theme::GUTTER)).bottom(px(130.)).child(b)));
         // what's next, while you point at "next"
         let next_card = self.next_hover.then(|| self.pb.read(cx).next_video()).flatten().map(|n| {
-            let still = n["thumbnail"].as_str().map(String::from);
+            let imdb = crate::api::imdb_episode(n["id"].as_str().unwrap_or(""));
+            let still = n["thumbnail"].as_str().map(String::from).or(imdb.clone());
             let over = n["overview"].as_str().or(n["description"].as_str()).unwrap_or("").to_string();
             div()
                 .absolute()
@@ -533,7 +534,13 @@ impl Render for PlayerView {
                 .border_color(theme::white(0.12))
                 .flex()
                 .flex_col()
-                .children(still.map(|u| img(u).w_full().h(px(191.)).object_fit(ObjectFit::Cover)))
+                .children(still.map(|u| {
+                    let alt = imdb.clone().filter(|a| a != &u);
+                    img(u).w_full().h(px(191.)).object_fit(ObjectFit::Cover).with_fallback(move || match alt.clone() {
+                        Some(a) => img(a).w_full().h(px(191.)).object_fit(ObjectFit::Cover).into_any_element(),
+                        None => div().into_any_element(),
+                    })
+                }))
                 .child(
                     div()
                         .p(px(14.))

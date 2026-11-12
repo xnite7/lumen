@@ -68,3 +68,12 @@ pub fn sized(url: &str, size: &str) -> String {
 pub fn json(v: Value) -> Value {
     v
 }
+
+/// IMDb's still for one episode ("tt123:1:4"), via metahub — used when a
+/// title's own episode picture is missing or won't load.
+pub fn imdb_episode(video_id: &str) -> Option<String> {
+    let p: Vec<&str> = video_id.split(':').collect();
+    let tt = p.first().filter(|t| t.starts_with("tt"))?;
+    let (s, e) = (p.get(1)?.parse::<i64>().ok()?, p.get(2)?.parse::<i64>().ok()?);
+    (s >= 0 && e > 0).then(|| format!("https://episodes.metahub.space/{tt}/{s}/{e}/w780.jpg"))
+}

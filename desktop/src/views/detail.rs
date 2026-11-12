@@ -487,7 +487,9 @@ impl Render for Detail {
                                     let seen = watched.contains(&vid);
                                     let future = !released(v, &today);
                                     let p = self.progress(Some(&vid));
-                                    let thumb = v["thumbnail"].as_str().map(|s| s.to_string()).or(back_art.clone());
+                                    let imdb = api::imdb_episode(&vid);
+                                    let thumb = v["thumbnail"].as_str().map(|s| s.to_string()).or(imdb.clone()).or(back_art.clone());
+                                    let alt = imdb.or(back_art.clone());
                                     let mm = m.clone();
                                     let vid2 = vid.clone();
                                     let f2 = f.clone();
@@ -516,7 +518,13 @@ impl Render for Detail {
                                                         Nav::play_episode(&mm, vid.clone(), cx)
                                                     }
                                                 })
-                                                .children(thumb.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover)))
+                                                .children(thumb.map(|u| {
+                                                    let alt = alt.clone().filter(|a| a != &u);
+                                                    img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).with_fallback(move || match alt.clone() {
+                                                        Some(a) => img(a).size_full().object_fit(ObjectFit::Cover).into_any_element(),
+                                                        None => div().into_any_element(),
+                                                    })
+                                                }))
                                                 .child(
                                                     div()
                                                         .absolute()
