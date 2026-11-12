@@ -40,6 +40,7 @@ pub enum Route {
     Person(String, Option<u64>),
     Member(String),
     Studio(u64, String),
+    Catalog(views::catalog::Spec),
 }
 
 /// Getting around from anywhere: `Nav::detail(&meta, cx)`.
@@ -156,6 +157,7 @@ pub struct Root {
     person: Option<Entity<views::person::Person>>,
     member: Option<Entity<views::member::Member>>,
     studio: Option<Entity<views::studio::Studio>>,
+    catalog: Option<Entity<views::catalog::Catalog>>,
     invite: Entity<views::invite::Invite>,
     pub planner: Entity<views::planner::Planner>,
     pub wrapped: Entity<views::wrapped::Wrapped>,
@@ -239,7 +241,13 @@ impl Root {
                     .right(px(theme::GUTTER + 108.))
                     .top(px(20.))
                     .cursor_pointer()
-                    .on_click(|_, _, cx| Nav::go(Route::Settings, cx))
+                    .on_click({
+                        let id = self.me["id"].as_str().map(String::from);
+                        move |_, _, cx| match id.clone() {
+                            Some(id) => Nav::go(Route::Member(id), cx),
+                            None => Nav::go(Route::Settings, cx),
+                        }
+                    })
                     .size(px(36.))
                     .rounded(px(10.))
                     .bg(theme::neon())
@@ -450,6 +458,13 @@ impl Render for Root {
                 }
                 self.member.clone().unwrap().into_any_element()
             }
+            Route::Catalog(spec) => {
+                if self.catalog.as_ref().map_or(true, |c| &c.read(cx).spec != spec) {
+                    let sp = spec.clone();
+                    self.catalog = Some(cx.new(|cx| views::catalog::Catalog::new(sp, cx)));
+                }
+                self.catalog.clone().unwrap().into_any_element()
+            }
             Route::Studio(id, name) => {
                 if self.studio.as_ref().map_or(true, |s| s.read(cx).id != *id) {
                     let (i, n) = (*id, name.clone());
@@ -615,6 +630,7 @@ fn main() {
                             person: None,
                             member: None,
                             studio: None,
+                            catalog: None,
                             invite: cx.new(views::invite::Invite::new),
                             planner: cx.new(views::planner::Planner::new),
                             wrapped: cx.new(views::wrapped::Wrapped::new),

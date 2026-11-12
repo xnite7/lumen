@@ -184,7 +184,22 @@ impl Render for Member {
                             .flex()
                             .flex_col()
                             .gap(px(10.))
-                            .child(div().text_size(px(48.)).font_weight(FontWeight::BLACK).child(name.clone()))
+                            .child(div().flex().items_center().gap(px(14.)).child(div().text_size(px(48.)).font_weight(FontWeight::BLACK).child(name.clone())).when(!self.me.is_empty() && self.me == self.id, |d| {
+                                d.child(
+                                    div()
+                                        .id("m-settings")
+                                        .size(px(40.))
+                                        .rounded_full()
+                                        .bg(theme::white(0.12))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .cursor_pointer()
+                                        .hover(|s| s.bg(theme::white(0.2)))
+                                        .on_click(|_, _, cx| Nav::go(crate::Route::Settings, cx))
+                                        .child(crate::ui::icon("settings", 22.)),
+                                )
+                            }))
                             .child(div().flex().gap(px(22.)).children(stats.into_iter().map(|(n, l)| {
                                 div().flex().items_baseline().gap(px(6.)).child(div().text_size(px(22.)).font_weight(FontWeight::BLACK).child(n.to_string())).child(div().text_size(px(14.)).text_color(theme::label2()).child(l))
                             }))),

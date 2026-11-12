@@ -4,6 +4,7 @@ use crate::api::{self, Meta};
 use crate::theme;
 use crate::ui::{card, hero};
 use crate::Nav;
+use crate::views::catalog as views_catalog;
 use gpui::{div, prelude::*, px, Context, FontWeight, ScrollHandle, SharedString, Window};
 use serde_json::{json, Value};
 
@@ -21,6 +22,11 @@ pub struct Home {
     pub clip: Option<(String, String)>,
     hero: Option<Meta>,
     rows: Vec<Row>,
+    /// streaming services: (TMDB provider id, name, logo)
+    services: Vec<(i64, String, Option<String>)>,
+    /// catalogs to browse, and the genres of one of them
+    browse: Vec<Value>,
+    genres: (Option<Value>, Vec<String>),
     scroll: ScrollHandle,
 }
 
@@ -28,7 +34,7 @@ impl Home {
     /// scope: "all" (Home), "series" (Shows) or "movie" (Movies)
     pub fn new(scope: &'static str, cx: &mut Context<Self>) -> Self {
         cx.observe(&crate::ui::video::get(cx), |_, _, cx| cx.notify()).detach();
-        let me = Self { scope, clip: None, hero: None, rows: vec![], scroll: ScrollHandle::new() };
+        let me = Self { scope, clip: None, hero: None, rows: vec![], services: vec![], browse: vec![], genres: (None, vec![]), scroll: ScrollHandle::new() };
         cx.spawn(async move |this, cx| {
             // the billboard: one title per visit, the next one each time
             if let Ok(list) = api::call::<Vec<Meta>>("hero_items", json!({})).await {
@@ -98,8 +104,50 @@ impl Home {
                     });
                 }
             }
+            // new from the actors, directors and studios you follow
+            if scope == "all" {
+                if let Ok(list) = api::call::<Vec<Meta>>("follow_feed", json!({})).await {
+                    if !list.is_empty() {
+                        let _ = this.update(cx, |v, cx| {
+                            let at = v.rows.iter().position(|r| r.key == "cw").map_or(0, |i| i + 1);
+                            v.rows.insert(at, Row { key: "follow".into(), title: "new from who you follow".into(), items: list, extra: vec![] });
+                            cx.notify();
+                        });
+                    }
+                }
+            }
             // your own lists, then couch's picks, woven together
             let catalogs = api::call::<Vec<Value>>("catalogs_list", json!({})).await.unwrap_or_default();
+            if scope == "all" {
+                let browse: Vec<Value> = catalogs
+                    .iter()
+                    .filter(|c| !c["extra"].as_array().into_iter().flatten().any(|e| e["isRequired"].as_bool() == Some(true) && e["options"].as_array().map_or(true, |o| o.is_empty())))
+                    .filter(|c| c["adult"].as_bool() != Some(true))
+                    .take(12)
+                    .cloned()
+                    .collect();
+                let gsrc = catalogs.iter().find(|c| c["type"] == "movie" && c["extra"].as_array().into_iter().flatten().any(|e| e["name"] == "genre" && e["options"].as_array().map_or(false, |o| !o.is_empty()))).cloned();
+                let genres: Vec<String> = gsrc
+                    .as_ref()
+                    .and_then(|c| c["extra"].as_array()?.iter().find(|e| e["name"] == "genre")?["options"].as_array().cloned())
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|g| g.as_str().map(String::from))
+                    .take(18)
+                    .collect();
+                let services: Vec<(i64, String, Option<String>)> = api::call::<Vec<Value>>("streaming_services", json!({}))
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|s| Some((s["id"].as_i64()?, s["name"].as_str().unwrap_or("").to_string(), crate::ui::badges::service(s["id"].as_i64()?).or(s["logo"].as_str().map(String::from)))))
+                    .collect();
+                let _ = this.update(cx, |v, cx| {
+                    v.browse = browse;
+                    v.genres = (gsrc, genres);
+                    v.services = services;
+                    cx.notify();
+                });
+            }
             let personal: Vec<Value> = catalogs
                 .into_iter()
                 .filter(|c| {
@@ -244,6 +292,95 @@ impl Render for Home {
                                 }
                             })),
                     ),
+            );
+        }
+        // browse: every catalog as a tile, then genres
+        if !self.browse.is_empty() {
+            let tints = [0x3a1830, 0x2a1a24, 0x3b2416, 0x241626, 0x33152a, 0x2d1d1a, 0x1f1824, 0x3a2014, 0x281422, 0x1d1418];
+            let tiles = self.browse.iter().enumerate().map(|(i, c)| {
+                let label = match c["type"].as_str().unwrap_or("") {
+                    "movie" => "films",
+                    "series" => "shows",
+                    "tv" => "channels",
+                    other => other,
+                }
+                .to_string();
+                let name = c["name"].as_str().unwrap_or("").to_lowercase();
+                let spec = views_catalog::Spec { title: name.clone(), service: None, catalog: c.clone(), genre: None };
+                div()
+                    .id(("browse", i))
+                    .flex_none()
+                    .w(px(220.))
+                    .h(px(110.))
+                    .p(px(16.))
+                    .rounded(px(16.))
+                    .bg(gpui::rgb(tints[i % tints.len()]))
+                    .flex()
+                    .flex_col()
+                    .justify_end()
+                    .cursor_pointer()
+                    .hover(|s| s.opacity(0.85))
+                    .on_click(move |_, _, cx| Nav::go(crate::Route::Catalog(spec.clone()), cx))
+                    .child(div().text_size(px(12.)).font_weight(FontWeight::BOLD).text_color(theme::label2()).child(label))
+                    .child(div().text_size(px(18.)).font_weight(FontWeight::BLACK).child(name))
+            });
+            let genres = self.genres.1.iter().enumerate().map(|(i, gname)| {
+                let spec = views_catalog::Spec { title: self.genres.0.as_ref().and_then(|c| c["name"].as_str()).unwrap_or("films").to_string(), service: None, catalog: self.genres.0.clone().unwrap_or_default(), genre: Some(gname.clone()) };
+                div()
+                    .id(("genre", i))
+                    .flex_none()
+                    .px(px(18.))
+                    .h(px(40.))
+                    .flex()
+                    .items_center()
+                    .rounded_full()
+                    .bg(gpui::rgb(tints[(i + 3) % tints.len()]))
+                    .font_weight(FontWeight::BOLD)
+                    .cursor_pointer()
+                    .hover(|s| s.opacity(0.85))
+                    .on_click(move |_, _, cx| Nav::go(crate::Route::Catalog(spec.clone()), cx))
+                    .child(gname.to_lowercase())
+            });
+            below = below.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.))
+                    .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::BOLD).child("browse"))
+                    .child(div().id("browse-tiles").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(tiles))
+                    .child(div().id("browse-genres").overflow_x_scroll().flex().gap(px(8.)).px(px(theme::GUTTER)).children(genres)),
+            );
+        }
+        // streaming services
+        if !self.services.is_empty() {
+            below = below.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.))
+                    .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::BOLD).child("services"))
+                    .child(div().id("services").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(self.services.iter().map(|(id, name, logo)| {
+                        let spec = views_catalog::Spec { title: name.clone(), service: Some((*id, logo.clone())), catalog: Value::Null, genre: None };
+                        div()
+                            .id(SharedString::from(format!("svc-{id}")))
+                            .flex_none()
+                            .w(px(180.))
+                            .h(px(96.))
+                            .rounded(px(16.))
+                            .bg(theme::white(0.06))
+                            .border_1()
+                            .border_color(theme::white(0.08))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .hover(|s| s.bg(theme::white(0.12)))
+                            .on_click(move |_, _, cx| Nav::go(crate::Route::Catalog(spec.clone()), cx))
+                            .child(match logo {
+                                Some(u) => gpui::img(u.clone()).max_w(px(130.)).max_h(px(52.)).object_fit(gpui::ObjectFit::Contain).into_any_element(),
+                                None => div().font_weight(FontWeight::BLACK).child(name.clone()).into_any_element(),
+                            })
+                    }))),
             );
         }
         let _ = cx;
