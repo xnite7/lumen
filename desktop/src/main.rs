@@ -352,7 +352,8 @@ impl Root {
             self.player.update(cx, |v, cx| v.poke(cx));
             return;
         }
-        if k == "escape" || (k == "backspace" && matches!(self.route, Route::Detail(_))) {
+        // backspace while typing (a review, a search) is just backspace
+        if k == "escape" || (k == "backspace" && matches!(self.route, Route::Detail(_)) && self.focus.is_focused(window)) {
             Nav::back(cx);
         }
     }

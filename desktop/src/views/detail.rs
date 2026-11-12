@@ -20,7 +20,42 @@ pub struct Detail {
     favs: Option<Vec<Value>>,
     /// the trailer's YouTube key (None: not looked up, Some(""): there isn't one)
     trailer: Option<String>,
+    /// the main studio: id, name, its logo (made white when it's too dark to read)
+    studio: Option<(u64, String, Option<std::sync::Arc<gpui::Image>>, Option<String>)>,
+    /// what the crew wrote about this title
+    reviews: Vec<Value>,
+    /// the "write a review" sheet
+    writing: bool,
+    review_text: gpui::Entity<crate::ui::input::TextInput>,
     scroll: ScrollHandle,
+}
+
+/// A studio logo, readable on a dark picture: dark logos become white.
+fn readable_logo(bytes: &[u8]) -> Option<std::sync::Arc<gpui::Image>> {
+    let mut im = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let (mut lum, mut n, mut opaque) = (0f64, 0u64, 0u64);
+    let total = (im.width() as u64 * im.height() as u64).max(1);
+    for p in im.pixels() {
+        if p[3] > 128 {
+            lum += (0.299 * p[0] as f64 + 0.587 * p[1] as f64 + 0.114 * p[2] as f64) / 255.;
+            n += 1;
+        }
+        if p[3] > 250 {
+            opaque += 1;
+        }
+    }
+    // a logo on its own box (no transparency): leave it be
+    let boxed = opaque as f64 / total as f64 > 0.9;
+    if n > 0 && !boxed && lum / (n as f64) < 0.5 {
+        for p in im.pixels_mut() {
+            p[0] = 255;
+            p[1] = 255;
+            p[2] = 255;
+        }
+    }
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(im).write_to(&mut out, image::ImageFormat::Png).ok()?;
+    Some(std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
 }
 
 impl Detail {
@@ -35,6 +70,26 @@ impl Detail {
             let item = api::call::<Value>("library_item", json!({ "id": lid })).await.ok();
             let favs = api::call::<Value>("crew_social", json!({ "method": "GET", "path": "/v1/favs", "body": Value::Null })).await.ok().and_then(|v| v["favs"].as_array().cloned());
             let rating = api::call::<Value>("simkl_item_status", json!({ "kind": kind, "id": lid })).await.ok().and_then(|v| v["rating"].as_u64()).map(|r| r as u8);
+            // the main studio's logo, made readable
+            let studio = extra.as_ref().ok().and_then(|e| e["companies"].as_array()?.first().cloned());
+            if let Some(c) = studio {
+                let (cid, cname, logo) = (c["id"].as_u64().unwrap_or(0), c["name"].as_str().unwrap_or("").to_string(), c["logo"].as_str().map(String::from));
+                let pic = match &logo {
+                    Some(u) if !u.ends_with(".svg") => {
+                        let u = u.clone();
+                        couch::rt::spawn(async move {
+                            let core = couch::state::get().core.clone();
+                            couch::images::load(&core, &u).await.ok().and_then(|(b, _)| readable_logo(&b))
+                        })
+                        .await
+                        .ok()
+                        .flatten()
+                    }
+                    _ => None,
+                };
+                let svg = logo.filter(|u| u.ends_with(".svg"));
+                let _ = this.update(cx, |d, _| d.studio = Some((cid, cname, pic, svg)));
+            }
             let _ = this.update(cx, |d, cx| {
                 d.full = full.ok();
                 d.extra = extra.ok();
@@ -88,7 +143,49 @@ impl Detail {
             }
         })
         .detach();
-        Self { base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, favs: None, trailer: None, scroll: ScrollHandle::new() }
+        // the crew's reviews of this title
+        let rid = base.id.split(':').next().unwrap_or("").to_string();
+        cx.spawn(async move |this, cx| {
+            let r = api::call::<Value>("crew_social", json!({ "method": "GET", "path": format!("/v1/reviews/{}", urlencoding::encode(&rid)), "body": Value::Null })).await.unwrap_or_default();
+            let _ = this.update(cx, |d, cx| {
+                d.reviews = r["reviews"].as_array().cloned().unwrap_or_default();
+                cx.notify();
+            });
+        })
+        .detach();
+        let review_text = cx.new(|cx| crate::ui::input::TextInput::new("what did you think? (emoji welcome)", cx));
+        cx.subscribe(&review_text, |d: &mut Self, _, _: &crate::ui::input::Submitted, cx| d.post_review(cx)).detach();
+        Self { base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, favs: None, trailer: None, studio: None, reviews: vec![], writing: false, review_text, scroll: ScrollHandle::new() }
+    }
+
+    /// post your review (with your rating) to the couch
+    fn post_review(&mut self, cx: &mut Context<Self>) {
+        let text = self.review_text.read(cx).content.trim().to_string();
+        if text.is_empty() {
+            return;
+        }
+        let m = self.meta();
+        let title = json!({ "id": m.id.split(':').next().unwrap_or(""), "type": m.kind, "name": m.name, "poster": m.poster, "background": m.background });
+        let rating = self.rating;
+        self.writing = false;
+        self.review_text.update(cx, |i, cx| i.set_text("", cx));
+        let rid = m.id.split(':').next().unwrap_or("").to_string();
+        cx.spawn(async move |this, cx| {
+            let r = api::call::<Value>("crew_social", json!({ "method": "POST", "path": "/v1/activity", "body": { "kind": "review", "title": title, "rating": rating, "text": text } })).await;
+            let list = api::call::<Value>("crew_social", json!({ "method": "GET", "path": format!("/v1/reviews/{}", urlencoding::encode(&rid)), "body": Value::Null })).await.unwrap_or_default();
+            let _ = this.update(cx, |d, cx| {
+                d.reviews = list["reviews"].as_array().cloned().unwrap_or_default();
+                Nav::toast(if r.is_ok() { "posted to the couch".into() } else { "couldn't post that, try again".into() }, cx);
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// my Discord id (who "you" is in the reviews)
+    fn me_id(&self) -> String {
+        couch::state::get().core.db.get::<Value>("discord_user").and_then(|u| u["id"].as_str().map(String::from)).unwrap_or_default()
     }
 
     fn refresh_item(&mut self, cx: &mut Context<Self>) {
@@ -288,7 +385,7 @@ impl Render for Detail {
             facts.push(c.to_string());
         }
 
-        let (plabel, pvideo, psub) = self.primary();
+        let (mut plabel, mut pvideo, mut psub) = self.primary();
         // all of it seen: the film's flag, or every released episode of a show
         let all_seen = {
             let flagged_now = self.item.as_ref().map_or(false, |i| i["state"]["flaggedWatched"].as_bool() == Some(true));
@@ -302,6 +399,17 @@ impl Render for Detail {
                 _ => flagged_now,
             }
         };
+        // all seen and nothing half-way: watch it again from the start
+        if all_seen && plabel != "Resume" {
+            plabel = "Rewatch".into();
+            if let Some(f) = &full {
+                if f["type"] == "series" {
+                    let first = playback::ordered(f).into_iter().find(|v| v["season"].as_i64().unwrap_or(0) > 0);
+                    psub = first.as_ref().map(|v| format!("S{} E{}", v["season"].as_i64().unwrap_or(0), v["episode"].as_i64().or(v["number"].as_i64()).unwrap_or(0))).unwrap_or_default();
+                    pvideo = first;
+                }
+            }
+        }
         let flagged = self.item.as_ref().map_or(false, |i| i["state"]["flaggedWatched"].as_bool() == Some(true));
         let owned = self.item.as_ref().map_or(false, |i| i["removed"].as_bool() != Some(true) && i["temp"].as_bool() != Some(true));
         let name = m.name.clone();
@@ -352,6 +460,23 @@ impl Render for Detail {
                     .flex()
                     .flex_col()
                     .gap(px(16.))
+                    // the main studio, above the title (opens its page)
+                    .children(self.studio.clone().map(|(cid, cname, pic, svg)| {
+                        let n2 = cname.clone();
+                        div()
+                            .id("d-studio")
+                            .flex()
+                            .h(px(34.))
+                            .items_center()
+                            .cursor_pointer()
+                            .hover(|s| s.opacity(0.75))
+                            .on_click(move |_, _, cx| Nav::go(crate::Route::Studio(cid, n2.clone()), cx))
+                            .child(match (pic, svg) {
+                                (Some(i), _) => img(i).h(px(30.)).max_w(px(200.)).object_fit(ObjectFit::Contain).into_any_element(),
+                                (None, Some(u)) => img(u).h(px(30.)).max_w(px(200.)).object_fit(ObjectFit::Contain).into_any_element(),
+                                _ => div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::white(0.85)).child(cname.to_uppercase()).into_any_element(),
+                            })
+                    }))
                     .child(match logo {
                         Some(u) => img(u)
                             .h(px(160.))
@@ -454,11 +579,112 @@ impl Render for Detail {
                     .children(m.description.clone().or(ex["overview"].as_str().map(|s| s.to_string())).map(|d| {
                         div().max_w(px(600.)).text_size(px(17.)).line_height(px(25.)).text_color(theme::white(0.88)).child(d)
                     }))
-                    .when(seen_it, |d| d.child(self.stars(&m, cx))),
+                    // the mood (TMDB keywords), as quiet chips
+                    .children({
+                        let kw: Vec<String> = ex["keywords"].as_array().into_iter().flatten().filter_map(|k| k.as_str().map(String::from).or(k["name"].as_str().map(String::from))).take(8).collect();
+                        (!kw.is_empty()).then(|| {
+                            div().flex().flex_wrap().gap(px(6.)).max_w(px(620.)).children(kw.into_iter().map(|k| {
+                                div().px(px(10.)).py(px(3.)).rounded_full().border_1().border_color(theme::white(0.22)).text_size(px(13.)).text_color(theme::label2()).child(k)
+                            }))
+                        })
+                    })
+                    .when(seen_it, |d| {
+                        let has_mine = self.reviews.iter().any(|r| r["who"].as_str() == Some(self.me_id().as_str()) && r["text"].as_str().map_or(false, |t| !t.is_empty()));
+                        d.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(16.))
+                                .child(self.stars(&m, cx))
+                                .child(
+                                    div()
+                                        .id("d-review")
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(6.))
+                                        .px(px(12.))
+                                        .h(px(32.))
+                                        .rounded_full()
+                                        .bg(theme::white(0.1))
+                                        .text_size(px(13.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .cursor_pointer()
+                                        .hover(|s| s.bg(theme::white(0.18)))
+                                        .on_click(cx.listener(|d, _, window, cx| {
+                                            d.writing = !d.writing;
+                                            if d.writing {
+                                                let f = gpui::Focusable::focus_handle(d.review_text.read(cx), cx);
+                                                window.focus(&f, cx);
+                                            }
+                                            cx.notify();
+                                        }))
+                                        .child(icon("pencil", 15.))
+                                        .child(if has_mine { "edit your review" } else { "write a review" }),
+                                ),
+                        )
+                        .when(self.writing, |d| {
+                            d.child(
+                                div()
+                                    .max_w(px(620.))
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.))
+                                    .child(div().flex_1().h(px(44.)).px(px(14.)).flex().items_center().rounded(px(12.)).bg(theme::white(0.1)).border_1().border_color(theme::white(0.16)).child(self.review_text.clone()))
+                                    .child(
+                                        div()
+                                            .id("d-post")
+                                            .px(px(16.))
+                                            .h(px(44.))
+                                            .flex()
+                                            .items_center()
+                                            .rounded(px(12.))
+                                            .bg(theme::neon())
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .cursor_pointer()
+                                            .hover(|s| s.opacity(0.85))
+                                            .on_click(cx.listener(|d, _, _, cx| d.post_review(cx)))
+                                            .child("post"),
+                                    ),
+                            )
+                        })
+                    }),
             );
 
         let mut page = div().id("detail").size_full().overflow_y_scroll().track_scroll(&self.scroll)
             .child(crate::ui::smooth::wheel(&self.scroll, "detail")).child(hero);
+
+        // ------------------------------------------------- what the crew said
+        let said: Vec<&Value> = self.reviews.iter().filter(|r| r["text"].as_str().map_or(false, |t| !t.is_empty()) || r["rating"].is_number()).collect();
+        if !said.is_empty() {
+            let me = self.me_id();
+            page = page.child(
+                div().flex().flex_col().gap(px(14.)).mt(px(10.)).px(px(g)).child(div().text_size(px(24.)).font_weight(FontWeight::BLACK).child("on the couch")).child(div().flex().flex_wrap().gap(px(12.)).children(said.into_iter().map(|r| {
+                    let who = if r["who"].as_str() == Some(me.as_str()) { "you".to_string() } else { r["name"].as_str().unwrap_or("someone").to_string() };
+                    let wid = r["who"].as_str().unwrap_or("").to_string();
+                    div()
+                        .w(px(380.))
+                        .p(px(14.))
+                        .rounded(px(16.))
+                        .bg(theme::white(0.05))
+                        .flex()
+                        .flex_col()
+                        .gap(px(8.))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(10.))
+                                .child(div().size(px(30.)).rounded_full().overflow_hidden().bg(theme::surface2()).flex().items_center().justify_center().text_size(px(13.)).font_weight(FontWeight::BLACK).child(match r["avatar"].as_str() {
+                                    Some(u) => img(u.to_string()).size_full().object_fit(ObjectFit::Cover).into_any_element(),
+                                    None => div().child(who.chars().next().unwrap_or('?').to_uppercase().to_string()).into_any_element(),
+                                }))
+                                .child(div().id(SharedString::from(format!("rv-{wid}"))).font_weight(FontWeight::SEMIBOLD).cursor_pointer().hover(|s| s.underline()).on_click(move |_, _, cx| Nav::go(crate::Route::Member(wid.clone()), cx)).child(who))
+                                .children(r["rating"].as_i64().map(|n| div().text_size(px(13.)).font_weight(FontWeight::BLACK).text_color(theme::lamp()).child(format!("★ {n}/10")))),
+                        )
+                        .children(r["text"].as_str().filter(|t| !t.is_empty()).map(|t| div().text_size(px(15.)).line_height(px(21.)).text_color(theme::white(0.85)).child(crate::ui::emoji::text(t, 15.))))
+                }))),
+            );
+        }
 
         // ---------------------------------------------------------- episodes
         if let Some(f) = &full {
@@ -601,38 +827,6 @@ impl Render for Detail {
                         ),
                 );
             }
-        }
-
-        // ----------------------------------------------------------- studios
-        if let Some(cos) = ex["companies"].as_array().filter(|c| !c.is_empty()) {
-            page = page.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(14.))
-                    .mt(px(36.))
-                    .child(div().px(px(g)).text_size(px(24.)).font_weight(FontWeight::BLACK).child("made by"))
-                    .child(div().px(px(g)).flex().flex_wrap().gap(px(12.)).children(cos.iter().map(|c| {
-                        let (cid, cname) = (c["id"].as_u64().unwrap_or(0), c["name"].as_str().unwrap_or("").to_string());
-                        let logo = c["logo"].as_str().map(|s| s.to_string());
-                        let n2 = cname.clone();
-                        div()
-                            .id(SharedString::from(format!("co-{cid}")))
-                            .h(px(64.))
-                            .px(px(18.))
-                            .flex()
-                            .items_center()
-                            .rounded(px(14.))
-                            .bg(if logo.is_some() { gpui::rgb(0xf4eaf0).into() } else { theme::white(0.08) })
-                            .cursor_pointer()
-                            .hover(|s| s.opacity(0.85))
-                            .on_click(move |_, _, cx| Nav::go(crate::Route::Studio(cid, n2.clone()), cx))
-                            .child(match logo {
-                                Some(u) => img(u).h(px(36.)).max_w(px(160.)).object_fit(ObjectFit::Contain).into_any_element(),
-                                None => div().font_weight(FontWeight::SEMIBOLD).child(cname).into_any_element(),
-                            })
-                    }))),
-            );
         }
 
         // -------------------------------------------------------------- cast
