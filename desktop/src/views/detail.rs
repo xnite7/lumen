@@ -17,6 +17,8 @@ pub struct Detail {
     season: Option<i64>,
     rating: Option<u8>,
     hover_star: u8,
+    /// where the rating bar is on screen (left, width), for the mouse
+    rate_box: std::rc::Rc<std::cell::Cell<(f32, f32)>>,
     favs: Option<Vec<Value>>,
     /// the trailer's YouTube key (None: not looked up, Some(""): there isn't one)
     trailer: Option<String>,
@@ -174,7 +176,7 @@ impl Detail {
         .detach();
         let review_text = cx.new(|cx| crate::ui::input::TextInput::new("what did you think? (emoji welcome)", cx));
         cx.subscribe(&review_text, |d: &mut Self, _, _: &crate::ui::input::Submitted, cx| d.post_review(cx)).detach();
-        let mut me = Self { base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, favs: None, trailer: None, studio: None, reviews: vec![], writing: false, review_text, scroll: ScrollHandle::new(), shown: None };
+        let mut me = Self { base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, rate_box: Default::default(), favs: None, trailer: None, studio: None, reviews: vec![], writing: false, review_text, scroll: ScrollHandle::new(), shown: None };
         if let Some(l) = ready {
             me.fill(l);
             // fresh copy in the background (your progress, ratings, reviews may have moved)
@@ -331,35 +333,77 @@ fn seasons(f: &Value) -> Vec<i64> {
 }
 
 impl Detail {
+    /// your score: one bar you slide (or click) along, 1–10
     fn stars(&self, m: &Meta, cx: &mut Context<Self>) -> impl IntoElement {
+        const W: f32 = 260.;
         let shown = if self.hover_star > 0 { self.hover_star } else { self.rating.unwrap_or(0) };
+        let at = self.rate_box.clone();
+        let at2 = at.clone();
+        let at3 = at.clone();
+        let pick = |x: f32, b: (f32, f32)| -> u8 { (((x - b.0) / b.1.max(1.)) * 10.).ceil().clamp(1., 10.) as u8 };
+        let word = match shown {
+            0 => "",
+            1..=2 => "nope",
+            3..=4 => "meh",
+            5..=6 => "alright",
+            7 => "good",
+            8 => "great",
+            9 => "amazing",
+            _ => "masterpiece",
+        };
+        let previewing = self.hover_star > 0 && Some(self.hover_star) != self.rating;
+        let (kind, id, name) = (m.kind.clone(), self.lid(), m.name.clone());
+        let title = json!({ "id": m.id, "type": m.kind, "name": m.name, "poster": m.poster, "background": m.background, "logo": m.logo });
         div()
-            .id("stars")
             .flex()
             .items_center()
-            .gap(px(4.))
-            .on_hover(cx.listener(|d, on: &bool, _, cx| {
-                if !*on {
-                    d.hover_star = 0;
-                    cx.notify();
-                }
-            }))
-            .child(div().mr(px(8.)).text_size(px(14.)).text_color(theme::label3()).child("your rating"))
-            .children((1..=10u8).map(|n| {
-                let (kind, id, name) = (m.kind.clone(), self.lid(), m.name.clone());
-                let title = json!({ "id": m.id, "type": m.kind, "name": m.name, "poster": m.poster, "background": m.background, "logo": m.logo });
+            .gap(px(12.))
+            .child(div().text_size(px(14.)).text_color(theme::label3()).child("your rating"))
+            .child(
                 div()
-                    .id(SharedString::from(format!("star-{n}")))
+                    .id("rate-bar")
+                    .relative()
+                    .w(px(W))
+                    .h(px(30.))
+                    .rounded_full()
+                    .overflow_hidden()
+                    .bg(theme::white(0.1))
                     .cursor_pointer()
-                    .on_hover(cx.listener(move |d, on: &bool, _, cx| {
-                        if *on {
+                    .child(gpui::canvas(move |b, _, _| at3.set((f32::from(b.origin.x), f32::from(b.size.width))), |_, _, _, _| {}).absolute().size_full())
+                    // the fill
+                    .child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .h_full()
+                            .w(px(W * shown as f32 / 10.))
+                            .rounded_full()
+                            .bg(gpui::linear_gradient(90., gpui::linear_color_stop(theme::lamp(), 0.), gpui::linear_color_stop(theme::neon(), 1.)))
+                            .when(previewing, |d| d.opacity(0.55)),
+                    )
+                    // the ten steps
+                    .child(div().absolute().top_0().left_0().size_full().flex().children((1..10).map(|_| div().flex_1().h_full().border_r_1().border_color(theme::black(0.25)))).child(div().flex_1()))
+                    .when(shown == 0, |d| d.child(div().absolute().top_0().left_0().size_full().flex().items_center().justify_center().text_size(px(13.)).text_color(theme::label3()).child("slide to rate")))
+                    .on_hover(cx.listener(|d, on: &bool, _, cx| {
+                        if !*on {
+                            d.hover_star = 0;
+                            cx.notify();
+                        }
+                    }))
+                    .on_mouse_move(cx.listener(move |d, e: &gpui::MouseMoveEvent, _, cx| {
+                        let n = pick(f32::from(e.position.x), at.get());
+                        if d.hover_star != n {
                             d.hover_star = n;
                             cx.notify();
                         }
                     }))
-                    .on_click(cx.listener(move |d, _, _, cx| {
+                    .on_mouse_up(gpui::MouseButton::Left, cx.listener(move |d, e: &gpui::MouseUpEvent, _, cx| {
+                        let n = pick(f32::from(e.position.x), at2.get());
+                        // the same score again takes it off
                         let v = if d.rating == Some(n) { None } else { Some(n) };
                         d.rating = v;
+                        d.hover_star = 0;
                         cx.notify();
                         let (kind, id, name, title) = (kind.clone(), id.clone(), name.clone(), title.clone());
                         cx.spawn(async move |_, cx| {
@@ -374,9 +418,18 @@ impl Detail {
                             }, cx));
                         })
                         .detach();
-                    }))
-                    .child(if shown >= n { icon_fill("star", 20.).text_color(theme::lamp()) } else { icon("star", 20.).text_color(theme::label3()) })
-            }))
+                    })),
+            )
+            .when(shown > 0, |d| {
+                d.child(
+                    div()
+                        .flex()
+                        .items_end()
+                        .gap(px(6.))
+                        .child(div().text_size(px(22.)).line_height(px(22.)).font_weight(FontWeight::BLACK).text_color(theme::lamp()).child(format!("{shown}")))
+                        .child(div().text_size(px(13.)).text_color(theme::label2()).child(format!("/10 · {word}"))),
+                )
+            })
     }
 }
 

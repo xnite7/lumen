@@ -39,6 +39,11 @@ pub fn scrolled() -> f32 {
 const NOTCH: f32 = 1.9;
 const TAU: f32 = 0.085;
 
+/// Glide the page `key` to `y` (pixels from its top).
+pub fn glide_to(key: &'static str, y: f32) {
+    TARGET.with(|m| m.borrow_mut().insert(key, y.max(0.)));
+}
+
 pub fn set_overlay(on: bool) {
     OVERLAY.with(|o| o.set(on));
 }

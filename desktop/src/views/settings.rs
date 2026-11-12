@@ -244,8 +244,37 @@ fn toggle(on: bool) -> impl IntoElement {
 fn group() -> gpui::Div {
     div().flex_none().max_w(px(760.)).rounded(px(16.)).bg(theme::white(0.04))
 }
+thread_local! {
+    /// each section heading's place on screen this frame (for the sidebar)
+    static HEADS: std::cell::RefCell<Vec<(String, f32)>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 fn heading(t: &str) -> gpui::Div {
-    div().flex_none().mt(px(18.)).text_size(px(22.)).font_weight(FontWeight::BLACK).child(t.to_string())
+    let name = t.to_string();
+    div()
+        .flex_none()
+        .relative()
+        .mt(px(18.))
+        .text_size(px(22.))
+        .font_weight(FontWeight::BLACK)
+        .child(t.to_string())
+        .child(
+            gpui::canvas(
+                move |b, _, _| {
+                    let y = f32::from(b.origin.y);
+                    HEADS.with(|h| {
+                        let mut h = h.borrow_mut();
+                        match h.iter_mut().find(|x| x.0 == name) {
+                            Some(x) => x.1 = y,
+                            None => h.push((name.clone(), y)),
+                        }
+                    });
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_0(),
+        )
 }
 fn line(i: usize) -> gpui::Div {
     div().flex().items_center().gap(px(16.)).px(px(18.)).py(px(14.)).when(i > 0, |d| d)
@@ -334,9 +363,9 @@ impl Render for Settings {
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .child(crate::ui::smooth::wheel(&self.scroll, "settings"))
-            .bg(theme::bg())
             .pt(px(96.))
-            .px(px(g))
+            .pl(px(g + 220.))
+            .pr(px(g))
             .flex()
             .flex_col()
             .gap(px(14.))
@@ -487,7 +516,7 @@ impl Render for Settings {
 
         // ------------------------------------------------------------ addons
         page = page
-            .child(div().flex_none().mt(px(18.)).text_size(px(22.)).font_weight(FontWeight::BLACK).child("addons"))
+            .child(heading("addons"))
             .child(
                 div()
                     .flex_none()
@@ -553,7 +582,7 @@ impl Render for Settings {
         // ---------------------------------------------------------- accounts
         let simkl = self.secrets["simkl_token"].as_bool() == Some(true);
         let stremio = self.secrets["stremio_auth"].as_bool() == Some(true);
-        page.child(div().flex_none().mt(px(18.)).text_size(px(22.)).font_weight(FontWeight::BLACK).child("accounts"))
+        let page = page.child(heading("accounts"))
             .child(
                 div()
                     .flex_none()
@@ -566,6 +595,40 @@ impl Render for Settings {
                         if stremio { "connected" } else { "not connected" }
                     )),
             )
-            .child(div().h(px(80.)))
+            // room to scroll the last section up to the top
+            .child(div().flex_none().h(px(520.)));
+        // the sections down the side: click one to glide there; the one you're in is lit
+        let heads = HEADS.with(|h| h.borrow().clone());
+        let current = heads.iter().filter(|(_, y)| *y <= 200.).last().map(|h| h.0.clone()).or(heads.first().map(|h| h.0.clone()));
+        let off = -f32::from(self.scroll.offset().y);
+        let side = div()
+            .absolute()
+            .top(px(96.))
+            .left(px(g))
+            .w(px(190.))
+            .flex()
+            .flex_col()
+            .gap(px(2.))
+            .children(heads.iter().enumerate().map(|(i, (name, y))| {
+                let on = current.as_deref() == Some(name.as_str());
+                let to = off + y - 150.;
+                div()
+                    .id(("set-side", i))
+                    .px(px(14.))
+                    .py(px(8.))
+                    .rounded(px(10.))
+                    .cursor_pointer()
+                    .text_size(px(15.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(if on { theme::text() } else { theme::label3() })
+                    .when(on, |d| d.bg(theme::white(0.08)))
+                    .hover(|s| s.bg(theme::white(0.06)))
+                    .on_click(move |_, window, _| {
+                        crate::ui::smooth::glide_to("settings", to);
+                        window.refresh();
+                    })
+                    .child(name.clone())
+            }));
+        div().size_full().relative().bg(theme::bg()).child(page).child(side)
     }
 }
