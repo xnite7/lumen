@@ -63,6 +63,7 @@ impl Nav {
                 if r.route != route {
                     r.back.push(r.route.clone());
                     r.route = route;
+                    r.turned = Some((std::time::Instant::now(), false));
                     // the billboard / preview clip belongs to the page we left
                     let v = ui::video::get(cx);
                     let owner = v.read(cx).owner.clone();
@@ -85,6 +86,7 @@ impl Nav {
             v.update(cx, |v, cx| v.stop(&owner, cx));
             r.update(cx, |r, cx| {
                 r.route = r.back.pop().unwrap_or(Route::Home);
+                r.turned = Some((std::time::Instant::now(), true));
                 cx.notify();
             });
         }
@@ -186,6 +188,8 @@ pub struct Root {
     last_size: gpui::Size<gpui::Pixels>,
     /// the launch intro: when it started (None once it's done)
     splash: Option<std::time::Instant>,
+    /// when the page last changed, and whether that was a step back (pages ease in)
+    turned: Option<(std::time::Instant, bool)>,
 }
 
 const TABS: &[(&str, fn() -> Route)] = &[
@@ -278,8 +282,8 @@ impl Root {
                         }
                     })
                     .size(px(36.))
-                    .rounded(px(10.))
-                    .bg(theme::neon())
+                    .rounded_full()
+                    .when(self.me["avatar"].as_str().is_none(), |d| d.bg(theme::neon()))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -287,7 +291,7 @@ impl Root {
                     .text_color(theme::text())
                     .overflow_hidden()
                     .child(match self.me["avatar"].as_str() {
-                        Some(u) => img(u.to_string()).size_full().into_any_element(),
+                        Some(u) => img(crate::net::face(u, 36.)).size_full().into_any_element(),
                         None => div()
                             .child(self.me["name"].as_str().or(self.me["username"].as_str()).and_then(|n| n.chars().next()).unwrap_or('S').to_uppercase().to_string())
                             .into_any_element(),
@@ -643,6 +647,20 @@ impl Render for Root {
                 self.detail.clone().unwrap().into_any_element()
             }
         };
+        // a page change eases in: it fades up from a little below (from a little
+        // above when going back) instead of snapping
+        const TURN: f32 = 0.32;
+        let (e, dy) = match self.turned {
+            Some((at, back)) if !playing && at.elapsed().as_secs_f32() < TURN => {
+                let t = at.elapsed().as_secs_f32() / TURN;
+                let e = 1. - (1. - t).powi(3);
+                window.request_animation_frame();
+                (e, (1. - e) * if back { -14. } else { 22. })
+            }
+            _ => (1., 0.),
+        };
+        // (always the same wrapper, so nothing inside loses its state when the ease ends)
+        let page = div().absolute().left_0().w_full().top(px(dy)).h_full().opacity(e).child(page);
         div()
             .size_full()
             .relative()
@@ -944,6 +962,7 @@ fn main() {
                             focus,
                             last_size: gpui::Size::default(),
                             splash: Some(std::time::Instant::now()),
+                            turned: None,
                         }
                     });
                     cx.set_global(Nav(root.downgrade()));

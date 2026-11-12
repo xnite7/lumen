@@ -166,15 +166,14 @@ impl Render for Member {
                             .size(px(128.))
                             .flex_none()
                             .rounded_full()
-                            .overflow_hidden()
-                            .bg(theme::surface2())
+                            .when(d["avatar"].as_str().is_none(), |e| e.bg(theme::surface2()))
                             .flex()
                             .items_center()
                             .justify_center()
                             .text_size(px(48.))
                             .font_weight(FontWeight::BLACK)
                             .child(match d["avatar"].as_str() {
-                                Some(u) => img(u.to_string()).size_full().object_fit(ObjectFit::Cover).into_any_element(),
+                                Some(u) => img(crate::net::face(u, 128.)).size_full().into_any_element(),
                                 None => div().child(name.chars().next().unwrap_or('?').to_uppercase().to_string()).into_any_element(),
                             }),
                     )
@@ -255,6 +254,8 @@ impl Render for Member {
                             .size(px(96.))
                             .flex_none()
                             .rounded_full()
+                            .border_4()
+                            .border_color(accent)
                             .flex()
                             .items_center()
                             .justify_center()

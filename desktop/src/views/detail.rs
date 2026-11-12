@@ -644,8 +644,8 @@ impl Render for Detail {
                         .flex()
                         .items_start()
                         .gap(px(10.))
-                        .child(div().flex_none().size(px(28.)).rounded_full().overflow_hidden().bg(theme::surface2()).flex().items_center().justify_center().text_size(px(12.)).font_weight(FontWeight::BLACK).child(match r["avatar"].as_str() {
-                            Some(u) => img(u.to_string()).size_full().object_fit(ObjectFit::Cover).into_any_element(),
+                        .child(div().flex_none().size(px(28.)).rounded_full().when(r["avatar"].as_str().is_none(), |d| d.bg(theme::surface2())).flex().items_center().justify_center().text_size(px(12.)).font_weight(FontWeight::BLACK).child(match r["avatar"].as_str() {
+                            Some(u) => img(crate::net::face(u, 28.)).size_full().into_any_element(),
                             None => div().child(who.chars().next().unwrap_or('?').to_uppercase().to_string()).into_any_element(),
                         }))
                         .child(

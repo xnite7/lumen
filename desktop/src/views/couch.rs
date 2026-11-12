@@ -50,15 +50,14 @@ fn avatar(url: Option<&str>, name: &str, size: f32) -> impl IntoElement {
         .size(px(size))
         .flex_none()
         .rounded_full()
-        .overflow_hidden()
-        .bg(theme::neon())
+        .when(url.is_none(), |d| d.bg(theme::neon()))
         .flex()
         .items_center()
         .justify_center()
         .text_size(px(size * 0.42))
         .font_weight(FontWeight::BLACK)
         .child(match url {
-            Some(u) => img(u.to_string()).size_full().object_fit(ObjectFit::Cover).into_any_element(),
+            Some(u) => img(crate::net::face(u, size)).size_full().into_any_element(),
             None => div().child(name.chars().next().unwrap_or('?').to_uppercase().to_string()).into_any_element(),
         })
 }
