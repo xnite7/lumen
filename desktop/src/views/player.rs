@@ -32,6 +32,8 @@ pub struct PlayerView {
     reactions: Entity<super::reactions::Reactions>,
     /// pointing at "next": show what it is
     next_hover: bool,
+    vol_acc: f64,
+    vol_target: Option<f64>,
 }
 
 impl PlayerView {
@@ -55,7 +57,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None }
     }
 
     pub fn poke(&mut self, cx: &mut Context<Self>) {
@@ -65,6 +67,17 @@ impl PlayerView {
             cx.notify();
         }
     }
+}
+
+thread_local! {
+    static MOVED: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
+}
+/// the window was just moved or resized: the mouse-up that ends it isn't a click on the film
+pub fn window_moved() {
+    MOVED.with(|m| m.set(Some(Instant::now())));
+}
+fn just_moved() -> bool {
+    MOVED.with(|m| m.get()).map_or(false, |t| t.elapsed() < Duration::from_millis(500))
 }
 
 /// Watching on someone's couch: pause/seek go to the host (when they've
@@ -169,8 +182,10 @@ fn next_pill(pb: Entity<Playback>, label: String) -> gpui::Stateful<gpui::Div> {
 }
 
 fn round_btn(id: &'static str, child: impl IntoElement, size: f32) -> gpui::Stateful<gpui::Div> {
+    // a press on a button never reaches the picture (which would play/pause)
     div()
         .id(id)
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .size(px(size))
         .flex()
         .items_center()
@@ -296,6 +311,7 @@ impl PlayerView {
         };
         div()
             .id("pl-menu")
+            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .absolute()
             .right(px(theme::GUTTER))
             .bottom(px(96.))
@@ -340,6 +356,9 @@ impl Render for PlayerView {
             .relative()
             .on_mouse_move(cx.listener(|v, _: &MouseMoveEvent, _, cx| v.poke(cx)))
             .on_click(cx.listener(|v, e: &gpui::ClickEvent, window, cx| {
+                if just_moved() {
+                    return;
+                }
                 if e.click_count() == 2 {
                     // double click: full screen (undo the first click's pause)
                     window.toggle_fullscreen();
@@ -362,13 +381,24 @@ impl Render for PlayerView {
             .when(!shown, |d| d.cursor(gpui::CursorStyle::None))
             .on_scroll_wheel(cx.listener(|v, e: &gpui::ScrollWheelEvent, w, cx| {
                 // scroll = volume
-                let dy = f32::from(e.delta.pixel_delta(w.line_height()).y);
-                if dy.abs() < 0.5 {
+                // 5% a notch, however fast you spin (fast spins arrive as bigger steps)
+                let step = match e.delta {
+                    gpui::ScrollDelta::Lines(l) => l.y / 3. * 5.,
+                    gpui::ScrollDelta::Pixels(p) => f32::from(p.y) / 40. * 5.,
+                };
+                let _ = w;
+                v.vol_acc += step as f64;
+                if v.vol_acc.abs() < 1. {
                     return;
                 }
+                let change = v.vol_acc.trunc();
+                v.vol_acc -= change;
                 let p = v.pb.read(cx);
                 let max = if couch::state::get().core.settings().playback.volume_boost { 130. } else { 100. };
-                let vol = (p.state.volume + if dy > 0. { 5. } else { -5. }).clamp(0., max);
+                // build on the volume we last asked for (mpv's reply lags behind fast spins)
+                let base = v.vol_target.filter(|_| v.vol_hud.map_or(false, |t| t.elapsed() < Duration::from_millis(800))).unwrap_or(p.state.volume);
+                let vol = (base + change).clamp(0., max).round();
+                v.vol_target = Some(vol);
                 p.cmd("volume", json!({ "value": vol }));
                 v.vol_hud = Some(Instant::now());
                 cx.notify();
@@ -436,7 +466,7 @@ impl Render for PlayerView {
                         .items_center()
                         .gap(px(10.))
                         .child(icon(if st.volume <= 0. { "mute" } else { "volume" }, 22.))
-                        .child(div().font_weight(FontWeight::BOLD).child(format!("{}%", st.volume.round() as i64))),
+                        .child(div().font_weight(FontWeight::BOLD).child(format!("{}%", self.vol_target.unwrap_or(st.volume).round() as i64))),
                 ),
             );
             cx.spawn(async move |this, cx| {
@@ -618,6 +648,7 @@ impl Render for PlayerView {
                     .child(
                         div()
                             .id("pl-scrub")
+                            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                             .absolute()
                             .left(px(g))
                             .bottom(px(86.))
@@ -726,6 +757,7 @@ impl Render for PlayerView {
                                 let pb = self.pb.clone();
                                 div()
                                     .id("pl-next")
+                                    .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                                     .flex()
                                     .items_center()
                                     .gap(px(8.))

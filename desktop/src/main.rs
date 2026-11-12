@@ -588,6 +588,8 @@ impl Render for Root {
             .child(page)
             .when(!playing && self.route != Route::SignIn, |d| d.child(self.nav_bar(cx)))
             .when(self.route == Route::SignIn, |d| d.child(window_controls()))
+            // while playing: a strip along the top moves the window (it never pauses the film)
+            .when(playing && !pip::is_on(), |d| d.child(div().absolute().top_0().left_0().right(px(150.)).h(px(24.)).window_control_area(WindowControlArea::Drag)))
             .when(playing, |d| d.child(window_controls()))
             .child(self.together_cards(cx))
             .when(!playing && self.route != Route::SignIn, |d| d.child(self.planner.clone()).child(self.invite.clone()))
@@ -692,7 +694,11 @@ fn main() {
                         let menu = cx.new(views::menu::Menu::new);
                         cx.observe(&menu, |_, _, cx| cx.notify()).detach();
                         // the mini player follows the window around
-                        cx.observe_window_bounds(window, |_, window, _| mini::fit(window.scale_factor())).detach();
+                        cx.observe_window_bounds(window, |_, window, _| {
+                            mini::fit(window.scale_factor());
+                            views::player::window_moved();
+                        })
+                        .detach();
                         // a click on the mini picture: full size again
                         cx.spawn(async move |this, cx| loop {
                             gpui::Timer::after(std::time::Duration::from_millis(150)).await;
