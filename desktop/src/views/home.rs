@@ -14,6 +14,8 @@ pub struct Row {
     pub items: Vec<Meta>,
     /// Continue watching: (progress, "S2 E4 · title") per item
     pub extra: Vec<(Option<f32>, Option<String>)>,
+    /// where its header goes: the whole list as a page
+    pub spec: Option<views_catalog::Spec>,
 }
 
 pub struct Home {
@@ -129,7 +131,8 @@ impl Home {
                 }
                 if !metas.is_empty() {
                     let _ = this.update(cx, |v, cx| {
-                        v.rows.insert(0, Row { key: "cw".into(), title: "continue watching".into(), items: metas, extra });
+                        let spec = views_catalog::Spec { title: "continue watching".into(), fixed: Some(metas.clone()), ..Default::default() };
+                        v.rows.insert(0, Row { key: "cw".into(), title: "continue watching".into(), items: metas, extra, spec: Some(spec) });
                         cx.notify();
                     });
                 }
@@ -140,7 +143,7 @@ impl Home {
                     if !list.is_empty() {
                         let _ = this.update(cx, |v, cx| {
                             let at = v.rows.iter().position(|r| r.key == "cw").map_or(0, |i| i + 1);
-                            v.rows.insert(at, Row { key: "follow".into(), title: "new from who you follow".into(), items: list, extra: vec![] });
+                            v.rows.insert(at, Row { key: "follow".into(), title: "new from who you follow".into(), spec: Some(views_catalog::Spec { title: "new from who you follow".into(), fixed: Some(list.clone()), ..Default::default() }), items: list, extra: vec![] });
                             cx.notify();
                         });
                     }
@@ -226,7 +229,8 @@ impl Home {
                     let key = cat["key"].as_str().unwrap_or("").to_string();
                     let title = cat["name"].as_str().unwrap_or("").to_lowercase();
                     let items = api::call::<Vec<Meta>>("catalog_fetch", json!({ "catalog": cat, "extra": extra })).await.unwrap_or_default();
-                    Row { key, title, items, extra: vec![] }
+                    let spec = views_catalog::Spec { title: title.clone(), catalog: cat, extra, ..Default::default() };
+                    Row { key, title, items, extra: vec![], spec: Some(spec) }
                 })
                 .collect();
             let rows = futures::future::join_all(tasks).await;
@@ -415,7 +419,7 @@ impl Render for Home {
                     .flex()
                     .flex_col()
                     .gap(px(12.))
-                    .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text()).child(r.title.clone()))
+                    .child(row_head(&r.key, &r.title, r.spec.clone()))
                     .child(crate::ui::rows::scroller(SharedString::from(format!("row-{}", r.key)), div()
                             .id(SharedString::from(format!("row-{}", r.key)))
                             .overflow_x_scroll()
@@ -450,7 +454,7 @@ impl Render for Home {
                 }
                 .to_string();
                 let name = c["name"].as_str().unwrap_or("").to_lowercase();
-                let spec = views_catalog::Spec { title: name.clone(), service: None, catalog: c.clone(), genre: None };
+                let spec = views_catalog::Spec { title: name.clone(), service: None, catalog: c.clone(), genre: None, ..Default::default() };
                 div()
                     .id(("browse", i))
                     .flex_none()
@@ -469,7 +473,7 @@ impl Render for Home {
                     .child(div().text_size(px(18.)).font_weight(FontWeight::BLACK).child(name))
             });
             let genres = self.genres.1.iter().enumerate().map(|(i, gname)| {
-                let spec = views_catalog::Spec { title: self.genres.0.as_ref().and_then(|c| c["name"].as_str()).unwrap_or("films").to_string(), service: None, catalog: self.genres.0.clone().unwrap_or_default(), genre: Some(gname.clone()) };
+                let spec = views_catalog::Spec { title: self.genres.0.as_ref().and_then(|c| c["name"].as_str()).unwrap_or("films").to_string(), service: None, catalog: self.genres.0.clone().unwrap_or_default(), genre: Some(gname.clone()), ..Default::default() };
                 div()
                     .id(("genre", i))
                     .flex_none()
@@ -528,7 +532,7 @@ impl Render for Home {
                     .gap(px(12.))
                     .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).child("services"))
                     .child(crate::ui::rows::scroller("services", div().id("services").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(self.services.iter().map(|(id, name, logo)| {
-                        let spec = views_catalog::Spec { title: name.clone(), service: Some((*id, logo.clone())), catalog: Value::Null, genre: None };
+                        let spec = views_catalog::Spec { title: name.clone(), service: Some((*id, logo.clone())), catalog: Value::Null, genre: None, ..Default::default() };
                         div()
                             .id(SharedString::from(format!("svc-{id}")))
                             .flex_none()
@@ -552,4 +556,37 @@ impl Render for Home {
         let _ = cx;
         page.child(below)
     }
+}
+
+/// A row's title; with somewhere to go it opens the whole list, and a little
+/// › slides in beside it on hover.
+fn row_head(key: &str, title: &str, spec: Option<views_catalog::Spec>) -> gpui::AnyElement {
+    let t = div().text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text()).child(title.to_string());
+    let Some(spec) = spec else {
+        return div().px(px(theme::GUTTER)).child(t).into_any_element();
+    };
+    let group = SharedString::from(format!("rh-{key}"));
+    div()
+        .px(px(theme::GUTTER))
+        .flex()
+        .child(
+            div()
+                .id(SharedString::from(format!("rhead-{key}")))
+                .group(group.clone())
+                .flex()
+                .items_center()
+                .gap(px(6.))
+                .cursor_pointer()
+                .on_click(move |_, _, cx| Nav::go(crate::Route::Catalog(spec.clone()), cx))
+                .child(t)
+                .child(
+                    div()
+                        .opacity(0.)
+                        .ml(px(-6.))
+                        .text_color(theme::label2())
+                        .group_hover(group, |s| s.opacity(1.).ml(px(0.)))
+                        .child(crate::ui::icon("chevron", 16.)),
+                ),
+        )
+        .into_any_element()
 }

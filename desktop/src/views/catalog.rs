@@ -7,13 +7,17 @@ use crate::Nav;
 use gpui::{div, img, prelude::*, px, Context, FontWeight, ObjectFit, ScrollHandle, SharedString, Window};
 use serde_json::{json, Value};
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub struct Spec {
     pub title: String,
     /// a streaming service (TMDB provider id + logo): films/shows switch
     pub service: Option<(i64, Option<String>)>,
     pub catalog: Value,
     pub genre: Option<String>,
+    /// more of the catalog's own extra (a home row's genre etc.)
+    pub extra: Vec<(String, String)>,
+    /// a row that isn't a catalog (continue watching, who you follow): its items as they are
+    pub fixed: Option<Vec<Meta>>,
 }
 
 pub fn service_catalog(id: i64, kind: &str, name: &str) -> Value {
@@ -63,13 +67,18 @@ impl Catalog {
             self.more = true;
             self.loading = false;
         }
+        if let Some(f) = &self.spec.fixed {
+            self.items = f.clone();
+            self.more = false;
+            return;
+        }
         if self.loading || !self.more {
             return;
         }
         self.loading = true;
         let my = self.seq;
         let cat = self.cat();
-        let mut extra: Vec<(String, String)> = vec![];
+        let mut extra: Vec<(String, String)> = self.spec.extra.clone();
         if let Some(g) = &self.spec.genre {
             extra.push(("genre".into(), g.clone()));
         }
