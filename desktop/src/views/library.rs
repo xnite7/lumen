@@ -4,8 +4,9 @@
 use crate::api::{self, Meta};
 use crate::theme;
 use crate::ui::card;
+use crate::ui::input::{Submitted, TextInput};
 use crate::Nav;
-use gpui::{div, prelude::*, px, Context, FontWeight, ScrollHandle, SharedString, Window};
+use gpui::{div, prelude::*, px, Context, Entity, FontWeight, ScrollHandle, SharedString, Window};
 use serde_json::{json, Value};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -29,6 +30,8 @@ pub struct Library {
     lists: Vec<(String, String, Vec<Meta>)>,
     open_list: Option<usize>,
     loaded: bool,
+    new_name: Entity<TextInput>,
+    rename: Entity<TextInput>,
     scroll: ScrollHandle,
 }
 
@@ -38,7 +41,30 @@ fn metas(v: &Value) -> Vec<Meta> {
 
 impl Library {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let me = Self { tab: Tab::Plan, kind: "all", plan: vec![], watching: vec![], completed: vec![], favs: vec![], lists: vec![], open_list: None, loaded: false, scroll: ScrollHandle::new() };
+        let new_name = cx.new(|cx| TextInput::new("name it, press enter", cx));
+        cx.subscribe(&new_name, |_, i, _: &Submitted, cx| {
+            let n = i.read(cx).content.clone();
+            if crate::views::addto::new_list(&n, None).is_some() {
+                i.update(cx, |i, cx| i.set_text("", cx));
+                Self::load(cx);
+            }
+        })
+        .detach();
+        let rename = cx.new(|cx| TextInput::new("rename…", cx));
+        cx.subscribe(&rename, |l: &mut Self, i, _: &Submitted, cx| {
+            let n: String = i.read(cx).content.trim().chars().take(60).collect();
+            if let (Some(k), false) = (l.open_list, n.is_empty()) {
+                let mut all = crate::views::addto::load();
+                if let Some(x) = all.get_mut(k) {
+                    x["name"] = json!(n);
+                    crate::views::addto::save(&all);
+                }
+                i.update(cx, |i, cx| i.set_text("", cx));
+                Self::load(cx);
+            }
+        })
+        .detach();
+        let me = Self { tab: Tab::Plan, kind: "all", plan: vec![], watching: vec![], completed: vec![], favs: vec![], lists: vec![], open_list: None, loaded: false, new_name, rename, scroll: ScrollHandle::new() };
         Self::load(cx);
         me
     }
@@ -189,20 +215,57 @@ impl Render for Library {
                             .child(div().text_size(px(16.)).font_weight(FontWeight::BOLD).child(name.clone()))
                             .child(div().text_size(px(13.)).text_color(theme::label3()).child(format!("{} titles", items.len())))
                     });
-                    page = page.child(div().flex().flex_wrap().gap(px(14.)).children(tiles));
-                    if self.lists.is_empty() && self.loaded {
-                        page = page.child(div().text_color(theme::label2()).child("no lists yet. the + on any title makes one."));
-                    }
+                    let new_tile = div()
+                        .w(px(w))
+                        .flex()
+                        .flex_col()
+                        .gap(px(8.))
+                        .child(
+                            div()
+                                .w(px(w - 20.))
+                                .h(px(w * 1.5 - 20.))
+                                .rounded(px(10.))
+                                .border_2()
+                                .border_dashed()
+                                .border_color(theme::white(0.2))
+                                .flex()
+                                .flex_col()
+                                .items_center()
+                                .justify_center()
+                                .gap(px(12.))
+                                .px(px(12.))
+                                .child(crate::ui::icon("plus", 30.))
+                                .child(div().w_full().h(px(40.)).px(px(10.)).flex().items_center().rounded(px(10.)).bg(theme::white(0.08)).text_size(px(14.)).child(self.new_name.clone())),
+                        )
+                        .child(div().text_size(px(16.)).font_weight(FontWeight::BOLD).child("new list"));
+                    page = page.child(div().flex().flex_wrap().gap(px(14.)).child(new_tile).children(tiles));
                     return page.child(div().h(px(60.)));
                 }
             },
         };
         if let (Tab::Lists, Some(i)) = (self.tab, self.open_list) {
             if let Some((_, name, _)) = self.lists.get(i) {
-                page = page.child(div().flex().items_center().gap(px(12.)).child(chip("lists-back".into(), "← lists", false).on_click(cx.listener(|l, _, _, cx| {
-                    l.open_list = None;
-                    cx.notify();
-                }))).child(div().text_size(px(22.)).font_weight(FontWeight::BLACK).child(name.clone())));
+                page = page.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(12.))
+                        .child(chip("lists-back".into(), "← lists", false).on_click(cx.listener(|l, _, _, cx| {
+                            l.open_list = None;
+                            cx.notify();
+                        })))
+                        .child(div().text_size(px(22.)).font_weight(FontWeight::BLACK).child(name.clone()))
+                        .child(div().w(px(240.)).h(px(38.)).px(px(12.)).flex().items_center().rounded_full().bg(theme::white(0.08)).text_size(px(14.)).child(self.rename.clone()))
+                        .child(chip("list-del".into(), "delete list", false).on_click(cx.listener(move |l, _, _, cx| {
+                            let mut all = crate::views::addto::load();
+                            if i < all.len() {
+                                all.remove(i);
+                                crate::views::addto::save(&all);
+                            }
+                            l.open_list = None;
+                            Self::load(cx);
+                        }))),
+                );
             }
         }
         let list: Vec<Meta> = list.into_iter().filter(|m| self.kind == "all" || m.kind == self.kind).collect();

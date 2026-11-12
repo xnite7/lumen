@@ -100,18 +100,13 @@ impl Nav {
     pub fn play_episode(m: &Meta, video_id: String, cx: &mut App) {
         playback::quick_play(m.clone(), Some(video_id), None, cx);
     }
+    /// the + on a title: My List, your lists, or a new one
     pub fn add(m: &Meta, cx: &mut App) {
-        let meta = serde_json::to_value(m).unwrap_or_default();
-        let name = m.name.clone();
-        cx.spawn(async move |cx| {
-            let r = api::call::<serde_json::Value>("library_add", json!({ "meta": meta })).await;
-            let msg = match r {
-                Ok(_) => format!("added {name} to My List"),
-                Err(e) => e,
-            };
-            let _ = cx.update(|cx| Nav::toast(msg, cx));
-        })
-        .detach();
+        if let Some(r) = Self::root(cx) {
+            let a = r.read(cx).addto.clone();
+            let m = m.clone();
+            a.update(cx, |a, cx| a.open(m, cx));
+        }
     }
     /// open "throw a watch party" for a title
     pub fn plan_party(m: &Meta, cx: &mut App) {
@@ -170,6 +165,7 @@ pub struct Root {
     invite: Entity<views::invite::Invite>,
     pub planner: Entity<views::planner::Planner>,
     pub wrapped: Entity<views::wrapped::Wrapped>,
+    pub addto: Entity<views::addto::AddTo>,
     me: serde_json::Value,
     focus: gpui::FocusHandle,
     last_size: gpui::Size<gpui::Pixels>,
@@ -569,6 +565,7 @@ impl Render for Root {
             .when(playing, |d| d.child(window_controls()))
             .child(self.together_cards(cx))
             .when(!playing && self.route != Route::SignIn, |d| d.child(self.planner.clone()).child(self.invite.clone()))
+            .when(self.addto.read(cx).meta.is_some(), |d| d.child(self.addto.clone()))
             .when(self.wrapped.read(cx).open, |d| d.child(self.wrapped.clone()))
             .when(mini::is_on(), |d| d.child(self.mini_bar(cx)))
             .children(self.toast.clone().map(|t| {
@@ -656,6 +653,8 @@ fn main() {
                     let root = cx.new(|cx| {
                         cx.observe(&together::get(cx), |_, _, cx| cx.notify()).detach();
                         cx.observe(&playback::get(cx), |_, _, cx| cx.notify()).detach();
+                        let addto = cx.new(views::addto::AddTo::new);
+                        cx.observe(&addto, |_, _, cx| cx.notify()).detach();
                         // the mini player follows the window around
                         cx.observe_window_bounds(window, |_, window, _| mini::fit(window.scale_factor())).detach();
                         // a click on the mini picture: full size again
@@ -713,6 +712,7 @@ fn main() {
                             invite: cx.new(views::invite::Invite::new),
                             planner: cx.new(views::planner::Planner::new),
                             wrapped: cx.new(views::wrapped::Wrapped::new),
+                            addto,
                             me: me.clone(),
                             focus,
                             last_size: gpui::Size::default(),

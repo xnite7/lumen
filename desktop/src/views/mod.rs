@@ -14,6 +14,7 @@ pub mod search;
 pub mod player;
 pub mod catalog;
 pub mod vibe;
+pub mod addto;
 pub mod reactions;
 pub mod detail;
 
