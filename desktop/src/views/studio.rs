@@ -62,10 +62,10 @@ impl Render for Studio {
             .flex_col()
             .gap(px(20.))
             .child(
-                div().flex_none().h(px(110.)).flex().items_center().child(match d["logo"].as_str() {
+                div().flex_none().h(px(110.)).flex().items_center().gap(px(20.)).child(match d["logo"].as_str() {
                     Some(u) => div().px(px(22.)).py(px(16.)).rounded(px(18.)).bg(gpui::rgb(0xf4eaf0)).child(img(u.to_string()).h(px(70.)).max_w(px(360.)).object_fit(ObjectFit::Contain)).into_any_element(),
                     None => div().text_size(px(48.)).font_weight(FontWeight::BLACK).child(d["name"].as_str().unwrap_or(&self.name).to_string()).into_any_element(),
-                }),
+                }).child(crate::ui::follow_btn("studio", self.id, d["name"].as_str().unwrap_or(&self.name).to_string(), d["logo"].as_str().map(String::from))),
             )
             .children(d["description"].as_str().map(|t| div().flex_none().max_w(px(760.)).text_size(px(16.)).text_color(theme::label2()).child(t.to_string())))
             .child(
