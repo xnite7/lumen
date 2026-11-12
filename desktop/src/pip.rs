@@ -51,8 +51,9 @@ pub fn toggle(cx: &mut gpui::App) {
     let on = !is_on();
     ON.store(on, Ordering::Relaxed);
     #[cfg(target_os = "windows")]
-    if let Some(h) = couch::state::get().core.host.main_window() {
-        imp::set(h, on);
+    match crate::mini::main_hwnd() {
+        0 => {}
+        h => imp::set(h, on),
     }
     let _ = cx;
 }

@@ -11,6 +11,7 @@ mod playback;
 mod together;
 mod update;
 mod theme;
+mod mini;
 mod ui;
 mod views;
 
@@ -85,6 +86,10 @@ impl Nav {
                 cx.notify();
             });
         }
+    }
+    /// the mini player, full size again
+    pub fn expand(cx: &mut App) {
+        Self::go(Route::Player, cx);
     }
     pub fn detail(m: &Meta, cx: &mut App) {
         Self::go(Route::Detail(m.clone()), cx);
@@ -307,7 +312,6 @@ impl Root {
                     } else if window.is_fullscreen() {
                         window.toggle_fullscreen();
                     } else {
-                        pb.update(cx, |p, cx| p.close(cx));
                         Nav::back(cx);
                     }
                 }
@@ -323,6 +327,49 @@ impl Root {
 }
 
 impl Root {
+    /// over the mini picture: what's playing, play/pause, full size, stop
+    fn mini_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let pb = playback::get(cx);
+        let p = pb.read(cx);
+        let title = p.meta.as_ref().map(|m| m.name.clone()).unwrap_or_default();
+        let paused = p.state.paused;
+        let frac = if p.state.duration > 0. { (p.state.pos / p.state.duration).clamp(0., 1.) as f32 } else { 0. };
+        let b = |id: &'static str, ic: gpui::Svg| {
+            div().id(id).size(px(34.)).flex_none().rounded_full().flex().items_center().justify_center().cursor_pointer().hover(|s| s.bg(theme::white(0.16))).child(ic)
+        };
+        let (p1, p2) = (pb.clone(), pb.clone());
+        div()
+            .absolute()
+            .right(px(mini::M))
+            .bottom(px(mini::M + mini::H + 8.))
+            .w(px(mini::W))
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(
+                div()
+                    .h(px(44.))
+                    .px(px(8.))
+                    .flex()
+                    .items_center()
+                    .gap(px(4.))
+                    .rounded(px(14.))
+                    .bg(theme::black(0.82))
+                    .border_1()
+                    .border_color(theme::white(0.1))
+                    .child(div().flex_1().min_w_0().px(px(6.)).text_size(px(14.)).font_weight(FontWeight::BOLD).text_ellipsis().line_clamp(1).child(title))
+                    .child(b("mini-play", if paused { ui::icon_fill("play", 20.) } else { ui::icon_fill("pause", 20.) }).on_click(move |_, _, cx| {
+                        let paused = p1.read(cx).state.paused;
+                        if views::player::may(if paused { "play" } else { "pause" }, None, cx) {
+                            p1.read(cx).cmd("pause", json!({ "value": !paused }));
+                        }
+                    }))
+                    .child(b("mini-big", ui::icon("expand", 18.)).on_click(|_, _, cx| Nav::expand(cx)))
+                    .child(b("mini-close", ui::icon("close", 18.)).on_click(move |_, _, cx| p2.update(cx, |p, cx| p.close(cx)))),
+            )
+            .child(div().h(px(3.)).mx(px(4.)).rounded_full().bg(theme::white(0.2)).child(div().h_full().rounded_full().w(px((mini::W - 8.) * frac)).bg(theme::neon())))
+    }
+
     /// people asking to join my couch; my own ask while it waits
     fn together_cards(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let t = together::get(cx);
@@ -436,8 +483,12 @@ impl Render for Root {
         let size = window.viewport_size();
         if size != self.last_size {
             self.last_size = size;
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            couch::player::refit_video(couch::state::get().core.host.main_window());
+            mini::fit(window.scale_factor());
+        }
+        // the film keeps playing in the corner while you browse
+        let want_mini = playback::get(cx).read(cx).open && self.route != Route::Player && !pip::is_on();
+        if want_mini != mini::is_on() {
+            mini::set(want_mini, window.scale_factor());
         }
         let playing = self.route == Route::Player;
         let page = match &self.route {
@@ -519,6 +570,7 @@ impl Render for Root {
             .child(self.together_cards(cx))
             .when(!playing && self.route != Route::SignIn, |d| d.child(self.planner.clone()).child(self.invite.clone()))
             .when(self.wrapped.read(cx).open, |d| d.child(self.wrapped.clone()))
+            .when(mini::is_on(), |d| d.child(self.mini_bar(cx)))
             .children(self.toast.clone().map(|t| {
                 div().absolute().bottom(px(28.)).left_0().w_full().flex().justify_center().child(
                     div()
@@ -595,6 +647,7 @@ fn main() {
                         if let Ok(h) = HasWindowHandle::window_handle(window) {
                             if let RawWindowHandle::Win32(w) = h.as_raw() {
                                 host.hwnd.store(w.hwnd.get(), std::sync::atomic::Ordering::Relaxed);
+                                mini::init(w.hwnd.get());
                             }
                         }
                     }
@@ -602,6 +655,19 @@ fn main() {
                     let mark = Arc::new(Image::from_bytes(ImageFormat::Png, assets::bytes("brand/couch-mark.png").unwrap_or_default().to_vec()));
                     let root = cx.new(|cx| {
                         cx.observe(&together::get(cx), |_, _, cx| cx.notify()).detach();
+                        cx.observe(&playback::get(cx), |_, _, cx| cx.notify()).detach();
+                        // the mini player follows the window around
+                        cx.observe_window_bounds(window, |_, window, _| mini::fit(window.scale_factor())).detach();
+                        // a click on the mini picture: full size again
+                        cx.spawn(async move |this, cx| loop {
+                            gpui::Timer::after(std::time::Duration::from_millis(150)).await;
+                            if mini::CLICKED.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                                if this.update(cx, |_, cx| Nav::expand(cx)).is_err() {
+                                    break;
+                                }
+                            }
+                        })
+                        .detach();
                         let focus = cx.focus_handle();
                         window.focus(&focus);
                         // dev: start on a page (COUCH_START=detail:series:tt0903747)

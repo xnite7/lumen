@@ -535,7 +535,8 @@ impl Render for PlayerView {
                             .gap(px(12.))
                             .child(
                                 round_btn("pl-back", icon("back", 26.), 48.).on_click(move |_, _, cx| {
-                                    pb.update(cx, |p, cx| p.close(cx));
+                                    // back keeps the film playing in the corner
+                                    let _ = &pb;
                                     crate::Nav::back(cx);
                                 }),
                             )

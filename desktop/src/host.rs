@@ -45,6 +45,11 @@ impl Host for GpuiHost {
         self.tx.unbounded_send(Msg::OpenUrl(url.to_string())).map_err(|e| e.to_string())
     }
     fn main_window(&self) -> Option<isize> {
+        // mpv draws into the mini player's host window once it exists
+        let v = crate::mini::video_hwnd();
+        if v != 0 {
+            return Some(v);
+        }
         match self.hwnd.load(Ordering::Relaxed) {
             0 => None,
             h => Some(h),
