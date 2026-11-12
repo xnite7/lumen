@@ -156,7 +156,8 @@ impl Render for Library {
         let vw = f32::from(window.viewport_size().width);
         let cols = (((vw - g * 2.) + 14.) / (176. + 14.)).floor().max(2.);
         let w = ((vw - g * 2.) - (cols - 1.) * 14.) / cols;
-        let mut page = div().id("library").size_full().overflow_y_scroll().track_scroll(&self.scroll).bg(theme::bg()).pt(px(96.)).px(px(g)).flex().flex_col().gap(px(22.));
+        let mut page = div().id("library").size_full().overflow_y_scroll().track_scroll(&self.scroll)
+            .child(crate::ui::smooth::wheel(&self.scroll, "library")).bg(theme::bg()).pt(px(96.)).px(px(g)).flex().flex_col().gap(px(22.));
         page = page
             .child(div().flex_none().text_size(px(40.)).font_weight(FontWeight::BLACK).child("my lists"))
             .child(div().flex_none().flex().gap(px(8.)).flex_wrap().children(TABS.iter().map(|(t, label)| {

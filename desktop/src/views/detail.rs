@@ -433,7 +433,8 @@ impl Render for Detail {
                     .when(seen_it, |d| d.child(self.stars(&m, cx))),
             );
 
-        let mut page = div().id("detail").size_full().overflow_y_scroll().track_scroll(&self.scroll).bg(theme::bg()).child(hero);
+        let mut page = div().id("detail").size_full().overflow_y_scroll().track_scroll(&self.scroll)
+            .child(crate::ui::smooth::wheel(&self.scroll, "detail")).bg(theme::bg()).child(hero);
 
         // ---------------------------------------------------------- episodes
         if let Some(f) = &full {

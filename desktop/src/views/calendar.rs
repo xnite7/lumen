@@ -92,6 +92,7 @@ impl Render for Calendar {
             .size_full()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
+            .child(crate::ui::smooth::wheel(&self.scroll, "calendar"))
             .bg(theme::bg())
             .pt(px(96.))
             .px(px(g))

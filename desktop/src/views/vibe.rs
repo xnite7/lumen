@@ -94,6 +94,7 @@ impl Render for Vibe {
             .size_full()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
+            .child(crate::ui::smooth::wheel(&self.scroll, "vibe"))
             .bg(theme::bg())
             .pt(px(100.))
             .px(px(g))

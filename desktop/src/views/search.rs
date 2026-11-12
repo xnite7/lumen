@@ -101,7 +101,8 @@ impl Render for Search {
         let cols = (((vw - g * 2.) + 14.) / (176. + 14.)).floor().max(2.);
         let w = ((vw - g * 2.) - (cols - 1.) * 14.) / cols;
         let q = self.input.read(cx).content.to_string();
-        let mut page = div().id("search").size_full().overflow_y_scroll().track_scroll(&self.scroll).bg(theme::bg()).pt(px(100.)).px(px(g)).flex().flex_col().gap(px(26.));
+        let mut page = div().id("search").size_full().overflow_y_scroll().track_scroll(&self.scroll)
+            .child(crate::ui::smooth::wheel(&self.scroll, "search")).bg(theme::bg()).pt(px(100.)).px(px(g)).flex().flex_col().gap(px(26.));
         page = page.child(
             div()
                 .flex_none()

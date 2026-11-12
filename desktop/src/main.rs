@@ -505,6 +505,8 @@ impl Render for Root {
             self.last_size = size;
             mini::fit(window.scale_factor());
         }
+        // sheets and menus over the page keep the wheel for themselves
+        ui::smooth::set_overlay(self.menu.read(cx).open.is_some() || self.addto.read(cx).meta.is_some() || self.wrapped.read(cx).open || self.planner.read(cx).meta.is_some());
         // the film keeps playing in the corner while you browse
         let want_mini = playback::get(cx).read(cx).open && self.route != Route::Player && !pip::is_on();
         if want_mini != mini::is_on() {
@@ -611,6 +613,13 @@ impl Render for Root {
 }
 
 fn main() {
+    // Sharp on scaled screens (125%, 150%…): without this Windows draws couch
+    // at 100% and stretches the picture, which makes text and icons rough.
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
+        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    }
     let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,librqbit=warn,tracing=warn,naga=warn,blade_graphics=warn,cosmic_text=warn")).try_init();
 
     // the same folders as the webview app: settings, addons, library and

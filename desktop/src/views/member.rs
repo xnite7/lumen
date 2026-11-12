@@ -148,6 +148,7 @@ impl Render for Member {
             .size_full()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
+            .child(crate::ui::smooth::wheel(&self.scroll, "member"))
             .bg(theme::bg())
             .relative()
             // their colour, glowing in from the top
