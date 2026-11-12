@@ -691,7 +691,9 @@ fn main() {
                 WindowOptions {
                     window_bounds: Some(WindowBounds::Windowed(bounds)),
                     titlebar: Some(TitlebarOptions { title: Some("midnite™ couch".into()), appears_transparent: true, traffic_light_position: None }),
-                    window_background: WindowBackgroundAppearance::Opaque,
+                    // see-through: mpv (the film, clips) draws in windows under the UI, and
+                    // the new GPUI fills an "opaque" window with white first
+                    window_background: WindowBackgroundAppearance::Transparent,
                     window_min_size: Some(size(px(900.), px(560.))),
                     app_id: Some("com.midnite.couch".into()),
                     ..Default::default()
