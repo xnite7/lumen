@@ -1450,6 +1450,7 @@ dependencies = [
  "chrono",
  "couch",
  "dirs",
+ "embed-resource",
  "env_logger",
  "futures",
  "gpui",

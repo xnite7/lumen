@@ -10,7 +10,8 @@ path = "src/main.rs"
 
 [dependencies]
 couch = { package = "couch", path = "../src-tauri", default-features = false }
-gpui = { git = "https://github.com/zed-industries/zed", tag = "v1.24.2" }
+# couch embeds its own manifest + icon (resources/couch.rc), so not GPUI's
+gpui = { git = "https://github.com/zed-industries/zed", tag = "v1.24.2", default-features = false, features = ["font-kit", "wayland", "x11"] }
 gpui_platform = { git = "https://github.com/zed-industries/zed", tag = "v1.24.2" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -45,3 +46,6 @@ xattr = { path = "patches/xattr" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_System_LibraryLoader", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi"] }
+
+[build-dependencies]
+embed-resource = "3"

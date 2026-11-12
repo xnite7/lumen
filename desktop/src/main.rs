@@ -598,6 +598,7 @@ impl Render for Root {
             .when(self.addto.read(cx).meta.is_some(), |d| d.child(self.addto.clone()))
             .when(self.wrapped.read(cx).open, |d| d.child(self.wrapped.clone()))
             .when(mini::is_on(), |d| d.child(self.mini_bar(cx)))
+            .children(if playing { None } else { update::card(cx) })
             .children(self.toast.clone().map(|t| {
                 div().absolute().bottom(px(28.)).left_0().w_full().flex().justify_center().child(
                     div()

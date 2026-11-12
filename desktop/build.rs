@@ -24,6 +24,11 @@ fn main() {
     s.push(']');
     std::fs::write(std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap()).join("assets.rs"), s).unwrap();
     println!("cargo:rerun-if-changed=assets");
+    // the icon (window + taskbar) and the manifest, baked into couch.exe
+    if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() == "windows" {
+        println!("cargo:rerun-if-changed=resources");
+        let _ = embed_resource::compile("resources/couch.rc", embed_resource::NONE);
+    }
     // libmpv on Windows lives next to the engine (src-tauri/mpv)
     if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() == "windows" {
         let dir = std::env::var("MPV_LIB_DIR")

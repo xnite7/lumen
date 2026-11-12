@@ -1,0 +1,3 @@
+// couch's icon (id 1: GPUI uses it for the window and the taskbar) and manifest
+1 ICON "couch.ico"
+1 24 "couch.manifest"
