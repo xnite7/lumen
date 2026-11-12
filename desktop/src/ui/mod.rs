@@ -59,6 +59,23 @@ pub fn follow_btn(kind: &'static str, id: u64, name: String, img: Option<String>
         })
 }
 
+static SCALE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(100);
+
+/// The window's scale factor (set every frame).
+pub fn scale() -> f32 {
+    SCALE.load(std::sync::atomic::Ordering::Relaxed) as f32 / 100.
+}
+static VIEW_W: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1600);
+/// The window's width in logical pixels (set every frame, in steps of 320 so a
+/// resize doesn't refetch every picture).
+pub fn view_w() -> f32 {
+    VIEW_W.load(std::sync::atomic::Ordering::Relaxed) as f32
+}
+pub fn set_scale(s: f32, w: f32) {
+    SCALE.store((s * 100.).round() as u32, std::sync::atomic::Ordering::Relaxed);
+    VIEW_W.store(((w / 320.).ceil() * 320.) as u32, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// A studio logo, readable on a dark picture: dark logos become white.
 pub fn readable_logo(bytes: &[u8]) -> Option<std::sync::Arc<gpui::Image>> {
     let mut im = image::load_from_memory(bytes).ok()?.to_rgba8();

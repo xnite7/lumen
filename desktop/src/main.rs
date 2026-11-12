@@ -553,6 +553,7 @@ fn window_controls() -> impl IntoElement {
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         ui::video::begin_frame();
+        ui::set_scale(window.scale_factor(), f32::from(window.viewport_size().width));
         // nothing has the keyboard (the box that had it is gone): couch takes it,
         // so Esc and the other keys keep working
         if window.focused(cx).is_none() {
@@ -823,6 +824,10 @@ fn main() {
             }
         }
         theme::apply_text_mode(cx);
+        // smooth text: no DirectWrite contrast boost, so glyph edges fade like a browser's
+        if theme::text_mode() == "smooth" {
+            unsafe { std::env::set_var("COUCH_TEXT_CONTRAST", "0") };
+        }
 
         let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
         let window = cx

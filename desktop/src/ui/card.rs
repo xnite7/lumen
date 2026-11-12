@@ -36,8 +36,8 @@ pub fn card_with(
     let clip = preview.clone().flatten();
     // the logo steps back once the clip has played 2 s, and comes back on hover of the picture
     let logo_a = clip.as_ref().map_or(1., |c| 1. - ((c.2 - 2.) / 0.6).clamp(0., 1.));
-    let art = m.background.clone().or(m.poster.clone()).map(|u| sized(&u, "w780"));
-    let logo = m.logo.clone().map(|u| sized(&u, "w500"));
+    let art = m.background.clone().or(m.poster.clone()).map(|u| crate::net::fit(&sized(&u, "w780"), W));
+    let logo = m.logo.clone().map(|u| crate::net::fit(&sized(&u, "w500"), 170.));
     let el = div()
         .id(id)
         .flex_none()
@@ -114,7 +114,7 @@ fn title_text(name: &str) -> impl IntoElement {
 
 /// A portrait poster (search results, lists).
 pub fn poster(id: SharedString, m: &Meta, w: f32, on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> AnyElement {
-    let art = m.poster.clone().map(|u| sized(&u, "w342"));
+    let art = m.poster.clone().map(|u| crate::net::fit(&sized(&u, "w342"), w));
     let name = m.name.clone();
     let menu_meta = m.clone();
     div()

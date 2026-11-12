@@ -5,9 +5,9 @@ use gpui::{rgb, rgba, Hsla, Rgba};
 pub const FONT: &str = "Satoshi";
 
 /// How text is drawn: "sharp" (ClearType, colour fringes on some screens),
-/// "smooth" (grayscale) or "auto" (what Windows is set to).
+/// "smooth" (grayscale, soft edges; the default) or "auto" (what Windows is set to).
 pub fn text_mode() -> String {
-    couch::state::try_get().and_then(|s| s.core.db.get::<String>("gpui_text_mode")).unwrap_or_else(|| "auto".into())
+    couch::state::try_get().and_then(|s| s.core.db.get::<String>("gpui_text_mode")).unwrap_or_else(|| "smooth".into())
 }
 pub fn apply_text_mode(cx: &mut gpui::App) {
     cx.set_text_rendering_mode(match text_mode().as_str() {

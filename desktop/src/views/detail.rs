@@ -329,8 +329,8 @@ impl Render for Detail {
         let vh = window.viewport_size().height;
         let m = self.meta();
         let g = theme::GUTTER;
-        let art = m.background.clone().or(m.poster.clone()).map(|u| sized(&u, "original"));
-        let logo = m.logo.clone().map(|u| sized(&u, "large"));
+        let art = m.background.clone().or(m.poster.clone()).map(|u| crate::net::fit(&sized(&u, "original"), crate::ui::view_w()));
+        let logo = m.logo.clone().map(|u| crate::net::fit(&sized(&u, "large"), 480.));
         let ex = self.extra.clone().unwrap_or(Value::Null);
         let full = self.full.clone();
 
@@ -709,8 +709,8 @@ impl Render for Detail {
                                     let future = !released(v, &today);
                                     let p = self.progress(Some(&vid));
                                     let imdb = api::imdb_episode(&vid);
-                                    let thumb = v["thumbnail"].as_str().map(|s| s.to_string()).or(imdb.clone()).or(back_art.clone());
-                                    let alt = imdb.or(back_art.clone());
+                                    let thumb = v["thumbnail"].as_str().map(|s| s.to_string()).or(imdb.clone()).or(back_art.clone()).map(|u| crate::net::fit(&u, 300.));
+                                    let alt = imdb.or(back_art.clone()).map(|u| crate::net::fit(&u, 300.));
                                     let mm = m.clone();
                                     let vid2 = vid.clone();
                                     let f2 = f.clone();

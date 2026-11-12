@@ -360,7 +360,7 @@ impl Render for Settings {
         // ------------------------------------------------------------- text
         let mode = crate::theme::text_mode();
         page = page.child(heading("text")).child(group().child(
-            line(0).child(label("how text is drawn", "try each — screens differ")).child(div().flex().gap(px(4.)).p(px(3.)).rounded_full().bg(theme::white(0.08)).children([("auto", "auto"), ("sharp", "sharp"), ("smooth", "smooth")].into_iter().map(|(k, l)| {
+            line(0).child(label("how text is drawn", "smooth is softest — its edges settle after a restart")).child(div().flex().gap(px(4.)).p(px(3.)).rounded_full().bg(theme::white(0.08)).children([("auto", "auto"), ("sharp", "sharp"), ("smooth", "smooth")].into_iter().map(|(k, l)| {
                 let on = mode == k;
                 div()
                     .id(SharedString::from(format!("tm-{k}")))
