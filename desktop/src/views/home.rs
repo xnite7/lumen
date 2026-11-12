@@ -27,14 +27,44 @@ pub struct Home {
     /// catalogs to browse, and the genres of one of them
     browse: Vec<Value>,
     genres: (Option<Value>, Vec<String>),
+    /// the crew: who's watching now, and what they've been up to
+    live: Vec<Value>,
+    feed: Vec<Value>,
     scroll: ScrollHandle,
+}
+
+fn ago(at: f64) -> String {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as f64;
+    let s = ((now - at) / 1000.).max(1.) as i64;
+    match s {
+        0..=59 => "just now".into(),
+        60..=3599 => format!("{}m", s / 60),
+        3600..=86399 => format!("{}h", s / 3600),
+        _ => format!("{}d", s / 86400),
+    }
 }
 
 impl Home {
     /// scope: "all" (Home), "series" (Shows) or "movie" (Movies)
     pub fn new(scope: &'static str, cx: &mut Context<Self>) -> Self {
         cx.observe(&crate::ui::video::get(cx), |_, _, cx| cx.notify()).detach();
-        let me = Self { scope, clip: None, hero: None, rows: vec![], services: vec![], browse: vec![], genres: (None, vec![]), scroll: ScrollHandle::new() };
+        let me = Self { scope, clip: None, hero: None, rows: vec![], services: vec![], browse: vec![], genres: (None, vec![]), live: vec![], feed: vec![], scroll: ScrollHandle::new() };
+        if scope == "all" {
+            cx.spawn(async move |this, cx| loop {
+                let crew = api::call::<Value>("crew_list", json!({})).await.unwrap_or_default();
+                let feed = api::call::<Value>("crew_social", json!({ "method": "GET", "path": "/v1/activity", "body": Value::Null })).await.unwrap_or_default();
+                let ok = this.update(cx, |v, cx| {
+                    v.live = crew["members"].as_array().into_iter().flatten().filter(|m| m["watching"]["title"].is_string()).cloned().collect();
+                    v.feed = feed["feed"].as_array().into_iter().flatten().take(24).cloned().collect();
+                    cx.notify();
+                });
+                if ok.is_err() {
+                    break;
+                }
+                gpui::Timer::after(std::time::Duration::from_secs(60)).await;
+            })
+            .detach();
+        }
         cx.spawn(async move |this, cx| {
             // the billboard: one title per visit, the next one each time
             if let Ok(list) = api::call::<Vec<Meta>>("hero_items", json!({})).await {
@@ -266,7 +296,111 @@ impl Render for Home {
         }
         let card_owner = owner.trim_start_matches("card:").to_string();
         let mut below = div().relative().mt(px(-120.)).flex().flex_col().gap(px(34.)).pb(px(80.));
+        let mut crew_rows: Vec<gpui::AnyElement> = vec![];
+        // on the couch: what the crew is watching right now
+        if !self.live.is_empty() {
+            let cards = self.live.iter().enumerate().map(|(i, mb)| {
+                let w = &mb["watching"];
+                let m = Meta {
+                    id: w["metaId"].as_str().unwrap_or("").into(),
+                    kind: w["type"].as_str().unwrap_or("").into(),
+                    name: w["title"].as_str().unwrap_or("").into(),
+                    poster: w["poster"].as_str().map(String::from),
+                    background: w["background"].as_str().map(String::from),
+                    logo: w["logo"].as_str().map(String::from),
+                    ..Default::default()
+                };
+                let frac = match (mb["pos"].as_f64(), mb["duration"].as_f64()) {
+                    (Some(p), Some(d)) if d > 0. => Some((p / d).clamp(0., 1.) as f32),
+                    _ => None,
+                };
+                let who = mb["name"].as_str().unwrap_or("someone").to_string();
+                let sub = [format!("{who} is watching"), w["episode"].as_str().unwrap_or("").to_string()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
+                card::card_with(SharedString::from(format!("live-{i}")), &m, frac, Some(sub), None, |_, _, cx| Nav::go(crate::Route::Couch, cx))
+            });
+            crew_rows.push(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.))
+                    .child(div().px(px(theme::GUTTER)).flex().items_center().gap(px(10.)).child(div().text_size(px(21.)).font_weight(FontWeight::BOLD).child("on the couch")).child(div().size(px(8.)).rounded_full().bg(theme::neon())).child(div().text_size(px(14.)).text_color(theme::label2()).child(format!("{} watching", self.live.len()))))
+                    .child(div().id("row-live").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(cards))
+                    .into_any_element(),
+            );
+        }
+        // the crew's activity: reviews, ratings, finished
+        if !self.feed.is_empty() {
+            let items = self.feed.iter().enumerate().map(|(i, a)| {
+                let t = &a["title"];
+                let m = Meta { id: t["id"].as_str().unwrap_or("").into(), kind: t["type"].as_str().unwrap_or("").into(), name: t["name"].as_str().unwrap_or("").into(), poster: t["poster"].as_str().map(String::from), background: t["background"].as_str().map(String::from), ..Default::default() };
+                let who = a["name"].as_str().unwrap_or("someone").to_string();
+                let wid = a["who"].as_str().unwrap_or("").to_string();
+                let what = match a["kind"].as_str().unwrap_or("") {
+                    "review" => "reviewed",
+                    "rating" => "rated",
+                    "finished" => "finished",
+                    k => k,
+                }
+                .to_string();
+                let rating = a["rating"].as_i64();
+                let text = a["text"].as_str().unwrap_or("").to_string();
+                let when = a["at"].as_f64().map(ago).unwrap_or_default();
+                let mm = m.clone();
+                div()
+                    .id(("feed", i))
+                    .flex_none()
+                    .w(px(320.))
+                    .p(px(12.))
+                    .flex()
+                    .gap(px(12.))
+                    .rounded(px(16.))
+                    .bg(theme::white(0.05))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::white(0.09)))
+                    .on_click(move |_, _, cx| Nav::detail(&mm, cx))
+                    .child(div().w(px(64.)).h(px(96.)).flex_none().rounded(px(8.)).overflow_hidden().bg(theme::surface2()).children(m.poster.as_ref().map(|u| gpui::img(crate::api::sized(u, "w342")).size_full().object_fit(gpui::ObjectFit::Cover))))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap(px(4.))
+                            .child(
+                                div()
+                                    .flex()
+                                    .gap(px(6.))
+                                    .text_size(px(13.))
+                                    .child(div().id(("feed-who", i)).font_weight(FontWeight::BOLD).cursor_pointer().hover(|s| s.underline()).on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
+                                        Nav::go(crate::Route::Member(wid.clone()), cx)
+                                    }).child(who))
+                                    .child(div().text_color(theme::label2()).child(what))
+                                    .child(div().text_color(theme::label3()).child(when)),
+                            )
+                            .child(div().text_size(px(15.)).font_weight(FontWeight::BLACK).line_clamp(1).text_ellipsis().child(m.name.clone()))
+                            .children(rating.map(|r| div().text_size(px(13.)).font_weight(FontWeight::BLACK).text_color(theme::lamp()).child(format!("★ {r}/10"))))
+                            .children((!text.is_empty()).then(|| div().text_size(px(13.)).line_height(px(18.)).text_color(theme::white(0.8)).line_clamp(2).child(crate::ui::emoji::text(&text, 13.)))),
+                    )
+            });
+            crew_rows.push(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(12.))
+                    .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::BOLD).child("the crew lately"))
+                    .child(div().id("row-feed").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(items))
+                    .into_any_element(),
+            );
+        }
+        // after continue watching / who you follow
+        let lead = self.rows.iter().take_while(|r| r.key == "cw" || r.key == "follow").count();
         for (ri, r) in self.rows.iter().enumerate() {
+            if ri == lead {
+                for c in crew_rows.drain(..) {
+                    below = below.child(c);
+                }
+            }
             below = below.child(
                 div()
                     .flex()
@@ -293,6 +427,9 @@ impl Render for Home {
                             })),
                     ),
             );
+        }
+        for c in crew_rows.drain(..) {
+            below = below.child(c);
         }
         // browse: every catalog as a tile, then genres
         if !self.browse.is_empty() {
