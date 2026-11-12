@@ -32,6 +32,7 @@ pub fn card_with(
     on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> AnyElement {
     let hover_meta = m.clone();
+    let menu_meta = m.clone();
     let clip = preview.clone().flatten();
     // the logo steps back once the clip has played 2 s, and comes back on hover of the picture
     let logo_a = clip.as_ref().map_or(1., |c| 1. - ((c.2 - 2.) / 0.6).clamp(0., 1.));
@@ -51,6 +52,10 @@ pub fn card_with(
         .border_color(theme::white(0.0))
         .hover(|s| s.border_color(theme::white(0.55)))
         .on_click(on_click)
+        .on_mouse_down(gpui::MouseButton::Right, move |e, _, cx| {
+            cx.stop_propagation();
+            crate::Nav::menu(&menu_meta, e.position, cx)
+        })
         .when(preview.is_some(), |d| d.on_hover(move |on, _, cx| crate::ui::video::hover(&hover_meta, *on, cx)))
         .children(art.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover)))
         .children(clip.map(|(f, a, _)| img(f).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(a)))
@@ -104,8 +109,13 @@ fn title_text(name: &str) -> impl IntoElement {
 pub fn poster(id: SharedString, m: &Meta, w: f32, on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> AnyElement {
     let art = m.poster.clone().map(|u| sized(&u, "w342"));
     let name = m.name.clone();
+    let menu_meta = m.clone();
     div()
         .id(id)
+        .on_mouse_down(gpui::MouseButton::Right, move |e, _, cx| {
+            cx.stop_propagation();
+            crate::Nav::menu(&menu_meta, e.position, cx)
+        })
         .flex_none()
         .w(px(w))
         .h(px(w * 1.5))

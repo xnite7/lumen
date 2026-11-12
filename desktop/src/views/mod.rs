@@ -15,6 +15,7 @@ pub mod player;
 pub mod catalog;
 pub mod vibe;
 pub mod addto;
+pub mod menu;
 pub mod reactions;
 pub mod detail;
 

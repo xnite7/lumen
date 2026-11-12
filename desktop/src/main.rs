@@ -91,6 +91,14 @@ impl Nav {
     pub fn expand(cx: &mut App) {
         Self::go(Route::Player, cx);
     }
+    /// the right-click menu for a title
+    pub fn menu(m: &Meta, at: gpui::Point<gpui::Pixels>, cx: &mut App) {
+        if let Some(r) = Self::root(cx) {
+            let me = r.read(cx).menu.clone();
+            let m = m.clone();
+            me.update(cx, |me, cx| me.show(m, at, cx));
+        }
+    }
     pub fn detail(m: &Meta, cx: &mut App) {
         Self::go(Route::Detail(m.clone()), cx);
     }
@@ -166,6 +174,7 @@ pub struct Root {
     pub planner: Entity<views::planner::Planner>,
     pub wrapped: Entity<views::wrapped::Wrapped>,
     pub addto: Entity<views::addto::AddTo>,
+    pub menu: Entity<views::menu::Menu>,
     me: serde_json::Value,
     focus: gpui::FocusHandle,
     last_size: gpui::Size<gpui::Pixels>,
@@ -565,6 +574,7 @@ impl Render for Root {
             .when(playing, |d| d.child(window_controls()))
             .child(self.together_cards(cx))
             .when(!playing && self.route != Route::SignIn, |d| d.child(self.planner.clone()).child(self.invite.clone()))
+            .when(self.menu.read(cx).open.is_some(), |d| d.child(self.menu.clone()))
             .when(self.addto.read(cx).meta.is_some(), |d| d.child(self.addto.clone()))
             .when(self.wrapped.read(cx).open, |d| d.child(self.wrapped.clone()))
             .when(mini::is_on(), |d| d.child(self.mini_bar(cx)))
@@ -655,6 +665,8 @@ fn main() {
                         cx.observe(&playback::get(cx), |_, _, cx| cx.notify()).detach();
                         let addto = cx.new(views::addto::AddTo::new);
                         cx.observe(&addto, |_, _, cx| cx.notify()).detach();
+                        let menu = cx.new(views::menu::Menu::new);
+                        cx.observe(&menu, |_, _, cx| cx.notify()).detach();
                         // the mini player follows the window around
                         cx.observe_window_bounds(window, |_, window, _| mini::fit(window.scale_factor())).detach();
                         // a click on the mini picture: full size again
@@ -713,6 +725,7 @@ fn main() {
                             planner: cx.new(views::planner::Planner::new),
                             wrapped: cx.new(views::wrapped::Wrapped::new),
                             addto,
+                            menu,
                             me: me.clone(),
                             focus,
                             last_size: gpui::Size::default(),
