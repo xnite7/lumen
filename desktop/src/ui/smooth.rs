@@ -2,7 +2,7 @@
 //! this catches the wheel over a page first, keeps a target, and glides the
 //! page there over a few frames (like a browser). Up/down over a row of
 //! cards scrolls the page, not the row; sideways still moves the row.
-use gpui::{canvas, point, prelude::*, px, DispatchPhase, ScrollDelta, ScrollHandle, ScrollWheelEvent};
+use gpui::{canvas, fill, point, prelude::*, px, size, Bounds, DispatchPhase, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, ScrollDelta, ScrollHandle, ScrollWheelEvent};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
@@ -14,7 +14,20 @@ thread_local! {
     pub static OVERLAY: Cell<bool> = const { Cell::new(false) };
     /// how far the page on screen is scrolled (the top bar darkens with it)
     pub static SCROLLED: Cell<f32> = const { Cell::new(0.) };
+    /// middle-click free scrolling: which page, where it was clicked, where the pointer is
+    static AUTO: RefCell<Option<Auto>> = const { RefCell::new(None) };
 }
+
+struct Auto {
+    key: &'static str,
+    anchor: Point<Pixels>,
+    mouse: Point<Pixels>,
+    since: std::time::Instant,
+    last: std::time::Instant,
+}
+
+/// pointer this far from the anchor before anything moves
+const DEAD: f32 = 14.;
 
 /// how far the page on screen is scrolled down, in pixels
 pub fn scrolled() -> f32 {
@@ -58,6 +71,65 @@ pub fn wheel(h: &ScrollHandle, key: &'static str) -> impl IntoElement {
                     window.request_animation_frame();
                 }
             }
+            // middle-click free scrolling: the page runs toward the pointer,
+            // faster the further it is from where you clicked
+            let auto = AUTO.with(|a| a.borrow().as_ref().filter(|a| a.key == key).map(|a| (a.anchor, a.mouse, a.last)));
+            if let Some((anchor, mouse, last)) = auto {
+                let now = std::time::Instant::now();
+                let dt = now.duration_since(last).as_secs_f32().clamp(0.0, 0.05);
+                AUTO.with(|a| if let Some(a) = a.borrow_mut().as_mut() { a.last = now });
+                let off = f32::from(mouse.y - anchor.y);
+                let far = (off.abs() - DEAD).max(0.);
+                let v = off.signum() * (far * 5. + far * far * 0.035);
+                if v != 0. {
+                    TARGET.with(|m| m.borrow_mut().remove(key));
+                    let cur = -f32::from(h.offset().y);
+                    h.set_offset(point(h.offset().x, px(-(cur + v * dt).clamp(0., max))));
+                }
+                // the anchor: a soft dot with a ring where you clicked
+                window.paint_quad(fill(Bounds::new(anchor - point(px(15.), px(15.)), size(px(30.), px(30.))), gpui::black().opacity(0.55)).corner_radii(px(15.)));
+                window.paint_quad(gpui::outline(Bounds::new(anchor - point(px(15.), px(15.)), size(px(30.), px(30.))), gpui::white().opacity(0.85), gpui::BorderStyle::Solid).corner_radii(px(15.)));
+                window.paint_quad(fill(Bounds::new(anchor - point(px(3.), px(3.)), size(px(6.), px(6.))), gpui::white()).corner_radii(px(3.)));
+                window.request_animation_frame();
+            }
+            let h3 = h.clone();
+            window.on_mouse_event(move |e: &MouseDownEvent, phase, window, cx| {
+                if phase != DispatchPhase::Capture {
+                    return;
+                }
+                let on = AUTO.with(|a| a.borrow().is_some());
+                if on {
+                    // any click ends it (and does nothing else)
+                    AUTO.with(|a| *a.borrow_mut() = None);
+                    cx.stop_propagation();
+                    window.refresh();
+                    return;
+                }
+                if e.button != MouseButton::Middle || OVERLAY.with(|o| o.get()) || !h3.bounds().contains(&e.position) || f32::from(h3.max_offset().y) <= 0. {
+                    return;
+                }
+                let now = std::time::Instant::now();
+                AUTO.with(|a| *a.borrow_mut() = Some(Auto { key, anchor: e.position, mouse: e.position, since: now, last: now }));
+                cx.stop_propagation();
+                window.refresh();
+            });
+            window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, _| {
+                if phase == DispatchPhase::Capture {
+                    AUTO.with(|a| if let Some(a) = a.borrow_mut().as_mut().filter(|a| a.key == key) { a.mouse = e.position });
+                }
+            });
+            window.on_mouse_event(move |e: &MouseUpEvent, phase, window, cx| {
+                if phase != DispatchPhase::Capture || e.button != MouseButton::Middle {
+                    return;
+                }
+                // held and dragged: letting go ends it; a quick click leaves it on
+                let end = AUTO.with(|a| a.borrow().as_ref().filter(|a| a.key == key).map_or(false, |a| a.since.elapsed().as_millis() > 350 || (f32::from(a.mouse.y - a.anchor.y)).abs() > DEAD));
+                if end {
+                    AUTO.with(|a| *a.borrow_mut() = None);
+                    cx.stop_propagation();
+                    window.refresh();
+                }
+            });
             let h2 = h.clone();
             window.on_mouse_event(move |e: &ScrollWheelEvent, phase, window, cx| {
                 if phase != DispatchPhase::Capture || OVERLAY.with(|o| o.get()) || !h2.bounds().contains(&e.position) {
