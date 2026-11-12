@@ -18,6 +18,25 @@ mod timer;
 mod ui;
 mod views;
 
+static ON_PLAYER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// couch's window to the front (restored if minimised). Call it only when
+/// nothing is mid-update: Windows messages the window synchronously.
+fn bring_to_front() {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{IsIconic, SetForegroundWindow, ShowWindow, SW_RESTORE};
+        let h = windows::Win32::Foundation::HWND(mini::main_hwnd() as *mut _);
+        if h.0.is_null() {
+            return;
+        }
+        if IsIconic(h).as_bool() {
+            let _ = ShowWindow(h, SW_RESTORE);
+        }
+        let _ = SetForegroundWindow(h);
+    }
+}
+
 /// the intro's frames (and how long each shows), decoded off the main thread at launch
 static INTRO: std::sync::OnceLock<Vec<(std::sync::Arc<gpui::RenderImage>, f32)>> = std::sync::OnceLock::new();
 
@@ -81,7 +100,13 @@ impl Nav {
     fn root(cx: &App) -> Option<Entity<Root>> {
         cx.try_global::<Nav>().and_then(|n| n.0.upgrade())
     }
+    // Everything here changes Root, so it happens just after whatever is
+    // running now (which may be Root's own handler or render): never "Root is
+    // already being updated".
     pub fn go(route: Route, cx: &mut App) {
+        cx.defer(move |cx| Self::go_now(route, cx));
+    }
+    fn go_now(route: Route, cx: &mut App) {
         let v = crate::ui::video::get(cx);
         v.update(cx, |v, cx| v.stop_prefix("trailer:", cx));
         if let Some(r) = Self::root(cx) {
@@ -106,16 +131,18 @@ impl Nav {
         }
     }
     pub fn back(cx: &mut App) {
-        if let Some(r) = Self::root(cx) {
-            let v = ui::video::get(cx);
-            let owner = v.read(cx).owner.clone();
-            v.update(cx, |v, cx| v.stop(&owner, cx));
-            r.update(cx, |r, cx| {
-                r.route = r.back.pop().unwrap_or(Route::Home);
-                r.turned = Some((std::time::Instant::now(), true));
-                cx.notify();
-            });
-        }
+        cx.defer(|cx| {
+            if let Some(r) = Self::root(cx) {
+                let v = ui::video::get(cx);
+                let owner = v.read(cx).owner.clone();
+                v.update(cx, |v, cx| v.stop(&owner, cx));
+                r.update(cx, |r, cx| {
+                    r.route = r.back.pop().unwrap_or(Route::Home);
+                    r.turned = Some((std::time::Instant::now(), true));
+                    cx.notify();
+                });
+            }
+        });
     }
     /// is this title's page the one on screen?
     pub fn showing_detail(id: &str, cx: &App) -> bool {
@@ -127,11 +154,13 @@ impl Nav {
     }
     /// the right-click menu for a title
     pub fn menu(m: &Meta, at: gpui::Point<gpui::Pixels>, cx: &mut App) {
-        if let Some(r) = Self::root(cx) {
-            let me = r.read(cx).menu.clone();
-            let m = m.clone();
-            me.update(cx, |me, cx| me.show(m, at, cx));
-        }
+        let m = m.clone();
+        cx.defer(move |cx| {
+            if let Some(r) = Self::root(cx) {
+                let me = r.read(cx).menu.clone();
+                me.update(cx, |me, cx| me.show(m, at, cx));
+            }
+        });
     }
     pub fn detail(m: &Meta, cx: &mut App) {
         Self::go(Route::Detail(m.clone()), cx);
@@ -150,33 +179,43 @@ impl Nav {
         playback::quick_play(m.clone(), Some(video_id), None, cx);
     }
     /// is the player the page on screen?
-    pub fn on_player(cx: &App) -> bool {
-        Self::root(cx).map_or(false, |r| r.read(cx).route == Route::Player)
+    pub fn on_player(_cx: &App) -> bool {
+        // (a flag, not a read of Root: this is asked from inside Root's own handlers)
+        ON_PLAYER.load(std::sync::atomic::Ordering::Relaxed)
     }
     /// the + on a title: My List, your lists, or a new one
     pub fn add(m: &Meta, cx: &mut App) {
-        if let Some(r) = Self::root(cx) {
-            let a = r.read(cx).addto.clone();
-            let m = m.clone();
-            a.update(cx, |a, cx| a.open(m, cx));
-        }
+        let m = m.clone();
+        cx.defer(move |cx| {
+            if let Some(r) = Self::root(cx) {
+                let a = r.read(cx).addto.clone();
+                a.update(cx, |a, cx| a.open(m, cx));
+            }
+        });
     }
     /// open "throw a watch party" for a title
     pub fn plan_party(m: &Meta, cx: &mut App) {
-        if let Some(r) = Self::root(cx) {
-            let p = r.read(cx).planner.clone();
-            let m = m.clone();
-            p.update(cx, |p, cx| p.open(m, cx));
-        }
+        let m = m.clone();
+        cx.defer(move |cx| {
+            if let Some(r) = Self::root(cx) {
+                let p = r.read(cx).planner.clone();
+                p.update(cx, |p, cx| p.open(m, cx));
+            }
+        });
     }
     /// your year on the couch
     pub fn wrapped(cx: &mut App) {
-        if let Some(r) = Self::root(cx) {
-            let w = r.read(cx).wrapped.clone();
-            w.update(cx, |w, cx| w.show(cx));
-        }
+        cx.defer(|cx| {
+            if let Some(r) = Self::root(cx) {
+                let w = r.read(cx).wrapped.clone();
+                w.update(cx, |w, cx| w.show(cx));
+            }
+        });
     }
     pub fn toast(msg: String, cx: &mut App) {
+        cx.defer(move |cx| Self::toast_now(msg, cx));
+    }
+    fn toast_now(msg: String, cx: &mut App) {
         if let Some(r) = Self::root(cx) {
             r.update(cx, |r, cx| {
                 r.toast = Some(msg);
@@ -416,7 +455,8 @@ impl Root {
                     } else if window.is_fullscreen() {
                         window.toggle_fullscreen();
                     } else {
-                        Nav::back(cx);
+                        // (Nav updates Root: after this key press, not inside it)
+                        cx.defer(|cx| Nav::back(cx));
                     }
                 }
                 _ => {}
@@ -426,7 +466,7 @@ impl Root {
         }
         // backspace while typing (a review, a search) is just backspace
         if k == "escape" || (k == "backspace" && matches!(self.route, Route::Detail(_)) && self.focus.is_focused(window)) {
-            Nav::back(cx);
+            cx.defer(|cx| Nav::back(cx));
         }
     }
 }
@@ -660,6 +700,7 @@ fn window_controls() -> impl IntoElement {
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         ui::video::begin_frame();
+        ON_PLAYER.store(self.route == Route::Player, std::sync::atomic::Ordering::Relaxed);
         ui::set_scale(window.scale_factor(), f32::from(window.viewport_size().width));
         // nothing has the keyboard (the box that had it is gone): couch takes it,
         // so Esc and the other keys keep working
@@ -1016,15 +1057,16 @@ fn main() {
                             loop {
                                 crate::timer::after(std::time::Duration::from_millis(300)).await;
                                 while let Ok(spec) = rx.try_recv() {
-                                    let ok = this.update_in(cx, |_, window, cx| {
-                                        window.activate_window();
-                                        if let Some(route) = route_of(&spec) {
-                                            Nav::go(route, cx);
-                                        }
-                                    });
-                                    if ok.is_err() {
+                                    if this.upgrade().is_none() {
                                         return;
                                     }
+                                    // Nav updates Root itself, so not from inside an update of Root
+                                    if let Some(route) = route_of(&spec) {
+                                        let _ = cx.update(|_, cx| Nav::go(route, cx));
+                                    }
+                                    // to the front: Windows messages couch's window right away,
+                                    // so only here, with nothing of couch's in the middle of an update
+                                    bring_to_front();
                                 }
                             }
                         })
