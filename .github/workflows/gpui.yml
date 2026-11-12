@@ -20,6 +20,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # a quick look at whether the smart bar's model answers (status codes only)
+  ai-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/ai-check.py
   windows:
     runs-on: windows-latest
     permissions:
