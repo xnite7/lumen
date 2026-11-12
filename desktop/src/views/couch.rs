@@ -170,7 +170,7 @@ impl Render for Couch {
                             )
                     )
                     // under the picture, like continue watching: square, white, 60% wide
-                    .child(div().w(px(bw)).h(px(4.)).bg(theme::white(0.18)).child(div().h_full().w(px(bw * frac)).bg(gpui::white())))
+                    .child(div().w(px(w)).flex().justify_center().child(div().w(px(bw)).h(px(4.)).bg(theme::white(0.18)).child(div().h_full().w(px(bw * frac)).bg(gpui::white()))))
                     .child(div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).truncate().child(line))
             })));
         }
