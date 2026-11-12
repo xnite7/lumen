@@ -138,7 +138,7 @@ impl Detail {
             return;
         }
         let m = self.meta();
-        let title = json!({ "id": m.id.split(':').next().unwrap_or(""), "type": m.kind, "name": m.name, "poster": m.poster, "background": m.background });
+        let title = json!({ "id": m.id.split(':').next().unwrap_or(""), "type": m.kind, "name": m.name, "poster": m.poster, "background": m.background, "logo": m.logo });
         let rating = self.rating;
         self.writing = false;
         self.review_text.update(cx, |i, cx| i.set_text("", cx));
@@ -268,7 +268,7 @@ impl Detail {
             .child(div().mr(px(8.)).text_size(px(14.)).text_color(theme::label3()).child("your rating"))
             .children((1..=10u8).map(|n| {
                 let (kind, id, name) = (m.kind.clone(), self.lid(), m.name.clone());
-                let title = json!({ "id": m.id, "type": m.kind, "name": m.name, "poster": m.poster, "background": m.background });
+                let title = json!({ "id": m.id, "type": m.kind, "name": m.name, "poster": m.poster, "background": m.background, "logo": m.logo });
                 div()
                     .id(SharedString::from(format!("star-{n}")))
                     .cursor_pointer()
@@ -506,7 +506,7 @@ impl Render for Detail {
                             .child({
                                 let base = m.id.split(':').next().unwrap_or("").to_string();
                                 let fav = self.favs.as_ref().map_or(false, |f| f.iter().any(|x| x["id"].as_str() == Some(base.as_str())));
-                                let r = json!({ "id": base, "type": m.kind, "name": m.name, "poster": m.poster, "background": m.background });
+                                let r = json!({ "id": base, "type": m.kind, "name": m.name, "poster": m.poster, "background": m.background, "logo": m.logo });
                                 act("d-fav", if fav { icon_fill("heart", 21.).text_color(theme::neon_soft()) } else { icon("heart", 21.) }, "Favourite").on_click(cx.listener(move |d, _, _, cx| {
                                     let mut list = d.favs.clone().unwrap_or_default();
                                     let id = r["id"].clone();

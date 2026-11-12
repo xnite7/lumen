@@ -578,6 +578,11 @@ fn feed_card(i: usize, acts: &[&Value]) -> gpui::AnyElement {
     let first = acts[0];
     let t = &first["title"];
     let m = Meta { id: t["id"].as_str().unwrap_or("").into(), kind: t["type"].as_str().unwrap_or("").into(), name: t["name"].as_str().unwrap_or("").into(), poster: t["poster"].as_str().map(String::from), background: t["background"].as_str().map(String::from), logo: t["logo"].as_str().map(String::from), ..Default::default() };
+    // no logo saved with it: metahub's (TMDB's behind it) by the IMDb id
+    let mut m = m;
+    if m.logo.is_none() && m.id.starts_with("tt") {
+        m.logo = Some(format!("https://images.metahub.space/logo/medium/{}/img", m.id.split(':').next().unwrap_or(&m.id)));
+    }
     let when = acts.iter().filter_map(|a| a["at"].as_f64()).fold(0f64, f64::max);
     let when = if when > 0. { ago(when) } else { String::new() };
     let mm = m.clone();
@@ -622,7 +627,15 @@ fn feed_card(i: usize, acts: &[&Value]) -> gpui::AnyElement {
                                 .justify_between()
                                 .items_center()
                                 .child(match m.logo.clone() {
-                                    Some(u) => gpui::img(crate::net::logo(&crate::api::sized(&u, "w500"), 150.)).h(px(34.)).max_w(px(150.)).object_fit(gpui::ObjectFit::Contain).into_any_element(),
+                                    Some(u) => {
+                                        let name = m.name.clone();
+                                        gpui::img(crate::net::logo(&crate::api::sized(&u, "w500"), 150.))
+                                            .h(px(34.))
+                                            .max_w(px(150.))
+                                            .object_fit(gpui::ObjectFit::Contain)
+                                            .with_fallback(move || div().w(px(150.)).text_size(px(15.)).font_weight(FontWeight::BLACK).truncate().child(name.clone()).into_any_element())
+                                            .into_any_element()
+                                    }
                                     None => div().text_size(px(15.)).font_weight(FontWeight::BLACK).max_w(px(260.)).truncate().child(m.name.clone()).into_any_element(),
                                 })
                                 .child(div().text_size(px(12.)).text_color(theme::label3()).child(when)),
