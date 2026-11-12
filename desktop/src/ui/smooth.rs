@@ -10,6 +10,13 @@ thread_local! {
     static TARGET: RefCell<HashMap<&'static str, f32>> = RefCell::new(HashMap::new());
     /// a sheet or menu is open over the page: leave the wheel to it
     pub static OVERLAY: Cell<bool> = const { Cell::new(false) };
+    /// how far the page on screen is scrolled (the top bar darkens with it)
+    pub static SCROLLED: Cell<f32> = const { Cell::new(0.) };
+}
+
+/// how far the page on screen is scrolled down, in pixels
+pub fn scrolled() -> f32 {
+    SCROLLED.with(|s| s.get())
 }
 
 /// how far one notch goes, and how quickly the page catches up (per frame)
@@ -29,6 +36,10 @@ pub fn wheel(h: &ScrollHandle, key: &'static str) -> impl IntoElement {
             // glide toward the target
             let cur = -f32::from(h.offset().y);
             let max = f32::from(h.max_offset().y).max(0.);
+            if (SCROLLED.with(|s| s.get()) - cur).abs() > 0.5 {
+                SCROLLED.with(|s| s.set(cur));
+                window.refresh();
+            }
             if let Some(t) = TARGET.with(|m| m.borrow().get(key).copied()) {
                 let t = t.clamp(0., max);
                 let d = t - cur;

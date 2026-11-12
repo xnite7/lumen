@@ -198,8 +198,12 @@ impl Root {
             .top_0()
             .left_0()
             .w_full()
-            .h(px(76.))
-            .bg(gpui::linear_gradient(180., gpui::linear_color_stop(theme::black(0.75), 0.), gpui::linear_color_stop(theme::black(0.0), 1.)))
+            .h(px(96.))
+            // a soft shade at the top of a page, deep black once you scroll
+            .bg({
+                let k = (ui::smooth::scrolled() / 140.).clamp(0., 1.);
+                gpui::linear_gradient(180., gpui::linear_color_stop(theme::black(0.55 + 0.4 * k), 0.), gpui::linear_color_stop(theme::black(0.0), 1.))
+            })
             .child(div().absolute().top_0().left_0().size_full().window_control_area(WindowControlArea::Drag))
             .child(
                 div()
@@ -241,7 +245,7 @@ impl Root {
                                 .rounded_full()
                                 .occlude()
                                 .text_size(px(16.))
-                                .font_weight(if on { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM })
+                                .font_weight(if on { FontWeight::MEDIUM } else { FontWeight::NORMAL })
                                 .cursor_pointer()
                                 .text_color(if on { theme::text() } else { theme::label2() })
                                 .when(on, |d| d.bg(theme::white(0.16)).border_1().border_color(theme::white(0.1)))
