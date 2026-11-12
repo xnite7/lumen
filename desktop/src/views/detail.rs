@@ -575,7 +575,7 @@ impl Render for Detail {
                     )
                     .children(ex["tagline"].as_str().map(|t| div().text_size(px(17.)).italic().text_color(theme::label2()).child(t.to_string())))
                     .children(m.description.clone().or(ex["overview"].as_str().map(|s| s.to_string())).map(|d| {
-                        div().max_w(px(600.)).text_size(px(17.)).line_height(px(25.)).text_color(theme::white(0.88)).child(d)
+                        div().max_w(px(600.)).text_size(px(17.)).line_height(px(25.)).line_clamp(4).text_ellipsis().text_color(theme::white(0.88)).child(d)
                     }))
                     // the mood (TMDB keywords), as quiet chips
                     .children({

@@ -68,7 +68,7 @@ impl Render for Studio {
                     None => div().text_size(px(48.)).font_weight(FontWeight::BLACK).child(d["name"].as_str().unwrap_or(&self.name).to_string()).into_any_element(),
                 }).child(crate::ui::follow_btn("studio", self.id, d["name"].as_str().unwrap_or(&self.name).to_string(), d["logo"].as_str().map(String::from))),
             )
-            .children(d["description"].as_str().map(|t| div().flex_none().max_w(px(760.)).text_size(px(16.)).text_color(theme::label2()).child(t.to_string())))
+            .children(d["description"].as_str().map(|t| div().flex_none().max_w(px(760.)).text_size(px(16.)).line_clamp(4).text_ellipsis().text_color(theme::label2()).child(t.to_string())))
             .child(
                 div()
                     .flex_none()

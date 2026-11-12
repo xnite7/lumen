@@ -73,7 +73,7 @@ pub fn hero(m: &Meta, height: Pixels, clip: Option<(crate::ui::video::Pic, f32)>
                     }),
                 ))
                 .children(m.description.clone().map(|d| {
-                    div().max_w(px(560.)).text_size(px(17.)).line_height(px(25.)).line_clamp(3).text_ellipsis().text_color(theme::white(0.88)).child(d)
+                    div().max_w(px(560.)).text_size(px(17.)).line_height(px(25.)).line_clamp(4).text_ellipsis().text_color(theme::white(0.88)).child(d)
                 }))
                 .child(
                     div()

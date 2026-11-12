@@ -75,7 +75,7 @@ impl Render for Person {
                             .child(div().flex().items_center().gap(px(16.)).child(div().text_size(px(48.)).font_weight(FontWeight::BLACK).child(d["name"].as_str().unwrap_or(&self.name).to_string())).children(d["id"].as_u64().map(|id| crate::ui::follow_btn("person", id, d["name"].as_str().unwrap_or(&self.name).to_string(), d["profile"].as_str().map(String::from)))))
                             .child(div().text_size(px(15.)).text_color(theme::label2()).child(facts.join(" · ")))
                             .children(d["bio"].as_str().filter(|b| !b.is_empty()).map(|b| {
-                                div().text_size(px(16.)).line_height(px(24.)).line_clamp(9).text_ellipsis().text_color(theme::white(0.85)).child(b.to_string())
+                                div().text_size(px(16.)).line_height(px(24.)).line_clamp(4).text_ellipsis().text_color(theme::white(0.85)).child(b.to_string())
                             })),
                     ),
             )
