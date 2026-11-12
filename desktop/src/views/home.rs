@@ -348,59 +348,18 @@ impl Render for Home {
         }
         // the crew's activity: reviews, ratings, finished
         if !self.feed.is_empty() {
-            let items = self.feed.iter().enumerate().map(|(i, a)| {
-                let t = &a["title"];
-                let m = Meta { id: t["id"].as_str().unwrap_or("").into(), kind: t["type"].as_str().unwrap_or("").into(), name: t["name"].as_str().unwrap_or("").into(), poster: t["poster"].as_str().map(String::from), background: t["background"].as_str().map(String::from), ..Default::default() };
-                let who = a["name"].as_str().unwrap_or("someone").to_string();
-                let wid = a["who"].as_str().unwrap_or("").to_string();
-                let what = match a["kind"].as_str().unwrap_or("") {
-                    "review" => "reviewed",
-                    "rating" => "rated",
-                    "finished" => "finished",
-                    k => k,
+            // one card per title, everyone who rated or reviewed it together;
+            // a review gets a big quote card over the art, a bare rating a poster
+            // with the scores on it, so the row isn't the same box over and over
+            let mut groups: Vec<(String, Vec<&Value>)> = vec![];
+            for a in &self.feed {
+                let id = a["title"]["id"].as_str().unwrap_or("").to_string();
+                match groups.iter_mut().find(|g| g.0 == id) {
+                    Some(g) => g.1.push(a),
+                    None => groups.push((id, vec![a])),
                 }
-                .to_string();
-                let rating = a["rating"].as_i64();
-                let text = a["text"].as_str().unwrap_or("").to_string();
-                let when = a["at"].as_f64().map(ago).unwrap_or_default();
-                let mm = m.clone();
-                div()
-                    .id(("feed", i))
-                    .flex_none()
-                    .w(px(320.))
-                    .p(px(12.))
-                    .flex()
-                    .gap(px(12.))
-                    .rounded(px(16.))
-                    .bg(theme::white(0.05))
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme::white(0.09)))
-                    .on_click(move |_, _, cx| Nav::detail(&mm, cx))
-                    .child(div().w(px(64.)).h(px(96.)).flex_none().rounded(px(8.)).overflow_hidden().bg(theme::surface2()).children(m.poster.as_ref().map(|u| gpui::img(crate::api::sized(u, "w342")).size_full().object_fit(gpui::ObjectFit::Cover))))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .gap(px(4.))
-                            .child(
-                                div()
-                                    .flex()
-                                    .gap(px(6.))
-                                    .text_size(px(13.))
-                                    .child(div().id(("feed-who", i)).font_weight(FontWeight::SEMIBOLD).cursor_pointer().hover(|s| s.underline()).on_click(move |_, _, cx| {
-                                        cx.stop_propagation();
-                                        Nav::go(crate::Route::Member(wid.clone()), cx)
-                                    }).child(who))
-                                    .child(div().text_color(theme::label2()).child(what))
-                                    .child(div().text_color(theme::label3()).child(when)),
-                            )
-                            .child(div().text_size(px(15.)).font_weight(FontWeight::BLACK).line_clamp(1).text_ellipsis().child(m.name.clone()))
-                            .children(rating.map(|r| div().text_size(px(13.)).font_weight(FontWeight::BLACK).text_color(theme::lamp()).child(format!("★ {r}/10"))))
-                            .children((!text.is_empty()).then(|| div().text_size(px(13.)).line_height(px(18.)).text_color(theme::white(0.8)).line_clamp(2).child(crate::ui::emoji::text(&text, 13.)))),
-                    )
-            });
+            }
+            let items: Vec<gpui::AnyElement> = groups.into_iter().take(16).enumerate().map(|(i, (_, acts))| feed_card(i, &acts)).collect();
             crew_rows.push(
                 div()
                     .flex()
@@ -596,4 +555,151 @@ fn row_head(key: &str, title: &str, spec: Option<views_catalog::Spec>) -> gpui::
                 ),
         )
         .into_any_element()
+}
+
+/// a crew member's face (soft circle), or their initial
+fn face(a: &Value, size: f32) -> gpui::AnyElement {
+    let name = a["name"].as_str().unwrap_or("?");
+    match a["avatar"].as_str() {
+        Some(u) => gpui::img(crate::net::face(u, size)).size(px(size)).flex_none().into_any_element(),
+        None => div().size(px(size)).flex_none().rounded_full().bg(theme::neon()).flex().items_center().justify_center().text_size(px(size * 0.45)).font_weight(FontWeight::BLACK).child(name.chars().next().unwrap_or('?').to_uppercase().to_string()).into_any_element(),
+    }
+}
+
+fn score_color(r: i64) -> gpui::Hsla {
+    match r {
+        8.. => theme::lamp().into(),
+        5.. => theme::text().into(),
+        _ => theme::neon().into(),
+    }
+}
+
+fn feed_card(i: usize, acts: &[&Value]) -> gpui::AnyElement {
+    let first = acts[0];
+    let t = &first["title"];
+    let m = Meta { id: t["id"].as_str().unwrap_or("").into(), kind: t["type"].as_str().unwrap_or("").into(), name: t["name"].as_str().unwrap_or("").into(), poster: t["poster"].as_str().map(String::from), background: t["background"].as_str().map(String::from), logo: t["logo"].as_str().map(String::from), ..Default::default() };
+    let when = acts.iter().filter_map(|a| a["at"].as_f64()).fold(0f64, f64::max);
+    let when = if when > 0. { ago(when) } else { String::new() };
+    let mm = m.clone();
+    let review = acts.iter().find(|a| a["text"].as_str().map_or(false, |t| !t.is_empty())).copied();
+    let base = div().id(("feed", i)).flex_none().relative().rounded(px(16.)).overflow_hidden().bg(theme::surface2()).cursor_pointer().on_click(move |_, _, cx| Nav::detail(&mm, cx));
+    // everyone else on this title: little faces with their scores
+    let others = |skip: Option<&Value>| {
+        div().flex().gap(px(10.)).children(acts.iter().filter(|a| skip.map_or(true, |s| !std::ptr::eq(**a, s))).take(4).map(|a| {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(5.))
+                .child(face(a, 22.))
+                .children(a["rating"].as_i64().map(|r| div().text_size(px(13.)).font_weight(FontWeight::BLACK).text_color(score_color(r)).child(r.to_string())))
+                .when(a["kind"].as_str() == Some("finished") && a["rating"].is_null(), |d| d.child(crate::ui::icon("check", 14.).text_color(theme::label2())))
+        }))
+    };
+    match review {
+        // a review: the words are the card
+        Some(r) => {
+            let art = m.background.clone().or(m.poster.clone()).map(|u| crate::net::fit(&crate::api::sized(&u, "w780"), 420.));
+            let quote = r["text"].as_str().unwrap_or("").to_string();
+            let who = r["name"].as_str().unwrap_or("someone").to_string();
+            let wid = r["who"].as_str().unwrap_or("").to_string();
+            base.w(px(420.))
+                .h(px(236.))
+                .children(art.map(|u| gpui::img(u).absolute().top_0().left_0().size_full().object_fit(gpui::ObjectFit::Cover).opacity(0.55)))
+                .child(div().absolute().top_0().left_0().size_full().bg(gpui::linear_gradient(180., gpui::linear_color_stop(theme::black(0.35), 0.), gpui::linear_color_stop(theme::black(0.92), 0.75))))
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
+                        .p(px(18.))
+                        .flex()
+                        .flex_col()
+                        .justify_between()
+                        .child(
+                            div()
+                                .flex()
+                                .justify_between()
+                                .items_center()
+                                .child(match m.logo.clone() {
+                                    Some(u) => gpui::img(crate::net::logo(&crate::api::sized(&u, "w500"), 150.)).h(px(34.)).max_w(px(150.)).object_fit(gpui::ObjectFit::Contain).into_any_element(),
+                                    None => div().text_size(px(15.)).font_weight(FontWeight::BLACK).max_w(px(260.)).truncate().child(m.name.clone()).into_any_element(),
+                                })
+                                .child(div().text_size(px(12.)).text_color(theme::label3()).child(when)),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap(px(12.))
+                                .child(div().text_size(px(19.)).line_height(px(25.)).font_weight(FontWeight::SEMIBOLD).line_clamp(3).text_ellipsis().child(crate::ui::emoji::text(&format!("“{quote}”"), 19.)))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .child(
+                                            div()
+                                                .id(("feed-who", i))
+                                                .flex()
+                                                .items_center()
+                                                .gap(px(8.))
+                                                .on_click(move |_, _, cx| {
+                                                    cx.stop_propagation();
+                                                    Nav::go(crate::Route::Member(wid.clone()), cx)
+                                                })
+                                                .child(face(r, 26.))
+                                                .child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).hover(|s| s.underline()).child(crate::ui::emoji::text(&who, 14.)))
+                                                .children(r["rating"].as_i64().map(|n| div().text_size(px(14.)).font_weight(FontWeight::BLACK).text_color(score_color(n)).child(format!("★ {n}")))),
+                                        )
+                                        .child(others(Some(r))),
+                                ),
+                        ),
+                )
+                .into_any_element()
+        }
+        // just scores: the poster, with the crew's numbers over its foot
+        None => {
+            let poster = m.poster.clone().map(|u| crate::net::fit(&crate::api::sized(&u, "w342"), 156.));
+            let single = acts.len() == 1;
+            let a = first;
+            let line = if single {
+                match (a["kind"].as_str(), a["rating"].as_i64()) {
+                    (_, Some(_)) => format!("{} rated it", a["name"].as_str().unwrap_or("someone")),
+                    (Some("finished"), None) => format!("{} finished it", a["name"].as_str().unwrap_or("someone")),
+                    _ => a["name"].as_str().unwrap_or("someone").to_string(),
+                }
+            } else {
+                format!("{} of the crew", acts.len())
+            };
+            base.w(px(156.))
+                .h(px(236.))
+                .children(poster.map(|u| gpui::img(u).absolute().top_0().left_0().size_full().object_fit(gpui::ObjectFit::Cover)))
+                .child(div().absolute().left_0().bottom_0().w_full().h(px(140.)).bg(gpui::linear_gradient(180., gpui::linear_color_stop(theme::black(0.0), 0.), gpui::linear_color_stop(theme::black(0.95), 0.8))))
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(10.))
+                        .right(px(10.))
+                        .bottom(px(10.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.))
+                        .when(single, |d| {
+                            d.child(
+                                div()
+                                    .flex()
+                                    .items_end()
+                                    .justify_between()
+                                    .child(face(a, 26.))
+                                    .children(a["rating"].as_i64().map(|r| div().flex().items_end().child(div().text_size(px(34.)).line_height(px(34.)).font_weight(FontWeight::BLACK).text_color(score_color(r)).child(r.to_string())).child(div().text_size(px(13.)).text_color(theme::label3()).mb(px(3.)).child("/10"))))
+                                    .when(a["rating"].is_null(), |d| d.child(crate::ui::icon("check", 22.).text_color(theme::lamp()))),
+                            )
+                        })
+                        .when(!single, |d| d.child(others(None)))
+                        .child(div().flex().justify_between().text_size(px(11.)).text_color(theme::label2()).child(div().truncate().child(crate::ui::emoji::text(&line, 11.))).child(div().flex_none().text_color(theme::label3()).child(when))),
+                )
+                .into_any_element()
+        }
+    }
 }
