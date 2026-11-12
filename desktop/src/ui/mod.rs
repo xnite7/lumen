@@ -3,6 +3,7 @@ pub mod badges;
 pub mod emoji;
 pub mod smooth;
 pub mod lazy;
+pub mod rows;
 pub mod hero;
 pub mod input;
 pub mod video;

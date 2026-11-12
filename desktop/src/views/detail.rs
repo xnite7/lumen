@@ -728,8 +728,7 @@ impl Render for Detail {
                                         .child(if s == 0 { "Specials".to_string() } else { format!("Season {s}") })
                                 }))),
                         )
-                        .child(
-                            div().id("eps").overflow_x_scroll().flex().gap(px(14.)).px(px(g)).children(
+                        .child(crate::ui::rows::scroller("eps", div().id("eps").overflow_x_scroll().flex().gap(px(14.)).px(px(g)).children(
                                 eps.iter().filter(|v| v["season"].as_i64().unwrap_or(0) == cur).map(|v| {
                                     let vid = v["id"].as_str().unwrap_or("").to_string();
                                     let n = v["episode"].as_i64().or(v["number"].as_i64()).unwrap_or(0);
@@ -760,7 +759,7 @@ impl Render for Detail {
                                                 .bg(theme::surface2())
                                                 .cursor_pointer()
                                                 .on_click(move |_, _, cx| {
-                                                    if !future {
+                                                    if !future && !crate::ui::rows::dragged() {
                                                         Nav::play_episode(&mm, vid.clone(), cx)
                                                     }
                                                 })
@@ -818,8 +817,7 @@ impl Render for Detail {
                                             div().text_size(px(14.)).line_height(px(19.)).line_clamp(2).text_ellipsis().text_color(theme::label2()).child(o.to_string())
                                         }))
                                 }),
-                            ),
-                        ),
+                            ),)),
                 );
             }
         }
@@ -833,7 +831,7 @@ impl Render for Detail {
                     .gap(px(14.))
                     .mt(px(36.))
                     .child(div().px(px(g)).text_size(px(24.)).font_weight(FontWeight::BLACK).child("cast"))
-                    .child(div().id("cast").overflow_x_scroll().flex().gap(px(16.)).px(px(g)).children(cast.iter().take(20).map(|c| {
+                    .child(crate::ui::rows::scroller("cast", div().id("cast").overflow_x_scroll().flex().gap(px(16.)).px(px(g)).children(cast.iter().take(20).map(|c| {
                         let photo = c["profile"].as_str().map(|s| s.to_string());
                         let nm = c["name"].as_str().unwrap_or("").to_string();
                         let (pn, pid) = (nm.clone(), c["id"].as_u64());
@@ -868,7 +866,7 @@ impl Render for Detail {
                             .children(c["character"].as_str().filter(|s| !s.is_empty()).map(|ch| {
                                 div().text_size(px(12.)).text_center().line_clamp(1).text_ellipsis().text_color(theme::label3()).child(ch.to_string())
                             }))
-                    }))),
+                    })))),
             );
         }
 
@@ -882,10 +880,10 @@ impl Render for Detail {
                     .gap(px(14.))
                     .mt(px(36.))
                     .child(div().px(px(g)).text_size(px(24.)).font_weight(FontWeight::BLACK).child("more like this"))
-                    .child(div().id("recs").overflow_x_scroll().flex().gap(px(10.)).px(px(g)).children(recs.into_iter().enumerate().map(|(i, r)| {
+                    .child(crate::ui::rows::scroller("recs", div().id("recs").overflow_x_scroll().flex().gap(px(10.)).px(px(g)).children(recs.into_iter().enumerate().map(|(i, r)| {
                         let rr = r.clone();
                         card::card(SharedString::from(format!("rec-{i}")), &r, move |_, _, cx| open_rec(&rr, cx))
-                    }))),
+                    })))),
             );
         }
         page.child(div().h(px(90.)))

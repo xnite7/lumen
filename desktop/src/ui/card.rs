@@ -49,7 +49,12 @@ pub fn card_with(
         // a GPU clip shows through this card: nothing of the card under it
         .when(!matches!(clip, Some((crate::ui::video::Pic::Native, _, _))), |d| d.bg(theme::surface2()))
         .cursor_pointer()
-        .on_click(on_click)
+        .on_click(move |e, w, cx| {
+            // the end of a sideways drag isn't a click
+            if !crate::ui::rows::dragged() {
+                on_click(e, w, cx)
+            }
+        })
         .on_mouse_down(gpui::MouseButton::Right, move |e, _, cx| {
             cx.stop_propagation();
             crate::Nav::menu(&menu_meta, e.position, cx)
@@ -126,7 +131,12 @@ pub fn poster(id: SharedString, m: &Meta, w: f32, on_click: impl Fn(&gpui::Click
         .relative()
         .bg(theme::surface2())
         .cursor_pointer()
-        .on_click(on_click)
+        .on_click(move |e, w, cx| {
+            // the end of a sideways drag isn't a click
+            if !crate::ui::rows::dragged() {
+                on_click(e, w, cx)
+            }
+        })
         .child(div().absolute().top_0().left_0().size_full().p(px(10.)).flex().items_end().child(title_text(&name)))
         .children(art.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover)))
         .into_any_element()

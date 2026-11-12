@@ -331,7 +331,7 @@ impl Render for Home {
                     .flex_col()
                     .gap(px(12.))
                     .child(div().px(px(theme::GUTTER)).flex().items_center().gap(px(10.)).child(div().text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).child("on the couch")).child(div().size(px(8.)).rounded_full().bg(theme::neon())).child(div().text_size(px(14.)).text_color(theme::label2()).child(format!("{} watching", self.live.len()))))
-                    .child(div().id("row-live").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(cards))
+                    .child(crate::ui::rows::scroller("row-live", div().id("row-live").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(cards)))
                     .into_any_element(),
             );
         }
@@ -396,7 +396,7 @@ impl Render for Home {
                     .flex_col()
                     .gap(px(12.))
                     .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).child("the crew lately"))
-                    .child(div().id("row-feed").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(items))
+                    .child(crate::ui::rows::scroller("row-feed", div().id("row-feed").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(items)))
                     .into_any_element(),
             );
         }
@@ -416,8 +416,7 @@ impl Render for Home {
                     .flex_col()
                     .gap(px(12.))
                     .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text()).child(r.title.clone()))
-                    .child(
-                        div()
+                    .child(crate::ui::rows::scroller(SharedString::from(format!("row-{}", r.key)), div()
                             .id(SharedString::from(format!("row-{}", r.key)))
                             .overflow_x_scroll()
                             .flex()
@@ -433,8 +432,7 @@ impl Render for Home {
                                     let clip = if m.id == card_owner { card_clip.clone() } else { None };
                                     card::card_preview(SharedString::from(format!("c-{ri}-{i}")), m, clip, move |_, _, cx| Nav::detail(&mm, cx))
                                 }
-                            })),
-                    )
+                            })),))
             }));
         }
         for c in crew_rows.drain(..) {
@@ -493,8 +491,7 @@ impl Render for Home {
                     .flex_col()
                     .gap(px(12.))
                     .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).child("browse"))
-                    .child(
-                        div()
+                    .child(crate::ui::rows::scroller("browse-tiles", div()
                             .id("browse-tiles")
                             .overflow_x_scroll()
                             .flex()
@@ -518,9 +515,8 @@ impl Render for Home {
                                     .child(crate::ui::icon("sparkles", 24.))
                                     .child(div().flex().flex_col().child(div().text_size(px(18.)).font_weight(FontWeight::BLACK).child("smart bar")).child(div().text_size(px(12.)).text_color(theme::white(0.8)).child("ask for a feeling"))),
                             )
-                            .children(tiles),
-                    )
-                    .child(div().id("browse-genres").overflow_x_scroll().flex().gap(px(8.)).px(px(theme::GUTTER)).children(genres)),
+                            .children(tiles),))
+                    .child(crate::ui::rows::scroller("browse-genres", div().id("browse-genres").overflow_x_scroll().flex().gap(px(8.)).px(px(theme::GUTTER)).children(genres))),
             );
         }
         // streaming services
@@ -531,7 +527,7 @@ impl Render for Home {
                     .flex_col()
                     .gap(px(12.))
                     .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).child("services"))
-                    .child(div().id("services").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(self.services.iter().map(|(id, name, logo)| {
+                    .child(crate::ui::rows::scroller("services", div().id("services").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(self.services.iter().map(|(id, name, logo)| {
                         let spec = views_catalog::Spec { title: name.clone(), service: Some((*id, logo.clone())), catalog: Value::Null, genre: None };
                         div()
                             .id(SharedString::from(format!("svc-{id}")))
@@ -550,7 +546,7 @@ impl Render for Home {
                                 Some(u) => gpui::img(u.clone()).max_w(px(130.)).max_h(px(52.)).object_fit(gpui::ObjectFit::Contain).into_any_element(),
                                 None => div().font_weight(FontWeight::BLACK).child(name.clone()).into_any_element(),
                             })
-                    }))),
+                    })))),
             );
         }
         let _ = cx;

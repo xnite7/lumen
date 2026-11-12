@@ -123,7 +123,7 @@ impl Render for Member {
                 .gap(px(12.))
                 .mt(px(14.))
                 .child(div().text_size(px(22.)).font_weight(FontWeight::BLACK).child(title.to_string()))
-                .child(div().id(SharedString::from(format!("m-{key}"))).overflow_x_scroll().flex().gap(px(12.)).children(list.into_iter().enumerate().map(move |(i, (m, raw))| {
+                .child(crate::ui::rows::scroller(SharedString::from(format!("m-{key}")), div().id(SharedString::from(format!("m-{key}"))).overflow_x_scroll().flex().gap(px(12.)).children(list.into_iter().enumerate().map(move |(i, (m, raw))| {
                     let mm = m.clone();
                     let el = if landscape {
                         card::card(SharedString::from(format!("m-{key}-{i}")), &m, move |_, _, cx| Nav::detail(&mm, cx))
@@ -140,7 +140,7 @@ impl Render for Member {
                         .child(el)
                         .children(rating.map(|r| div().text_size(px(14.)).font_weight(FontWeight::BLACK).text_color(theme::lamp()).child(format!("★ {r}/10"))))
                         .children(eps.filter(|e| e.1 > 0).map(|(a, b)| div().text_size(px(13.)).text_color(theme::label2()).child(format!("{a} of {b} episodes"))))
-                })))
+                }))))
         };
 
         let mut page = div()
