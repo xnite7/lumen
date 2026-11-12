@@ -58,3 +58,31 @@ pub fn follow_btn(kind: &'static str, id: u64, name: String, img: Option<String>
             .detach();
         })
 }
+
+/// A studio logo, readable on a dark picture: dark logos become white.
+pub fn readable_logo(bytes: &[u8]) -> Option<std::sync::Arc<gpui::Image>> {
+    let mut im = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let (mut lum, mut n, mut opaque) = (0f64, 0u64, 0u64);
+    let total = (im.width() as u64 * im.height() as u64).max(1);
+    for p in im.pixels() {
+        if p[3] > 128 {
+            lum += (0.299 * p[0] as f64 + 0.587 * p[1] as f64 + 0.114 * p[2] as f64) / 255.;
+            n += 1;
+        }
+        if p[3] > 250 {
+            opaque += 1;
+        }
+    }
+    // a logo on its own box (no transparency): leave it be
+    let boxed = opaque as f64 / total as f64 > 0.9;
+    if n > 0 && !boxed && lum / (n as f64) < 0.5 {
+        for p in im.pixels_mut() {
+            p[0] = 255;
+            p[1] = 255;
+            p[2] = 255;
+        }
+    }
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(im).write_to(&mut out, image::ImageFormat::Png).ok()?;
+    Some(std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
+}

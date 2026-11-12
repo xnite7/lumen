@@ -10,6 +10,8 @@ pub struct Studio {
     name: String,
     data: Option<Value>,
     kind: &'static str,
+    /// the logo, made white when it's too dark for couch's black
+    logo: Option<std::sync::Arc<gpui::Image>>,
     scroll: ScrollHandle,
 }
 
@@ -17,13 +19,27 @@ impl Studio {
     pub fn new(id: u64, name: String, cx: &mut Context<Self>) -> Self {
         cx.spawn(async move |this, cx| {
             let r = api::call::<Value>("company_get", json!({ "id": id })).await.ok();
+            let url = r.as_ref().and_then(|d| d["logo"].as_str().map(String::from)).filter(|u| !u.ends_with(".svg"));
             let _ = this.update(cx, |s, cx| {
                 s.data = r;
                 cx.notify();
             });
+            if let Some(u) = url {
+                let pic = couch::rt::spawn(async move {
+                    let core = couch::state::get().core.clone();
+                    couch::images::load(&core, &u).await.ok().and_then(|(b, _)| crate::ui::readable_logo(&b))
+                })
+                .await
+                .ok()
+                .flatten();
+                let _ = this.update(cx, |s, cx| {
+                    s.logo = pic;
+                    cx.notify();
+                });
+            }
         })
         .detach();
-        Self { id, name, data: None, kind: "movies", scroll: ScrollHandle::new() }
+        Self { id, name, data: None, kind: "movies", logo: None, scroll: ScrollHandle::new() }
     }
 }
 
@@ -63,9 +79,12 @@ impl Render for Studio {
             .flex_col()
             .gap(px(20.))
             .child(
-                div().flex_none().h(px(110.)).flex().items_center().gap(px(20.)).child(match d["logo"].as_str() {
-                    Some(u) => div().px(px(22.)).py(px(16.)).rounded(px(18.)).bg(gpui::rgb(0xf4eaf0)).child(img(u.to_string()).h(px(70.)).max_w(px(360.)).object_fit(ObjectFit::Contain)).into_any_element(),
-                    None => div().text_size(px(48.)).font_weight(FontWeight::BLACK).child(d["name"].as_str().unwrap_or(&self.name).to_string()).into_any_element(),
+                div().flex_none().h(px(110.)).flex().items_center().gap(px(20.)).child(match (&self.logo, d["logo"].as_str()) {
+                    // straight on couch's black; dark logos come out white
+                    (Some(i), _) => img(i.clone()).h(px(80.)).max_w(px(380.)).object_fit(ObjectFit::Contain).into_any_element(),
+                    (None, Some(u)) if u.ends_with(".svg") => img(u.to_string()).h(px(80.)).max_w(px(380.)).object_fit(ObjectFit::Contain).into_any_element(),
+                    (None, Some(_)) => div().h(px(80.)).into_any_element(),
+                    (None, None) => div().text_size(px(48.)).font_weight(FontWeight::BLACK).child(d["name"].as_str().unwrap_or(&self.name).to_string()).into_any_element(),
                 }).child(crate::ui::follow_btn("studio", self.id, d["name"].as_str().unwrap_or(&self.name).to_string(), d["logo"].as_str().map(String::from))),
             )
             .children(d["description"].as_str().map(|t| div().flex_none().max_w(px(760.)).text_size(px(16.)).line_clamp(4).text_ellipsis().text_color(theme::label2()).child(t.to_string())))
