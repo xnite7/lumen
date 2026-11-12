@@ -307,10 +307,12 @@ impl Together {
         self.inbox.retain(|a| a["id"].as_str() != Some(id.as_str()));
         cx.notify();
         let name = ask["fromName"].as_str().unwrap_or("someone").to_string();
+        let from = ask["from"].as_str().unwrap_or("").to_string();
         cx.spawn(async move |this, cx| {
             let r = api::call::<Value>("crew_answer", json!({ "id": id, "accept": accept })).await;
             if accept && r.is_ok() {
                 let me = api::call::<Value>("discord_me", json!({})).await.ok().and_then(|v| v["id"].as_str().map(|s| s.to_string()));
+                crate::views::crewx::note_together(&from);
                 let _ = this.update(cx, |t, cx| {
                     if let Some(me) = me {
                         t.start_hosting(me, cx);
@@ -403,6 +405,7 @@ impl Together {
             let meta = Meta { id: room["metaId"].as_str().unwrap_or("").into(), kind: room["type"].as_str().unwrap_or("movie").into(), name: room["title"].as_str().unwrap_or("").into(), ..Default::default() };
             let vid = room["videoId"].as_str().map(|s| s.to_string());
             let start = room["now"].as_f64().map(|n| n + 2.);
+            crate::views::crewx::note_together(&host);
             let _ = cx.update(|cx| {
                 Nav::toast(format!("watching with {name}"), cx);
                 playback::quick_play(meta, vid, start, cx);

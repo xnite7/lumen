@@ -32,6 +32,8 @@ pub struct Home {
     /// the crew: who's watching now, and what they've been up to
     live: Vec<Value>,
     feed: Vec<Value>,
+    /// nights in a row (theirs, and the ones you watched together)
+    streaks: Vec<crate::views::crewx::Streak>,
     scroll: ScrollHandle,
 }
 
@@ -50,20 +52,39 @@ impl Home {
     /// scope: "all" (Home), "series" (Shows) or "movie" (Movies)
     pub fn new(scope: &'static str, cx: &mut Context<Self>) -> Self {
         cx.observe(&crate::ui::video::get(cx), |_, _, cx| cx.notify()).detach();
-        let me = Self { scope, clip: None, hero: None, rows: vec![], services: vec![], browse: vec![], genres: (None, vec![]), live: vec![], feed: vec![], scroll: ScrollHandle::new() };
+        let me = Self { scope, clip: None, hero: None, rows: vec![], services: vec![], browse: vec![], genres: (None, vec![]), live: vec![], feed: vec![], streaks: vec![], scroll: ScrollHandle::new() };
         if scope == "all" {
-            cx.spawn(async move |this, cx| loop {
+            cx.spawn(async move |this, cx| {
+                let mut n = 0u32;
+                loop {
                 let crew = api::call::<Value>("crew_list", json!({})).await.unwrap_or_default();
                 let feed = api::call::<Value>("crew_social", json!({ "method": "GET", "path": "/v1/activity", "body": Value::Null })).await.unwrap_or_default();
+                let all: Vec<Value> = feed["feed"].as_array().cloned().unwrap_or_default();
                 let ok = this.update(cx, |v, cx| {
                     v.live = crew["members"].as_array().into_iter().flatten().filter(|m| m["watching"]["title"].is_string()).cloned().collect();
-                    v.feed = feed["feed"].as_array().into_iter().flatten().take(24).cloned().collect();
+                    v.feed = all.iter().take(24).cloned().collect();
                     cx.notify();
                 });
                 if ok.is_err() {
                     break;
                 }
+                // streaks and the crew's picks: now, then every 10 minutes
+                if n % 10 == 0 {
+                    let x = crate::views::crewx::load(&all).await;
+                    let _ = this.update(cx, |v, cx| {
+                        v.streaks = x.streaks;
+                        v.rows.retain(|r| r.key != "crewpicks");
+                        if !x.picks.is_empty() {
+                            let at = v.rows.iter().take_while(|r| r.key == "cw" || r.key == "follow").count();
+                            let spec = views_catalog::Spec { title: x.picks_title.clone(), fixed: Some(x.picks.clone()), ..Default::default() };
+                            v.rows.insert(at, Row { key: "crewpicks".into(), title: x.picks_title, items: x.picks, extra: vec![], spec: Some(spec) });
+                        }
+                        cx.notify();
+                    });
+                }
+                n += 1;
                 crate::timer::after(std::time::Duration::from_secs(60)).await;
+                }
             })
             .detach();
         }
@@ -349,7 +370,7 @@ impl Render for Home {
             );
         }
         // the crew's activity: reviews, ratings, finished
-        if !self.feed.is_empty() {
+        if !self.feed.is_empty() || !self.streaks.is_empty() {
             // one card per title, everyone who rated or reviewed it together;
             // a review gets a big quote card over the art, a bare rating a poster
             // with the scores on it, so the row isn't the same box over and over
@@ -361,7 +382,9 @@ impl Render for Home {
                     None => groups.push((id, vec![a])),
                 }
             }
-            let items: Vec<gpui::AnyElement> = groups.into_iter().take(16).enumerate().map(|(i, (_, acts))| feed_card(i, &acts)).collect();
+            // who's on a roll first, then what they've been up to
+            let mut items: Vec<gpui::AnyElement> = self.streaks.iter().take(4).enumerate().map(|(i, s)| streak_card(i, s)).collect();
+            items.extend(groups.into_iter().take(16).enumerate().map(|(i, (_, acts))| feed_card(i, &acts)));
             crew_rows.push(
                 div()
                     .flex()
@@ -722,4 +745,54 @@ fn feed_card(i: usize, acts: &[&Value]) -> gpui::AnyElement {
                 .into_any_element()
         }
     }
+}
+
+/// "🔥 5 nights in a row": someone on a roll, or the two of you together
+fn streak_card(i: usize, s: &crate::views::crewx::Streak) -> gpui::AnyElement {
+    let id = s.id.clone();
+    let face = |avatar: Option<String>, name: &str, size: f32| -> gpui::AnyElement {
+        match avatar {
+            Some(u) => gpui::img(crate::net::face(&u, size)).size(px(size)).flex_none().into_any_element(),
+            None => div().size(px(size)).flex_none().rounded_full().bg(theme::black(0.3)).flex().items_center().justify_center().text_size(px(size * 0.45)).font_weight(FontWeight::BLACK).child(name.chars().next().unwrap_or('?').to_uppercase().to_string()).into_any_element(),
+        }
+    };
+    let me = couch::state::get().core.db.get::<Value>("discord_user").unwrap_or_default();
+    let line = if s.together { format!("you & {}", s.name) } else { s.name.clone() };
+    div()
+        .id(("streak", i))
+        .flex_none()
+        .w(px(156.))
+        .h(px(236.))
+        .rounded(px(16.))
+        .overflow_hidden()
+        .relative()
+        .cursor_pointer()
+        .bg(gpui::linear_gradient(160., gpui::linear_color_stop(theme::lamp(), 0.), gpui::linear_color_stop(theme::neon(), 1.)))
+        .on_click(move |_, _, cx| Nav::go(crate::Route::Member(id.clone()), cx))
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .p(px(14.))
+                .flex()
+                .flex_col()
+                .justify_between()
+                .child(
+                    div()
+                        .flex()
+                        .child(face(s.avatar.clone(), &s.name, 34.))
+                        .when(s.together, |d| d.child(div().ml(px(-10.)).child(face(me["avatar"].as_str().map(String::from), "you", 34.)))),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .child(div().text_size(px(58.)).line_height(px(58.)).font_weight(FontWeight::BLACK).text_color(gpui::black()).child(format!("{}", s.nights)))
+                        .child(div().text_size(px(15.)).font_weight(FontWeight::BLACK).text_color(gpui::black()).child(if s.together { "nights in a row, together 🔥" } else { "nights in a row 🔥" }))
+                        .child(div().mt(px(6.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::black(0.7)).truncate().child(crate::ui::emoji::text(&line, 13.))),
+                ),
+        )
+        .into_any_element()
 }

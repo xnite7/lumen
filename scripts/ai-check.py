@@ -7,22 +7,29 @@ URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 if not KEY:
     print("no COUCH_AI_KEY"); sys.exit(0)
 
-def chat(model, msgs, tools=None, json_out=False):
+def chat(model, msgs, tools=None, json_out=False, effort=None):
     body = {"model": model, "messages": msgs, "max_tokens": 4096}
+    if effort: body["reasoning_effort"] = effort
     if tools: body["tools"] = tools
     if json_out: body["response_format"] = {"type": "json_object"}
     req = urllib.request.Request(URL, json.dumps(body).encode(), {"Authorization": "Bearer " + KEY, "Content-Type": "application/json"})
+    import time
+    t0 = time.time()
     try:
-        with urllib.request.urlopen(req, timeout=90) as r:
-            return r.status, json.loads(r.read())
+        with urllib.request.urlopen(req, timeout=40) as r:
+            out = r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
-        return e.code, e.read().decode()[:400]
+        out = e.code, e.read().decode()[:400]
+    except Exception as e:
+        out = 0, "error: %s" % e
+    print("    (%.1fs)" % (time.time() - t0))
+    return out
 
 tools = [{"type": "function", "function": {"name": "get_taste_details", "description": "the person's full watch history", "parameters": {"type": "object", "properties": {}}}}]
-for model in ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite"]:
+for model in ["gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-flash-latest", "gemini-flash-lite-latest"]:
     msgs = [{"role": "system", "content": "Recommend 3 titles. Call get_taste_details first, then answer as JSON {\"picks\":[{\"title\":..,\"year\":..}]}."},
             {"role": "user", "content": "a heist movie that's actually smart"}]
-    st, d = chat(model, msgs, tools)
+    st, d = chat(model, msgs, tools, effort="low")
     print(model, "round1", st, (json.dumps(d)[:300] if st == 200 else d))
     if st != 200: continue
     m = d["choices"][0]["message"]

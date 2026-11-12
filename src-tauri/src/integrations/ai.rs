@@ -269,8 +269,10 @@ fn models() -> Vec<&'static str> {
     if let Some(m) = option_env!("COUCH_AI_MODEL").filter(|m| !m.is_empty()) {
         v.push(m);
     }
-    // when one is swamped ("high demand"), the next one usually isn't
-    v.extend(["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite"]);
+    // quick ones first: "flash-latest" now points at a model that can think
+    // for minutes on a tool call, which left the smart bar hanging. When one
+    // is swamped or slow, the next one usually isn't.
+    v.extend(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"]);
     v
 }
 
@@ -283,23 +285,31 @@ async fn chat(core: &Core, messages: &[Value], tools: Option<&Value>, json_out: 
     let key = core.key("ai").ok_or_else(|| AppError::msg("The smart bar isn't set up in this build"))?;
     let mut last_err = String::new();
     for model in models() {
-        let mut body = json!({ "model": model, "messages": messages, "max_tokens": 4096 });
+        // little thinking: picks, not essays (and it keeps answers quick)
+        let mut body = json!({ "model": model, "messages": messages, "max_tokens": 4096, "reasoning_effort": "low" });
         if let Some(t) = tools {
             body["tools"] = t.clone();
         }
         if json_out {
             body["response_format"] = json!({ "type": "json_object" });
         }
-        let send = || core.http.client().post(AI_URL).bearer_auth(&key).timeout(Duration::from_secs(90)).json(&body).send();
-        let mut res = send().await?;
-        // free tiers rate-limit: a few spaced retries
-        for attempt in 1..3 {
+        let send = || core.http.client().post(AI_URL).bearer_auth(&key).timeout(Duration::from_secs(35)).json(&body).send();
+        // too slow (or the connection fell over): the next model
+        let Ok(mut res) = send().await else {
+            last_err = "timed out".into();
+            continue;
+        };
+        // free tiers rate-limit: a spaced retry
+        for attempt in 1..2 {
             let st = res.status().as_u16();
             if st != 429 && st < 500 {
                 break;
             }
             tokio::time::sleep(Duration::from_millis((900.0 * 2.0f64.powi(attempt - 1)) as u64)).await;
-            res = send().await?;
+            match send().await {
+                Ok(r) => res = r,
+                Err(_) => break,
+            }
         }
         let st = res.status();
         if st.is_success() {
@@ -312,14 +322,14 @@ async fn chat(core: &Core, messages: &[Value], tools: Option<&Value>, json_out: 
             last_err = format!("{st}");
             continue;
         }
-        // unknown model: try the next one
-        if st.as_u16() == 404 || (st.as_u16() == 400 && t.to_lowercase().contains("model")) {
+        // unknown model (or one that won't take reasoning_effort): try the next one
+        if st.as_u16() == 404 || (st.as_u16() == 400 && (t.to_lowercase().contains("model") || t.to_lowercase().contains("reasoning"))) {
             last_err = format!("{st}");
             continue;
         }
         return Err(AppError::msg(format!("Smart bar error {st}: {}", t.chars().take(200).collect::<String>())));
     }
-    Err(AppError::msg(if last_err.starts_with("429") || last_err.starts_with("503") {
+    Err(AppError::msg(if last_err.starts_with("429") || last_err.starts_with("503") || last_err == "timed out" {
         "the smart bar's a bit swamped right now. give it a minute and ask again.".to_string()
     } else {
         format!("the smart bar couldn't think straight ({last_err}). try again?")
