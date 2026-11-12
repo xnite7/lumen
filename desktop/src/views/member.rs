@@ -216,7 +216,7 @@ impl Render for Member {
         if !self.me.is_empty() && self.me == self.id && self.data.is_some() {
             let cur = d["style"]["accent"].as_str().unwrap_or("").to_lowercase();
             body = body.child(
-                div().flex().items_center().gap(px(10.)).child(div().text_size(px(14.)).font_weight(FontWeight::BOLD).text_color(theme::label2()).mr(px(6.)).child("your colour")).children(SWATCHES.iter().map(|c| {
+                div().flex().items_center().gap(px(10.)).child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).mr(px(6.)).child("your colour")).children(SWATCHES.iter().map(|c| {
                     let col = hex(c).unwrap_or(theme::neon().into());
                     let on = cur == *c;
                     div()
@@ -271,7 +271,7 @@ impl Render for Member {
                             .flex()
                             .flex_col()
                             .gap(px(4.))
-                            .child(div().text_size(px(12.)).font_weight(FontWeight::BOLD).text_color(theme::label3()).child("TASTE MATCH"))
+                            .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child("TASTE MATCH"))
                             .child(div().text_size(px(26.)).font_weight(FontWeight::BLACK).child(match_word(pct)))
                             .child(div().text_size(px(14.)).text_color(theme::label2()).child(format!("you've both watched {both}"))),
                     ),
@@ -314,7 +314,7 @@ impl Render for Member {
                             .flex()
                             .flex_col()
                             .gap(px(6.))
-                            .child(div().flex().items_center().gap(px(10.)).child(div().text_size(px(16.)).font_weight(FontWeight::BOLD).child(t["name"].as_str().unwrap_or("").to_string())).children(a["rating"].as_i64().map(|r| div().text_size(px(14.)).font_weight(FontWeight::BLACK).text_color(theme::lamp()).child(format!("★ {r}/10")))))
+                            .child(div().flex().items_center().gap(px(10.)).child(div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child(t["name"].as_str().unwrap_or("").to_string())).children(a["rating"].as_i64().map(|r| div().text_size(px(14.)).font_weight(FontWeight::BLACK).text_color(theme::lamp()).child(format!("★ {r}/10")))))
                             .child(div().text_size(px(15.)).line_height(px(21.)).text_color(theme::white(0.85)).child(crate::ui::emoji::text(a["text"].as_str().unwrap_or(""), 15.))),
                     )
             })));

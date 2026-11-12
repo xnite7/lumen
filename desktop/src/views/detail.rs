@@ -336,7 +336,7 @@ impl Render for Detail {
                                     .rounded(px(14.))
                                     .bg(theme::text())
                                     .text_color(gpui::rgb(0x000000))
-                                    .font_weight(FontWeight::BOLD)
+                                    .font_weight(FontWeight::SEMIBOLD)
                                     .text_size(px(18.))
                                     .cursor_pointer()
                                     .hover(|s| s.opacity(0.88))
@@ -460,7 +460,7 @@ impl Render for Detail {
                                         .items_center()
                                         .rounded_full()
                                         .text_size(px(15.))
-                                        .font_weight(FontWeight::BOLD)
+                                        .font_weight(FontWeight::SEMIBOLD)
                                         .cursor_pointer()
                                         .when(on, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))
                                         .when(!on, |d| d.bg(theme::white(0.1)).hover(|s| s.bg(theme::white(0.18))))
@@ -559,7 +559,7 @@ impl Render for Detail {
                                                         .child(icon("check", 16.)),
                                                 ),
                                         )
-                                        .child(div().text_size(px(16.)).font_weight(FontWeight::BOLD).truncate().child(playback::episode_name(v)))
+                                        .child(div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).truncate().child(playback::episode_name(v)))
                                         .children(v["overview"].as_str().or(v["description"].as_str()).map(|o| {
                                             div().text_size(px(14.)).line_height(px(19.)).line_clamp(2).text_ellipsis().text_color(theme::label2()).child(o.to_string())
                                         }))
@@ -596,7 +596,7 @@ impl Render for Detail {
                             .on_click(move |_, _, cx| Nav::go(crate::Route::Studio(cid, n2.clone()), cx))
                             .child(match logo {
                                 Some(u) => img(u).h(px(36.)).max_w(px(160.)).object_fit(ObjectFit::Contain).into_any_element(),
-                                None => div().font_weight(FontWeight::BOLD).child(cname).into_any_element(),
+                                None => div().font_weight(FontWeight::SEMIBOLD).child(cname).into_any_element(),
                             })
                     }))),
             );
@@ -642,7 +642,7 @@ impl Render for Detail {
                                         None => div().child(nm.chars().next().unwrap_or('?').to_string()).into_any_element(),
                                     }),
                             )
-                            .child(div().text_size(px(14.)).font_weight(FontWeight::BOLD).text_center().line_clamp(2).child(nm))
+                            .child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_center().line_clamp(2).child(nm))
                             .children(c["character"].as_str().filter(|s| !s.is_empty()).map(|ch| {
                                 div().text_size(px(12.)).text_center().line_clamp(1).text_ellipsis().text_color(theme::label3()).child(ch.to_string())
                             }))

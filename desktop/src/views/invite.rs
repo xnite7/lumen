@@ -237,7 +237,7 @@ impl Render for Invite {
                             .child(div().flex().justify_between().text_size(sp(9.)).font_weight(FontWeight::BLACK).text_color(pink).child("MIDNITE™ COUCH").child("PRESENTS"))
                             .child(div().h(px(1.)).bg(gpui::rgba(0x3b10294d)))
                             .child(div().text_size(sp(30.)).line_height(sp(30.)).font_weight(FontWeight::BLACK).line_clamp(2).child(title))
-                            .child(div().text_size(sp(10.)).font_weight(FontWeight::BOLD).opacity(0.6).child(meta))
+                            .child(div().text_size(sp(10.)).font_weight(FontWeight::SEMIBOLD).opacity(0.6).child(meta))
                             .child(div().flex_1())
                             .child(
                                 div()
@@ -251,7 +251,7 @@ impl Render for Invite {
                                             .py(sp(4.))
                                             .px(sp(4.))
                                             .when(i > 0, |d| d.border_l_1().border_color(gpui::rgba(0x3b102955)))
-                                            .child(div().text_size(sp(8.)).font_weight(FontWeight::BOLD).opacity(0.6).child(k))
+                                            .child(div().text_size(sp(8.)).font_weight(FontWeight::SEMIBOLD).opacity(0.6).child(k))
                                             .child(div().text_size(sp(14.)).font_weight(FontWeight::BLACK).child(v))
                                     })),
                             )
@@ -281,7 +281,7 @@ impl Render for Invite {
                         let w = 1. + ((hash(&format!("{pid}bars")) >> (i % 16)) & 3) as f32 * 0.8;
                         div().w(px(w * s)).h_full().bg(ink)
                     })))
-                    .child(div().text_size(sp(10.)).font_weight(FontWeight::BOLD).text_color(ink).child(format!("№ {number}"))),
+                    .child(div().text_size(sp(10.)).font_weight(FontWeight::SEMIBOLD).text_color(ink).child(format!("№ {number}"))),
             )
             .when(matches!(lv, Some((Leave::In, _))), |d| {
                 let k = out_back(ph(lv.unwrap().1, 0., 420.));

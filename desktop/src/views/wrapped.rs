@@ -181,7 +181,7 @@ impl Render for Wrapped {
         let body: gpui::AnyElement = match slide {
             "loading" => div().text_size(px(22.)).text_color(theme::label2()).child("adding up your year…").into_any_element(),
             "empty" => div().flex().flex_col().gap(px(14.)).child(line(format!("a quiet {yr} on the couch."))).child(sub("watch a few things and come back — your year fills in as you go.".into())).into_any_element(),
-            "intro" => div().flex().flex_col().gap(px(10.)).child(div().text_size(px(20.)).font_weight(FontWeight::BOLD).text_color(theme::white(0.7)).child("midnite™ couch")).child(big(format!("{yr}"))).child(line("your year on the couch.".into())).into_any_element(),
+            "intro" => div().flex().flex_col().gap(px(10.)).child(div().text_size(px(20.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::white(0.7)).child("midnite™ couch")).child(big(format!("{yr}"))).child(line("your year on the couch.".into())).into_any_element(),
             "hours" => div().flex().flex_col().gap(px(10.)).child(sub("you spent".into())).child(big(format!("{}", count(y.hours)))).child(line("hours on the couch.".into())).child(sub(format!("that's {} full days of watching.", (y.hours as f32 / 24.).round() as i64))).into_any_element(),
             "count" => div()
                 .flex()

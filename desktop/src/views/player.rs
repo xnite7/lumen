@@ -174,7 +174,7 @@ fn pill(id: &'static str, label: String) -> gpui::Stateful<gpui::Div> {
         .bg(theme::text())
         .text_color(gpui::rgb(0x000000))
         .text_size(px(17.))
-        .font_weight(FontWeight::BOLD)
+        .font_weight(FontWeight::SEMIBOLD)
         .cursor_pointer()
         .hover(|s| s.opacity(0.88))
         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -234,7 +234,7 @@ impl PlayerView {
                 .rounded(px(10.))
                 .cursor_pointer()
                 .text_size(px(16.))
-                .font_weight(if on { FontWeight::BOLD } else { FontWeight::MEDIUM })
+                .font_weight(if on { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM })
                 .hover(|s| s.bg(theme::white(0.1)))
                 .child(div().w(px(18.)).children(on.then(|| icon("check", 18.))))
                 .children(flag.map(|u| img(u).h(px(18.)).flex_none().object_fit(ObjectFit::Contain)))
@@ -297,7 +297,7 @@ impl PlayerView {
                     })
                     .collect();
                 let mut rows: Vec<gpui::AnyElement> = rows;
-                rows.push(div().px(px(14.)).pt(px(12.)).pb(px(4.)).text_size(px(13.)).font_weight(FontWeight::BOLD).text_color(theme::label3()).child("sleep timer").into_any_element());
+                rows.push(div().px(px(14.)).pt(px(12.)).pb(px(4.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child("sleep timer").into_any_element());
                 let sleep = p.sleep;
                 for (label, v) in [("off", 0i64), ("end of this episode", -1), ("15 min", 15), ("30 min", 30), ("60 min", 60)] {
                     let pb = self.pb.clone();
@@ -331,7 +331,7 @@ impl PlayerView {
             .border_1()
             .border_color(theme::white(0.1))
             .on_click(|_, _, cx| cx.stop_propagation())
-            .child(div().px(px(14.)).py(px(8.)).text_size(px(13.)).font_weight(FontWeight::BOLD).text_color(theme::label3()).child(title))
+            .child(div().px(px(14.)).py(px(8.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child(title))
             .children(rows)
             .into_any_element()
     }
@@ -452,7 +452,7 @@ impl Render for PlayerView {
                         .bg(theme::black(0.55))
                         .text_center()
                         .text_size(px(30.))
-                        .font_weight(FontWeight::BOLD)
+                        .font_weight(FontWeight::SEMIBOLD)
                         .line_height(px(40.))
                         .text_color(gpui::rgb(0xffffff))
                         .child(p.sub.clone()),
@@ -473,7 +473,7 @@ impl Render for PlayerView {
                         .items_center()
                         .gap(px(10.))
                         .child(icon(if st.volume <= 0. { "mute" } else { "volume" }, 22.))
-                        .child(div().font_weight(FontWeight::BOLD).child(format!("{}%", self.vol_target.unwrap_or(st.volume).round() as i64))),
+                        .child(div().font_weight(FontWeight::SEMIBOLD).child(format!("{}%", self.vol_target.unwrap_or(st.volume).round() as i64))),
                 ),
             );
             cx.spawn(async move |this, cx| {
@@ -584,7 +584,7 @@ impl Render for PlayerView {
                         .flex()
                         .flex_col()
                         .gap(px(4.))
-                        .child(div().text_size(px(12.)).font_weight(FontWeight::BOLD).text_color(theme::label3()).child(format!("NEXT · S{} E{}", n["season"].as_i64().unwrap_or(0), n["episode"].as_i64().or(n["number"].as_i64()).unwrap_or(0))))
+                        .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child(format!("NEXT · S{} E{}", n["season"].as_i64().unwrap_or(0), n["episode"].as_i64().or(n["number"].as_i64()).unwrap_or(0))))
                         .child(div().text_size(px(17.)).font_weight(FontWeight::BLACK).child(playback::episode_name(&n)))
                         .children((!over.is_empty()).then(|| div().text_size(px(13.)).line_height(px(18.)).text_color(theme::label2()).line_clamp(3).child(over))),
                 )
@@ -718,7 +718,7 @@ impl Render for PlayerView {
                                             .children(still.map(|i| {
                                                 img(i).w(px(200.)).h(px(112.)).rounded(px(10.)).border_2().border_color(theme::white(0.85)).object_fit(ObjectFit::Cover)
                                             }))
-                                            .child(div().px(px(10.)).py(px(4.)).rounded(px(8.)).bg(theme::black(0.8)).text_size(px(14.)).font_weight(FontWeight::BOLD).child(clock(t)))
+                                            .child(div().px(px(10.)).py(px(4.)).rounded(px(8.)).bg(theme::black(0.8)).text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).child(clock(t)))
                                     })),
                             ),
                     )
@@ -756,7 +756,7 @@ impl Render for PlayerView {
                                 div()
                                     .ml(px(6.))
                                     .text_size(px(16.))
-                                    .font_weight(FontWeight::BOLD)
+                                    .font_weight(FontWeight::SEMIBOLD)
                                     .child(format!("{} / {}", clock(st.pos), clock(st.duration))),
                             )
                             .child(div().flex_1())
@@ -773,7 +773,7 @@ impl Render for PlayerView {
                                     .rounded_full()
                                     .bg(theme::white(0.12))
                                     .text_size(px(15.))
-                                    .font_weight(FontWeight::BOLD)
+                                    .font_weight(FontWeight::SEMIBOLD)
                                     .cursor_pointer()
                                     .hover(|s| s.bg(theme::white(0.2)))
                                     .on_click(move |_, _, cx| pb.update(cx, |p, cx| p.play_next(cx)))

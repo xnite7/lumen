@@ -37,7 +37,7 @@ pub fn follow_btn(kind: &'static str, id: u64, name: String, img: Option<String>
         .items_center()
         .gap(px(8.))
         .rounded_full()
-        .font_weight(gpui::FontWeight::BOLD)
+        .font_weight(gpui::FontWeight::SEMIBOLD)
         .cursor_pointer()
         .when(on, |d| d.bg(theme::white(0.12)))
         .when(!on, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))

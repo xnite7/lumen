@@ -143,7 +143,7 @@ fn chip(id: SharedString, label: &str, on: bool) -> gpui::Stateful<gpui::Div> {
         .items_center()
         .rounded_full()
         .text_size(px(15.))
-        .font_weight(FontWeight::BOLD)
+        .font_weight(FontWeight::SEMIBOLD)
         .cursor_pointer()
         .when(on, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))
         .when(!on, |d| d.bg(theme::white(0.1)).hover(|s| s.bg(theme::white(0.18))))
@@ -213,7 +213,7 @@ impl Render for Library {
                                         .children(art.map(|u| gpui::img(u).size_full().object_fit(gpui::ObjectFit::Cover)))
                                 })),
                             )
-                            .child(div().text_size(px(16.)).font_weight(FontWeight::BOLD).child(name.clone()))
+                            .child(div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child(name.clone()))
                             .child(div().text_size(px(13.)).text_color(theme::label3()).child(format!("{} titles", items.len())))
                     });
                     let new_tile = div()
@@ -238,7 +238,7 @@ impl Render for Library {
                                 .child(crate::ui::icon("plus", 30.))
                                 .child(div().w_full().h(px(40.)).px(px(10.)).flex().items_center().rounded(px(10.)).bg(theme::white(0.08)).text_size(px(14.)).child(self.new_name.clone())),
                         )
-                        .child(div().text_size(px(16.)).font_weight(FontWeight::BOLD).child("new list"));
+                        .child(div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child("new list"));
                     page = page.child(div().flex().flex_wrap().gap(px(14.)).child(new_tile).children(tiles));
                     return page.child(div().h(px(60.)));
                 }

@@ -72,7 +72,7 @@ fn btn(id: SharedString, label: &str, primary: bool) -> gpui::Stateful<gpui::Div
         .items_center()
         .rounded_full()
         .text_size(px(14.))
-        .font_weight(FontWeight::BOLD)
+        .font_weight(FontWeight::SEMIBOLD)
         .cursor_pointer()
         .when(primary, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)).hover(|s| s.opacity(0.88)))
         .when(!primary, |d| d.bg(theme::white(0.12)).hover(|s| s.bg(theme::white(0.2))))
@@ -144,7 +144,7 @@ impl Render for Couch {
                             .bg(theme::surface2())
                             .children(art.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover)))
                             .child(div().absolute().top_0().left_0().size_full().bg(linear_gradient(180., linear_color_stop(theme::black(0.0), 0.4), linear_color_stop(theme::black(0.8), 1.))))
-                            .child(div().absolute().left(px(12.)).top(px(12.)).flex().items_center().gap(px(8.)).child(avatar(m["avatar"].as_str(), &name, 28.)).child(div().font_weight(FontWeight::BOLD).child(name.clone())))
+                            .child(div().absolute().left(px(12.)).top(px(12.)).flex().items_center().gap(px(8.)).child(avatar(m["avatar"].as_str(), &name, 28.)).child(div().font_weight(FontWeight::SEMIBOLD).child(name.clone())))
                             .child(div().absolute().right(px(12.)).top(px(12.)).text_size(px(12.)).text_color(theme::label2()).child(if m["paused"].as_bool() == Some(true) { "paused" } else { "" }))
                             .child(
                                 div()
@@ -158,7 +158,7 @@ impl Render for Couch {
                             )
                             .child(div().absolute().left(px(12.)).right(px(12.)).bottom(px(8.)).h(px(4.)).rounded_full().bg(theme::white(0.25)).child(div().h_full().rounded_full().w(px((w - 24.) * frac)).bg(theme::lamp()))),
                     )
-                    .child(div().text_size(px(16.)).font_weight(FontWeight::BOLD).truncate().child(line))
+                    .child(div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).truncate().child(line))
             })));
         }
 
@@ -243,7 +243,7 @@ impl Render for Couch {
                         .items_center()
                         .gap(px(8.))
                         .child(div().rounded_full().border_2().border_color(if on { theme::neon().into() } else { theme::white(0.0) }).p(px(2.)).child(avatar(p["avatar"].as_str(), &name, 72.)))
-                        .child(div().text_size(px(14.)).font_weight(FontWeight::BOLD).truncate().child(name))
+                        .child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).truncate().child(name))
                 })
             ));
         }

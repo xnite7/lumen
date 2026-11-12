@@ -123,7 +123,7 @@ impl Render for Search {
         if q.trim().len() < 2 {
             if !self.recents.is_empty() {
                 page = page
-                    .child(div().text_size(px(20.)).font_weight(FontWeight::BOLD).child("recent"))
+                    .child(div().text_size(px(20.)).font_weight(FontWeight::SEMIBOLD).child("recent"))
                     .child(div().flex().flex_wrap().gap(px(10.)).children(self.recents.iter().enumerate().map(|(i, r)| {
                         let r2 = r.clone();
                         div()

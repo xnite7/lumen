@@ -102,7 +102,7 @@ fn chip(id: SharedString, label: String, on: bool) -> gpui::Stateful<gpui::Div> 
         .items_center()
         .rounded_full()
         .text_size(px(14.))
-        .font_weight(FontWeight::BOLD)
+        .font_weight(FontWeight::SEMIBOLD)
         .cursor_pointer()
         .when(on, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))
         .when(!on, |d| d.bg(theme::white(0.08)).hover(|s| s.bg(theme::white(0.16))))
@@ -165,7 +165,7 @@ impl Render for Planner {
                                             .gap(px(3.))
                                             .child(div().text_size(px(9.)).font_weight(FontWeight::BLACK).text_color(gpui::rgb(0xc4206f)).child("ADMIT ONE"))
                                             .child(div().text_size(px(18.)).line_height(px(19.)).font_weight(FontWeight::BLACK).child(m.name.to_uppercase()))
-                                            .children(when.map(|t| div().text_size(px(11.)).font_weight(FontWeight::BOLD).child(t.format("%a %b %-d · %-I:%M %p").to_string().to_uppercase())))
+                                            .children(when.map(|t| div().text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).child(t.format("%a %b %-d · %-I:%M %p").to_string().to_uppercase())))
                                             .when(!note.is_empty(), |d| d.child(div().text_size(px(12.)).italic().text_color(gpui::rgb(0x2a2a55)).child(format!("“{note}”")))),
                                     ),
                             )
@@ -176,14 +176,14 @@ impl Render for Planner {
                                     .flex()
                                     .flex_col()
                                     .gap(px(10.))
-                                    .child(div().text_size(px(13.)).font_weight(FontWeight::BOLD).text_color(theme::label2()).child("when"))
+                                    .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).child("when"))
                                     .child(div().flex().flex_wrap().gap(px(8.)).children(picks().into_iter().map(|(label, t)| {
                                         chip(SharedString::from(format!("pk-{label}")), label.to_string(), self.at == t).on_click(cx.listener(move |p, _, _, cx| {
                                             p.at = t;
                                             cx.notify();
                                         }))
                                     })))
-                                    .child(div().mt(px(6.)).text_size(px(13.)).font_weight(FontWeight::BOLD).text_color(theme::label2()).child("who"))
+                                    .child(div().mt(px(6.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).child("who"))
                                     .child(
                                         div()
                                             .flex()
@@ -208,7 +208,7 @@ impl Render for Planner {
                                                 }))
                                             })),
                                     )
-                                    .child(div().mt(px(6.)).text_size(px(13.)).font_weight(FontWeight::BOLD).text_color(theme::label2()).child("a line on the ticket (optional)"))
+                                    .child(div().mt(px(6.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).child("a line on the ticket (optional)"))
                                     .child(div().h(px(42.)).px(px(12.)).flex().items_center().rounded(px(12.)).bg(theme::white(0.08)).text_size(px(15.)).child(self.note.clone())),
                             ),
                     )

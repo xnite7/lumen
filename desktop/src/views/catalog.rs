@@ -133,7 +133,7 @@ impl Render for Catalog {
                             .items_center()
                             .rounded_full()
                             .cursor_pointer()
-                            .font_weight(FontWeight::BOLD)
+                            .font_weight(FontWeight::SEMIBOLD)
                             .when(on, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))
                             .on_click(cx.listener(move |v, _, _, cx| {
                                 if v.kind != k {

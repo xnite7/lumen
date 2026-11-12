@@ -156,7 +156,7 @@ impl Render for Reactions {
                         .rounded_full()
                         .bg(if f.mine { gpui::Hsla::from(theme::neon()) } else { theme::black(0.6).into() })
                         .text_size(px(11.))
-                        .font_weight(FontWeight::BOLD)
+                        .font_weight(FontWeight::SEMIBOLD)
                         .child(f.name.clone()),
                 )
         });

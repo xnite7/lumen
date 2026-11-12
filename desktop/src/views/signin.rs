@@ -68,7 +68,7 @@ impl Render for SignIn {
                     .px(px(26.))
                     .rounded(px(16.))
                     .bg(gpui::rgb(0x5865f2))
-                    .font_weight(FontWeight::BOLD)
+                    .font_weight(FontWeight::SEMIBOLD)
                     .text_size(px(18.))
                     .cursor_pointer()
                     .hover(|s| s.opacity(0.9))

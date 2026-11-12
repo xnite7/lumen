@@ -324,7 +324,7 @@ impl Render for Home {
                     .flex()
                     .flex_col()
                     .gap(px(12.))
-                    .child(div().px(px(theme::GUTTER)).flex().items_center().gap(px(10.)).child(div().text_size(px(21.)).font_weight(FontWeight::BOLD).child("on the couch")).child(div().size(px(8.)).rounded_full().bg(theme::neon())).child(div().text_size(px(14.)).text_color(theme::label2()).child(format!("{} watching", self.live.len()))))
+                    .child(div().px(px(theme::GUTTER)).flex().items_center().gap(px(10.)).child(div().text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).child("on the couch")).child(div().size(px(8.)).rounded_full().bg(theme::neon())).child(div().text_size(px(14.)).text_color(theme::label2()).child(format!("{} watching", self.live.len()))))
                     .child(div().id("row-live").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(cards))
                     .into_any_element(),
             );
@@ -372,7 +372,7 @@ impl Render for Home {
                                     .flex()
                                     .gap(px(6.))
                                     .text_size(px(13.))
-                                    .child(div().id(("feed-who", i)).font_weight(FontWeight::BOLD).cursor_pointer().hover(|s| s.underline()).on_click(move |_, _, cx| {
+                                    .child(div().id(("feed-who", i)).font_weight(FontWeight::SEMIBOLD).cursor_pointer().hover(|s| s.underline()).on_click(move |_, _, cx| {
                                         cx.stop_propagation();
                                         Nav::go(crate::Route::Member(wid.clone()), cx)
                                     }).child(who))
@@ -389,7 +389,7 @@ impl Render for Home {
                     .flex()
                     .flex_col()
                     .gap(px(12.))
-                    .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::BOLD).child("the crew lately"))
+                    .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).child("the crew lately"))
                     .child(div().id("row-feed").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(items))
                     .into_any_element(),
             );
@@ -407,7 +407,7 @@ impl Render for Home {
                     .flex()
                     .flex_col()
                     .gap(px(12.))
-                    .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::BOLD).text_color(theme::text()).child(r.title.clone()))
+                    .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::text()).child(r.title.clone()))
                     .child(
                         div()
                             .id(SharedString::from(format!("row-{}", r.key)))
@@ -459,7 +459,7 @@ impl Render for Home {
                     .cursor_pointer()
                     .hover(|s| s.opacity(0.85))
                     .on_click(move |_, _, cx| Nav::go(crate::Route::Catalog(spec.clone()), cx))
-                    .child(div().text_size(px(12.)).font_weight(FontWeight::BOLD).text_color(theme::label2()).child(label))
+                    .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).child(label))
                     .child(div().text_size(px(18.)).font_weight(FontWeight::BLACK).child(name))
             });
             let genres = self.genres.1.iter().enumerate().map(|(i, gname)| {
@@ -473,7 +473,7 @@ impl Render for Home {
                     .items_center()
                     .rounded_full()
                     .bg(gpui::rgb(tints[(i + 3) % tints.len()]))
-                    .font_weight(FontWeight::BOLD)
+                    .font_weight(FontWeight::SEMIBOLD)
                     .cursor_pointer()
                     .hover(|s| s.opacity(0.85))
                     .on_click(move |_, _, cx| Nav::go(crate::Route::Catalog(spec.clone()), cx))
@@ -484,7 +484,7 @@ impl Render for Home {
                     .flex()
                     .flex_col()
                     .gap(px(12.))
-                    .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::BOLD).child("browse"))
+                    .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).child("browse"))
                     .child(
                         div()
                             .id("browse-tiles")
@@ -522,7 +522,7 @@ impl Render for Home {
                     .flex()
                     .flex_col()
                     .gap(px(12.))
-                    .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::BOLD).child("services"))
+                    .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).child("services"))
                     .child(div().id("services").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(self.services.iter().map(|(id, name, logo)| {
                         let spec = views_catalog::Spec { title: name.clone(), service: Some((*id, logo.clone())), catalog: Value::Null, genre: None };
                         div()

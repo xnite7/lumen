@@ -44,7 +44,7 @@ impl Render for Studio {
                 .items_center()
                 .rounded_full()
                 .text_size(px(15.))
-                .font_weight(FontWeight::BOLD)
+                .font_weight(FontWeight::SEMIBOLD)
                 .cursor_pointer()
                 .when(on, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))
                 .when(!on, |d| d.bg(theme::white(0.1)).hover(|s| s.bg(theme::white(0.18))))

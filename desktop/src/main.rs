@@ -385,7 +385,7 @@ impl Root {
                     .bg(theme::black(0.82))
                     .border_1()
                     .border_color(theme::white(0.1))
-                    .child(div().flex_1().min_w_0().px(px(6.)).text_size(px(14.)).font_weight(FontWeight::BOLD).text_ellipsis().line_clamp(1).child(title))
+                    .child(div().flex_1().min_w_0().px(px(6.)).text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_ellipsis().line_clamp(1).child(title))
                     .child(b("mini-play", if paused { ui::icon_fill("play", 20.) } else { ui::icon_fill("pause", 20.) }).on_click(move |_, _, cx| {
                         let paused = p1.read(cx).state.paused;
                         if views::player::may(if paused { "play" } else { "pause" }, None, cx) {
@@ -422,7 +422,7 @@ impl Root {
             col = col.child(
                 card()
                     .child(div().size(px(36.)).rounded(px(10.)).bg(theme::neon()).flex().items_center().justify_center().font_weight(FontWeight::BLACK).child(name.chars().next().unwrap_or('?').to_uppercase().to_string()))
-                    .child(div().flex_1().flex().flex_col().child(div().font_weight(FontWeight::BOLD).child(name.clone())).child(div().text_size(px(13.)).text_color(theme::label2()).child("wants to join your couch")))
+                    .child(div().flex_1().flex().flex_col().child(div().font_weight(FontWeight::SEMIBOLD).child(name.clone())).child(div().text_size(px(13.)).text_color(theme::label2()).child("wants to join your couch")))
                     .child(
                         div()
                             .id(SharedString::from(format!("deny-{i}")))
@@ -444,7 +444,7 @@ impl Root {
                             .rounded_full()
                             .bg(theme::text())
                             .text_color(gpui::rgb(0x000000))
-                            .font_weight(FontWeight::BOLD)
+                            .font_weight(FontWeight::SEMIBOLD)
                             .flex()
                             .items_center()
                             .gap(px(6.))

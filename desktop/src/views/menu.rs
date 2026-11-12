@@ -123,7 +123,7 @@ impl Render for Menu {
                     .shadow_lg()
                     .flex()
                     .flex_col()
-                    .child(div().px(px(12.)).pt(px(6.)).pb(px(6.)).text_size(px(13.)).font_weight(FontWeight::BOLD).text_color(theme::label3()).truncate().child(SharedString::from(m.name.clone())))
+                    .child(div().px(px(12.)).pt(px(6.)).pb(px(6.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).truncate().child(SharedString::from(m.name.clone())))
                     .children(rows),
             )
             .into_any_element()

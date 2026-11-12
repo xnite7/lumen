@@ -121,7 +121,7 @@ pub fn card(cx: &mut App) -> Option<impl IntoElement> {
             .flex()
             .items_center()
             .rounded_full()
-            .font_weight(FontWeight::BOLD)
+            .font_weight(FontWeight::SEMIBOLD)
             .text_size(px(14.))
             .cursor_pointer()
             .when(strong, |d| d.bg(crate::theme::neon()))

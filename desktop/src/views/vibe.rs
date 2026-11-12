@@ -132,7 +132,7 @@ impl Render for Vibe {
                     .items_center()
                     .rounded_full()
                     .bg(theme::white(0.08))
-                    .font_weight(FontWeight::BOLD)
+                    .font_weight(FontWeight::SEMIBOLD)
                     .cursor_pointer()
                     .hover(|s| s.bg(theme::white(0.14)))
                     .on_click(cx.listener(move |v, _, _, cx| v.ask(q.clone(), cx)))
