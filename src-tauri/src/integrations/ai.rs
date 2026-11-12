@@ -272,7 +272,8 @@ fn models() -> Vec<&'static str> {
     // quick ones first: "flash-latest" now points at a model that can think
     // for minutes on a tool call, which left the smart bar hanging. When one
     // is swamped or slow, the next one usually isn't.
-    v.extend(["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-flash-latest"]);
+    // (the 2.5 models are closed to new keys: 404)
+    v.extend(["gemini-flash-lite-latest", "gemini-flash-latest", "gemini-3.5-flash-lite"]);
     v
 }
 
