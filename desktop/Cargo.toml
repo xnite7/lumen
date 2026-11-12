@@ -33,8 +33,9 @@ tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 raw-window-handle = "0.6"
 
 [profile.release]
-codegen-units = 1
-lto = "thin"
+# quick beta builds: parallel codegen, no link-time optimisation
+codegen-units = 16
+lto = false
 opt-level = 3
 strip = true
 

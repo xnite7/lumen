@@ -30,6 +30,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop
+          # keep GPUI (a path crate) and the engine's build too, not just crates.io ones
+          cache-workspace-crates: "true"
+          cache-all-crates: "true"
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Fetch GPUI (Zed's official source, the tag in desktop/Cargo.toml)
         shell: bash

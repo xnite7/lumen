@@ -1,6 +1,6 @@
 //! Keeping the new couch up to date: the crew server hands out new builds;
 //! couch downloads one in the background and swaps its files (the running
-//! .exe is moved aside). Then a card offers "restart now"; otherwise the
+//! .exe is moved aside), checking every 2 minutes. Then a card offers "restart now"; otherwise the
 //! next launch is the new version.
 use gpui::{div, prelude::*, px, App, FontWeight, Global};
 use std::time::Duration;
@@ -72,7 +72,7 @@ pub fn start(cx: &mut App) {
         let mut have = VERSION.to_string();
         let mut first = true;
         loop {
-            crate::timer::after(Duration::from_secs(if first { 15 } else { 900 })).await;
+            crate::timer::after(Duration::from_secs(if first { 10 } else { 120 })).await;
             first = false;
             let Some(dir) = dir() else { break };
             let core = couch::state::get().core.clone();
