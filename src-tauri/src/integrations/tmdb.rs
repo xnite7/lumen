@@ -43,6 +43,17 @@ pub async fn get(core: &Core, path: &str, params: &str, ttl: Duration) -> AppRes
     core.http.get_json_cached(&u, ttl, T).await
 }
 
+/// A title's logo from TMDB, by its IMDb id (tries series, then movie).
+pub async fn logo_for_imdb(core: &Core, imdb: &str) -> Option<String> {
+    for kind in ["tv", "movie"] {
+        if let Ok(Some(tid)) = tmdb_id_for_imdb(core, imdb, kind).await {
+            let v = get(core, &format!("/{kind}/{tid}/images"), "&include_image_language=en,null", DAY).await.ok()?;
+            return v.pointer("/logos/0/file_path").and_then(|p| p.as_str()).and_then(|p| img(Some(p), "w500"));
+        }
+    }
+    None
+}
+
 pub async fn tmdb_id_for_imdb(core: &Core, imdb: &str, kind: &str) -> AppResult<Option<u64>> {
     let v = get(core, &format!("/find/{imdb}"), "&external_source=imdb_id", MONTH).await?;
     let key = if kind == "tv" { "tv_results" } else { "movie_results" };

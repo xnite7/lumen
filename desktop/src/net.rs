@@ -24,7 +24,21 @@ impl HttpClient for CouchHttp {
         let (url, fit) = split_fit(&req.uri().to_string());
         let core = self.core.clone();
         Box::pin(async move {
-            let got = couch::rt::spawn(async move { couch::images::load(&core, &url).await.map_err(|e| e.to_string()) }).await?.map_err(anyhow::Error::msg)?;
+            let got = couch::rt::spawn(async move {
+                match couch::images::load(&core, &url).await {
+                    Ok(x) => Ok(x),
+                    // metahub has no logo for it: TMDB often does
+                    Err(e) => match metahub_logo_imdb(&url) {
+                        Some(imdb) => match couch::integrations::tmdb::logo_for_imdb(&core, &imdb).await {
+                            Some(u) => couch::images::load(&core, &u).await.map_err(|e| e.to_string()),
+                            None => Err(e.to_string()),
+                        },
+                        None => Err(e.to_string()),
+                    },
+                }
+            })
+            .await?
+            .map_err(anyhow::Error::msg)?;
             let (mut bytes, mut ct) = got;
             if let Some((w, k)) = fit {
                 // GPUI samples a picture with no mip levels, so a big picture drawn
@@ -131,4 +145,10 @@ fn shrink(bytes: &[u8], w: u32, k: char) -> Option<Vec<u8>> {
     let enc = image::codecs::png::PngEncoder::new_with_quality(&mut out, image::codecs::png::CompressionType::Fast, image::codecs::png::FilterType::Sub);
     im.write_with_encoder(enc).ok()?;
     Some(out)
+}
+
+/// "https://images.metahub.space/logo/medium/tt123/img" → "tt123"
+fn metahub_logo_imdb(url: &str) -> Option<String> {
+    let rest = url.split("images.metahub.space/logo/").nth(1)?;
+    rest.split('/').find(|p| p.starts_with("tt")).map(String::from)
 }

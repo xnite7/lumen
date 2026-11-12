@@ -37,7 +37,8 @@ pub fn card_with(
     // the logo steps back once the clip has played 2 s, and comes back on hover of the picture
     let logo_a = clip.as_ref().map_or(1., |c| 1. - ((c.2 - 2.) / 0.6).clamp(0., 1.));
     let art = m.background.clone().or(m.poster.clone()).map(|u| crate::net::fit(&sized(&u, "w780"), W));
-    let logo = m.logo.clone().map(|u| crate::net::logo(&sized(&u, "w500"), 170.));
+    // no logo given: metahub's (and TMDB's behind it) by the IMDb id
+    let logo = m.logo.clone().or_else(|| m.id.starts_with("tt").then(|| format!("https://images.metahub.space/logo/medium/{}/img", m.id.split(':').next().unwrap_or(&m.id)))).map(|u| crate::net::logo(&sized(&u, "w500"), 170.));
     let el = div()
         .id(id)
         .flex_none()
