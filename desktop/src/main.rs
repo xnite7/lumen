@@ -53,6 +53,8 @@ impl Nav {
         cx.try_global::<Nav>().and_then(|n| n.0.upgrade())
     }
     pub fn go(route: Route, cx: &mut App) {
+        let v = crate::ui::video::get(cx);
+        v.update(cx, |v, cx| v.stop_prefix("trailer:", cx));
         if let Some(r) = Self::root(cx) {
             r.update(cx, |r, cx| {
                 if r.route != route {

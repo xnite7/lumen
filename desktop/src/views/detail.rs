@@ -18,6 +18,8 @@ pub struct Detail {
     rating: Option<u8>,
     hover_star: u8,
     favs: Option<Vec<Value>>,
+    /// the trailer's YouTube key (None: not looked up, Some(""): there isn't one)
+    trailer: Option<String>,
     scroll: ScrollHandle,
 }
 
@@ -49,7 +51,17 @@ impl Detail {
             });
         })
         .detach();
-        Self { base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, favs: None, scroll: ScrollHandle::new() }
+        cx.observe(&crate::ui::video::get(cx), |_, _, cx| cx.notify()).detach();
+        let (k2, i2) = (base.kind.clone(), base.id.clone());
+        cx.spawn(async move |this, cx| {
+            let key = api::call::<Option<String>>("trailer_get", json!({ "kind": k2, "id": i2 })).await.ok().flatten().unwrap_or_default();
+            let _ = this.update(cx, |d, cx| {
+                d.trailer = Some(key);
+                cx.notify();
+            });
+        })
+        .detach();
+        Self { base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, favs: None, trailer: None, scroll: ScrollHandle::new() }
     }
 
     fn refresh_item(&mut self, cx: &mut Context<Self>) {
@@ -256,12 +268,31 @@ impl Render for Detail {
         // rating only once you've actually watched it
         let seen_it = self.rating.is_some() || flagged || !self.watched().is_empty() || self.item.as_ref().map_or(false, |i| i["state"]["timesWatched"].as_i64().unwrap_or(0) > 0);
 
+        // the trailer, playing over the art (with sound)
+        let towner = format!("trailer:{}", self.base.id);
+        let vid = crate::ui::video::get(cx);
+        let trailer_on = vid.read(cx).owner == towner;
+        let tframe = if trailer_on {
+            let o = towner.clone();
+            vid.update(cx, |x, _| {
+                let f = x.frame(&o, window)?;
+                let a = x.since.map_or(0., |t| (t.elapsed().as_secs_f32() / 0.6).min(1.));
+                Some((f, a))
+            })
+        } else {
+            None
+        };
+        if tframe.as_ref().map_or(false, |f| f.1 < 1.) {
+            window.request_animation_frame();
+        }
+        let has_trailer = self.trailer.as_ref().map_or(false, |k| !k.is_empty());
         let hero = div()
             .relative()
             .w_full()
             .h(vh * 0.92)
             .flex_none()
             .children(art.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover)))
+            .children(tframe.map(|(f, a)| img(f).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(a)))
             .child(div().absolute().top_0().left_0().size_full().bg(linear_gradient(90., linear_color_stop(theme::black(0.85), 0.), linear_color_stop(theme::black(0.0), 0.7))))
             .child(div().absolute().left_0().bottom_0().w_full().h(vh * 0.5).bg(linear_gradient(180., linear_color_stop(theme::black(0.0), 0.), linear_color_stop(theme::black(1.0), 1.))))
             .child(
@@ -356,6 +387,19 @@ impl Render for Detail {
                                         let _ = cx.update(|cx| Nav::toast(if now { "removed from favourites".into() } else { "added to favourites".into() }, cx));
                                     })
                                     .detach();
+                                }))
+                            })
+                            .when(has_trailer, |d| {
+                                let key = self.trailer.clone().unwrap_or_default();
+                                let (o, v) = (towner.clone(), vid.clone());
+                                d.child(act("d-trailer", icon(if trailer_on { "close" } else { "film" }, 22.), if trailer_on { "Stop trailer" } else { "Trailer" }).on_click(move |_, _, cx| {
+                                    let o = o.clone();
+                                    if trailer_on {
+                                        v.update(cx, |x, cx| x.stop(&o, cx));
+                                    } else {
+                                        let url = format!("https://www.youtube.com/watch?v={key}");
+                                        v.update(cx, |x, cx| x.play(&o, &url, cx));
+                                    }
                                 }))
                             })
                             .child(act("d-party", icon("couch", 22.), "Watch party").on_click({

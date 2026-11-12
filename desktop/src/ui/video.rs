@@ -52,7 +52,9 @@ impl Video {
     pub fn play(&mut self, owner: &str, url: &str, cx: &mut Context<Self>) {
         let Some(s) = &self.surface else { return };
         // the billboard gets a sharper picture than a card
-        if owner.starts_with("hero:") {
+        // trailers play with sound, billboard clips and cards are muted
+        s.set_muted(!owner.starts_with("trailer:"));
+        if owner.starts_with("hero:") || owner.starts_with("trailer:") {
             s.set_size(1280, 720);
         } else {
             s.set_size(640, 360);
@@ -80,6 +82,14 @@ impl Video {
             self.old.push(i);
         }
         cx.notify();
+    }
+
+    /// Stop whatever's showing if its owner starts with `prefix` (leaving a page).
+    pub fn stop_prefix(&mut self, prefix: &str, cx: &mut Context<Self>) {
+        if self.owner.starts_with(prefix) {
+            let o = self.owner.clone();
+            self.stop(&o, cx);
+        }
     }
 
     pub fn set_muted(&self, muted: bool) {
