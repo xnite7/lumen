@@ -57,6 +57,34 @@ jobs:
           Copy-Item desktop/resources/tiles/*.png dist/
           # trailers (YouTube) play through yt-dlp
           Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile dist/yt-dlp.exe
+      - name: Live tile package (Windows 10)
+        # a signed sparse package that gives couch.exe an identity, so it can
+        # drive its Start tile. Needs COUCH_SIGN_PFX (base64 .pfx whose subject
+        # is "CN=midnite couch") and COUCH_SIGN_PASS; without them: skipped.
+        shell: pwsh
+        env:
+          PFX: ${{ secrets.COUCH_SIGN_PFX }}
+          PFX_PASS: ${{ secrets.COUCH_SIGN_PASS }}
+        run: |
+          if (-not $env:PFX) { Write-Host "::warning::COUCH_SIGN_PFX not set; no live tile package"; exit 0 }
+          $kit = Get-Item "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64" | Where-Object { Test-Path (Join-Path $_.FullName makeappx.exe) } | Sort-Object { [version]$_.Parent.Name } -Descending | Select-Object -First 1
+          $makeappx = Join-Path $kit.FullName makeappx.exe
+          $signtool = Join-Path $kit.FullName signtool.exe
+          New-Item -ItemType Directory -Force pkg | Out-Null
+          Copy-Item desktop/resources/package/* pkg/
+          & $makeappx pack /d pkg /p dist/couch.msix /nv /o
+          if ($LASTEXITCODE) { exit 1 }
+          $pfx = Join-Path $env:RUNNER_TEMP sign.pfx
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX))
+          & $signtool sign /fd SHA256 /f $pfx /p $env:PFX_PASS dist/couch.msix
+          $signed = $LASTEXITCODE -eq 0
+          if ($signed) {
+            # the public half, so couch can ask Windows to trust it (once)
+            $c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfx, $env:PFX_PASS)
+            [IO.File]::WriteAllBytes("dist/couch.cer", $c.Export('Cert'))
+          }
+          Remove-Item $pfx
+          if (-not $signed) { exit 1 }
       - uses: actions/upload-artifact@v4
         with:
           name: couch-gpui-windows

@@ -13,6 +13,7 @@ mod update;
 mod theme;
 mod mini;
 mod jump;
+mod tile;
 mod timer;
 mod ui;
 mod views;
@@ -829,6 +830,7 @@ fn main() {
         together::init(cx);
         parties::init(cx);
         update::start(cx);
+        tile::start(cx);
         // billboard + previews play with sound in the new couch (once; the speaker button changes it)
         {
             let core = couch::state::get().core.clone();

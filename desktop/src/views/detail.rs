@@ -459,9 +459,9 @@ impl Render for Detail {
                             .h(px(160.))
                             .max_w(px(480.))
                             .object_fit(ObjectFit::Contain)
-                            .with_fallback(move || div().text_size(px(60.)).font_weight(FontWeight::BLACK).child(name.clone()).into_any_element())
+                            .with_fallback(move || big_name(&name))
                             .into_any_element(),
-                        None => div().text_size(px(60.)).line_height(px(62.)).font_weight(FontWeight::BLACK).child(m.name.clone()).into_any_element(),
+                        None => big_name(&m.name),
                     })
                     .child(div().flex().gap(px(10.)).text_size(px(16.)).font_weight(FontWeight::MEDIUM).children(facts.into_iter().enumerate().flat_map(|(i, f)| {
                         let dot = (i > 0).then(|| div().text_color(theme::label3()).child("·").into_any_element());
@@ -901,4 +901,12 @@ pub fn open_rec(r: &Meta, cx: &mut gpui::App) {
         });
     })
     .detach();
+}
+
+/// the title in words when there's no logo: smaller for long names, never
+/// more lines than fit where the logo would have gone (160px)
+fn big_name(name: &str) -> gpui::AnyElement {
+    let long = name.chars().count() > 22;
+    let (size, lh, lines) = if long { (44., 48., 3) } else { (60., 64., 2) };
+    div().max_w(px(480.)).text_size(px(size)).line_height(px(lh)).line_clamp(lines).text_ellipsis().font_weight(FontWeight::BLACK).child(name.to_string()).into_any_element()
 }

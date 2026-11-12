@@ -121,7 +121,8 @@ pub fn card_with(
 }
 
 fn title_text(name: &str) -> impl IntoElement {
-    div().text_size(px(19.)).font_weight(gpui::FontWeight::BLACK).line_height(px(21.)).line_clamp(2).text_color(theme::text()).child(name.to_string())
+    // fits where the logo goes (170 wide, 54 high): two lines at most, then …
+    div().w(px(170.)).text_size(px(19.)).font_weight(gpui::FontWeight::BLACK).line_height(px(22.)).line_clamp(2).text_ellipsis().text_color(theme::text()).child(name.to_string())
 }
 
 /// A portrait poster (search results, lists).

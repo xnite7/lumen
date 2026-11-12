@@ -37,7 +37,8 @@ fn start_menu(d: &std::path::Path) {
     {
         let Some(programs) = dirs::data_dir().map(|a| a.join("Microsoft\\Windows\\Start Menu\\Programs")) else { return };
         let lnk = programs.join("midnite couch (new).lnk");
-        if lnk.exists() {
+        // with the live tile package, its own Start entry stands in for this
+        if lnk.exists() || crate::tile::live() || couch::state::try_get().and_then(|s| s.core.db.get::<bool>("tile_live")).unwrap_or(false) {
             return;
         }
         let exe = d.join("couch.exe");
