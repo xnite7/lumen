@@ -2,7 +2,8 @@
 use std::time::{Duration, Instant};
 
 pub async fn after(d: Duration) {
-    let _ = couch::rt::spawn(tokio::time::sleep(d)).await;
+    // the sleep is made on couch's runtime (tokio timers need it)
+    let _ = couch::rt::spawn(async move { tokio::time::sleep(d).await }).await;
 }
 
 pub async fn at(t: Instant) {

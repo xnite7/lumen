@@ -624,6 +624,16 @@ fn main() {
         use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
         let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     }
+    // if couch ever crashes, say why in a file (%LOCALAPPDATA%\\midnite couch (new)\\crash.log)
+    std::panic::set_hook(Box::new(|info| {
+        let dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())).unwrap_or_else(std::env::temp_dir);
+        let msg = format!("{}\n{info}\n{}\n\n", update::VERSION, std::backtrace::Backtrace::force_capture());
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("crash.log")) {
+            let _ = f.write_all(msg.as_bytes());
+        }
+        eprintln!("{msg}");
+    }));
     let _ = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,librqbit=warn,tracing=warn,naga=warn,blade_graphics=warn,cosmic_text=warn")).try_init();
 
     // the same folders as the webview app: settings, addons, library and
