@@ -51,9 +51,12 @@ pub fn toggle(cx: &mut gpui::App) {
     let on = !is_on();
     ON.store(on, Ordering::Relaxed);
     #[cfg(target_os = "windows")]
+    // after this frame: moving the window sends it messages right away,
+    // which can't land while couch is in the middle of an update
     match crate::mini::main_hwnd() {
         0 => {}
-        h => imp::set(h, on),
+        h => cx.defer(move |_| imp::set(h, on)),
     }
+    #[cfg(not(target_os = "windows"))]
     let _ = cx;
 }

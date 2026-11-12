@@ -348,23 +348,11 @@ impl Render for Detail {
                                     .child(plabel)
                                     .children((!psub.is_empty()).then(|| div().text_size(px(15.)).font_weight(FontWeight::MEDIUM).opacity(0.6).child(psub))),
                             )
-                            .child(act("d-list", icon(if owned { "check" } else { "plus" }, 22.), "My List").on_click(cx.listener({
+                            .child(act("d-list", icon(if owned { "check" } else { "plus" }, 22.), "My List").on_click({
+                                // My List, your couch lists, or a new one
                                 let m = m.clone();
-                                move |d, _, _, cx| {
-                                    let meta = serde_json::to_value(&m).unwrap_or_default();
-                                    let (id, kind) = (d.lid(), m.kind.clone());
-                                    let owned = d.item.as_ref().map_or(false, |i| i["removed"].as_bool() != Some(true) && i["temp"].as_bool() != Some(true));
-                                    cx.spawn(async move |this, cx| {
-                                        if owned {
-                                            let _ = api::call::<Value>("library_remove", json!({ "id": id, "kind": kind })).await;
-                                        } else {
-                                            let _ = api::call::<Value>("library_add", json!({ "meta": meta })).await;
-                                        }
-                                        let _ = this.update(cx, |d, cx| d.refresh_item(cx));
-                                    })
-                                    .detach();
-                                }
-                            })))
+                                move |_, _, cx| Nav::add(&m, cx)
+                            }))
                             .child({
                                 let base = m.id.split(':').next().unwrap_or("").to_string();
                                 let fav = self.favs.as_ref().map_or(false, |f| f.iter().any(|x| x["id"].as_str() == Some(base.as_str())));

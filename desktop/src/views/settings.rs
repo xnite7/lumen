@@ -357,6 +357,33 @@ impl Render for Settings {
             page = page.child(heading(title)).child(group().children(el));
         }
 
+        // ------------------------------------------------------------- text
+        let mode = crate::theme::text_mode();
+        page = page.child(heading("text")).child(group().child(
+            line(0).child(label("how text is drawn", "try each — screens differ")).child(div().flex().gap(px(4.)).p(px(3.)).rounded_full().bg(theme::white(0.08)).children([("auto", "auto"), ("sharp", "sharp"), ("smooth", "smooth")].into_iter().map(|(k, l)| {
+                let on = mode == k;
+                div()
+                    .id(SharedString::from(format!("tm-{k}")))
+                    .px(px(12.))
+                    .h(px(30.))
+                    .flex()
+                    .items_center()
+                    .rounded_full()
+                    .text_size(px(14.))
+                    .font_weight(FontWeight::BOLD)
+                    .cursor_pointer()
+                    .when(on, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))
+                    .when(!on, |d| d.hover(|s| s.bg(theme::white(0.1))))
+                    .on_click(cx.listener(move |_, _, window, cx| {
+                        let _ = couch::state::get().core.db.set("gpui_text_mode", &k.to_string());
+                        crate::theme::apply_text_mode(cx);
+                        window.refresh();
+                        cx.notify();
+                    }))
+                    .child(l)
+            }))),
+        ));
+
         // ------------------------------------------------------------ Hue
         let paired = self.secrets["hue_username"].as_bool() == Some(true);
         let mut hue: Vec<AnyElement> = vec![];

@@ -217,6 +217,7 @@ impl Root {
                         .child(
                             div()
                                 .id("tab-search")
+                                .occlude()
                                 .size(px(38.))
                                 .flex()
                                 .items_center()
@@ -238,8 +239,9 @@ impl Root {
                                 .flex()
                                 .items_center()
                                 .rounded_full()
+                                .occlude()
                                 .text_size(px(16.))
-                                .font_weight(FontWeight::BOLD)
+                                .font_weight(if on { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM })
                                 .cursor_pointer()
                                 .text_color(if on { theme::text() } else { theme::label2() })
                                 .when(on, |d| d.bg(theme::white(0.16)).border_1().border_color(theme::white(0.1)))
@@ -252,6 +254,7 @@ impl Root {
             .child(
                 div()
                     .id("nav-settings")
+                    .occlude()
                     .absolute()
                     .right(px(theme::GUTTER + 108.))
                     .top(px(20.))
@@ -504,14 +507,17 @@ impl Render for Root {
         let size = window.viewport_size();
         if size != self.last_size {
             self.last_size = size;
-            mini::fit(window.scale_factor());
+            let s = window.scale_factor();
+            cx.defer(move |_| mini::fit(s));
         }
         // sheets and menus over the page keep the wheel for themselves
         ui::smooth::set_overlay(self.menu.read(cx).open.is_some() || self.addto.read(cx).meta.is_some() || self.wrapped.read(cx).open || self.planner.read(cx).meta.is_some());
         // the film keeps playing in the corner while you browse
         let want_mini = playback::get(cx).read(cx).open && self.route != Route::Player && !pip::is_on();
         if want_mini != mini::is_on() {
-            mini::set(want_mini, window.scale_factor());
+            // Windows calls (they message the window) wait until this update is done
+            let s = window.scale_factor();
+            cx.defer(move |_| mini::set(want_mini, s));
         }
         let playing = self.route == Route::Player;
         let page = match &self.route {
@@ -672,6 +678,7 @@ fn main() {
         together::init(cx);
         parties::init(cx);
         update::start(cx);
+        theme::apply_text_mode(cx);
 
         let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
         let window = cx
@@ -706,8 +713,9 @@ fn main() {
                         let menu = cx.new(views::menu::Menu::new);
                         cx.observe(&menu, |_, _, cx| cx.notify()).detach();
                         // the mini player follows the window around
-                        cx.observe_window_bounds(window, |_, window, _| {
-                            mini::fit(window.scale_factor());
+                        cx.observe_window_bounds(window, |_, window, cx| {
+                            let s = window.scale_factor();
+                            cx.defer(move |_| mini::fit(s));
                             views::player::window_moved();
                         })
                         .detach();
