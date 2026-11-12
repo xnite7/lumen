@@ -347,7 +347,33 @@ impl Render for Home {
                     .flex_col()
                     .gap(px(12.))
                     .child(div().px(px(theme::GUTTER)).text_size(px(21.)).font_weight(FontWeight::BOLD).child("browse"))
-                    .child(div().id("browse-tiles").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(tiles))
+                    .child(
+                        div()
+                            .id("browse-tiles")
+                            .overflow_x_scroll()
+                            .flex()
+                            .gap(px(10.))
+                            .px(px(theme::GUTTER))
+                            .child(
+                                div()
+                                    .id("browse-vibe")
+                                    .flex_none()
+                                    .w(px(220.))
+                                    .h(px(110.))
+                                    .p(px(16.))
+                                    .rounded(px(16.))
+                                    .bg(gpui::linear_gradient(135., gpui::linear_color_stop(theme::neon(), 0.), gpui::linear_color_stop(gpui::rgb(0x5b2a86), 1.)))
+                                    .flex()
+                                    .flex_col()
+                                    .justify_between()
+                                    .cursor_pointer()
+                                    .hover(|s| s.opacity(0.88))
+                                    .on_click(|_, _, cx| Nav::go(crate::Route::Vibe, cx))
+                                    .child(crate::ui::icon("sparkles", 24.))
+                                    .child(div().flex().flex_col().child(div().text_size(px(18.)).font_weight(FontWeight::BLACK).child("smart bar")).child(div().text_size(px(12.)).text_color(theme::white(0.8)).child("ask for a feeling"))),
+                            )
+                            .children(tiles),
+                    )
                     .child(div().id("browse-genres").overflow_x_scroll().flex().gap(px(8.)).px(px(theme::GUTTER)).children(genres)),
             );
         }

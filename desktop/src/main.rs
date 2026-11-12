@@ -41,6 +41,7 @@ pub enum Route {
     Member(String),
     Studio(u64, String),
     Catalog(views::catalog::Spec),
+    Vibe,
 }
 
 /// Getting around from anywhere: `Nav::detail(&meta, cx)`.
@@ -158,6 +159,7 @@ pub struct Root {
     member: Option<Entity<views::member::Member>>,
     studio: Option<Entity<views::studio::Studio>>,
     catalog: Option<Entity<views::catalog::Catalog>>,
+    vibe: Option<Entity<views::vibe::Vibe>>,
     invite: Entity<views::invite::Invite>,
     pub planner: Entity<views::planner::Planner>,
     pub wrapped: Entity<views::wrapped::Wrapped>,
@@ -458,6 +460,14 @@ impl Render for Root {
                 }
                 self.member.clone().unwrap().into_any_element()
             }
+            Route::Vibe => {
+                let v = self.vibe.get_or_insert_with(|| cx.new(views::vibe::Vibe::new)).clone();
+                let f = v.read(cx).input.read(cx).focus_handle(cx);
+                if !f.contains_focused(window, cx) {
+                    window.focus(&f);
+                }
+                v.into_any_element()
+            }
             Route::Catalog(spec) => {
                 if self.catalog.as_ref().map_or(true, |c| &c.read(cx).spec != spec) {
                     let sp = spec.clone();
@@ -631,6 +641,7 @@ fn main() {
                             member: None,
                             studio: None,
                             catalog: None,
+                            vibe: None,
                             invite: cx.new(views::invite::Invite::new),
                             planner: cx.new(views::planner::Planner::new),
                             wrapped: cx.new(views::wrapped::Wrapped::new),

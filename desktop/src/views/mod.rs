@@ -13,6 +13,7 @@ pub mod library;
 pub mod search;
 pub mod player;
 pub mod catalog;
+pub mod vibe;
 pub mod reactions;
 pub mod detail;
 
