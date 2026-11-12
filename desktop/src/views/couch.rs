@@ -192,8 +192,6 @@ impl Render for Couch {
                         .rounded(px(16.))
                         .overflow_hidden()
                         .bg(theme::white(0.05))
-                        .border_1()
-                        .border_color(if mins <= 0 { theme::white(0.0).blend(theme::neon().into()) } else { theme::white(0.08) })
                         .child(
                             div()
                                 .relative()
@@ -242,7 +240,7 @@ impl Render for Couch {
                         .flex_col()
                         .items_center()
                         .gap(px(8.))
-                        .child(div().rounded_full().border_2().border_color(if on { theme::neon().into() } else { theme::white(0.0) }).p(px(2.)).child(avatar(p["avatar"].as_str(), &name, 72.)))
+                        .child(div().rounded_full().when(!on, |d| d.opacity(0.45)).child(avatar(p["avatar"].as_str(), &name, 72.)))
                         .child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).truncate().child(name))
                 })
             ));

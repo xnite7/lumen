@@ -112,9 +112,7 @@ impl Render for Vibe {
                     .items_center()
                     .gap(px(12.))
                     .rounded_full()
-                    .bg(theme::white(0.08))
-                    .border_1()
-                    .border_color(if self.busy { theme::neon().into() } else { theme::white(0.12) })
+                    .bg(if self.busy { theme::white(0.14) } else { theme::white(0.08) })
                     .child(icon("sparkles", 22.))
                     .child(div().flex_1().text_size(px(18.)).child(self.input.clone())),
             );
@@ -186,8 +184,6 @@ impl Render for Vibe {
                     .flex()
                     .items_center()
                     .rounded_full()
-                    .border_1()
-                    .border_color(theme::white(0.14))
                     .text_size(px(14.))
                     .cursor_pointer()
                     .hover(|s| s.bg(theme::white(0.08)))

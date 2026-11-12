@@ -328,8 +328,6 @@ impl PlayerView {
             .p(px(8.))
             .rounded(px(18.))
             .bg(gpui::rgba(0x0c090bf2))
-            .border_1()
-            .border_color(theme::white(0.1))
             .on_click(|_, _, cx| cx.stop_propagation())
             .child(div().px(px(14.)).py(px(8.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child(title))
             .children(rows)
@@ -385,7 +383,6 @@ impl Render for PlayerView {
                 }
                 v.poke(cx);
             }))
-            
             .on_scroll_wheel(cx.listener(|v, e: &gpui::ScrollWheelEvent, w, cx| {
                 // scroll = volume
                 // 5% a notch, however fast you spin (fast spins arrive as bigger steps)
@@ -567,8 +564,6 @@ impl Render for PlayerView {
                 .rounded(px(16.))
                 .overflow_hidden()
                 .bg(theme::black(0.85))
-                .border_1()
-                .border_color(theme::white(0.12))
                 .flex()
                 .flex_col()
                 .children(still.map(|u| {
@@ -716,7 +711,7 @@ impl Render for PlayerView {
                                             .items_center()
                                             .gap(px(6.))
                                             .children(still.map(|i| {
-                                                img(i).w(px(200.)).h(px(112.)).rounded(px(10.)).border_2().border_color(theme::white(0.85)).object_fit(ObjectFit::Cover)
+                                                img(i).w(px(200.)).h(px(112.)).rounded(px(10.)).object_fit(ObjectFit::Cover)
                                             }))
                                             .child(div().px(px(10.)).py(px(4.)).rounded(px(8.)).bg(theme::black(0.8)).text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).child(clock(t)))
                                     })),

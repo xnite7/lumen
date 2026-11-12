@@ -255,7 +255,7 @@ impl Root {
                                 .font_weight(if on { FontWeight::MEDIUM } else { FontWeight::NORMAL })
                                 .cursor_pointer()
                                 .text_color(if on { theme::text() } else { theme::label2() })
-                                .when(on, |d| d.bg(theme::white(0.16)).border_1().border_color(theme::white(0.1)))
+                                .when(on, |d| d.bg(theme::white(0.16)))
                                 .when(!on, |d| d.hover(|s| s.text_color(theme::text())))
                                 .on_click(move |_, _, cx| Nav::go(target.clone(), cx))
                                 .child(*label)
@@ -430,8 +430,6 @@ impl Root {
                     .gap(px(4.))
                     .rounded(px(14.))
                     .bg(theme::black(0.82))
-                    .border_1()
-                    .border_color(theme::white(0.1))
                     .child(div().flex_1().min_w_0().px(px(6.)).text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_ellipsis().line_clamp(1).child(title))
                     .child(b("mini-play", if paused { ui::icon_fill("play", 20.) } else { ui::icon_fill("pause", 20.) }).on_click(move |_, _, cx| {
                         let paused = p1.read(cx).state.paused;
@@ -458,8 +456,6 @@ impl Root {
                 .pl(px(14.))
                 .rounded(px(18.))
                 .bg(gpui::rgba(0x0c090bf2))
-                .border_1()
-                .border_color(theme::white(0.1))
         };
         let mut col = div().absolute().top(px(70.)).right(px(theme::GUTTER)).flex().flex_col().gap(px(10.)).w(px(420.));
         for (i, a) in tr.inbox.iter().enumerate() {
@@ -695,8 +691,6 @@ impl Render for Root {
                         .py(px(12.))
                         .rounded(px(14.))
                         .bg(theme::surface2())
-                        .border_1()
-                        .border_color(theme::white(0.1))
                         .text_size(px(15.))
                         .font_weight(FontWeight::MEDIUM)
                         .child(t),

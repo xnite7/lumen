@@ -540,8 +540,6 @@ impl Render for Home {
                             .h(px(96.))
                             .rounded(px(16.))
                             .bg(theme::white(0.06))
-                            .border_1()
-                            .border_color(theme::white(0.08))
                             .flex()
                             .items_center()
                             .justify_center()

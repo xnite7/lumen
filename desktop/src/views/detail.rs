@@ -345,8 +345,6 @@ fn act(id: &'static str, ic: impl IntoElement, label: &str) -> gpui::Stateful<gp
                 .items_center()
                 .justify_center()
                 .bg(theme::white(0.12))
-                .border_1()
-                .border_color(theme::white(0.1))
                 .hover(|s| s.bg(theme::white(0.2)))
                 .child(ic),
         )
@@ -584,7 +582,7 @@ impl Render for Detail {
                         let kw: Vec<String> = ex["keywords"].as_array().into_iter().flatten().filter_map(|k| k.as_str().map(String::from).or(k["name"].as_str().map(String::from))).take(8).collect();
                         (!kw.is_empty()).then(|| {
                             div().flex().flex_wrap().gap(px(6.)).max_w(px(620.)).children(kw.into_iter().map(|k| {
-                                div().px(px(10.)).py(px(3.)).rounded_full().border_1().border_color(theme::white(0.22)).text_size(px(13.)).text_color(theme::label2()).child(k)
+                                div().px(px(10.)).py(px(3.)).rounded_full().bg(theme::white(0.08)).text_size(px(13.)).text_color(theme::label2()).child(k)
                             }))
                         })
                     })
@@ -629,7 +627,7 @@ impl Render for Detail {
                                     .flex()
                                     .items_center()
                                     .gap(px(8.))
-                                    .child(div().flex_1().h(px(44.)).px(px(14.)).flex().items_center().rounded(px(12.)).bg(theme::white(0.1)).border_1().border_color(theme::white(0.16)).child(self.review_text.clone()))
+                                    .child(div().flex_1().h(px(44.)).px(px(14.)).flex().items_center().rounded(px(12.)).bg(theme::white(0.1)).child(self.review_text.clone()))
                                     .child(
                                         div()
                                             .id("d-post")
@@ -761,9 +759,6 @@ impl Render for Detail {
                                                 .overflow_hidden()
                                                 .bg(theme::surface2())
                                                 .cursor_pointer()
-                                                .border_1()
-                                                .border_color(theme::white(0.))
-                                                .hover(|s| s.border_color(theme::white(0.5)))
                                                 .on_click(move |_, _, cx| {
                                                     if !future {
                                                         Nav::play_episode(&mm, vid.clone(), cx)

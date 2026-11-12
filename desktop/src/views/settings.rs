@@ -242,13 +242,13 @@ fn toggle(on: bool) -> impl IntoElement {
 }
 
 fn group() -> gpui::Div {
-    div().flex_none().max_w(px(760.)).rounded(px(16.)).bg(theme::white(0.04)).border_1().border_color(theme::white(0.06))
+    div().flex_none().max_w(px(760.)).rounded(px(16.)).bg(theme::white(0.04))
 }
 fn heading(t: &str) -> gpui::Div {
     div().flex_none().mt(px(18.)).text_size(px(22.)).font_weight(FontWeight::BLACK).child(t.to_string())
 }
 fn line(i: usize) -> gpui::Div {
-    div().flex().items_center().gap(px(16.)).px(px(18.)).py(px(14.)).when(i > 0, |d| d.border_t_1().border_color(theme::white(0.06)))
+    div().flex().items_center().gap(px(16.)).px(px(18.)).py(px(14.)).when(i > 0, |d| d)
 }
 fn label(t: &str, sub: &str) -> gpui::Div {
     div()
@@ -501,7 +501,7 @@ impl Render for Settings {
                     .text_size(px(15.))
                     .child(self.url.clone()),
             )
-            .child(div().flex_none().max_w(px(760.)).rounded(px(16.)).bg(theme::white(0.04)).border_1().border_color(theme::white(0.06)).children(self.addons.iter().enumerate().map(|(i, a)| {
+            .child(div().flex_none().max_w(px(760.)).rounded(px(16.)).bg(theme::white(0.04)).children(self.addons.iter().enumerate().map(|(i, a)| {
                 let name = a["manifest"]["name"].as_str().unwrap_or("").to_string();
                 let desc = a["manifest"]["description"].as_str().unwrap_or("").to_string();
                 let url = a["transportUrl"].as_str().unwrap_or("").to_string();
@@ -512,7 +512,7 @@ impl Render for Settings {
                     .gap(px(16.))
                     .px(px(18.))
                     .py(px(14.))
-                    .when(i > 0, |d| d.border_t_1().border_color(theme::white(0.06)))
+                    .when(i > 0, |d| d)
                     .child(
                         div()
                             .flex_1()

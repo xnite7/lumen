@@ -136,8 +136,6 @@ impl Render for Planner {
                     .p(px(22.))
                     .rounded(px(26.))
                     .bg(gpui::rgba(0x0c090bf5))
-                    .border_1()
-                    .border_color(theme::white(0.1))
                     .flex()
                     .flex_col()
                     .gap(px(18.))

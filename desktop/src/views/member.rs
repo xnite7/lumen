@@ -167,8 +167,6 @@ impl Render for Member {
                             .flex_none()
                             .rounded_full()
                             .overflow_hidden()
-                            .border_4()
-                            .border_color(accent)
                             .bg(theme::surface2())
                             .flex()
                             .items_center()
@@ -225,7 +223,7 @@ impl Render for Member {
                         .rounded_full()
                         .bg(col)
                         .cursor_pointer()
-                        .when(on, |d| d.border_2().border_color(theme::text()))
+                        .when(on, |d| d.child(crate::ui::icon("check", 16.).text_color(gpui::rgb(0x000000)))).flex().items_center().justify_center()
                         .hover(|s| s.opacity(0.85))
                         .on_click(cx.listener(move |m, _, _, cx| {
                             if let Some(d) = m.data.as_mut() {
@@ -257,8 +255,6 @@ impl Render for Member {
                             .size(px(96.))
                             .flex_none()
                             .rounded_full()
-                            .border_4()
-                            .border_color(accent)
                             .flex()
                             .items_center()
                             .justify_center()

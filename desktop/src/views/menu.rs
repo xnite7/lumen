@@ -118,8 +118,6 @@ impl Render for Menu {
                     .p(px(6.))
                     .rounded(px(16.))
                     .bg(theme::surface())
-                    .border_1()
-                    .border_color(theme::white(0.12))
                     .shadow_lg()
                     .flex()
                     .flex_col()

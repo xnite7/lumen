@@ -138,8 +138,6 @@ pub fn card(cx: &mut App) -> Option<impl IntoElement> {
             .p(px(16.))
             .rounded(px(18.))
             .bg(crate::theme::surface())
-            .border_1()
-            .border_color(crate::theme::white(0.12))
             .shadow_lg()
             .flex()
             .flex_col()

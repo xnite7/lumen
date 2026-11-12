@@ -113,8 +113,6 @@ impl Render for Search {
                 .px(px(20.))
                 .rounded(px(18.))
                 .bg(theme::white(0.08))
-                .border_1()
-                .border_color(theme::white(0.1))
                 .text_size(px(24.))
                 .font_weight(FontWeight::MEDIUM)
                 .child(icon("search", 26.).text_color(theme::label2()))

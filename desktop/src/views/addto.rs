@@ -123,7 +123,7 @@ impl Render for AddTo {
                 .rounded(px(12.))
                 .cursor_pointer()
                 .hover(|s| s.bg(theme::white(0.08)))
-                .child(div().size(px(26.)).flex_none().rounded_full().flex().items_center().justify_center().when(on, |d| d.bg(theme::text())).when(!on, |d| d.border_2().border_color(theme::white(0.3))).children(on.then(|| icon("check", 16.).text_color(gpui::rgb(0x000000)))))
+                .child(div().size(px(26.)).flex_none().rounded_full().flex().items_center().justify_center().when(on, |d| d.bg(theme::text())).when(!on, |d| d.bg(theme::white(0.14))).children(on.then(|| icon("check", 16.).text_color(gpui::rgb(0x000000)))))
                 .child(div().flex_1().flex().flex_col().child(div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child(label)).children((!sub.is_empty()).then(|| div().text_size(px(13.)).text_color(theme::label3()).child(sub))))
         };
         let mut rows: Vec<gpui::AnyElement> = vec![row("at-lib".into(), "My List".into(), String::new(), self.in_library).on_click(cx.listener(|a, _, _, cx| a.toggle_library(cx))).into_any_element()];
@@ -156,8 +156,6 @@ impl Render for AddTo {
                     .p(px(14.))
                     .rounded(px(24.))
                     .bg(theme::surface())
-                    .border_1()
-                    .border_color(theme::white(0.1))
                     .flex()
                     .flex_col()
                     .gap(px(4.))

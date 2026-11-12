@@ -170,8 +170,6 @@ impl Render for Reactions {
                 .p(px(8.))
                 .rounded_full()
                 .bg(theme::black(0.72))
-                .border_1()
-                .border_color(theme::white(0.12))
                 .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .children(EMOJI.iter().enumerate().map(|(i, e)| {
                     div()
