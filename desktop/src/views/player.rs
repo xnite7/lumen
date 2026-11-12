@@ -291,7 +291,7 @@ impl PlayerView {
                     .into_iter()
                     .map(|v| {
                         let pb = self.pb.clone();
-                        row(SharedString::from(format!("sp-{v}")), if v == 1.0 { "normal".into() } else { format!("{v}x") }, (cur - v).abs() < 0.01)
+                        row(SharedString::from(format!("sp-{v}")), if v == 1.0 { "normal".into() } else { format!("{v}x") }, (snap(cur) - v).abs() < 0.01)
                             .on_click(move |_, _, cx| pb.read(cx).cmd("speed", json!({ "value": v })))
                             .into_any_element()
                     })
@@ -804,7 +804,7 @@ impl Render for PlayerView {
                                 cx.notify();
                             })))
                             .child(
-                                round_btn("pl-speed", div().text_size(px(15.)).font_weight(FontWeight::BLACK).child(format!("{}x", st.speed)), 50.).on_click(cx.listener(|v, _, _, cx| {
+                                round_btn("pl-speed", div().text_size(px(15.)).font_weight(FontWeight::BLACK).child(speed_label(st.speed)), 50.).on_click(cx.listener(|v, _, _, cx| {
                                     cx.stop_propagation();
                                     v.menu = if v.menu == Some(Menu::Speed) { None } else { Some(Menu::Speed) };
                                     cx.notify();
@@ -815,4 +815,15 @@ impl Render for PlayerView {
                     ),
             )
     }
+}
+
+/// the speed you picked: watch-together nudges mpv a few % either side to keep
+/// you in step with the host, which shouldn't show up as "1.0821318393x"
+fn snap(v: f64) -> f64 {
+    [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].into_iter().find(|p| (p - v).abs() < 0.1).unwrap_or((v * 100.).round() / 100.)
+}
+
+fn speed_label(v: f64) -> String {
+    let s = snap(v);
+    format!("{}x", if s.fract() == 0. { format!("{s:.0}") } else { format!("{s}") })
 }

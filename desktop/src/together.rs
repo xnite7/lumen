@@ -539,7 +539,9 @@ impl Together {
             self.seek_at = Some(Instant::now());
             pbe.read(cx).cmd("seek", json!({ "to": target + self.seek_cost }));
         } else if drift.abs() > 0.25 {
-            self.nudge(1. + (drift * 0.06).clamp(-0.08, 0.08), cx);
+            // a gentle, steady catch-up (two fixed steps), not a rate that wobbles every second
+            let step = if drift.abs() > 1. { 0.08 } else { 0.04 };
+            self.nudge(1. + step * drift.signum(), cx);
         } else if drift.abs() < 0.08 {
             self.nudge(1., cx);
         }
