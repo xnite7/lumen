@@ -336,7 +336,8 @@ impl Render for Home {
                 let sub = [format!("{who} is watching"), w["episode"].as_str().unwrap_or("").to_string()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
                 card::card_with(SharedString::from(format!("live-{i}")), &m, frac, Some(sub), None, |_, _, cx| Nav::go(crate::Route::Couch, cx))
             });
-            crew_rows.push(
+            // on the couch leads the page, above continue watching
+            below = below.child(
                 div()
                     .flex()
                     .flex_col()
