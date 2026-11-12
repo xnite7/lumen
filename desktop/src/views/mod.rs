@@ -1,4 +1,5 @@
 pub mod home;
+pub mod wrapped;
 pub mod studio;
 pub mod member;
 pub mod planner;

@@ -112,6 +112,13 @@ impl Nav {
             p.update(cx, |p, cx| p.open(m, cx));
         }
     }
+    /// your year on the couch
+    pub fn wrapped(cx: &mut App) {
+        if let Some(r) = Self::root(cx) {
+            let w = r.read(cx).wrapped.clone();
+            w.update(cx, |w, cx| w.show(cx));
+        }
+    }
     pub fn toast(msg: String, cx: &mut App) {
         if let Some(r) = Self::root(cx) {
             r.update(cx, |r, cx| {
@@ -151,6 +158,7 @@ pub struct Root {
     studio: Option<Entity<views::studio::Studio>>,
     invite: Entity<views::invite::Invite>,
     pub planner: Entity<views::planner::Planner>,
+    pub wrapped: Entity<views::wrapped::Wrapped>,
     me: serde_json::Value,
     focus: gpui::FocusHandle,
     last_size: gpui::Size<gpui::Pixels>,
@@ -256,6 +264,19 @@ impl Root {
     /// keys: space play/pause, arrows seek/volume, f full screen, esc back
     fn key(&mut self, e: &gpui::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let k = e.keystroke.key.as_str();
+        if self.wrapped.read(cx).open {
+            let w = self.wrapped.clone();
+            match k {
+                "right" | "space" => w.update(cx, |w, cx| w.step(1, cx)),
+                "left" => w.update(cx, |w, cx| w.step(-1, cx)),
+                "escape" => w.update(cx, |w, cx| {
+                    w.open = false;
+                    cx.notify();
+                }),
+                _ => {}
+            }
+            return;
+        }
         if self.route == Route::Player {
             let pb = playback::get(cx);
             let p = pb.read(cx);
@@ -455,15 +476,6 @@ impl Render for Root {
                 }
                 self.detail.clone().unwrap().into_any_element()
             }
-            other => views::soon(match other {
-                Route::Shows => "shows",
-                Route::Movies => "movies",
-                Route::Lists => "my lists",
-                Route::Calendar => "calendar",
-                Route::Couch => "couch",
-                Route::Search => "search",
-                _ => "",
-            }),
         };
         div()
             .size_full()
@@ -479,6 +491,7 @@ impl Render for Root {
             .when(playing, |d| d.child(window_controls()))
             .child(self.together_cards(cx))
             .when(!playing && self.route != Route::SignIn, |d| d.child(self.planner.clone()).child(self.invite.clone()))
+            .when(self.wrapped.read(cx).open, |d| d.child(self.wrapped.clone()))
             .children(self.toast.clone().map(|t| {
                 div().absolute().bottom(px(28.)).left_0().w_full().flex().justify_center().child(
                     div()
@@ -604,6 +617,7 @@ fn main() {
                             studio: None,
                             invite: cx.new(views::invite::Invite::new),
                             planner: cx.new(views::planner::Planner::new),
+                            wrapped: cx.new(views::wrapped::Wrapped::new),
                             me: me.clone(),
                             focus,
                             last_size: gpui::Size::default(),

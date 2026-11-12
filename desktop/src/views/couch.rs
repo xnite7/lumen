@@ -94,7 +94,15 @@ impl Render for Couch {
             .flex()
             .flex_col()
             .gap(px(20.))
-            .child(div().flex_none().text_size(px(40.)).font_weight(FontWeight::BLACK).child("couch"))
+            .child(
+                div()
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .child(div().text_size(px(40.)).font_weight(FontWeight::BLACK).child("couch"))
+                    .child(btn("wrapped-open".into(), &format!("your {} wrapped ✨", chrono::Datelike::year(&chrono::Local::now())), true).on_click(|_, _, cx| Nav::wrapped(cx))),
+            )
             .child(div().flex_none().text_size(px(16.)).text_color(theme::label2()).child("see what your friends from the server are watching right now."));
         match self.setup {
             None => return page.child(div().text_color(theme::label2()).child("finding the remote…")),
