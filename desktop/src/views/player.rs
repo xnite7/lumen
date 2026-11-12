@@ -29,6 +29,7 @@ pub struct PlayerView {
     last_move: Instant,
     shown: bool,
     hover_x: Option<f32>,
+    reactions: Entity<super::reactions::Reactions>,
 }
 
 impl PlayerView {
@@ -50,7 +51,9 @@ impl PlayerView {
             };
         })
         .detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None }
+        let reactions = cx.new(super::reactions::Reactions::new);
+        cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions }
     }
 
     pub fn poke(&mut self, cx: &mut Context<Self>) {
@@ -196,7 +199,7 @@ impl PlayerView {
 
     fn menu_panel(&self, m: Menu, cx: &mut Context<Self>) -> gpui::AnyElement {
         let p = self.pb.read(cx);
-        let row = |id: SharedString, label: String, on: bool| {
+        let row_f = |id: SharedString, label: String, on: bool, flag: Option<String>| {
             div()
                 .id(id)
                 .flex()
@@ -210,8 +213,11 @@ impl PlayerView {
                 .font_weight(if on { FontWeight::BOLD } else { FontWeight::MEDIUM })
                 .hover(|s| s.bg(theme::white(0.1)))
                 .child(div().w(px(18.)).children(on.then(|| icon("check", 18.))))
+                .children(flag.map(|u| img(u).h(px(18.)).flex_none().object_fit(ObjectFit::Contain)))
                 .child(label)
         };
+        let row = |id: SharedString, label: String, on: bool| row_f(id, label, on, None);
+
         let (title, rows): (&str, Vec<gpui::AnyElement>) = match m {
             Menu::Audio | Menu::Subs => {
                 let kind = if m == Menu::Audio { "audio" } else { "sub" };
@@ -227,7 +233,8 @@ impl PlayerView {
                     let id = t["id"].as_i64().unwrap_or(0);
                     let pb = self.pb.clone();
                     let cmd = if m == Menu::Audio { "aid" } else { "sid" };
-                    rows.push(row(SharedString::from(format!("{kind}-{i}")), label, on).on_click(move |_, _, cx| pb.read(cx).cmd(cmd, json!({ "value": id }))).into_any_element());
+                    let flag = crate::ui::badges::flag(t["lang"].as_str().unwrap_or(""));
+                    rows.push(row_f(SharedString::from(format!("{kind}-{i}")), label, on, flag).on_click(move |_, _, cx| pb.read(cx).cmd(cmd, json!({ "value": id }))).into_any_element());
                 }
                 (if m == Menu::Audio { "audio" } else { "subtitles" }, rows)
             }
@@ -436,6 +443,7 @@ impl Render for PlayerView {
             })
             .detach();
         }
+        let root = root.child(self.reactions.clone());
         if !shown {
             return root;
         }
@@ -545,6 +553,20 @@ impl Render for PlayerView {
                             ),
                     ),
             )
+            // what's playing, as badges (4K, Dolby Vision, Atmos...)
+            .child({
+                let p = self.pb.read(cx);
+                let height = p.tracks.iter().find(|t| t["type"] == "video" && t["selected"] == true).and_then(|t| t["height"].as_i64()).unwrap_or(0);
+                let codec = p.tracks.iter().find(|t| t["type"] == "audio" && t["selected"] == true).and_then(|t| t["codec"].as_str()).unwrap_or("").to_string();
+                let c = p.stream.as_ref().map(|s| s["_couch"].clone()).unwrap_or_default();
+                div()
+                    .absolute()
+                    .top(px(34.))
+                    .right(px(g))
+                    .flex()
+                    .gap(px(8.))
+                    .children(crate::ui::badges::format(&c, height, &codec).into_iter().map(|b| img(b.src).h(px(26.)).flex_none().object_fit(ObjectFit::Contain)))
+            })
             // bottom: the scrub bar and the buttons
             .child(
                 div()
@@ -686,6 +708,13 @@ impl Render for PlayerView {
                                     v.menu = if v.menu == Some(Menu::Episodes) { None } else { Some(Menu::Episodes) };
                                     cx.notify();
                                 })))
+                            })
+                            .when(super::reactions::room(cx).is_some(), |d| {
+                                let r = self.reactions.clone();
+                                d.child(round_btn("pl-react", crate::ui::emoji::emoji("😂", 28.), 50.).on_click(move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    r.update(cx, |r, cx| r.toggle(cx));
+                                }))
                             })
                             .child(round_btn("pl-subs", icon("subtitles", 26.), 50.).on_click(cx.listener(|v, _, _, cx| {
                                 cx.stop_propagation();

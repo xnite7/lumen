@@ -11,7 +11,52 @@ use serde_json::{json, Value};
 pub struct Member {
     pub id: String,
     data: Option<Value>,
+    /// my own taste, to match against theirs
+    mine: Option<Value>,
+    me: String,
     scroll: ScrollHandle,
+}
+
+const SWATCHES: [&str; 11] = ["#e0309a", "#ff6ec4", "#ff4d4d", "#ffb25c", "#ffd84a", "#7ee081", "#2dd4bf", "#4cc9f0", "#5b7cff", "#9b6bff", "#f4eaf0"];
+
+/// How alike two people's taste is: watching the same things counts,
+/// agreeing on scores counts more. (pct, both watched, both loved, they loved + you haven't seen)
+fn taste_match(me: &Value, them: &Value) -> Option<(i64, usize, Vec<Value>, Vec<Value>)> {
+    let ids = |t: &Value| -> std::collections::HashSet<String> { t["ids"].as_array().into_iter().flatten().filter_map(|x| x.as_str().map(String::from)).collect() };
+    let (a, b) = (ids(me), ids(them));
+    if a.is_empty() || b.is_empty() {
+        return None;
+    }
+    let both = a.intersection(&b).count();
+    let union = a.len() + b.len() - both;
+    let overlap = ((both as f64 / union.max(1) as f64).sqrt() * 1.7).min(1.);
+    let (mut diff, mut rated) = (0., 0);
+    if let Some(mr) = me["ratings"].as_object() {
+        for (id, r) in mr {
+            if let (Some(r), Some(o)) = (r.as_f64(), them["ratings"][id].as_f64()) {
+                diff += (r - o).abs();
+                rated += 1;
+            }
+        }
+    }
+    let agree = if rated > 0 { 1. - diff / rated as f64 / 9. } else { 0. };
+    let score = if rated >= 3 { 0.55 * agree + 0.45 * overlap } else { overlap };
+    let pct = ((score * 100.).round() as i64).clamp(1, 99);
+    let mine_loved: std::collections::HashSet<String> = me["ratings"].as_object().into_iter().flatten().filter(|(_, r)| r.as_f64().unwrap_or(0.) >= 8.).map(|(k, _)| k.clone()).collect();
+    let loved: Vec<Value> = them["loved"].as_array().cloned().unwrap_or_default();
+    let both_loved = loved.iter().filter(|i| i["id"].as_str().map_or(false, |id| mine_loved.contains(id))).take(20).cloned().collect();
+    let for_you = loved.iter().filter(|i| i["id"].as_str().map_or(false, |id| !a.contains(id))).take(20).cloned().collect();
+    Some((pct, both, both_loved, for_you))
+}
+
+fn match_word(p: i64) -> &'static str {
+    match p {
+        85.. => "taste twins",
+        70.. => "same couch energy",
+        50.. => "pretty in sync",
+        30.. => "some overlap",
+        _ => "opposites attract",
+    }
 }
 
 fn metas(v: &Value) -> Vec<(Meta, Value)> {
@@ -33,18 +78,27 @@ impl Member {
         let i = id.clone();
         cx.spawn(async move |this, cx| {
             let r = api::call::<Value>("crew_social", json!({ "method": "GET", "path": format!("/v1/profile/{i}"), "body": Value::Null })).await.ok();
+            let me = api::call::<Value>("discord_me", json!({})).await.ok().and_then(|v| v["id"].as_str().map(String::from)).unwrap_or_default();
             let _ = this.update(cx, |m, cx| {
                 m.data = r;
+                m.me = me.clone();
                 cx.notify();
             });
+            if !me.is_empty() && me != i {
+                let mine = api::call::<Value>("crew_social", json!({ "method": "GET", "path": format!("/v1/profile/{me}"), "body": Value::Null })).await.ok();
+                let _ = this.update(cx, |m, cx| {
+                    m.mine = mine.map(|v| v["profile"]["taste"].clone());
+                    cx.notify();
+                });
+            }
         })
         .detach();
-        Self { id, data: None, scroll: ScrollHandle::new() }
+        Self { id, data: None, mine: None, me: String::new(), scroll: ScrollHandle::new() }
     }
 }
 
 impl Render for Member {
-    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let g = theme::GUTTER;
         let vw = f32::from(window.viewport_size().width);
         let cols = (((vw - g * 2.) + 14.) / (160. + 14.)).floor().max(2.);
@@ -142,6 +196,79 @@ impl Render for Member {
         } else if p.is_null() {
             body = body.child(div().text_color(theme::label2()).child(format!("{name} hasn't shared their page yet.")));
         }
+        // my own page: pick its colour
+        if !self.me.is_empty() && self.me == self.id && self.data.is_some() {
+            let cur = d["style"]["accent"].as_str().unwrap_or("").to_lowercase();
+            body = body.child(
+                div().flex().items_center().gap(px(10.)).child(div().text_size(px(14.)).font_weight(FontWeight::BOLD).text_color(theme::label2()).mr(px(6.)).child("your colour")).children(SWATCHES.iter().map(|c| {
+                    let col = hex(c).unwrap_or(theme::neon().into());
+                    let on = cur == *c;
+                    div()
+                        .id(SharedString::from(format!("sw-{c}")))
+                        .size(px(30.))
+                        .rounded_full()
+                        .bg(col)
+                        .cursor_pointer()
+                        .when(on, |d| d.border_2().border_color(theme::text()))
+                        .hover(|s| s.opacity(0.85))
+                        .on_click(cx.listener(move |m, _, _, cx| {
+                            if let Some(d) = m.data.as_mut() {
+                                d["style"] = json!({ "accent": c, "glow": true });
+                            }
+                            cx.notify();
+                            cx.spawn(async move |_, _| {
+                                let _ = api::call::<Value>("crew_social", json!({ "method": "PUT", "path": "/v1/profile/style", "body": { "accent": c, "glow": true } })).await;
+                            })
+                            .detach();
+                        }))
+                })),
+            );
+        }
+        // taste match: how alike we are
+        if let Some((pct, both, both_loved, for_you)) = self.mine.as_ref().and_then(|me| taste_match(me, &p["taste"])) {
+            body = body.child(
+                div()
+                    .mt(px(10.))
+                    .p(px(20.))
+                    .rounded(px(22.))
+                    .bg(theme::white(0.05))
+                    .max_w(px(820.))
+                    .flex()
+                    .items_center()
+                    .gap(px(22.))
+                    .child(
+                        div()
+                            .size(px(96.))
+                            .flex_none()
+                            .rounded_full()
+                            .border_4()
+                            .border_color(accent)
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_size(px(30.))
+                            .font_weight(FontWeight::BLACK)
+                            .child(format!("{pct}%")),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(4.))
+                            .child(div().text_size(px(12.)).font_weight(FontWeight::BOLD).text_color(theme::label3()).child("TASTE MATCH"))
+                            .child(div().text_size(px(26.)).font_weight(FontWeight::BLACK).child(match_word(pct)))
+                            .child(div().text_size(px(14.)).text_color(theme::label2()).child(format!("you've both watched {both}"))),
+                    ),
+            );
+            let bl = metas(&Value::Array(both_loved));
+            if !bl.is_empty() {
+                body = body.child(row("you both loved", bl, "bothloved", false));
+            }
+            let fy = metas(&Value::Array(for_you));
+            if !fy.is_empty() {
+                body = body.child(row(&format!("{name} loved, you haven't seen"), fy, "foryou", false));
+            }
+        }
         let watching = metas(&p["watching"]);
         if !watching.is_empty() {
             body = body.child(row("in the middle of", watching, "watching", true));
@@ -172,7 +299,7 @@ impl Render for Member {
                             .flex_col()
                             .gap(px(6.))
                             .child(div().flex().items_center().gap(px(10.)).child(div().text_size(px(16.)).font_weight(FontWeight::BOLD).child(t["name"].as_str().unwrap_or("").to_string())).children(a["rating"].as_i64().map(|r| div().text_size(px(14.)).font_weight(FontWeight::BLACK).text_color(theme::lamp()).child(format!("★ {r}/10")))))
-                            .child(div().text_size(px(15.)).line_height(px(21.)).text_color(theme::white(0.85)).child(a["text"].as_str().unwrap_or("").to_string())),
+                            .child(div().text_size(px(15.)).line_height(px(21.)).text_color(theme::white(0.85)).child(crate::ui::emoji::text(a["text"].as_str().unwrap_or(""), 15.))),
                     )
             })));
         }

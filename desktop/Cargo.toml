@@ -24,6 +24,8 @@ unicode-segmentation = "1"
 base64 = "0.22"
 image = { version = "0.25", default-features = false }
 smallvec = "1"
+urlencoding = "2"
+rand = "0.9"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 tokio = { version = "1", features = ["sync", "time"] }
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
