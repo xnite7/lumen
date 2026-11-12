@@ -42,6 +42,9 @@ fn unpack(bytes: &[u8], dir: &Path) -> AppResult<()> {
         let mut f = z.by_index(i).map_err(|e| AppError::msg(e.to_string()))?;
         let Some(name) = f.enclosed_name() else { continue };
         let to = dir.join(name);
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         if f.is_dir() {
             std::fs::create_dir_all(&to)?;
             continue;
