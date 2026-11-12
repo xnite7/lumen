@@ -42,12 +42,19 @@ impl PlayerView {
         cx.observe(&pb, |_, _, cx| cx.notify()).detach();
         // controls fade away after a few still seconds
         cx.spawn(async move |this, cx| loop {
-            gpui::Timer::after(Duration::from_millis(400)).await;
+            crate::timer::after(Duration::from_millis(400)).await;
             let Ok(()) = this.update(cx, |v, cx| {
                 let paused = v.pb.read(cx).state.paused;
                 let show = paused || v.menu.is_some() || v.last_move.elapsed() < Duration::from_millis(2800) || v.pb.read(cx).loading;
                 if show != v.shown {
                     v.shown = show;
+                    // the pointer goes away with the controls (back on the next move)
+                    #[cfg(target_os = "windows")]
+                    if !show {
+                        unsafe {
+                            let _ = windows::Win32::UI::WindowsAndMessaging::SetCursor(None);
+                        }
+                    }
                     cx.notify();
                 }
             }) else {
@@ -378,7 +385,7 @@ impl Render for PlayerView {
                 }
                 v.poke(cx);
             }))
-            .when(!shown, |d| d.cursor(gpui::CursorStyle::None))
+            
             .on_scroll_wheel(cx.listener(|v, e: &gpui::ScrollWheelEvent, w, cx| {
                 // scroll = volume
                 // 5% a notch, however fast you spin (fast spins arrive as bigger steps)
@@ -470,7 +477,7 @@ impl Render for PlayerView {
                 ),
             );
             cx.spawn(async move |this, cx| {
-                gpui::Timer::after(Duration::from_millis(1300)).await;
+                crate::timer::after(Duration::from_millis(1300)).await;
                 let _ = this.update(cx, |_, cx| cx.notify());
             })
             .detach();

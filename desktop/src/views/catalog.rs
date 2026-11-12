@@ -106,7 +106,7 @@ impl Render for Catalog {
         let cols = (((vw - g * 2.) + 14.) / (180. + 14.)).floor().max(2.);
         let w = ((vw - g * 2.) - (cols - 1.) * 14.) / cols;
         // near the bottom: the next page
-        let max = f32::from(self.scroll.max_offset().height);
+        let max = f32::from(self.scroll.max_offset().y);
         let off = -f32::from(self.scroll.offset().y);
         if self.more && !self.loading && !self.items.is_empty() && max - off < 900. {
             self.page(false, cx);

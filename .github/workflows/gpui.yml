@@ -31,6 +31,9 @@ jobs:
         with:
           workspaces: desktop
       - uses: ilammy/msvc-dev-cmd@v1
+      - name: Fetch GPUI (Zed's official source, the tag in desktop/Cargo.toml)
+        shell: bash
+        run: ./scripts/fetch-zed.sh
       - name: Fetch libmpv
         shell: pwsh
         env:

@@ -61,7 +61,7 @@ impl Home {
                 if ok.is_err() {
                     break;
                 }
-                gpui::Timer::after(std::time::Duration::from_secs(60)).await;
+                crate::timer::after(std::time::Duration::from_secs(60)).await;
             })
             .detach();
         }
@@ -81,7 +81,7 @@ impl Home {
                         cx.notify();
                     });
                     // a couple of seconds in, the billboard plays a clip (muted)
-                    gpui::Timer::after(std::time::Duration::from_millis(2000)).await;
+                    crate::timer::after(std::time::Duration::from_millis(2000)).await;
                     let year = pick.year();
                     let clip = match std::env::var("COUCH_TEST_CLIP") {
                         Ok(f) => Ok(Some(f)),

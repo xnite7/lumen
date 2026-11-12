@@ -38,7 +38,7 @@ impl Couch {
             if !ok {
                 break;
             }
-            gpui::Timer::after(Duration::from_secs(20)).await;
+            crate::timer::after(Duration::from_secs(20)).await;
         })
         .detach();
         me

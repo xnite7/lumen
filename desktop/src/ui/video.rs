@@ -147,8 +147,8 @@ pub fn hover(m: &crate::api::Meta, on: bool, cx: &mut App) {
     let delay = couch::state::get().core.settings().general.hover_delay_ms.max(300) as u64;
     let (id, name, year) = (m.id.clone(), m.name.clone(), m.year());
     cx.spawn(async move |cx| {
-        gpui::Timer::after(std::time::Duration::from_millis(delay)).await;
-        let still = cx.update(|cx| cx.try_global::<Pending>().map_or(false, |p| p.0 == owner)).unwrap_or(false);
+        crate::timer::after(std::time::Duration::from_millis(delay)).await;
+        let still = cx.update(|cx| cx.try_global::<Pending>().map_or(false, |p| p.0 == owner));
         if !still {
             return;
         }

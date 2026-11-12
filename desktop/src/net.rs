@@ -14,9 +14,6 @@ impl CouchHttp {
 }
 
 impl HttpClient for CouchHttp {
-    fn type_name(&self) -> &'static str {
-        "couch"
-    }
     fn user_agent(&self) -> Option<&http::HeaderValue> {
         None
     }

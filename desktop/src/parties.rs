@@ -66,7 +66,7 @@ pub fn init(cx: &mut App) {
                     break;
                 }
             }
-            gpui::Timer::after(Duration::from_secs(60)).await;
+            crate::timer::after(Duration::from_secs(60)).await;
         })
         .detach();
         let mut me = Parties::default();

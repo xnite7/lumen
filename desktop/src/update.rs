@@ -34,7 +34,7 @@ pub fn start(cx: &mut App) {
     cx.spawn(async move |cx| {
         let mut told = false;
         loop {
-            gpui::Timer::after(Duration::from_secs(if told { 3600 } else { 20 })).await;
+            crate::timer::after(Duration::from_secs(if told { 3600 } else { 20 })).await;
             let Some(dir) = dir.clone() else { break };
             let core = couch::state::get().core.clone();
             let latest = couch::rt::spawn({

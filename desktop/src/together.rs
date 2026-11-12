@@ -160,7 +160,7 @@ pub fn init(cx: &mut App) {
     let t = cx.new(|cx: &mut Context<Together>| {
         // who's asking to join my couch
         cx.spawn(async move |this, cx| loop {
-            gpui::Timer::after(Duration::from_secs(5)).await;
+            crate::timer::after(Duration::from_secs(5)).await;
             let r = api::call::<Value>("crew_inbox", json!({})).await;
             let Ok(r) = r else { continue };
             let asks: Vec<Value> = r["asks"].as_array().cloned().unwrap_or_default();
@@ -177,7 +177,7 @@ pub fn init(cx: &mut App) {
         .detach();
         // the beat: host pushes state, guest re-checks drift
         cx.spawn(async move |this, cx| loop {
-            gpui::Timer::after(Duration::from_millis(100)).await;
+            crate::timer::after(Duration::from_millis(100)).await;
             if this.update(cx, |t, cx| t.tick(cx)).is_err() {
                 break;
             }
@@ -333,7 +333,7 @@ impl Together {
             });
             let until = Instant::now() + Duration::from_secs(120);
             while Instant::now() < until {
-                gpui::Timer::after(Duration::from_secs(2)).await;
+                crate::timer::after(Duration::from_secs(2)).await;
                 let still = this.update(cx, |t, _| t.asking.as_ref().map(|a| a.0.clone()) == Some(id.clone())).unwrap_or(false);
                 if !still {
                     return;
@@ -386,7 +386,7 @@ impl Together {
                 if !room.is_null() {
                     break;
                 }
-                gpui::Timer::after(Duration::from_secs(1)).await;
+                crate::timer::after(Duration::from_secs(1)).await;
             }
             if room.is_null() {
                 let _ = cx.update(|cx| Nav::toast(format!("couldn't catch up with {name}"), cx));
@@ -475,7 +475,7 @@ impl Together {
                 let v = h.v.clone();
                 cx.defer(move |cx| playback::quick_play(m, Some(v), None, cx));
                 cx.spawn(async move |this, cx| {
-                    gpui::Timer::after(Duration::from_secs(4)).await;
+                    crate::timer::after(Duration::from_secs(4)).await;
                     let _ = this.update(cx, |t, _| {
                         t.switching = false;
                         t.seek_at = Some(Instant::now());

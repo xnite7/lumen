@@ -288,7 +288,7 @@ pub async fn gather(kind: &str, id: &str, ms: u64) -> Vec<Value> {
     let mut rx = host::listen("streams");
     let _ = api::call::<Value>("streams_fetch", json!({ "kind": kind, "id": id, "reqId": req })).await;
     let mut got = vec![];
-    let deadline = gpui::Timer::after(Duration::from_millis(ms));
+    let deadline = crate::timer::after(Duration::from_millis(ms));
     futures::pin_mut!(deadline);
     loop {
         let next = rx.next();
@@ -319,7 +319,7 @@ impl Playback {
         };
         if let Some(Sleep::At(at, _)) = self.sleep {
             cx.spawn(async move |this, cx| {
-                gpui::Timer::at(at).await;
+                crate::timer::at(at).await;
                 let _ = this.update(cx, |p, cx| {
                     if matches!(p.sleep, Some(Sleep::At(a, _)) if a == at) && p.open {
                         p.sleep = None;

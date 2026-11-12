@@ -9,3 +9,4 @@ src-tauri/mpv
 .DS_Store
 dist-demo
 desktop/target/
+zed-src/

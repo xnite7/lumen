@@ -72,7 +72,7 @@ impl Reactions {
                                 let delay = (x["at"].as_f64().unwrap_or(first) - first).clamp(0., 1500.) as u64;
                                 let (e, n) = (x["emoji"].as_str().unwrap_or("🔥").to_string(), x["name"].as_str().unwrap_or("").to_string());
                                 cx.spawn(async move |this, cx| {
-                                    gpui::Timer::after(Duration::from_millis(delay)).await;
+                                    crate::timer::after(Duration::from_millis(delay)).await;
                                     let _ = this.update(cx, |v, cx| v.launch(e, n, false, cx));
                                 })
                                 .detach();
@@ -80,7 +80,7 @@ impl Reactions {
                         });
                     }
                 }
-                gpui::Timer::after(Duration::from_millis(if busy { 350 } else { 900 })).await;
+                crate::timer::after(Duration::from_millis(if busy { 350 } else { 900 })).await;
             }
         })
         .detach();
@@ -125,7 +125,7 @@ impl Render for Reactions {
             window.request_animation_frame();
         } else if self.open {
             cx.spawn(async move |this, cx| {
-                gpui::Timer::after(Duration::from_millis(500)).await;
+                crate::timer::after(Duration::from_millis(500)).await;
                 let _ = this.update(cx, |_, cx| cx.notify());
             })
             .detach();

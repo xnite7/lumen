@@ -40,7 +40,7 @@ impl Search {
     fn changed(&mut self, cx: &mut Context<Self>) {
         // wait for a pause in typing
         self.pending = Some(cx.spawn(async move |this, cx| {
-            gpui::Timer::after(Duration::from_millis(320)).await;
+            crate::timer::after(Duration::from_millis(320)).await;
             let _ = this.update(cx, |s, cx| s.run(cx));
         }));
     }

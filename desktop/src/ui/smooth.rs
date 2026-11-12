@@ -28,7 +28,7 @@ pub fn wheel(h: &ScrollHandle, key: &'static str) -> impl IntoElement {
         move |_, _, window, _| {
             // glide toward the target
             let cur = -f32::from(h.offset().y);
-            let max = f32::from(h.max_offset().height).max(0.);
+            let max = f32::from(h.max_offset().y).max(0.);
             if let Some(t) = TARGET.with(|m| m.borrow().get(key).copied()) {
                 let t = t.clamp(0., max);
                 let d = t - cur;
@@ -51,7 +51,7 @@ pub fn wheel(h: &ScrollHandle, key: &'static str) -> impl IntoElement {
                 if dy.abs() <= dx.abs() || dy == 0. {
                     return;
                 }
-                let max = f32::from(h2.max_offset().height).max(0.);
+                let max = f32::from(h2.max_offset().y).max(0.);
                 let cur = -f32::from(h2.offset().y);
                 match e.delta {
                     // a mouse wheel: glide

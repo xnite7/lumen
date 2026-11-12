@@ -12,6 +12,7 @@ mod together;
 mod update;
 mod theme;
 mod mini;
+mod timer;
 mod ui;
 mod views;
 
@@ -137,7 +138,7 @@ impl Nav {
                 r.toast = Some(msg);
                 cx.notify();
                 cx.spawn(async move |this, cx| {
-                    gpui::Timer::after(std::time::Duration::from_secs(3)).await;
+                    crate::timer::after(std::time::Duration::from_secs(3)).await;
                     let _ = this.update(cx, |r, cx| {
                         r.toast = None;
                         cx.notify();
@@ -539,7 +540,7 @@ impl Render for Root {
                 let v = self.vibe.get_or_insert_with(|| cx.new(views::vibe::Vibe::new)).clone();
                 let f = v.read(cx).input.read(cx).focus_handle(cx);
                 if !f.contains_focused(window, cx) {
-                    window.focus(&f);
+                    window.focus(&f, cx);
                 }
                 v.into_any_element()
             }
@@ -562,7 +563,7 @@ impl Render for Root {
                 let s = self.search.get_or_insert_with(|| cx.new(views::search::Search::new)).clone();
                 let f = s.read(cx).input.read(cx).focus_handle(cx);
                 if !f.contains_focused(window, cx) {
-                    window.focus(&f);
+                    window.focus(&f, cx);
                 }
                 s.into_any_element()
             }
@@ -632,7 +633,7 @@ fn main() {
     let host = Arc::new(host);
     let st = couch::engine::boot(host.clone(), data_dir, cache_dir).expect("couch engine");
 
-    Application::new().with_assets(assets::Assets).run(move |cx: &mut App| {
+    gpui_platform::application().with_assets(assets::Assets).run(move |cx: &mut App| {
         cx.text_system().add_fonts(assets::fonts()).expect("fonts");
         {
             use gpui::KeyBinding;
@@ -701,7 +702,7 @@ fn main() {
                         .detach();
                         // a click on the mini picture: full size again
                         cx.spawn(async move |this, cx| loop {
-                            gpui::Timer::after(std::time::Duration::from_millis(150)).await;
+                            crate::timer::after(std::time::Duration::from_millis(150)).await;
                             if mini::CLICKED.swap(false, std::sync::atomic::Ordering::Relaxed) {
                                 if this.update(cx, |_, cx| Nav::expand(cx)).is_err() {
                                     break;
@@ -710,7 +711,7 @@ fn main() {
                         })
                         .detach();
                         let focus = cx.focus_handle();
-                        window.focus(&focus);
+                        window.focus(&focus, cx);
                         // dev: start on a page (COUCH_START=detail:series:tt0903747)
                         let start = std::env::var("COUCH_START").ok().and_then(|v| {
                             let p: Vec<&str> = v.split(':').collect();
