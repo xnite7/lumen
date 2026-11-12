@@ -99,7 +99,8 @@ pub fn init(cx: &mut App) {
                         if p.sleep == Some(Sleep::Episode) {
                             // sleep timer: that was the last one tonight
                             p.sleep = None;
-                        } else if couch::state::get().core.settings().playback.autoplay_next {
+                        } else if couch::state::get().core.settings().playback.autoplay_next && crate::together::get(cx).read(cx).following.is_none() {
+                            // (on someone's couch the host's next episode brings you along)
                             p.play_next(cx);
                         }
                     }

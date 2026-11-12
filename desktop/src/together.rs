@@ -35,6 +35,10 @@ pub struct Together {
     switching: bool,
     steered_at: Option<Instant>,
     sent: Sent,
+    /// something a guest tried that only the host can do: (icon, words, when)
+    pub denied: Option<(&'static str, String, Instant)>,
+    /// told the guest we're waiting on a silent host (once per silence)
+    waiting_told: bool,
 }
 
 #[derive(Clone, Default)]
@@ -50,6 +54,10 @@ struct Sent {
 #[derive(Clone)]
 struct HostState {
     v: String,
+    /// the title the host is on (id, type, name)
+    m: String,
+    ty: String,
+    ti: String,
     p: f64,
     pa: bool,
     st: bool,
@@ -406,8 +414,76 @@ impl Together {
                 t.seek_at = None;
                 t.nudged = 1.;
                 t.line = Some(line);
+                t.waiting_told = false;
                 t.take_state(&room);
+                // the first load is under way: don't start another until it plays
+                t.switching = true;
             });
+            cx.spawn({
+                let this = this.clone();
+                async move |cx| {
+                    let until = Instant::now() + Duration::from_secs(25);
+                    loop {
+                        crate::timer::after(Duration::from_millis(500)).await;
+                        let done = cx.update(|cx| {
+                            let p = playback::get(cx).read(cx);
+                            p.open && !p.loading && p.state.duration > 0.
+                        });
+                        if done || Instant::now() > until {
+                            break;
+                        }
+                    }
+                    let _ = this.update(cx, |t, _| {
+                        t.switching = false;
+                        t.seek_at = Some(Instant::now());
+                    });
+                }
+            })
+            .detach();
+            // the room itself, every few seconds: the host stopping ends it, and
+            // when the live line goes quiet the room still says where they are
+            {
+                let (host, name) = (host.clone(), name.clone());
+                cx.spawn({
+                    let this = this.clone();
+                    async move |cx| {
+                        let mut gone = 0;
+                        loop {
+                            crate::timer::after(Duration::from_secs(4)).await;
+                            let on = this.update(cx, |t, _| t.following.as_ref().map(|f| f.0.clone()) == Some(host.clone())).unwrap_or(false);
+                            if !on {
+                                break;
+                            }
+                            let room = api::call::<Value>("crew_room", json!({ "host": host })).await.map(|v| v["room"].clone());
+                            match room {
+                                Ok(r) if r.is_null() => {
+                                    gone += 1;
+                                    if gone >= 2 {
+                                        let msg = format!("{name} stopped watching — you're on your own now");
+                                        let _ = this.update(cx, |t, cx| {
+                                            t.leave(cx);
+                                            cx.defer(move |cx| Nav::toast(msg, cx));
+                                        });
+                                        break;
+                                    }
+                                }
+                                Ok(r) => {
+                                    gone = 0;
+                                    let _ = this.update(cx, |t, cx| {
+                                        let quiet = t.host_st.as_ref().map_or(true, |h| h.got.elapsed() > Duration::from_secs(5));
+                                        if quiet {
+                                            t.take_state(&r);
+                                            t.apply(cx);
+                                        }
+                                    });
+                                }
+                                Err(_) => {}
+                            }
+                        }
+                    }
+                })
+                .detach();
+            }
             while let Some(d) = rx.next().await {
                 if d["k"] != "s" {
                     continue;
@@ -429,6 +505,9 @@ impl Together {
     fn take_state(&mut self, d: &Value) {
         self.host_st = Some(HostState {
             v: d["v"].as_str().or(d["videoId"].as_str()).unwrap_or("").into(),
+            m: d["m"].as_str().or(d["metaId"].as_str()).unwrap_or("").into(),
+            ty: d["ty"].as_str().or(d["type"].as_str()).unwrap_or("").into(),
+            ti: d["ti"].as_str().or(d["title"].as_str()).unwrap_or("").into(),
             p: d["p"].as_f64().or(d["now"].as_f64()).unwrap_or(0.),
             pa: d["pa"].as_bool().or(d["paused"].as_bool()).unwrap_or(false),
             st: d["st"].as_bool().or(d["stalled"].as_bool()).unwrap_or(false),
@@ -464,18 +543,40 @@ impl Together {
             (p.open, p.loading, p.video_id.clone(), p.state.clone(), p.meta.clone())
         };
         if !open {
-            self.leave(cx);
+            // (still opening the first time / the next one: not a "close")
+            if !self.switching {
+                self.leave(cx);
+            }
             return;
         }
-        // they moved on to another episode: come along
-        if !h.v.is_empty() && h.v != video_id && !loading && !self.switching && !video_id.is_empty() {
-            if let Some(m) = meta {
+        // the host moved on (next episode, another episode, another title):
+        // come along, to the moment they're at (not your own saved spot)
+        if !h.v.is_empty() && h.v != video_id && !loading && !self.switching {
+            let same = meta.as_ref().map_or(false, |m| h.m.is_empty() || m.id == h.m);
+            let m = match meta {
+                Some(m) if same => m,
+                _ => Meta { id: h.m.clone(), kind: if h.ty.is_empty() { "movie".into() } else { h.ty.clone() }, name: h.ti.clone(), ..Default::default() },
+            };
+            if !m.id.is_empty() {
                 self.switching = true;
                 self.nudge(1., cx);
                 let v = h.v.clone();
-                cx.defer(move |cx| playback::quick_play(m, Some(v), None, cx));
+                let at = if h.pa { h.p } else { self.host_now() + self.seek_cost };
+                let start = (at > 3.).then_some(at);
+                cx.defer(move |cx| playback::quick_play(m, Some(v), start, cx));
                 cx.spawn(async move |this, cx| {
-                    crate::timer::after(Duration::from_secs(4)).await;
+                    // until the new one is actually playing (or 20 s)
+                    let until = Instant::now() + Duration::from_secs(20);
+                    loop {
+                        crate::timer::after(Duration::from_millis(500)).await;
+                        let done = cx.update(|cx| {
+                            let p = playback::get(cx).read(cx);
+                            !p.loading && p.state.duration > 0.
+                        });
+                        if done || Instant::now() > until {
+                            break;
+                        }
+                    }
                     let _ = this.update(cx, |t, _| {
                         t.switching = false;
                         t.seek_at = Some(Instant::now());
@@ -500,6 +601,20 @@ impl Together {
                 self.seek_at = None;
             }
         }
+        // nothing from the host for a while (their connection dropped?): hold
+        // here rather than run off on our own
+        if h.got.elapsed() > Duration::from_secs(12) {
+            if !s.paused {
+                p.cmd("pause", json!({ "value": true }));
+            }
+            if !self.waiting_told {
+                self.waiting_told = true;
+                let name = self.following.as_ref().map(|f| f.1.clone()).unwrap_or_default();
+                cx.defer(move |cx| Nav::toast(format!("waiting for {name}…"), cx));
+            }
+            return;
+        }
+        self.waiting_told = false;
         let target = self.host_now();
         let drift = target - s.pos;
         if !h.st {
@@ -513,7 +628,9 @@ impl Together {
             if !s.paused {
                 p.cmd("pause", json!({ "value": true }));
             }
-            if drift.abs() > 0.4 {
+            // paused: land on their exact frame; just loading (subtitles, a
+            // hiccup): wait for them without jumping around unless far off
+            if drift.abs() > if h.pa { 0.4 } else { 2.0 } {
                 self.seek_at = Some(Instant::now());
                 p.cmd("seek", json!({ "to": target }));
             }
@@ -533,7 +650,8 @@ impl Together {
         if s.buffering {
             return;
         }
-        if drift.abs() > 4. {
+        // a jump (they skipped): seek; small drift: ease it out with speed
+        if drift.abs() > 2.5 {
             let _ = p;
             self.nudge(1., cx);
             self.seek_at = Some(Instant::now());
@@ -564,6 +682,26 @@ impl Together {
             }
         }
         true
+    }
+
+    /// Something a guest tried that only the host can do: say so (a crossed-out
+    /// symbol over the player, or a toast elsewhere).
+    pub fn deny(&mut self, what: &str, cx: &mut Context<Self>) {
+        let (icon, words) = match what {
+            "pause" => ("pause", "guests can't pause"),
+            "play" => ("play", "guests can't press play"),
+            "seek" => ("forward10", "guests can't skip around"),
+            "speed" => ("gauge", "guests can't change the speed"),
+            "episode" => ("film", "only the host changes episodes"),
+            _ => ("film", "only the host picks what's on"),
+        };
+        let host = self.following.as_ref().map(|f| f.1.clone()).unwrap_or_default();
+        let words = if host.is_empty() { words.to_string() } else { format!("{words} — {host} has the remote") };
+        self.denied = Some((icon, words.clone(), Instant::now()));
+        cx.notify();
+        if !crate::Nav::on_player(cx) {
+            cx.defer(move |cx| Nav::toast(words, cx));
+        }
     }
 
     pub fn leave(&mut self, cx: &mut Context<Self>) {

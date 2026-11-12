@@ -89,16 +89,59 @@ fn just_moved() -> bool {
 
 /// Watching on someone's couch: pause/seek go to the host (when they've
 /// shared the remote); otherwise they stay with the host. True = do it here too.
+/// May I do this on watch together? Not a guest: yes. A guest the host shared
+/// the remote with: play / pause / seek go to the host (and yes). Anything
+/// else from a guest: no, and the player says so.
 pub fn may(action: &str, pos: Option<f64>, cx: &mut gpui::App) -> bool {
     let t = crate::together::get(cx);
     if t.read(cx).following.is_none() {
         return true;
     }
-    let sent = t.update(cx, |t, _| t.steer(action, pos));
+    let steerable = matches!(action, "pause" | "play" | "seek");
+    let sent = steerable && t.update(cx, |t, _| t.steer(action, pos));
     if !sent {
-        crate::Nav::toast("the host has the remote".into(), cx);
+        t.update(cx, |t, cx| t.deny(action, cx));
     }
     sent
+}
+
+/// the "guests can't …" sign over the player: the control crossed out, and why
+fn denied_sign(cx: &mut Context<PlayerView>, window: &mut Window) -> Option<gpui::AnyElement> {
+    let (ic, words, at) = crate::together::get(cx).read(cx).denied.clone()?;
+    let t = at.elapsed().as_secs_f32();
+    if t > 1.8 {
+        return None;
+    }
+    window.request_animation_frame();
+    let a = if t < 0.12 { t / 0.12 } else if t > 1.4 { 1. - (t - 1.4) / 0.4 } else { 1. };
+    let s = if t < 0.12 { 0.9 + 0.1 * (t / 0.12) } else { 1. };
+    Some(
+        div()
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(px(14.))
+            .opacity(a)
+            .child(
+                div()
+                    .size(px(104. * s))
+                    .rounded_full()
+                    .bg(theme::black(0.62))
+                    .relative()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(icon_fill(ic, 46. * s))
+                    .child(div().absolute().top_0().left_0().size_full().flex().items_center().justify_center().child(icon("slash", 74. * s))),
+            )
+            .child(div().px(px(16.)).py(px(8.)).rounded_full().bg(theme::black(0.62)).text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child(words))
+            .into_any_element(),
+    )
 }
 
 async fn api_still(t: f64) -> Option<std::sync::Arc<gpui::Image>> {
@@ -184,7 +227,9 @@ fn pill(id: &'static str, label: String) -> gpui::Stateful<gpui::Div> {
 fn next_pill(pb: Entity<Playback>, label: String) -> gpui::Stateful<gpui::Div> {
     pill("pl-upnext", format!("next episode · {label}")).on_click(move |_, _, cx| {
         cx.stop_propagation();
-        pb.update(cx, |p, cx| p.play_next(cx))
+        if may("episode", None, cx) {
+            pb.update(cx, |p, cx| p.play_next(cx))
+        }
     })
 }
 
@@ -293,7 +338,11 @@ impl PlayerView {
                     .map(|v| {
                         let pb = self.pb.clone();
                         row(SharedString::from(format!("sp-{v}")), if v == 1.0 { "normal".into() } else { format!("{v}x") }, (snap(cur) - v).abs() < 0.01)
-                            .on_click(move |_, _, cx| pb.read(cx).cmd("speed", json!({ "value": v })))
+                            .on_click(move |_, _, cx| {
+                                if may("speed", None, cx) {
+                                    pb.read(cx).cmd("speed", json!({ "value": v }))
+                                }
+                            })
                             .into_any_element()
                     })
                     .collect();
@@ -480,7 +529,7 @@ impl Render for PlayerView {
             })
             .detach();
         }
-        let root = root.child(self.reactions.clone());
+        let root = root.child(self.reactions.clone()).children(denied_sign(cx, window));
         if !shown {
             return root;
         }
@@ -773,7 +822,11 @@ impl Render for PlayerView {
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .cursor_pointer()
                                     .hover(|s| s.bg(theme::white(0.2)))
-                                    .on_click(move |_, _, cx| pb.update(cx, |p, cx| p.play_next(cx)))
+                                    .on_click(move |_, _, cx| {
+                                        if may("episode", None, cx) {
+                                            pb.update(cx, |p, cx| p.play_next(cx))
+                                        }
+                                    })
                                     .on_hover(cx.listener(|v, on: &bool, _, cx| {
                                         v.next_hover = *on;
                                         cx.notify();

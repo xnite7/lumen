@@ -137,10 +137,21 @@ impl Nav {
         Self::go(Route::Detail(m.clone()), cx);
     }
     pub fn play(m: &Meta, cx: &mut App) {
+        // on someone's couch, what's on is theirs to pick
+        if !views::player::may("title", None, cx) {
+            return;
+        }
         playback::quick_play(m.clone(), None, None, cx);
     }
     pub fn play_episode(m: &Meta, video_id: String, cx: &mut App) {
+        if !views::player::may("episode", None, cx) {
+            return;
+        }
         playback::quick_play(m.clone(), Some(video_id), None, cx);
+    }
+    /// is the player the page on screen?
+    pub fn on_player(cx: &App) -> bool {
+        Self::root(cx).map_or(false, |r| r.read(cx).route == Route::Player)
     }
     /// the + on a title: My List, your lists, or a new one
     pub fn add(m: &Meta, cx: &mut App) {
@@ -371,11 +382,29 @@ impl Root {
         }
         if self.route == Route::Player {
             let pb = playback::get(cx);
+            // the same rules as the buttons (on someone's couch: theirs to do)
+            let (paused, pos) = (pb.read(cx).state.paused, pb.read(cx).state.pos);
+            let step = match k {
+                "left" => Some(-5.),
+                "j" => Some(-10.),
+                "right" => Some(5.),
+                "l" => Some(10.),
+                _ => None,
+            };
+            if matches!(k, "space" | "k") {
+                if views::player::may(if paused { "play" } else { "pause" }, None, cx) {
+                    pb.read(cx).cmd("pause", json!({ "value": !paused }));
+                }
+                return;
+            }
+            if let Some(d) = step {
+                if views::player::may("seek", Some((pos + d).max(0.)), cx) {
+                    pb.read(cx).cmd("seek", json!({ "to": d, "relative": true }));
+                }
+                return;
+            }
             let p = pb.read(cx);
             match k {
-                "space" | "k" => p.cmd("pause", json!({ "value": !p.state.paused })),
-                "left" | "j" => p.cmd("seek", json!({ "to": if k == "j" { -10 } else { -5 }, "relative": true })),
-                "right" | "l" => p.cmd("seek", json!({ "to": if k == "l" { 10 } else { 5 }, "relative": true })),
                 "up" => p.cmd("volume", json!({ "value": (p.state.volume + 5.).min(130.) })),
                 "down" => p.cmd("volume", json!({ "value": (p.state.volume - 5.).max(0.) })),
                 "m" => p.cmd("mute", json!({})),
