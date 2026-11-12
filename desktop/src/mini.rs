@@ -5,6 +5,8 @@
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
 static VIDEO: AtomicIsize = AtomicIsize::new(0);
+/// the GPU clip player's window (billboard, previews, trailers)
+static CLIP: AtomicIsize = AtomicIsize::new(0);
 static MAIN: AtomicIsize = AtomicIsize::new(0);
 static ON: AtomicBool = AtomicBool::new(false);
 /// the popup was clicked: back to full size
@@ -22,6 +24,23 @@ pub fn is_on() -> bool {
 /// mpv's parent window (the host), or 0 before it exists
 pub fn video_hwnd() -> isize {
     VIDEO.load(Ordering::Relaxed)
+}
+
+/// where the clip window goes (client pixels) and what part of it shows
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct ClipPlace {
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
+    /// the visible part, relative to the window
+    pub vis: (i32, i32, i32, i32),
+    pub r: i32,
+}
+
+/// the UI clip player's window, or 0
+pub fn clip_hwnd() -> isize {
+    CLIP.load(Ordering::Relaxed)
 }
 
 /// couch's own window
@@ -91,6 +110,23 @@ mod imp {
             let Ok(v) = v else { return 0 };
             let _ = SetWindowPos(v, Some(HWND_BOTTOM), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             VIDEO.store(v.0 as isize, Ordering::Relaxed);
+            // the clip window: hidden until a spot asks for it
+            if let Ok(c) = CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                w!("couch-video"),
+                w!(""),
+                WS_CHILD | WS_DISABLED | WS_CLIPCHILDREN,
+                0,
+                0,
+                16,
+                16,
+                Some(hw(main)),
+                None,
+                Some(inst.into()),
+                None,
+            ) {
+                CLIP.store(c.0 as isize, Ordering::Relaxed);
+            }
             let p = CreateWindowExW(
                 WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
                 w!("couch-mini"),
@@ -112,6 +148,47 @@ mod imp {
                 let _ = windows::Win32::Graphics::Dwm::DwmSetWindowAttribute(p, windows::Win32::Graphics::Dwm::DWMWA_WINDOW_CORNER_PREFERENCE, &pref as *const u32 as *const _, 4);
             }
             v.0 as isize
+        }
+    }
+
+    static LAST: parking_lot::Mutex<Option<ClipPlace>> = parking_lot::Mutex::new(None);
+
+    /// Put the clip window under its see-through spot (client pixels), or hide it.
+    pub fn place_clip(at: Option<ClipPlace>) {
+        let c = CLIP.load(Ordering::Relaxed);
+        if c == 0 {
+            return;
+        }
+        let mut last = LAST.lock();
+        if *last == at {
+            return;
+        }
+        let prev = *last;
+        *last = at;
+        unsafe {
+            match at {
+                None => {
+                    let _ = ShowWindow(hw(c), SW_HIDE);
+                }
+                Some(p) => {
+                    use windows::Win32::Graphics::Gdi::{CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, SetWindowRgn, RGN_AND};
+                    let _ = SetWindowPos(hw(c), Some(HWND_TOP), p.x, p.y, p.w.max(1), p.h.max(1), SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                    // rounded corners, cut to the part that's on screen
+                    let shape = if p.r > 0 { CreateRoundRectRgn(0, 0, p.w + 1, p.h + 1, p.r * 2, p.r * 2) } else { CreateRectRgn(0, 0, p.w, p.h) };
+                    let (vx, vy, vw, vh) = p.vis;
+                    let vis = CreateRectRgn(vx, vy, vx + vw, vy + vh);
+                    let _ = CombineRgn(Some(shape), Some(shape), Some(vis), RGN_AND);
+                    let _ = DeleteObject(vis.into());
+                    // the window owns the region from here
+                    let _ = SetWindowRgn(hw(c), Some(shape), true);
+                }
+            }
+        }
+        let moved = at.is_some() && prev.map_or(true, |q| (q.w, q.h) != (at.unwrap().w, at.unwrap().h));
+        drop(last);
+        // mpv's own window inside follows when the size changes
+        if moved {
+            couch::player::refit_video(Some(c));
         }
     }
 
@@ -157,7 +234,7 @@ mod imp {
 }
 
 #[cfg(target_os = "windows")]
-pub use imp::{fit, init, set};
+pub use imp::{fit, init, place_clip, set};
 
 #[cfg(not(target_os = "windows"))]
 pub fn init(main: isize) -> isize {
@@ -166,6 +243,8 @@ pub fn init(main: isize) -> isize {
 }
 #[cfg(not(target_os = "windows"))]
 pub fn fit(_scale: f32) {}
+#[cfg(not(target_os = "windows"))]
+pub fn place_clip(_at: Option<ClipPlace>) {}
 #[cfg(not(target_os = "windows"))]
 pub fn set(on: bool, _scale: f32) {
     ON.store(on, Ordering::Relaxed);

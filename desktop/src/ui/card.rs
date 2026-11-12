@@ -16,7 +16,7 @@ pub fn card(id: SharedString, m: &Meta, on_click: impl Fn(&gpui::ClickEvent, &mu
 pub fn card_preview(
     id: SharedString,
     m: &Meta,
-    clip: Option<(std::sync::Arc<gpui::RenderImage>, f32, f32)>,
+    clip: Option<(crate::ui::video::Pic, f32, f32)>,
     on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> AnyElement {
     card_with(id, m, None, None, Some(clip), on_click)
@@ -28,7 +28,7 @@ pub fn card_with(
     m: &Meta,
     progress: Option<f32>,
     sub: Option<String>,
-    preview: Option<Option<(std::sync::Arc<gpui::RenderImage>, f32, f32)>>,
+    preview: Option<Option<(crate::ui::video::Pic, f32, f32)>>,
     on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static,
 ) -> AnyElement {
     let hover_meta = m.clone();
@@ -46,7 +46,8 @@ pub fn card_with(
         .rounded(px(12.))
         .overflow_hidden()
         .relative()
-        .bg(theme::surface2())
+        // a GPU clip shows through this card: nothing of the card under it
+        .when(!matches!(clip, Some((crate::ui::video::Pic::Native, _, _))), |d| d.bg(theme::surface2()))
         .cursor_pointer()
         .border_1()
         .border_color(theme::white(0.0))
@@ -57,8 +58,10 @@ pub fn card_with(
             crate::Nav::menu(&menu_meta, e.position, cx)
         })
         .when(preview.is_some(), |d| d.on_hover(move |on, _, cx| crate::ui::video::hover(&hover_meta, *on, cx)))
-        .children(art.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover)))
-        .children(clip.map(|(f, a, _)| img(f).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(a)))
+        .children(match &clip {
+            Some((p, a, _)) => crate::ui::video::layers(art.clone(), p, *a, 12.),
+            None => art.clone().map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).into_any_element()).into_iter().collect(),
+        })
         .child(
             div()
                 .absolute()

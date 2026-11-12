@@ -15,6 +15,8 @@ pub mod depth3d;
 mod mpv;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod surface;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub mod clip;
 mod session;
 
 use crate::core::CoreRef;

@@ -291,8 +291,11 @@ impl Render for Detail {
             .w_full()
             .h(vh * 0.92)
             .flex_none()
-            .children(art.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover)))
-            .children(tframe.map(|(f, a)| img(f).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(a)))
+            // the art, and the trailer over it once it's playing
+            .children(match &tframe {
+                Some((p, a)) => crate::ui::video::layers(art.clone(), p, *a, 0.),
+                None => art.clone().map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).into_any_element()).into_iter().collect(),
+            })
             .child(div().absolute().top_0().left_0().size_full().bg(linear_gradient(90., linear_color_stop(theme::black(0.85), 0.), linear_color_stop(theme::black(0.0), 0.7))))
             .child(div().absolute().left_0().bottom_0().w_full().h(vh * 0.5).bg(linear_gradient(180., linear_color_stop(theme::black(0.0), 0.), linear_color_stop(theme::black(1.0), 1.))))
             .child(
@@ -422,7 +425,7 @@ impl Render for Detail {
             );
 
         let mut page = div().id("detail").size_full().overflow_y_scroll().track_scroll(&self.scroll)
-            .child(crate::ui::smooth::wheel(&self.scroll, "detail")).bg(theme::bg()).child(hero);
+            .child(crate::ui::smooth::wheel(&self.scroll, "detail")).child(hero);
 
         // ---------------------------------------------------------- episodes
         if let Some(f) = &full {

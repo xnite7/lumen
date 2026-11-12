@@ -244,7 +244,7 @@ impl Render for Home {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let vh = window.viewport_size().height;
         let mut page = div().id(SharedString::from(format!("home-{}", self.scope))).size_full().overflow_y_scroll().track_scroll(&self.scroll)
-            .child(crate::ui::smooth::wheel(&self.scroll, self.scope)).bg(theme::bg());
+            .child(crate::ui::smooth::wheel(&self.scroll, self.scope));
         match &self.hero {
             Some(m) => {
                 let (a, b, c) = (m.clone(), m.clone(), m.clone());
@@ -277,7 +277,7 @@ impl Render for Home {
                     Box::new(move |_, _, cx| Nav::add(&c, cx)),
                 ));
             }
-            None => page = page.child(div().w_full().h(vh * 0.86).bg(theme::bg())),
+            None => page = page.child(div().w_full().h(vh * 0.86)),
         }
         // the card that's previewing (one at a time)
         let vid = crate::ui::video::get(cx);

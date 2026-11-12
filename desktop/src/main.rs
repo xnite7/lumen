@@ -503,6 +503,7 @@ fn window_controls() -> impl IntoElement {
 
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        ui::video::begin_frame();
         // mpv's window follows ours (resize, full screen, DPI)
         let size = window.viewport_size();
         if size != self.last_size {
@@ -520,6 +521,9 @@ impl Render for Root {
             cx.defer(move |_| mini::set(want_mini, s));
         }
         let playing = self.route == Route::Player;
+        if playing {
+            cx.defer(|_| mini::place_clip(None));
+        }
         let page = match &self.route {
             Route::Home => self.home.clone().into_any_element(),
             Route::Player => self.player.clone().into_any_element(),
@@ -589,7 +593,8 @@ impl Render for Root {
             .relative()
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::key))
-            .when(!playing, |d| d.bg(theme::bg()))
+            // the background, with a see-through spot where a GPU clip plays
+            .when(!playing, |d| d.child(ui::video::paint_bg(theme::bg().into())))
             .font_family(theme::FONT)
             .text_color(theme::text())
             .child(page)
