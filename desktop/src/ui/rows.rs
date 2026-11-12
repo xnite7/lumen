@@ -149,9 +149,14 @@ pub fn scroller(key: impl ToString, inner: Stateful<Div>) -> AnyElement {
                     });
                     let key = k3.clone();
                     // let go: a drag isn't a click; it carries on a little
-                    window.on_mouse_event(move |_: &MouseUpEvent, phase, window, _| {
+                    window.on_mouse_event(move |_: &MouseUpEvent, phase, window, cx| {
                         if phase != DispatchPhase::Capture {
                             return;
+                        }
+                        // a drag's release never reaches what's under it, so no card,
+                        // feed card or episode opens when a drag ends on it
+                        if DRAG.with(|d| d.borrow().as_ref().map_or(false, |g| g.key == key && g.moved)) {
+                            cx.stop_propagation();
                         }
                         DRAG.with(|d| {
                             let mut d = d.borrow_mut();
