@@ -806,7 +806,28 @@ pub async fn follow_feed(core: &Core, follows: &[Value]) -> Vec<Value> {
     let mut all: Vec<(String, Value)> = lists.into_iter().flatten().collect();
     all.sort_by(|a, b| b.0.cmp(&a.0));
     let mut seen = std::collections::HashSet::new();
-    all.into_iter().filter(|(_, t)| seen.insert(t["id"].as_str().unwrap_or("").to_string())).map(|(_, t)| t).take(40).collect()
+    let picked: Vec<Value> = all.into_iter().filter(|(_, t)| seen.insert(t["id"].as_str().unwrap_or("").to_string())).map(|(_, t)| t).take(40).collect();
+    // their title logos, like every other row: TMDB's own (new releases have
+    // one there first), else metahub's through the IMDb id
+    futures::stream::iter(picked)
+        .map(|mut t| async move {
+            let kind = t["tmdbKind"].as_str().unwrap_or("movie").to_string();
+            if let Some(tid) = t["tmdbId"].as_u64() {
+                let own = get(core, &format!("/{kind}/{tid}/images"), "&include_image_language=en,null", DAY)
+                    .await
+                    .ok()
+                    .and_then(|v| v.pointer("/logos/0/file_path").and_then(|p| p.as_str()).map(String::from));
+                if let Some(l) = own {
+                    t["logo"] = json!(img(Some(&l), "w500"));
+                } else if let Ok(Some(imdb)) = imdb_for_tmdb(core, &kind, tid).await {
+                    t["logo"] = json!(format!("https://images.metahub.space/logo/medium/{imdb}/img"));
+                }
+            }
+            t
+        })
+        .buffered(8)
+        .collect()
+        .await
 }
 
 pub async fn catalog(core: &Core, def: &CatalogDef, stremio_type: &str, genre: Option<&str>, skip: u32) -> AppResult<Vec<Value>> {
