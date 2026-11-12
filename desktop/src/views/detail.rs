@@ -413,8 +413,11 @@ impl Render for Detail {
         let hero = div()
             .relative()
             .w_full()
-            .h(vh * 0.92)
+            .min_h(vh * 0.92)
             .flex_none()
+            .flex()
+            .flex_col()
+            .justify_end()
             // the art, and the trailer over it once it's playing
             .children(match &tframe {
                 Some((p, a)) => crate::ui::video::layers(art.clone(), p, *a, 0.),
@@ -423,10 +426,13 @@ impl Render for Detail {
             .child(div().absolute().top_0().left_0().size_full().bg(linear_gradient(90., linear_color_stop(theme::black(0.85), 0.), linear_color_stop(theme::black(0.0), 0.7))))
             .child(div().absolute().left_0().bottom_0().w_full().h(vh * 0.5).bg(linear_gradient(180., linear_color_stop(theme::black(0.0), 0.), linear_color_stop(theme::black(1.0), 1.))))
             .child(
+                // the words start well below the tabs so the art shows; a tall
+                // block makes the billboard taller rather than climbing up into it
                 div()
-                    .absolute()
-                    .left(px(g))
-                    .bottom(px(70.))
+                    .relative()
+                    .ml(px(g))
+                    .pt(vh * 0.4)
+                    .pb(px(22.))
                     .w(px(640.))
                     .flex()
                     .flex_col()
@@ -815,7 +821,7 @@ impl Render for Detail {
                     .flex()
                     .flex_col()
                     .gap(px(14.))
-                    .mt(px(36.))
+                    .mt(px(28.))
                     .child(div().px(px(g)).text_size(px(24.)).font_weight(FontWeight::BLACK).child("cast"))
                     .child(crate::ui::rows::scroller("cast", div().id("cast").overflow_x_scroll().flex().gap(px(16.)).px(px(g)).children(cast.iter().take(20).map(|c| {
                         let photo = c["profile"].as_str().map(|s| s.to_string());
