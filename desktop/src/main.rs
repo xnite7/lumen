@@ -12,6 +12,7 @@ mod together;
 mod update;
 mod theme;
 mod mini;
+mod jump;
 mod timer;
 mod ui;
 mod views;
@@ -660,7 +661,62 @@ impl Render for Root {
     }
 }
 
+/// A page by name: "detail:series:tt123", "search", "couch", …
+fn route_of(spec: &str) -> Option<Route> {
+    let p: Vec<&str> = spec.trim().trim_matches('"').split(':').collect();
+    match p.as_slice() {
+        ["detail", k, i @ ..] if !i.is_empty() => Some(Route::Detail(Meta { kind: (*k).into(), id: i.join(":"), ..Default::default() })),
+        ["search"] => Some(Route::Search),
+        ["lists"] => Some(Route::Lists),
+        ["calendar"] => Some(Route::Calendar),
+        ["couch"] => Some(Route::Couch),
+        ["settings"] => Some(Route::Settings),
+        ["shows"] => Some(Route::Shows),
+        ["home"] => Some(Route::Home),
+        ["movies"] => Some(Route::Movies),
+        _ => None,
+    }
+}
+
+/// Right-click on couch's taskbar icon: what you're in the middle of, what's
+/// on your list, and quick ways in.
+async fn refresh_jump_list() {
+    let cw = api::call::<Vec<serde_json::Value>>("continue_watching", json!({})).await.unwrap_or_default();
+    let watching: Vec<jump::Item> = cw
+        .iter()
+        .filter_map(|v| {
+            let id = v["_id"].as_str().or(v["id"].as_str())?;
+            let name = v["name"].as_str()?;
+            let vid = v["state"]["video_id"].as_str().unwrap_or("");
+            let p: Vec<&str> = vid.split(':').collect();
+            let title = if p.len() == 3 { format!("{name} · S{} E{}", p[1], p[2]) } else { name.to_string() };
+            Some(jump::Item { title, open: format!("detail:{}:{id}", v["type"].as_str().unwrap_or("movie")) })
+        })
+        .take(5)
+        .collect();
+    let lists = api::call::<serde_json::Value>("my_lists", json!({})).await.unwrap_or_default();
+    let plan: Vec<jump::Item> = lists["plan"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|m| Some(jump::Item { title: m["name"].as_str()?.to_string(), open: format!("detail:{}:{}", m["type"].as_str().unwrap_or("movie"), m["id"].as_str()?) }))
+        .take(4)
+        .collect();
+    let tasks = vec![
+        jump::Item { title: "Search".into(), open: "search".into() },
+        jump::Item { title: "Calendar".into(), open: "calendar".into() },
+        jump::Item { title: "The couch".into(), open: "couch".into() },
+        jump::Item { title: "My lists".into(), open: "lists".into() },
+    ];
+    jump::set(vec![("Continue watching".into(), watching), ("On your list".into(), plan), (String::new(), tasks)]);
+}
+
 fn main() {
+    // couch already open? hand it the page asked for, and stop here
+    if jump::forward(Some(jump::requested().unwrap_or_else(|| "show".into()).as_str())) {
+        return;
+    }
+    let launches = std::cell::Cell::new(Some(jump::listen()));
     // Sharp on scaled screens (125%, 150%…): without this Windows draws couch
     // at 100% and stretches the picture, which makes text and icons rough.
     #[cfg(target_os = "windows")]
@@ -783,22 +839,35 @@ fn main() {
                         .detach();
                         let focus = cx.focus_handle();
                         window.focus(&focus, cx);
-                        // dev: start on a page (COUCH_START=detail:series:tt0903747)
-                        let start = std::env::var("COUCH_START").ok().and_then(|v| {
-                            let p: Vec<&str> = v.split(':').collect();
-                            match p.as_slice() {
-                                ["detail", k, i] => Some(Route::Detail(Meta { kind: (*k).into(), id: (*i).into(), ..Default::default() })),
-                                ["search"] => Some(Route::Search),
-                                ["lists"] => Some(Route::Lists),
-                                ["calendar"] => Some(Route::Calendar),
-                                ["couch"] => Some(Route::Couch),
-                                ["settings"] => Some(Route::Settings),
-                                ["shows"] => Some(Route::Shows),
-                                ["home"] => Some(Route::Home),
-                                ["movies"] => Some(Route::Movies),
-                                _ => None,
+                        // a page asked for at launch (the jump list, COUCH_START=detail:series:tt0903747)
+                        let start = jump::requested().and_then(|v| route_of(&v));
+                        // later launches hand their page over here
+                        let launches = launches.take();
+                        cx.spawn_in(window, async move |this, cx| {
+                            let Some(rx) = launches else { return };
+                            loop {
+                                crate::timer::after(std::time::Duration::from_millis(300)).await;
+                                while let Ok(spec) = rx.try_recv() {
+                                    let ok = this.update_in(cx, |_, window, cx| {
+                                        window.activate_window();
+                                        if let Some(route) = route_of(&spec) {
+                                            Nav::go(route, cx);
+                                        }
+                                    });
+                                    if ok.is_err() {
+                                        return;
+                                    }
+                                }
                             }
-                        });
+                        })
+                        .detach();
+                        // the jump list: soon after start, then every 10 minutes
+                        cx.spawn(async move |_, _| loop {
+                            crate::timer::after(std::time::Duration::from_secs(8)).await;
+                            refresh_jump_list().await;
+                            crate::timer::after(std::time::Duration::from_secs(600)).await;
+                        })
+                        .detach();
                         // not signed in yet: Discord first
                         let me: serde_json::Value = couch::state::get().core.db.get("discord_user").unwrap_or_default();
                         let first = if me.is_null() { Route::SignIn } else { Route::Home };
