@@ -330,7 +330,7 @@ impl Render for Detail {
         let m = self.meta();
         let g = theme::GUTTER;
         let art = m.background.clone().or(m.poster.clone()).map(|u| crate::net::fit(&sized(&u, "original"), crate::ui::view_w()));
-        let logo = m.logo.clone().map(|u| crate::net::fit(&sized(&u, "large"), 480.));
+        let logo = m.logo.clone().map(|u| crate::net::logo(&sized(&u, "large"), 480.));
         let ex = self.extra.clone().unwrap_or(Value::Null);
         let full = self.full.clone();
 

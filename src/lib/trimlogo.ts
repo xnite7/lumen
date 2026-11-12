@@ -1,13 +1,15 @@
-// Title logos often carry empty transparent space under the lettering, so
-// they float above the line beneath them. This measures that space once per
-// image and pulls whatever follows up by the same amount.
+// Title logos often carry empty transparent space under the lettering and to
+// its left, so they float above the line beneath them and sit off the left
+// edge. This measures both once per image and pulls the logo back by them.
 
-const cache = new Map<string, Promise<number>>();
+type Blank = { bottom: number; left: number };
+const none: Blank = { bottom: 0, left: 0 };
+const cache = new Map<string, Promise<Blank>>();
 
-function blankBottom(src: string): Promise<number> {
+function blank(src: string): Promise<Blank> {
   let p = cache.get(src);
   if (p) return p;
-  p = new Promise<number>((done) => {
+  p = new Promise<Blank>((done) => {
     const im = new Image();
     im.crossOrigin = "anonymous";
     im.onload = () => {
@@ -24,12 +26,16 @@ function blankBottom(src: string): Promise<number> {
         scan: for (; last >= 0; last--) {
           for (let x = 0; x < w; x++) if (d[(last * w + x) * 4 + 3] > 12) break scan;
         }
-        done(last < 0 ? 0 : (h - 1 - last) / h);
+        let first = 0;
+        scanx: for (; first < w; first++) {
+          for (let y = 0; y < h; y++) if (d[(y * w + first) * 4 + 3] > 12) break scanx;
+        }
+        done(last < 0 ? none : { bottom: (h - 1 - last) / h, left: first >= w ? 0 : first / w });
       } catch {
-        done(0); // no CORS on this host: leave it as it is
+        done(none); // no CORS on this host: leave it as it is
       }
     };
-    im.onerror = () => done(0);
+    im.onerror = () => done(none);
     im.src = src;
   });
   cache.set(src, p);
@@ -41,10 +47,13 @@ export function trimLogo(el: HTMLImageElement) {
   const apply = async () => {
     const src = el.currentSrc || el.src;
     if (!src) return;
-    const f = await blankBottom(src);
+    const b = await blank(src);
     if (gone || (el.currentSrc || el.src) !== src) return;
-    el.style.setProperty("--blank", String(f));
-    el.style.marginBottom = f > 0.02 ? `calc(${-f} * ${el.getBoundingClientRect().height}px)` : "";
+    const r = el.getBoundingClientRect();
+    el.style.setProperty("--blank", String(b.bottom));
+    el.style.marginBottom = b.bottom > 0.02 ? `${-b.bottom * r.height}px` : "";
+    // object-fit: contain keeps the picture's shape, so its left blank is a share of the drawn width
+    el.style.marginLeft = b.left > 0.02 ? `${-b.left * r.width}px` : "";
   };
   const ro = new ResizeObserver(apply);
   ro.observe(el);

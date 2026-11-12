@@ -352,7 +352,7 @@ impl Render for PlayerView {
         });
         let shown = self.shown || p.loading || !p.error.is_empty();
         let art = p.meta.as_ref().and_then(|m| m.background.clone().or(m.poster.clone())).map(|u| sized(&u, "original"));
-        let logo = p.meta.as_ref().and_then(|m| m.logo.clone()).map(|u| sized(&u, "large"));
+        let logo = p.meta.as_ref().and_then(|m| m.logo.clone()).map(|u| crate::net::logo(&sized(&u, "large"), 480.));
         let starting = p.loading && st.pos < 0.5;
 
         let mut root = div()

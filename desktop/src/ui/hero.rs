@@ -9,7 +9,7 @@ type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
 pub fn hero(m: &Meta, height: Pixels, clip: Option<(crate::ui::video::Pic, f32)>, on_play: Click, on_info: Click, on_add: Click) -> AnyElement {
     let art = m.background.clone().or(m.poster.clone()).map(|u| crate::net::fit(&sized(&u, "original"), crate::ui::view_w().max(f32::from(height) * 16. / 9.)));
-    let logo = m.logo.clone().map(|u| crate::net::fit(&sized(&u, "large"), 460.));
+    let logo = m.logo.clone().map(|u| crate::net::logo(&sized(&u, "large"), 460.));
     let mut facts: Vec<String> = vec![if m.kind == "series" { "Series".into() } else { "Movie".into() }];
     if let Some(g) = m.genres.as_ref().and_then(|g| g.first()) {
         facts.push(g.clone());
