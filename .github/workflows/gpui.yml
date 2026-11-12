@@ -50,7 +50,8 @@ jobs:
           Copy-Item src-tauri/mpv/libmpv-2.dll dist/
           # Start menu tile (Windows 10): couch's colour + mark
           Copy-Item desktop/resources/couch.VisualElementsManifest.xml dist/
-          Copy-Item -Recurse desktop/resources/tiles dist/tiles
+          # flat (the installers in older couch builds don't make folders)
+          Copy-Item desktop/resources/tiles/*.png dist/
           # trailers (YouTube) play through yt-dlp
           Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile dist/yt-dlp.exe
       - uses: actions/upload-artifact@v4
