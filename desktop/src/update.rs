@@ -106,7 +106,7 @@ pub fn restart(cx: &mut App) {
     let Some(d) = dir() else { return };
     let player = couch::state::get().player.clone();
     let _ = couch::rt::block_on(async move { player.stop().await });
-    if std::process::Command::new(d.join("couch.exe")).current_dir(&d).spawn().is_ok() {
+    if couch::beta::launch(&d.join("couch.exe"), &d).is_ok() {
         cx.quit();
     }
 }

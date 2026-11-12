@@ -97,6 +97,27 @@ pub async fn install_and_open(core: &Core) -> AppResult<()> {
         use std::os::windows::process::CommandExt;
         let _ = std::process::Command::new("powershell").args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &ps]).creation_flags(0x0800_0000).status();
     }
-    std::process::Command::new(&exe).current_dir(&dir).spawn()?;
+    launch(&exe, &dir)?;
     Ok(())
+}
+
+/// Start the new couch. Its .exe names the live tile's package; if Windows
+/// has that package in a broken state (the folder was deleted or moved, an
+/// update half-applied) it refuses to start the .exe at all ("Install failed",
+/// os error 156xx). Then the package is removed (it's re-made by itself on the
+/// next start) and it's started again.
+pub fn launch(exe: &std::path::Path, dir: &std::path::Path) -> std::io::Result<std::process::Child> {
+    match std::process::Command::new(exe).current_dir(dir).spawn() {
+        Ok(c) => Ok(c),
+        #[cfg(target_os = "windows")]
+        Err(e) if e.raw_os_error().map_or(false, |c| (15600..15700).contains(&c)) => {
+            use std::os::windows::process::CommandExt;
+            let _ = std::process::Command::new("powershell")
+                .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", "Get-AppxPackage -Name Midnite.Couch | Remove-AppxPackage"])
+                .creation_flags(0x0800_0000)
+                .status();
+            std::process::Command::new(exe).current_dir(dir).spawn()
+        }
+        Err(e) => Err(e),
+    }
 }

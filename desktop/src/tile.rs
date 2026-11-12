@@ -185,15 +185,16 @@ mod imp {
             log(&dir, "no couch.msix beside couch.exe (the build had no signing key)");
             return false;
         }
-        // once per package version (a newer manifest re-registers, while
-        // running: it takes effect on the next launch)
+        // only when couch has no identity yet. Re-registering a newer package
+        // while couch runs (deferred to its next start) left Windows unable to
+        // start couch.exe at all, so a registered package is left alone
         let db = &couch::state::get().core.db;
-        if has_identity() && db.get::<String>("tile_pkg").as_deref() == Some(super::PKG_VER) {
+        if has_identity() {
             return false;
         }
         let stamp = super::PKG_VER;
         let q = |p: &std::path::Path| p.display().to_string().replace('\'', "''");
-        let add = format!("Add-AppxPackage -Path '{}' -ExternalLocation '{}' -ForceUpdateFromAnyVersion -DeferRegistrationWhenPackagesAreInUse -ErrorAction Stop", q(&msix), q(&dir));
+        let add = format!("Add-AppxPackage -Path '{}' -ExternalLocation '{}' -ForceUpdateFromAnyVersion -ErrorAction Stop", q(&msix), q(&dir));
         let (mut ok, mut why) = ps_out(&add);
         log(&dir, &format!("register: {} {why}", if ok { "ok" } else { "failed" }));
         if !ok && cer.exists() {
