@@ -513,6 +513,11 @@ fn window_controls() -> impl IntoElement {
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         ui::video::begin_frame();
+        // nothing has the keyboard (the box that had it is gone): couch takes it,
+        // so Esc and the other keys keep working
+        if window.focused(cx).is_none() {
+            window.focus(&self.focus, cx);
+        }
         // mpv's window follows ours (resize, full screen, DPI)
         let size = window.viewport_size();
         if size != self.last_size {
@@ -602,6 +607,25 @@ impl Render for Root {
             .relative()
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::key))
+            // the mouse's back button: back a page (from the player: the film goes to the corner)
+            .on_mouse_down(gpui::MouseButton::Navigate(gpui::NavigationDirection::Back), cx.listener(|r, _, _, cx| {
+                if r.wrapped.read(cx).open || r.menu.read(cx).open.is_some() || r.addto.read(cx).meta.is_some() {
+                    r.wrapped.update(cx, |w, cx| {
+                        w.open = false;
+                        cx.notify();
+                    });
+                    r.menu.update(cx, |m, cx| {
+                        m.open = None;
+                        cx.notify();
+                    });
+                    r.addto.update(cx, |a, cx| {
+                        a.meta = None;
+                        cx.notify();
+                    });
+                    return;
+                }
+                cx.defer(|cx| Nav::back(cx));
+            }))
             // the background, with a see-through spot where a GPU clip plays
             .when(!playing, |d| d.child(ui::video::paint_bg(theme::bg().into())))
             .font_family(theme::FONT)
