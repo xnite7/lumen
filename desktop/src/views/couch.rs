@@ -101,7 +101,7 @@ impl Render for Couch {
                     .items_center()
                     .justify_between()
                     .child(div().text_size(px(40.)).font_weight(FontWeight::BLACK).child("couch"))
-                    .child(btn("wrapped-open".into(), &format!("your {} wrapped ✨", chrono::Datelike::year(&chrono::Local::now())), true).on_click(|_, _, cx| Nav::wrapped(cx))),
+                    .children(crate::views::wrapped::season_year().map(|y| btn("wrapped-open".into(), &format!("your {y} wrapped ✨"), true).on_click(|_, _, cx| Nav::wrapped(cx)))),
             )
             .child(div().flex_none().text_size(px(16.)).text_color(theme::label2()).child("see what your friends from the server are watching right now."));
         match self.setup {
@@ -115,7 +115,7 @@ impl Render for Couch {
         if live.is_empty() {
             page = page.child(div().flex_none().py(px(20.)).text_size(px(18.)).text_color(theme::label2()).child("nobody's on the couch."));
         } else {
-            let w = ((vw - g * 2. - 14.) / 2.).min(520.);
+            let w = ((vw - g * 2. - 28.) / 3.).clamp(260., 380.);
             page = page.child(div().flex_none().flex().flex_wrap().gap(px(14.)).children(live.into_iter().map(|m| {
                 let wt = &m["watching"];
                 let art = wt["background"].as_str().or(wt["poster"].as_str()).map(|u| sized(u, "w780"));
@@ -128,13 +128,25 @@ impl Render for Couch {
                 let line = [wt["title"].as_str().unwrap_or(""), wt["episode"].as_str().unwrap_or("")].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
                 let to = id.clone();
                 let nm = name.clone();
+                let title = crate::api::Meta { id: wt["metaId"].as_str().unwrap_or("").into(), kind: wt["type"].as_str().unwrap_or("").into(), name: wt["title"].as_str().unwrap_or("").into(), poster: wt["poster"].as_str().map(String::from), background: wt["background"].as_str().map(String::from), logo: wt["logo"].as_str().map(String::from), ..Default::default() };
+                let (pre, open) = (title.clone(), title);
+                let bw = w * 0.6;
                 div()
                     .w(px(w))
                     .flex()
                     .flex_col()
                     .gap(px(8.))
                     .child(
+                        // the picture opens the title's page; "ask to join" asks to join
                         div()
+                            .id(SharedString::from(format!("live-{id}")))
+                            .cursor_pointer()
+                            .on_hover(move |on, _, cx| {
+                                if *on {
+                                    crate::views::detail::prefetch(&pre, cx);
+                                }
+                            })
+                            .on_click(move |_, _, cx| Nav::detail(&open, cx))
                             .relative()
                             .w_full()
                             .h(px(w * 9. / 16.))
@@ -151,12 +163,14 @@ impl Render for Couch {
                                     .right(px(12.))
                                     .bottom(px(18.))
                                     .child(btn(SharedString::from(format!("join-{id}")), "ask to join", true).on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
                                         let (to, nm) = (to.clone(), nm.clone());
                                         crate::together::get(cx).update(cx, |t, cx| t.ask_to_join(to, nm, cx));
                                     })),
                             )
-                            .child(div().absolute().left(px(12.)).right(px(12.)).bottom(px(8.)).h(px(4.)).rounded_full().bg(theme::white(0.25)).child(div().h_full().rounded_full().w(px((w - 24.) * frac)).bg(theme::lamp()))),
                     )
+                    // under the picture, like continue watching: square, white, 60% wide
+                    .child(div().w(px(bw)).h(px(4.)).bg(theme::white(0.18)).child(div().h_full().w(px(bw * frac)).bg(gpui::white())))
                     .child(div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).truncate().child(line))
             })));
         }

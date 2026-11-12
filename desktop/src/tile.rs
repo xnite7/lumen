@@ -15,11 +15,12 @@ pub fn start(cx: &mut App) {
     #[cfg(target_os = "windows")]
     cx.spawn(async move |cx| {
         crate::timer::after(Duration::from_secs(8)).await;
-        if !imp::has_identity() {
-            let fresh = couch::rt::spawn_blocking(imp::register).await.unwrap_or(false);
-            if fresh {
-                let _ = cx.update(|cx| crate::Nav::toast("live tile ready — restart couch, then pin “midnite couch” to Start".to_string(), cx));
-            }
+        let had = imp::has_identity();
+        let fresh = couch::rt::spawn_blocking(imp::register).await.unwrap_or(false);
+        if fresh && !had {
+            let _ = cx.update(|cx| crate::Nav::toast("live tile ready — restart couch, then pin “midnite couch” to Start".to_string(), cx));
+        }
+        if !had {
             return;
         }
         loop {
@@ -42,6 +43,9 @@ pub fn live() -> bool {
     #[cfg(not(target_os = "windows"))]
     false
 }
+
+/// the package's manifest version (resources/package/AppxManifest.xml)
+const PKG_VER: &str = "1.0.1.0";
 
 fn esc(s: &str) -> String {
     s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
@@ -177,15 +181,21 @@ mod imp {
         let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) else { return false };
         let msix = dir.join("couch.msix");
         let cer = dir.join("couch.cer");
-        let Ok(meta) = std::fs::metadata(&msix) else { return false };
-        let stamp = format!("{}:{}", meta.len(), meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs()));
-        let db = &couch::state::get().core.db;
-        if db.get::<String>("tile_pkg").as_deref() == Some(stamp.as_str()) {
+        if !msix.exists() {
+            log(&dir, "no couch.msix beside couch.exe (the build had no signing key)");
             return false;
         }
+        // once per package version (a newer manifest re-registers, while
+        // running: it takes effect on the next launch)
+        let db = &couch::state::get().core.db;
+        if has_identity() && db.get::<String>("tile_pkg").as_deref() == Some(super::PKG_VER) {
+            return false;
+        }
+        let stamp = super::PKG_VER;
         let q = |p: &std::path::Path| p.display().to_string().replace('\'', "''");
-        let add = format!("Add-AppxPackage -Path '{}' -ExternalLocation '{}' -ForceUpdateFromAnyVersion -ErrorAction Stop", q(&msix), q(&dir));
-        let mut ok = ps(&add);
+        let add = format!("Add-AppxPackage -Path '{}' -ExternalLocation '{}' -ForceUpdateFromAnyVersion -DeferRegistrationWhenPackagesAreInUse -ErrorAction Stop", q(&msix), q(&dir));
+        let (mut ok, mut why) = ps_out(&add);
+        log(&dir, &format!("register: {} {why}", if ok { "ok" } else { "failed" }));
         if !ok && cer.exists() {
             // Windows doesn't trust couch's certificate yet: one admin prompt to
             // add it to Trusted People, then try again
@@ -193,10 +203,14 @@ mod imp {
                 "Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile','-Command','Import-Certificate -FilePath ''{}'' -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople'",
                 q(&cer).replace('\'', "''")
             );
-            ps(&trust);
-            ok = ps(&add);
+            let trusted = ps(&trust);
+            log(&dir, &format!("trust the certificate (admin prompt): {}", if trusted { "done" } else { "declined or failed" }));
+            (ok, why) = ps_out(&add);
+            log(&dir, &format!("register again: {} {why}", if ok { "ok" } else { "failed" }));
         }
-        let _ = db.set("tile_pkg", &stamp);
+        if ok {
+            let _ = db.set("tile_pkg", &stamp.to_string());
+        }
         if ok {
             // the package has its own Start entry now: the old shortcut would be a twin
             if let Some(programs) = dirs::data_dir().map(|a| a.join("Microsoft\\Windows\\Start Menu\\Programs")) {
@@ -205,6 +219,21 @@ mod imp {
             let _ = db.set("tile_live", &true);
         }
         ok
+    }
+
+    /// what happened, in tile.log beside couch.exe (for when the tile doesn't show)
+    fn log(dir: &std::path::Path, line: &str) {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("tile.log")) {
+            let _ = writeln!(f, "{} {line}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+        }
+    }
+
+    fn ps_out(cmd: &str) -> (bool, String) {
+        match std::process::Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", cmd]).creation_flags(NO_WINDOW).output() {
+            Ok(o) => (o.status.success(), String::from_utf8_lossy(&o.stderr).lines().filter(|l| !l.trim().is_empty()).take(3).collect::<Vec<_>>().join(" | ")),
+            Err(e) => (false, e.to_string()),
+        }
     }
 
     pub fn push(tiles: &[String]) {
@@ -225,7 +254,9 @@ mod imp {
             Ok(())
         };
         if let Err(e) = go() {
-            eprintln!("tile: {e}");
+            if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
+                log(&dir, &format!("tile update failed: {e}"));
+            }
         }
     }
 }

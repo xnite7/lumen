@@ -863,7 +863,7 @@ impl Render for Detail {
                                                 )
                                                 .when(p > 0.01, |d| {
                                                     d.child(div().absolute().left_0().bottom_0().w_full().h(px(4.)).bg(theme::white(0.25)).child(
-                                                        div().h_full().w(px(300. * p as f32)).bg(theme::lamp()),
+                                                        div().h_full().w(px(300. * p as f32)).bg(gpui::white()),
                                                     ))
                                                 })
                                                 // watched tick: always when watched, on hover otherwise

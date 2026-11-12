@@ -36,7 +36,7 @@ pub struct Wrapped {
 
 impl Wrapped {
     pub fn new(_cx: &mut Context<Self>) -> Self {
-        Self { open: false, year: chrono::Local::now().year(), rows: None, i: 0, t0: Instant::now() }
+        Self { open: false, year: season_year().unwrap_or(chrono::Local::now().year()), rows: None, i: 0, t0: Instant::now() }
     }
 
     pub fn show(&mut self, cx: &mut Context<Self>) {
@@ -308,5 +308,16 @@ impl Render for Wrapped {
                     .child(crate::ui::icon("close", 18.)),
             )
             .into_any_element()
+    }
+}
+
+/// Wrapped is for a whole year: it shows up in December (this year) and
+/// January (the year just ended), and not the rest of the time.
+pub fn season_year() -> Option<i32> {
+    let now = chrono::Local::now();
+    match now.month() {
+        12 => Some(now.year()),
+        1 => Some(now.year() - 1),
+        _ => None,
     }
 }

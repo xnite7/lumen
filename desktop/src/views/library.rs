@@ -41,7 +41,7 @@ fn metas(v: &Value) -> Vec<Meta> {
 
 impl Library {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let new_name = cx.new(|cx| TextInput::new("name it, press enter", cx));
+        let new_name = cx.new(|cx| TextInput::new("name it…", cx));
         cx.subscribe(&new_name, |_, i, _: &Submitted, cx| {
             let n = i.read(cx).content.clone();
             if crate::views::addto::new_list(&n, None).is_some() {
@@ -232,7 +232,8 @@ impl Render for Library {
                                 .gap(px(12.))
                                 .px(px(12.))
                                 .child(crate::ui::icon("plus", 30.))
-                                .child(div().w_full().h(px(40.)).px(px(10.)).flex().items_center().rounded(px(10.)).bg(theme::white(0.08)).text_size(px(14.)).child(self.new_name.clone())),
+                                .child(div().w_full().min_w_0().h(px(40.)).px(px(10.)).flex().items_center().overflow_hidden().rounded(px(10.)).bg(theme::white(0.08)).text_size(px(14.)).child(self.new_name.clone()))
+                                .child(div().text_size(px(12.)).text_color(theme::label3()).child("enter to make it")),
                         )
                         .child(div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child("new list"));
                     page = page.child(div().flex().flex_wrap().gap(px(14.)).child(new_tile).children(tiles));

@@ -518,7 +518,7 @@ impl Root {
                     .child(b("mini-big", ui::icon("expand", 18.)).on_click(|_, _, cx| Nav::expand(cx)))
                     .child(b("mini-close", ui::icon("close", 18.)).on_click(move |_, _, cx| p2.update(cx, |p, cx| p.close(cx)))),
             )
-            .child(div().h(px(3.)).mx(px(4.)).rounded_full().bg(theme::white(0.2)).child(div().h_full().rounded_full().w(px((mini::W - 8.) * frac)).bg(theme::neon())))
+            .child(div().h(px(3.)).mx(px(4.)).bg(theme::white(0.2)).child(div().h_full().w(px((mini::W - 8.) * frac)).bg(gpui::white())))
     }
 
     /// people asking to join my couch; my own ask while it waits
@@ -768,7 +768,7 @@ impl Render for Root {
             .when(self.route == Route::SignIn, |d| d.child(window_controls()))
             // while playing: a strip along the top moves the window (it never pauses the film)
             .when(playing && !pip::is_on(), |d| d.child(div().absolute().top_0().left_0().right(px(150.)).h(px(24.)).window_control_area(WindowControlArea::Drag)))
-            .when(playing, |d| d.child(window_controls()))
+            .when(playing && !pip::is_on(), |d| d.child(window_controls()))
             .child(self.together_cards(cx))
             .when(!playing && self.route != Route::SignIn, |d| d.child(self.planner.clone()).child(self.invite.clone()))
             .when(self.menu.read(cx).open.is_some(), |d| d.child(self.menu.clone()))
@@ -967,10 +967,12 @@ fn main() {
                         // a click on the mini picture: full size again
                         cx.spawn(async move |this, cx| loop {
                             crate::timer::after(std::time::Duration::from_millis(150)).await;
+                            if this.upgrade().is_none() {
+                                break;
+                            }
+                            // (not inside an update of Root: Nav updates Root itself)
                             if mini::CLICKED.swap(false, std::sync::atomic::Ordering::Relaxed) {
-                                if this.update(cx, |_, cx| Nav::expand(cx)).is_err() {
-                                    break;
-                                }
+                                let _ = cx.update(|cx| Nav::expand(cx));
                             }
                         })
                         .detach();

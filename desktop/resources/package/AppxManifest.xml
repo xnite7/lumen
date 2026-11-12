@@ -1,18 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- couch's sparse package: gives couch.exe (which stays where it is) an app
      identity, so Windows 10 lets it drive a live Start tile. The Publisher
-     must be exactly the signing certificate's subject. -->
+     must be exactly the signing certificate's subject. The pictures are read
+     from couch's own folder (the external location), so they ship there too,
+     as pkg-*.png. Bump Version (and tile::PKG_VER) when this file changes. -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   IgnorableNamespaces="uap uap10 rescap">
-  <Identity Name="Midnite.Couch" Publisher="CN=midnite couch" Version="1.0.0.0" ProcessorArchitecture="x64" />
+  <Identity Name="Midnite.Couch" Publisher="CN=midnite couch" Version="1.0.1.0" ProcessorArchitecture="x64" />
   <Properties>
     <DisplayName>midnite couch</DisplayName>
     <PublisherDisplayName>midnite</PublisherDisplayName>
-    <Logo>StoreLogo.png</Logo>
+    <Logo>pkg-StoreLogo.png</Logo>
     <uap10:AllowExternalContent>true</uap10:AllowExternalContent>
   </Properties>
   <Resources>
@@ -31,9 +33,9 @@
         DisplayName="midnite couch"
         Description="midnite couch"
         BackgroundColor="#C4206F"
-        Square150x150Logo="Square150x150Logo.png"
-        Square44x44Logo="Square44x44Logo.png">
-        <uap:DefaultTile Wide310x150Logo="Wide310x150Logo.png" Square310x310Logo="Square310x310Logo.png" Square71x71Logo="Square71x71Logo.png" ShortName="couch">
+        Square150x150Logo="pkg-Square150x150Logo.png"
+        Square44x44Logo="pkg-Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="pkg-Wide310x150Logo.png" Square310x310Logo="pkg-Square310x310Logo.png" Square71x71Logo="pkg-Square71x71Logo.png" ShortName="couch">
           <uap:ShowNameOnTiles>
             <uap:ShowOn Tile="square150x150Logo" />
             <uap:ShowOn Tile="wide310x150Logo" />

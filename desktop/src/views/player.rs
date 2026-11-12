@@ -192,6 +192,7 @@ fn round_btn(id: &'static str, child: impl IntoElement, size: f32) -> gpui::Stat
     // a press on a button never reaches the picture (which would play/pause)
     div()
         .id(id)
+        .occlude()
         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .size(px(size))
         .flex()
@@ -489,9 +490,10 @@ impl Render for PlayerView {
             let paused = st.paused;
             let (pa, pb, pc) = (self.pb.clone(), self.pb.clone(), self.pb.clone());
             return root
-                .child(div().absolute().top_0().left_0().size_full().bg(theme::black(0.35)))
+                // the picture itself moves the little window around
+                .child(div().absolute().top_0().left_0().size_full().bg(theme::black(0.35)).window_control_area(gpui::WindowControlArea::Drag))
                 .child(
-                    div().absolute().top(px(8.)).right(px(8.)).flex().gap(px(4.))
+                    div().absolute().top(px(8.)).right(px(8.)).flex().gap(px(4.)).occlude()
                         .child(round_btn("pip-big", icon("expand", 20.), 36.).on_click(|_, _, cx| crate::pip::toggle(cx)))
                         .child(round_btn("pip-close", icon("close", 18.), 36.).on_click(move |_, _, cx| {
                             crate::pip::toggle(cx);

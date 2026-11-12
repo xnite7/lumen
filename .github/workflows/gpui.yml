@@ -55,6 +55,8 @@ jobs:
           Copy-Item desktop/resources/couch.VisualElementsManifest.xml dist/
           # flat (the installers in older couch builds don't make folders)
           Copy-Item desktop/resources/tiles/*.png dist/
+          # the live tile package reads its pictures from couch's folder
+          Copy-Item desktop/resources/package/*.png dist/
           # trailers (YouTube) play through yt-dlp
           Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile dist/yt-dlp.exe
       - name: Live tile package (Windows 10)
