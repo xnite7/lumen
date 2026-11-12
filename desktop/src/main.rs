@@ -184,6 +184,8 @@ pub struct Root {
     me: serde_json::Value,
     focus: gpui::FocusHandle,
     last_size: gpui::Size<gpui::Pixels>,
+    /// the launch intro: when it started (None once it's done)
+    splash: Option<std::time::Instant>,
 }
 
 const TABS: &[(&str, fn() -> Route)] = &[
@@ -361,6 +363,45 @@ impl Root {
 }
 
 impl Root {
+    /// The launch intro, like the webview's: the midnite sign holds, redraws
+    /// itself into the couch, holds, and fades into home.
+    fn intro(&mut self, window: &mut Window) -> Option<gpui::AnyElement> {
+        const HOLD: f32 = 3.0;
+        const PLAY: f32 = 1.22;
+        const END: f32 = 0.65;
+        const FADE: f32 = 0.52;
+        let t = self.splash?.elapsed().as_secs_f32();
+        if t > HOLD + PLAY + END + FADE {
+            self.splash = None;
+            return None;
+        }
+        window.request_animation_frame();
+        let pic = if t < HOLD {
+            img("brand/intro-first.png").size_full().object_fit(gpui::ObjectFit::Contain).into_any_element()
+        } else if t < HOLD + PLAY {
+            img("brand/intro.webp").id("intro-anim").size_full().object_fit(gpui::ObjectFit::Contain).into_any_element()
+        } else {
+            img("brand/intro-last.png").size_full().object_fit(gpui::ObjectFit::Contain).into_any_element()
+        };
+        let op = if t > HOLD + PLAY + END { 1. - (t - HOLD - PLAY - END) / FADE } else { 1. };
+        Some(
+            div()
+                .id("intro")
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .occlude()
+                .opacity(op.clamp(0., 1.))
+                .bg(theme::bg())
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(div().w(px(240.)).h(px(216.)).child(pic))
+                .into_any_element(),
+        )
+    }
+
     /// over the mini picture: what's playing, play/pause, full size, stop
     fn mini_bar(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
         let pb = playback::get(cx);
@@ -490,6 +531,8 @@ fn window_controls() -> impl IntoElement {
     let btn = |id: &'static str, glyph: &'static str, area: WindowControlArea, danger: bool| {
         div()
             .id(id)
+            // on top of the top bar's drag area: Windows must see the button, not the drag
+            .occlude()
             .w(px(46.))
             .h(px(34.))
             .flex()
@@ -644,6 +687,7 @@ impl Render for Root {
             .when(self.wrapped.read(cx).open, |d| d.child(self.wrapped.clone()))
             .when(mini::is_on(), |d| d.child(self.mini_bar(cx)))
             .children(if playing { None } else { update::card(cx) })
+            .children(self.intro(window))
             .children(self.toast.clone().map(|t| {
                 div().absolute().bottom(px(28.)).left_0().w_full().flex().justify_center().child(
                     div()
@@ -900,6 +944,7 @@ fn main() {
                             me: me.clone(),
                             focus,
                             last_size: gpui::Size::default(),
+                            splash: Some(std::time::Instant::now()),
                         }
                     });
                     cx.set_global(Nav(root.downgrade()));
