@@ -163,6 +163,10 @@ impl Surface {
         let _ = self.mpv.set_property("pause", false);
     }
 
+    pub fn set_paused(&self, paused: bool) {
+        let _ = self.mpv.set_property("pause", paused);
+    }
+
     pub fn set_muted(&self, muted: bool) {
         let _ = self.mpv.set_property("mute", muted);
     }

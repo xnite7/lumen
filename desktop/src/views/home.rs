@@ -268,6 +268,12 @@ impl Render for Home {
                 if clip.as_ref().map_or(false, |c| c.1 < 1.) {
                     window.request_animation_frame();
                 }
+                // scrolled away from the billboard: it waits; back at the top: plays on
+                if let Some((owner, _)) = &self.clip {
+                    let away = -f32::from(self.scroll.offset().y) > f32::from(vh) * 0.45;
+                    let o = owner.clone();
+                    vid.update(cx, |x, _| x.set_paused(&o, away));
+                }
                 page = page.child(hero::hero(
                     m,
                     vh * 0.86,

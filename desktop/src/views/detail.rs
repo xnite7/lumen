@@ -56,9 +56,36 @@ impl Detail {
         cx.spawn(async move |this, cx| {
             let key = api::call::<Option<String>>("trailer_get", json!({ "kind": k2, "id": i2 })).await.ok().flatten().unwrap_or_default();
             let _ = this.update(cx, |d, cx| {
-                d.trailer = Some(key);
+                d.trailer = Some(key.clone());
                 cx.notify();
             });
+            if key.is_empty() {
+                return;
+            }
+            // 2.5 s resting at the top of this page: the trailer starts by itself
+            let mut still = 0u32;
+            loop {
+                crate::timer::after(std::time::Duration::from_millis(250)).await;
+                let Ok(go) = this.update(cx, |d, cx| {
+                    let here = crate::Nav::showing_detail(&d.base.id, cx);
+                    let top = -f32::from(d.scroll.offset().y) < 40.;
+                    (here, here && top)
+                }) else {
+                    break;
+                };
+                if !go.0 {
+                    break;
+                }
+                still = if go.1 { still + 1 } else { 0 };
+                if still >= 10 {
+                    let _ = this.update(cx, |d, cx| {
+                        let o = format!("trailer:{}", d.base.id);
+                        let url = format!("https://www.youtube.com/watch?v={key}");
+                        crate::ui::video::get(cx).update(cx, |x, cx| x.play(&o, &url, cx));
+                    });
+                    break;
+                }
+            }
         })
         .detach();
         Self { base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, favs: None, trailer: None, scroll: ScrollHandle::new() }
@@ -211,7 +238,7 @@ fn act(id: &'static str, ic: impl IntoElement, label: &str) -> gpui::Stateful<gp
         .flex_col()
         .items_center()
         .gap(px(6.))
-        .w(px(84.))
+        .w(px(96.))
         .cursor_pointer()
         .child(
             div()
@@ -226,7 +253,7 @@ fn act(id: &'static str, ic: impl IntoElement, label: &str) -> gpui::Stateful<gp
                 .hover(|s| s.bg(theme::white(0.2)))
                 .child(ic),
         )
-        .child(div().text_size(px(13.)).font_weight(FontWeight::MEDIUM).text_color(theme::label2()).child(label.to_string()))
+        .child(div().w_full().text_center().whitespace_nowrap().text_size(px(13.)).font_weight(FontWeight::MEDIUM).text_color(theme::label2()).child(label.to_string()))
 }
 
 impl Render for Detail {
@@ -262,6 +289,19 @@ impl Render for Detail {
         }
 
         let (plabel, pvideo, psub) = self.primary();
+        // all of it seen: the film's flag, or every released episode of a show
+        let all_seen = {
+            let flagged_now = self.item.as_ref().map_or(false, |i| i["state"]["flaggedWatched"].as_bool() == Some(true));
+            match &full {
+                Some(f) if f["type"] == "series" => {
+                    let today = chrono_now();
+                    let w = self.watched();
+                    let eps: Vec<String> = playback::ordered(f).iter().filter(|v| v["season"].as_i64().unwrap_or(0) > 0 && released(v, &today)).filter_map(|v| v["id"].as_str().map(String::from)).collect();
+                    !eps.is_empty() && eps.iter().all(|e| w.contains(e))
+                }
+                _ => flagged_now,
+            }
+        };
         let flagged = self.item.as_ref().map_or(false, |i| i["state"]["flaggedWatched"].as_bool() == Some(true));
         let owned = self.item.as_ref().map_or(false, |i| i["removed"].as_bool() != Some(true) && i["temp"].as_bool() != Some(true));
         let name = m.name.clone();
@@ -285,7 +325,12 @@ impl Render for Detail {
         if tframe.as_ref().map_or(false, |f| f.1 < 1.) {
             window.request_animation_frame();
         }
-        let has_trailer = self.trailer.as_ref().map_or(false, |k| !k.is_empty());
+        // scrolled down: the trailer waits; back at the top: plays on
+        if trailer_on {
+            let away = -f32::from(self.scroll.offset().y) > 120.;
+            let o = towner.clone();
+            vid.update(cx, |x, _| x.set_paused(&o, away));
+        }
         let hero = div()
             .relative()
             .w_full()
@@ -380,27 +425,15 @@ impl Render for Detail {
                                     .detach();
                                 }))
                             })
-                            .when(has_trailer, |d| {
-                                let key = self.trailer.clone().unwrap_or_default();
-                                let (o, v) = (towner.clone(), vid.clone());
-                                d.child(act("d-trailer", icon(if trailer_on { "close" } else { "film" }, 22.), if trailer_on { "Stop trailer" } else { "Trailer" }).on_click(move |_, _, cx| {
-                                    let o = o.clone();
-                                    if trailer_on {
-                                        v.update(cx, |x, cx| x.stop(&o, cx));
-                                    } else {
-                                        let url = format!("https://www.youtube.com/watch?v={key}");
-                                        v.update(cx, |x, cx| x.play(&o, &url, cx));
-                                    }
-                                }))
-                            })
                             .child(act("d-party", icon("couch", 22.), "Watch party").on_click({
                                 let m = m.clone();
                                 move |_, _, cx| Nav::plan_party(&m, cx)
                             }))
-                            .child(act("d-seen", icon(if flagged { "checkCircle" } else { "eye" }, 22.), if flagged { "Watched" } else { "Mark watched" }).on_click(
+                            .child(act("d-seen", icon(if all_seen { "checkCircle" } else { "eye" }, 22.), if all_seen { "Watched" } else { "Mark watched" }).on_click(
                                 cx.listener(move |d, _, _, cx| {
                                     let Some(f) = d.full.clone() else { return };
-                                    let on = !flagged;
+                                    // a show: every released episode at once, on or off
+                                    let on = !all_seen;
                                     let today = chrono_now();
                                     let all: Option<Vec<String>> = (f["type"] == "series").then(|| {
                                         playback::ordered(&f)

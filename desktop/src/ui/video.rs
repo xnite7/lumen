@@ -30,6 +30,64 @@ pub struct Video {
     pub since: Option<Instant>,
     old: Vec<Arc<RenderImage>>,
     ready_tx: Option<futures::channel::mpsc::UnboundedSender<()>>,
+    pub paused: bool,
+}
+
+/// Is this kind of clip muted? (trailers never; billboard / previews by setting)
+pub fn is_muted(owner: &str) -> bool {
+    let g = couch::state::get().core.settings().general;
+    if owner.starts_with("trailer:") {
+        false
+    } else if owner.starts_with("hero:") {
+        g.hero_muted
+    } else {
+        g.preview_muted
+    }
+}
+
+/// The speaker on the billboard / a preview: flips its sound switch (kept).
+pub fn toggle_sound(owner: &str, cx: &mut App) {
+    let core = couch::state::get().core.clone();
+    let mut s = core.settings();
+    let hero = owner.starts_with("hero:");
+    let now = if hero { &mut s.general.hero_muted } else { &mut s.general.preview_muted };
+    *now = !*now;
+    let muted = *now;
+    let v = serde_json::to_value(&s).unwrap_or_default();
+    *core.settings.write() = s;
+    couch::rt::spawn(async move {
+        let _ = couch::dispatch::invoke("settings_set", serde_json::json!({ "settings": v })).await;
+    });
+    let vid = get(cx);
+    vid.update(cx, |x, cx| {
+        if x.owner.starts_with(if hero { "hero:" } else { "card:" }) {
+            x.set_muted(muted);
+        }
+        cx.notify();
+    });
+}
+
+/// A round speaker button for a playing clip.
+pub fn sound_button(owner: String, size: f32) -> impl IntoElement {
+    let muted = is_muted(&owner);
+    div()
+        .id(gpui::SharedString::from(format!("snd-{owner}")))
+        .size(px(size))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_full()
+        .bg(crate::theme::black(0.45))
+        .border_1()
+        .border_color(crate::theme::white(0.35))
+        .cursor_pointer()
+        .hover(|s| s.bg(crate::theme::black(0.7)))
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_click(move |_, _, cx| {
+            cx.stop_propagation();
+            toggle_sound(&owner, cx)
+        })
+        .child(crate::ui::icon(if muted { "mute" } else { "volume" }, size * 0.48))
 }
 
 pub struct VideoHandle(pub Entity<Video>);
@@ -79,6 +137,7 @@ pub fn init(cx: &mut App) {
             since: None,
             old: vec![],
             ready_tx: Some(tx),
+            paused: false,
         }
     });
     cx.set_global(VideoHandle(v));
@@ -108,9 +167,11 @@ impl Video {
         self.native.clone()
     }
 
-    /// Play `url` for `owner` (muted and looping; trailers with sound).
+    /// Play `url` for `owner` (looping). Trailers have sound; the billboard
+    /// and previews follow their sound switch (the speaker button on them).
     pub fn play(&mut self, owner: &str, url: &str, cx: &mut Context<Self>) {
-        let muted = !owner.starts_with("trailer:");
+        let muted = is_muted(owner);
+        self.paused = false;
         self.owner = owner.to_string();
         self.since = None;
         if let Some(i) = self.image.take() {
@@ -167,6 +228,21 @@ impl Video {
         if self.owner.starts_with(prefix) {
             let o = self.owner.clone();
             self.stop(&o, cx);
+        }
+    }
+
+    /// Pause / resume, if `owner` is the one showing.
+    pub fn set_paused(&mut self, owner: &str, paused: bool) {
+        if self.owner != owner || self.paused == paused {
+            return;
+        }
+        self.paused = paused;
+        #[cfg(target_os = "windows")]
+        if let Some(n) = &self.native {
+            n.set_paused(paused);
+        }
+        if let Some(s) = &self.surface {
+            s.set_paused(paused);
         }
     }
 

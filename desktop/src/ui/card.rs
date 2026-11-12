@@ -94,6 +94,8 @@ pub fn card_with(
                     None => title_text(&m.name).into_any_element(),
                 }),
         )
+        // sound on/off while it previews
+        .children(clip.is_some().then(|| div().absolute().top(px(10.)).right(px(10.)).child(crate::ui::video::sound_button("card:".into(), 32.))))
         .when_some(progress, |d, p| {
             d.child(div().absolute().left(px(14.)).right(px(14.)).bottom(px(6.)).h(px(4.)).rounded_full().bg(theme::white(0.25)).child(div().h_full().rounded_full().w(px((W - 28.) * p.clamp(0., 1.))).bg(theme::lamp())))
         })

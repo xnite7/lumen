@@ -88,6 +88,10 @@ impl Nav {
             });
         }
     }
+    /// is this title's page the one on screen?
+    pub fn showing_detail(id: &str, cx: &App) -> bool {
+        Self::root(cx).map_or(false, |r| matches!(&r.read(cx).route, Route::Detail(m) if m.id == id))
+    }
     /// the mini player, full size again
     pub fn expand(cx: &mut App) {
         Self::go(Route::Player, cx);
@@ -687,6 +691,18 @@ fn main() {
         together::init(cx);
         parties::init(cx);
         update::start(cx);
+        // billboard + previews play with sound in the new couch (once; the speaker button changes it)
+        {
+            let core = couch::state::get().core.clone();
+            if core.db.get::<bool>("gpui_sound_v1").is_none() {
+                let mut st = core.settings();
+                st.general.hero_muted = false;
+                st.general.preview_muted = false;
+                let _ = core.db.set("settings", &st);
+                *core.settings.write() = st;
+                let _ = core.db.set("gpui_sound_v1", &true);
+            }
+        }
         theme::apply_text_mode(cx);
 
         let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);

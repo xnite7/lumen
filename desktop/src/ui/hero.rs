@@ -46,6 +46,8 @@ pub fn hero(m: &Meta, height: Pixels, clip: Option<(crate::ui::video::Pic, f32)>
                 .h(height * 0.55)
                 .bg(linear_gradient(180., linear_color_stop(theme::black(0.0), 0.), linear_color_stop(theme::black(1.0), 1.))),
         )
+        // sound on/off while the clip plays
+        .children(clip.is_some().then(|| div().absolute().right(px(theme::GUTTER)).bottom(px(178.)).child(crate::ui::video::sound_button("hero:".into(), 44.))))
         .child(
             div()
                 .absolute()

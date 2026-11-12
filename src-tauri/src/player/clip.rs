@@ -93,6 +93,10 @@ impl Clip {
         let _ = self.mpv.command("stop", &[]);
     }
 
+    pub fn set_paused(&self, paused: bool) {
+        let _ = self.mpv.set_property("pause", paused);
+    }
+
     pub fn set_muted(&self, muted: bool) {
         let _ = self.mpv.set_property("mute", muted);
     }
