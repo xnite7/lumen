@@ -6,10 +6,28 @@ use serde_json::Value;
 /// `api::call::<Vec<Meta>>("hero_items", json!({})).await`
 pub async fn call<T: DeserializeOwned + Send + 'static>(cmd: &'static str, args: Value) -> Result<T, String> {
     let h = couch::rt::spawn(async move {
-        let v = couch::dispatch::invoke(cmd, args).await?;
+        let mut v = couch::dispatch::invoke(cmd, args).await?;
+        if cmd.starts_with("crew") {
+            unmangle(&mut v);
+        }
         serde_json::from_value::<T>(v).map_err(|e| format!("{cmd}: {e}"))
     });
     h.await.map_err(|e| e.to_string())?
+}
+
+/// The crew server used to read names as Latin-1, so "✿ mari ✿" came back
+/// as "â\u{9c}¿ mari â\u{9c}¿": put such strings back together.
+fn unmangle(v: &mut Value) {
+    match v {
+        Value::String(s) if s.chars().any(|c| c as u32 >= 0x80) && s.chars().all(|c| (c as u32) < 0x100) => {
+            if let Ok(fixed) = String::from_utf8(s.chars().map(|c| c as u8).collect()) {
+                *s = fixed;
+            }
+        }
+        Value::Array(a) => a.iter_mut().for_each(unmangle),
+        Value::Object(o) => o.values_mut().for_each(unmangle),
+        _ => {}
+    }
 }
 
 /// A title in a row or the billboard (the fields the UI uses).

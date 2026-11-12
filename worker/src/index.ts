@@ -140,7 +140,8 @@ type Who = { id: string; name: string; avatar?: string };
 const SESSION_TTL = 120;
 const enc = new TextEncoder();
 const b64u = (b: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-const unb64u = (s: string) => atob(s.replace(/-/g, "+").replace(/_/g, "/"));
+// the token is UTF-8 JSON: decode its bytes as UTF-8, not as Latin-1, or "✿" turns into "â¿"
+const unb64u = (s: string) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)));
 
 async function hmac(key: string, data: string) {
   const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);

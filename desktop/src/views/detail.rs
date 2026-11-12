@@ -629,31 +629,44 @@ impl Render for Detail {
         if !said.is_empty() {
             let me = self.me_id();
             page = page.child(
-                div().flex().flex_col().gap(px(14.)).mt(px(10.)).px(px(g)).child(div().text_size(px(24.)).font_weight(FontWeight::BLACK).child("on the couch")).child(div().flex().flex_wrap().gap(px(12.)).children(said.into_iter().map(|r| {
+                // the crew's reviews, no heading: snug cards, the avatar beside the words
+                div().mt(px(4.)).px(px(g)).flex().flex_wrap().items_start().gap(px(10.)).children(said.into_iter().map(|r| {
                     let who = if r["who"].as_str() == Some(me.as_str()) { "you".to_string() } else { r["name"].as_str().unwrap_or("someone").to_string() };
                     let wid = r["who"].as_str().unwrap_or("").to_string();
+                    let text = r["text"].as_str().filter(|t| !t.is_empty()).map(String::from);
                     div()
-                        .w(px(380.))
-                        .p(px(14.))
-                        .rounded(px(16.))
+                        .max_w(px(440.))
+                        .py(px(10.))
+                        .pl(px(10.))
+                        .pr(px(16.))
+                        .rounded(px(18.))
                         .bg(theme::white(0.05))
                         .flex()
-                        .flex_col()
-                        .gap(px(8.))
+                        .items_start()
+                        .gap(px(10.))
+                        .child(div().flex_none().size(px(28.)).rounded_full().overflow_hidden().bg(theme::surface2()).flex().items_center().justify_center().text_size(px(12.)).font_weight(FontWeight::BLACK).child(match r["avatar"].as_str() {
+                            Some(u) => img(u.to_string()).size_full().object_fit(ObjectFit::Cover).into_any_element(),
+                            None => div().child(who.chars().next().unwrap_or('?').to_uppercase().to_string()).into_any_element(),
+                        }))
                         .child(
                             div()
+                                .min_w_0()
                                 .flex()
-                                .items_center()
-                                .gap(px(10.))
-                                .child(div().size(px(30.)).rounded_full().overflow_hidden().bg(theme::surface2()).flex().items_center().justify_center().text_size(px(13.)).font_weight(FontWeight::BLACK).child(match r["avatar"].as_str() {
-                                    Some(u) => img(u.to_string()).size_full().object_fit(ObjectFit::Cover).into_any_element(),
-                                    None => div().child(who.chars().next().unwrap_or('?').to_uppercase().to_string()).into_any_element(),
-                                }))
-                                .child(div().id(SharedString::from(format!("rv-{wid}"))).font_weight(FontWeight::SEMIBOLD).cursor_pointer().hover(|s| s.underline()).on_click(move |_, _, cx| Nav::go(crate::Route::Member(wid.clone()), cx)).child(who))
-                                .children(r["rating"].as_i64().map(|n| div().text_size(px(13.)).font_weight(FontWeight::BLACK).text_color(theme::lamp()).child(format!("★ {n}/10")))),
+                                .flex_col()
+                                .gap(px(2.))
+                                .when(text.is_none(), |d| d.h(px(28.)).justify_center())
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(8.))
+                                        .text_size(px(14.))
+                                        .child(div().id(SharedString::from(format!("rv-{wid}"))).font_weight(FontWeight::SEMIBOLD).cursor_pointer().hover(|s| s.underline()).on_click(move |_, _, cx| Nav::go(crate::Route::Member(wid.clone()), cx)).child(crate::ui::emoji::text(&who, 14.)))
+                                        .children(r["rating"].as_i64().map(|n| div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::lamp()).child(format!("★ {n}/10")))),
+                                )
+                                .children(text.map(|t| div().text_size(px(14.)).line_height(px(20.)).text_color(theme::white(0.75)).child(crate::ui::emoji::text(&t, 14.)))),
                         )
-                        .children(r["text"].as_str().filter(|t| !t.is_empty()).map(|t| div().text_size(px(15.)).line_height(px(21.)).text_color(theme::white(0.85)).child(crate::ui::emoji::text(t, 15.))))
-                }))),
+                })),
             );
         }
 
