@@ -1,9 +1,9 @@
 // Title logos often carry empty transparent space under the lettering and to
-// its left, so they float above the line beneath them and sit off the left
+// its left and above it, so they float above the line beneath them and sit off the left
 // edge. This measures both once per image and pulls the logo back by them.
 
-type Blank = { bottom: number; left: number };
-const none: Blank = { bottom: 0, left: 0 };
+type Blank = { bottom: number; left: number; top: number };
+const none: Blank = { bottom: 0, left: 0, top: 0 };
 const cache = new Map<string, Promise<Blank>>();
 
 function blank(src: string): Promise<Blank> {
@@ -26,11 +26,15 @@ function blank(src: string): Promise<Blank> {
         scan: for (; last >= 0; last--) {
           for (let x = 0; x < w; x++) if (d[(last * w + x) * 4 + 3] > 12) break scan;
         }
+        let top = 0;
+        scant: for (; top < h; top++) {
+          for (let x = 0; x < w; x++) if (d[(top * w + x) * 4 + 3] > 12) break scant;
+        }
         let first = 0;
         scanx: for (; first < w; first++) {
           for (let y = 0; y < h; y++) if (d[(y * w + first) * 4 + 3] > 12) break scanx;
         }
-        done(last < 0 ? none : { bottom: (h - 1 - last) / h, left: first >= w ? 0 : first / w });
+        done(last < 0 ? none : { bottom: (h - 1 - last) / h, left: first >= w ? 0 : first / w, top: top >= h ? 0 : top / h });
       } catch {
         done(none); // no CORS on this host: leave it as it is
       }
@@ -54,6 +58,7 @@ export function trimLogo(el: HTMLImageElement) {
     el.style.marginBottom = b.bottom > 0.02 ? `${-b.bottom * r.height}px` : "";
     // object-fit: contain keeps the picture's shape, so its left blank is a share of the drawn width
     el.style.marginLeft = b.left > 0.02 ? `${-b.left * r.width}px` : "";
+    el.style.marginTop = b.top > 0.02 ? `${-b.top * r.height}px` : "";
   };
   const ro = new ResizeObserver(apply);
   ro.observe(el);

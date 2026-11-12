@@ -18,6 +18,31 @@ mod timer;
 mod ui;
 mod views;
 
+/// the intro's frames (and how long each shows), decoded off the main thread at launch
+static INTRO: std::sync::OnceLock<Vec<(std::sync::Arc<gpui::RenderImage>, f32)>> = std::sync::OnceLock::new();
+
+fn decode_intro() {
+    std::thread::spawn(|| {
+        use image::AnimationDecoder;
+        let Some(b) = assets::bytes("brand/intro.webp") else { return };
+        let Ok(mut d) = image::codecs::webp::WebPDecoder::new(std::io::Cursor::new(b)) else { return };
+        let _ = d.set_background_color(image::Rgba([0, 0, 0, 0]));
+        let mut out = vec![];
+        for f in d.into_frames().flatten() {
+            let (n, dn) = f.delay().numer_denom_ms();
+            let secs = (n as f32 / dn.max(1) as f32 / 1000.).max(0.016);
+            let mut f = f;
+            for px in f.buffer_mut().chunks_exact_mut(4) {
+                px.swap(0, 2);
+            }
+            out.push((std::sync::Arc::new(gpui::RenderImage::new(vec![f])), secs));
+        }
+        if !out.is_empty() {
+            let _ = INTRO.set(out);
+        }
+    });
+}
+
 use api::Meta;
 use futures::StreamExt;
 use gpui::{
@@ -189,6 +214,8 @@ pub struct Root {
     last_size: gpui::Size<gpui::Pixels>,
     /// the launch intro: when it started (None once it's done)
     splash: Option<std::time::Instant>,
+    /// when the intro's animation started playing
+    intro_play: Option<std::time::Instant>,
     /// when the page last changed, and whether that was a step back (pages ease in)
     turned: Option<(std::time::Instant, bool)>,
 }
@@ -379,24 +406,63 @@ impl Root {
     /// The launch intro, like the webview's: the midnite sign holds, redraws
     /// itself into the couch, holds, and fades into home.
     fn intro(&mut self, window: &mut Window) -> Option<gpui::AnyElement> {
-        const HOLD: f32 = 3.0;
-        const PLAY: f32 = 1.22;
-        const END: f32 = 0.65;
-        const FADE: f32 = 0.52;
-        let t = self.splash?.elapsed().as_secs_f32();
-        if t > HOLD + PLAY + END + FADE {
+        // a short beat on the first frame (longer only while the animation is
+        // still being decoded), the animation, a blink on the last frame, then
+        // it rushes at you: zoom blur and fade
+        const HOLD: f32 = 0.35;
+        const END: f32 = 0.15;
+        const FADE: f32 = 0.6;
+        let start = self.splash?;
+        let t = start.elapsed().as_secs_f32();
+        let frames = INTRO.get();
+        if self.intro_play.is_none() && t >= HOLD && (frames.is_some() || t > 3.) {
+            self.intro_play = Some(std::time::Instant::now());
+        }
+        let play: f32 = frames.map_or(0., |f| f.iter().map(|x| x.1).sum());
+        let p = self.intro_play.map(|a| a.elapsed().as_secs_f32());
+        if p.map_or(false, |p| p > play + END + FADE) {
             self.splash = None;
+            self.intro_play = None;
             return None;
         }
         window.request_animation_frame();
-        let pic = if t < HOLD {
-            img("brand/intro-first.png").size_full().object_fit(gpui::ObjectFit::Contain).into_any_element()
-        } else if t < HOLD + PLAY {
-            img("brand/intro.webp").id("intro-anim").size_full().object_fit(gpui::ObjectFit::Contain).into_any_element()
-        } else {
-            img("brand/intro-last.png").size_full().object_fit(gpui::ObjectFit::Contain).into_any_element()
+        let first = || img("brand/intro-first.png").size_full().object_fit(gpui::ObjectFit::Contain).into_any_element();
+        let last = || img("brand/intro-last.png").size_full().object_fit(gpui::ObjectFit::Contain).into_any_element();
+        let (pic, fade) = match (p, frames) {
+            (None, _) => (first(), 0.),
+            (Some(p), Some(fr)) if p < play => {
+                let mut acc = 0.;
+                let f = fr.iter().find(|x| {
+                    acc += x.1;
+                    acc > p
+                });
+                let f = f.or(fr.last()).map(|x| x.0.clone());
+                (f.map(|r| img(gpui::ImageSource::Render(r)).size_full().object_fit(gpui::ObjectFit::Contain).into_any_element()).unwrap_or_else(first), 0.)
+            }
+            (Some(p), _) => (last(), ((p - play - END) / FADE).clamp(0., 1.)),
         };
-        let op = if t > HOLD + PLAY + END { 1. - (t - HOLD - PLAY - END) / FADE } else { 1. };
+        let (w, h) = (240., 216.);
+        let e = 1. - (1. - fade).powi(2);
+        let mut stage = div().relative().w(px(w)).h(px(h));
+        if fade > 0. {
+            // zoom blur: copies of the last frame, each further forward and fainter
+            for k in (0..7).rev() {
+                let s = 1. + e * (0.35 + k as f32 * 0.16);
+                let a = (1. - e) * if k == 0 { 1. } else { 0.42 / k as f32 };
+                stage = stage.child(
+                    div()
+                        .absolute()
+                        .left(px(w * (1. - s) / 2.))
+                        .top(px(h * (1. - s) / 2.))
+                        .w(px(w * s))
+                        .h(px(h * s))
+                        .opacity(a)
+                        .child(last()),
+                );
+            }
+        } else {
+            stage = stage.child(pic);
+        }
         Some(
             div()
                 .id("intro")
@@ -405,12 +471,11 @@ impl Root {
                 .left_0()
                 .size_full()
                 .occlude()
-                .opacity(op.clamp(0., 1.))
-                .bg(theme::bg())
+                .bg(theme::black((1. - e * 1.1).clamp(0., 1.)))
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(div().w(px(240.)).h(px(216.)).child(pic))
+                .child(stage)
                 .into_any_element(),
         )
     }
@@ -782,6 +847,7 @@ fn main() {
     if jump::forward(Some(jump::requested().unwrap_or_else(|| "show".into()).as_str())) {
         return;
     }
+    decode_intro();
     let launches = std::cell::Cell::new(Some(jump::listen()));
     // Sharp on scaled screens (125%, 150%…): without this Windows draws couch
     // at 100% and stretches the picture, which makes text and icons rough.
@@ -972,6 +1038,7 @@ fn main() {
                             focus,
                             last_size: gpui::Size::default(),
                             splash: Some(std::time::Instant::now()),
+                            intro_play: None,
                             turned: None,
                         }
                     });

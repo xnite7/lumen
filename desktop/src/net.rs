@@ -66,8 +66,8 @@ pub fn fit(url: &str, w: f32) -> String {
     tag(url, w, 'f')
 }
 
-/// A title logo: like `fit`, with the empty space on its left and under it cut
-/// away, so it lines up with the text beside and below it.
+/// A title logo: like `fit`, with the empty space on its left, above and under
+/// it cut away, so it lines up with the text beside and below it.
 pub fn logo(url: &str, w: f32) -> String {
     tag(url, w, 't')
 }
@@ -127,9 +127,10 @@ fn shrink(bytes: &[u8], w: u32, k: char) -> Option<Vec<u8>> {
         let (iw, ih) = rgba.dimensions();
         let solid = |x: u32, y: u32| rgba.get_pixel(x, y)[3] > 12;
         let left = (0..iw).find(|&x| (0..ih).any(|y| solid(x, y))).unwrap_or(0);
-        let bottom = (0..ih).rev().find(|&y| (0..iw).any(|x| solid(x, y))).map_or(ih, |y| y + 1);
-        if left > 0 || bottom < ih {
-            im = im.crop_imm(left, 0, iw - left, bottom.max(1));
+        let top = (0..ih).find(|&y| (0..iw).any(|x| solid(x, y))).unwrap_or(0);
+        let bottom = (0..ih).rev().find(|&y| (0..iw).any(|x| solid(x, y))).map_or(ih, |y| y + 1).max(top + 1);
+        if left > 0 || top > 0 || bottom < ih {
+            im = im.crop_imm(left, top, iw - left, bottom - top);
             changed = true;
         }
     }

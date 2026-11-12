@@ -113,7 +113,9 @@ pub fn card_with(
         .into_any_element();
     // under the picture: the progress bar, then "S1 E2" on the left and the
     // time left on the right (a tab in `sub` splits the two)
-    let bar = progress.map(|p| div().w(px(W)).h(px(4.)).rounded_full().bg(theme::white(0.16)).child(div().h_full().rounded_full().w(px(W * p.clamp(0., 1.))).bg(theme::lamp())));
+    // a square-ended white bar, 60% of the card's width
+    let bw = W * 0.6;
+    let bar = progress.map(|p| div().w(px(bw)).h(px(4.)).bg(theme::white(0.18)).child(div().h_full().w(px(bw * p.clamp(0., 1.))).bg(gpui::white())));
     let line = sub.map(|t| {
         let (l, r) = t.split_once('\t').map_or((t.clone(), String::new()), |(a, b)| (a.to_string(), b.to_string()));
         div()
