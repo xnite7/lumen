@@ -408,7 +408,9 @@ impl Render for Home {
                     below = below.child(c);
                 }
             }
-            below = below.child(
+            // only rows on (or near) the screen are drawn
+            let key = format!("{}:{}", self.scope, r.key);
+            below = below.child(crate::ui::lazy::section(key, &self.scroll, vh, || {
                 div()
                     .flex()
                     .flex_col()
@@ -432,8 +434,8 @@ impl Render for Home {
                                     card::card_preview(SharedString::from(format!("c-{ri}-{i}")), m, clip, move |_, _, cx| Nav::detail(&mm, cx))
                                 }
                             })),
-                    ),
-            );
+                    )
+            }));
         }
         for c in crew_rows.drain(..) {
             below = below.child(c);

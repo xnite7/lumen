@@ -8,6 +8,8 @@ use std::collections::HashMap;
 
 thread_local! {
     static TARGET: RefCell<HashMap<&'static str, f32>> = RefCell::new(HashMap::new());
+    /// when each page last moved a step (for the time-based glide)
+    static LAST: RefCell<HashMap<&'static str, std::time::Instant>> = RefCell::new(HashMap::new());
     /// a sheet or menu is open over the page: leave the wheel to it
     pub static OVERLAY: Cell<bool> = const { Cell::new(false) };
     /// how far the page on screen is scrolled (the top bar darkens with it)
@@ -19,9 +21,10 @@ pub fn scrolled() -> f32 {
     SCROLLED.with(|s| s.get())
 }
 
-/// how far one notch goes, and how quickly the page catches up (per frame)
+/// how far one notch goes, and how quickly the page catches up: it closes
+/// the gap with a time constant (same feel at 60, 144 or 240 Hz)
 const NOTCH: f32 = 1.9;
-const EASE: f32 = 0.2;
+const TAU: f32 = 0.085;
 
 pub fn set_overlay(on: bool) {
     OVERLAY.with(|o| o.set(on));
@@ -43,11 +46,15 @@ pub fn wheel(h: &ScrollHandle, key: &'static str) -> impl IntoElement {
             if let Some(t) = TARGET.with(|m| m.borrow().get(key).copied()) {
                 let t = t.clamp(0., max);
                 let d = t - cur;
-                if d.abs() < 0.6 {
+                let now = std::time::Instant::now();
+                let dt = LAST.with(|l| l.borrow_mut().insert(key, now)).map_or(1. / 120., |p| now.duration_since(p).as_secs_f32()).clamp(0.001, 0.05);
+                if d.abs() < 0.4 {
                     h.set_offset(point(h.offset().x, px(-t)));
                     TARGET.with(|m| m.borrow_mut().remove(key));
+                    LAST.with(|l| l.borrow_mut().remove(key));
                 } else {
-                    h.set_offset(point(h.offset().x, px(-(cur + d * EASE))));
+                    let k = 1. - (-dt / TAU).exp();
+                    h.set_offset(point(h.offset().x, px(-(cur + d * k))));
                     window.request_animation_frame();
                 }
             }
