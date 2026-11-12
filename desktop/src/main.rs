@@ -286,6 +286,21 @@ impl Root {
     /// keys: space play/pause, arrows seek/volume, f full screen, esc back
     fn key(&mut self, e: &gpui::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let k = e.keystroke.key.as_str();
+        // esc closes a menu or sheet first
+        if k == "escape" && self.menu.read(cx).open.is_some() {
+            self.menu.update(cx, |m, cx| {
+                m.open = None;
+                cx.notify();
+            });
+            return;
+        }
+        if k == "escape" && self.addto.read(cx).meta.is_some() {
+            self.addto.update(cx, |a, cx| {
+                a.meta = None;
+                cx.notify();
+            });
+            return;
+        }
         if self.wrapped.read(cx).open {
             let w = self.wrapped.clone();
             match k {

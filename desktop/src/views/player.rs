@@ -30,6 +30,8 @@ pub struct PlayerView {
     shown: bool,
     hover_x: Option<f32>,
     reactions: Entity<super::reactions::Reactions>,
+    /// pointing at "next": show what it is
+    next_hover: bool,
 }
 
 impl PlayerView {
@@ -53,7 +55,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false }
     }
 
     pub fn poke(&mut self, cx: &mut Context<Self>) {
@@ -515,6 +517,35 @@ impl Render for PlayerView {
             _ => None,
         };
         let root = root.children(skip.map(|b| div().absolute().right(px(theme::GUTTER)).bottom(px(130.)).child(b)));
+        // what's next, while you point at "next"
+        let next_card = self.next_hover.then(|| self.pb.read(cx).next_video()).flatten().map(|n| {
+            let still = n["thumbnail"].as_str().map(String::from);
+            let over = n["overview"].as_str().or(n["description"].as_str()).unwrap_or("").to_string();
+            div()
+                .absolute()
+                .right(px(theme::GUTTER))
+                .bottom(px(96.))
+                .w(px(340.))
+                .rounded(px(16.))
+                .overflow_hidden()
+                .bg(theme::black(0.85))
+                .border_1()
+                .border_color(theme::white(0.12))
+                .flex()
+                .flex_col()
+                .children(still.map(|u| img(u).w_full().h(px(191.)).object_fit(ObjectFit::Cover)))
+                .child(
+                    div()
+                        .p(px(14.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(4.))
+                        .child(div().text_size(px(12.)).font_weight(FontWeight::BOLD).text_color(theme::label3()).child(format!("NEXT · S{} E{}", n["season"].as_i64().unwrap_or(0), n["episode"].as_i64().or(n["number"].as_i64()).unwrap_or(0))))
+                        .child(div().text_size(px(17.)).font_weight(FontWeight::BLACK).child(playback::episode_name(&n)))
+                        .children((!over.is_empty()).then(|| div().text_size(px(13.)).line_height(px(18.)).text_color(theme::label2()).line_clamp(3).child(over))),
+                )
+        });
+        let root = root.children(next_card);
         root
             // top: back, title
             .child(
@@ -700,6 +731,10 @@ impl Render for PlayerView {
                                     .cursor_pointer()
                                     .hover(|s| s.bg(theme::white(0.2)))
                                     .on_click(move |_, _, cx| pb.update(cx, |p, cx| p.play_next(cx)))
+                                    .on_hover(cx.listener(|v, on: &bool, _, cx| {
+                                        v.next_hover = *on;
+                                        cx.notify();
+                                    }))
                                     .child(icon("next", 20.))
                                     .child(format!("next · {}", n))
                             }))
