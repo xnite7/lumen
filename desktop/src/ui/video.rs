@@ -171,7 +171,46 @@ impl Video {
 
     /// The billboard plays its trailer once, then goes back to its picture.
     pub fn play_once(&mut self, owner: &str, url: &str, cx: &mut Context<Self>) {
-        self.play_with(owner, url, false, cx)
+        self.play_with(owner, url, false, cx);
+        // watch for its end (nothing else redraws the page when it just stops)
+        let o = owner.to_string();
+        cx.spawn(async move |this, cx| loop {
+            crate::timer::after(std::time::Duration::from_millis(500)).await;
+            let Ok(go) = this.update(cx, |v, cx| {
+                if v.owner != o {
+                    return false;
+                }
+                #[cfg(target_os = "windows")]
+                if let Some(n) = &v.native {
+                    if n.is_ready() && n.ended() {
+                        n.stop();
+                        v.owner.clear();
+                        v.since = None;
+                        cx.notify();
+                        return false;
+                    }
+                }
+                true
+            }) else {
+                break;
+            };
+            if !go {
+                break;
+            }
+        })
+        .detach();
+    }
+
+    /// Is `owner`'s clip showing pictures yet?
+    pub fn showing(&self, owner: &str) -> bool {
+        if self.owner != owner {
+            return false;
+        }
+        #[cfg(target_os = "windows")]
+        if let Some(n) = &self.native {
+            return n.is_ready();
+        }
+        self.image.is_some()
     }
 
     fn play_with(&mut self, owner: &str, url: &str, looping: bool, cx: &mut Context<Self>) {
@@ -449,11 +488,28 @@ pub fn hover(m: &crate::api::Meta, on: bool, cx: &mut App) {
             None => crate::api::call::<Option<String>>("trailer_get", serde_json::json!({ "kind": kind, "id": id })).await.ok().flatten().filter(|k| !k.is_empty()).map(|k| format!("https://www.youtube.com/watch?v={k}")),
         };
         let Some(url) = url else { return };
+        let clip = !url.contains("youtube.com");
         let _ = cx.update(|cx| {
             if cx.try_global::<Pending>().map_or(false, |p| p.0 == owner) {
                 get(cx).update(cx, |v, cx| v.play(&owner, &url, cx));
             }
         });
+        // a clip that never shows up (the clip server couldn't fetch it): the trailer
+        if clip {
+            crate::timer::after(std::time::Duration::from_secs(5)).await;
+            let stuck = cx.update(|cx| cx.try_global::<Pending>().map_or(false, |p| p.0 == owner) && !get(cx).read(cx).showing(&owner));
+            if stuck {
+                let t = crate::api::call::<Option<String>>("trailer_get", serde_json::json!({ "kind": kind, "id": id })).await.ok().flatten().filter(|k| !k.is_empty());
+                if let Some(k) = t {
+                    let url = format!("https://www.youtube.com/watch?v={k}");
+                    let _ = cx.update(|cx| {
+                        if cx.try_global::<Pending>().map_or(false, |p| p.0 == owner) {
+                            get(cx).update(cx, |v, cx| v.play(&owner, &url, cx));
+                        }
+                    });
+                }
+            }
+        }
     })
     .detach();
 }
