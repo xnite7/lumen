@@ -829,7 +829,7 @@ async fn because_you_watched() -> Vec<Row> {
         let seen = items.iter().filter_map(|i| i["_id"].as_str().map(String::from)).collect();
         let done = items
             .iter()
-            .filter(|i| i["state"]["timesWatched"].as_i64().unwrap_or(0) > 0 || i["state"]["flaggedWatched"].as_bool() == Some(true))
+            .filter(|i| i["state"]["timesWatched"].as_i64().unwrap_or(0) > 0 || crate::api::flag(&i["state"]["flaggedWatched"]))
             .map(|i| Meta { id: i["_id"].as_str().unwrap_or("").into(), kind: i["type"].as_str().unwrap_or("").into(), name: i["name"].as_str().unwrap_or("").into(), ..Default::default() })
             .filter(|m| !m.id.is_empty())
             .collect();

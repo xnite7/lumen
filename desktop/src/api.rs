@@ -95,3 +95,8 @@ pub fn imdb_episode(video_id: &str) -> Option<String> {
     let (s, e) = (p.get(1)?.parse::<i64>().ok()?, p.get(2)?.parse::<i64>().ok()?);
     (s >= 0 && e > 0).then(|| format!("https://episodes.metahub.space/{tt}/{s}/{e}/w780.jpg"))
 }
+
+/// A yes/no the library may store as true/false or 1/0.
+pub fn flag(v: &Value) -> bool {
+    v.as_bool().unwrap_or(false) || v.as_i64().map_or(false, |n| n > 0)
+}

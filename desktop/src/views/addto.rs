@@ -86,6 +86,7 @@ impl AddTo {
             } else {
                 api::call::<Value>("library_remove", json!({ "id": m.id, "kind": m.kind })).await
             };
+            crate::views::detail::library_changed();
             let _ = cx.update(|cx| Nav::toast(match r {
                 Err(e) => e,
                 Ok(_) if on => format!("added {} to My List", m.name),
@@ -104,6 +105,7 @@ impl AddTo {
         l["items"] = if has { Value::Array(items.into_iter().filter(|x| x["id"].as_str() != Some(m.id.as_str())).collect()) } else { Value::Array(std::iter::once(slim(&m)).chain(items).collect()) };
         l["at"] = json!(now());
         save(&self.lists);
+        crate::views::detail::library_changed();
         Nav::toast(if has { format!("removed from {name}") } else { format!("added to {name}") }, cx);
         cx.notify();
     }

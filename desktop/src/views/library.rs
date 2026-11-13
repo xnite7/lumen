@@ -85,7 +85,7 @@ impl Library {
                 for i in items {
                     let st = &i["state"];
                     let times = st["timesWatched"].as_i64().unwrap_or(0);
-                    let flagged = st["flaggedWatched"].as_bool() == Some(true);
+                    let flagged = crate::api::flag(&st["flaggedWatched"]);
                     if i["removed"].as_bool() == Some(true) && times == 0 && !flagged {
                         continue;
                     }

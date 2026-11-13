@@ -19,6 +19,8 @@ pub struct Detail {
     hover_star: u8,
     /// where the rating bar is on screen (left, width), for the mouse
     rate_box: std::rc::Rc<std::cell::Cell<(f32, f32)>>,
+    /// the library change this page has caught up with
+    lib_seen: u64,
     favs: Option<Vec<Value>>,
     /// the trailer's YouTube key (None: not looked up, Some(""): there isn't one)
     trailer: Option<String>,
@@ -46,6 +48,12 @@ pub struct Loaded {
     rating: Option<u8>,
     studio: Option<Studio>,
     reviews: Vec<Value>,
+}
+
+/// bumped whenever My List / a list / watched changes, so an open title page re-reads its state
+static LIB_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub fn library_changed() {
+    LIB_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 
 thread_local! {
@@ -176,7 +184,7 @@ impl Detail {
         .detach();
         let review_text = cx.new(|cx| crate::ui::input::TextInput::new("what did you think? (emoji welcome)", cx));
         cx.subscribe(&review_text, |d: &mut Self, _, _: &crate::ui::input::Submitted, cx| d.post_review(cx)).detach();
-        let mut me = Self { base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, rate_box: Default::default(), favs: None, trailer: None, studio: None, reviews: vec![], writing: false, review_text, scroll: ScrollHandle::new(), shown: None };
+        let mut me = Self { base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, rate_box: Default::default(), lib_seen: LIB_GEN.load(std::sync::atomic::Ordering::Relaxed), favs: None, trailer: None, studio: None, reviews: vec![], writing: false, review_text, scroll: ScrollHandle::new(), shown: None };
         if let Some(l) = ready {
             me.fill(l);
             // fresh copy in the background (your progress, ratings, reviews may have moved)
@@ -335,7 +343,7 @@ fn seasons(f: &Value) -> Vec<i64> {
 impl Detail {
     /// your score: one bar you slide (or click) along, 1–10
     fn stars(&self, m: &Meta, cx: &mut Context<Self>) -> impl IntoElement {
-        const W: f32 = 260.;
+        const W: f32 = 250.;
         let shown = if self.hover_star > 0 { self.hover_star } else { self.rating.unwrap_or(0) };
         let at = self.rate_box.clone();
         let at2 = at.clone();
@@ -364,27 +372,19 @@ impl Detail {
                     .id("rate-bar")
                     .relative()
                     .w(px(W))
-                    .h(px(30.))
-                    .rounded_full()
-                    .overflow_hidden()
-                    .bg(theme::white(0.1))
+                    .h(px(26.))
+                    .flex_none()
                     .cursor_pointer()
                     .child(gpui::canvas(move |b, _, _| at3.set((f32::from(b.origin.x), f32::from(b.size.width))), |_, _, _, _| {}).absolute().size_full())
-                    // the fill
+                    // ten steps, lit up to the score (dimmer while you're only pointing)
                     .child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .h_full()
-                            .w(px(W * shown as f32 / 10.))
-                            .rounded_full()
-                            .bg(gpui::linear_gradient(90., gpui::linear_color_stop(theme::lamp(), 0.), gpui::linear_color_stop(theme::neon(), 1.)))
-                            .when(previewing, |d| d.opacity(0.55)),
+                        div().absolute().top_0().left_0().size_full().flex().gap(px(3.)).children((1..=10u8).map(|i| {
+                            let lit = i <= shown;
+                            div().flex_1().h_full().rounded(px(6.)).bg(if lit { theme::lamp().into() } else { theme::white(0.09) })
+                            .when(lit && previewing, |d| d.opacity(0.6))
+                        })),
                     )
-                    // the ten steps
-                    .child(div().absolute().top_0().left_0().size_full().flex().children((1..10).map(|_| div().flex_1().h_full().border_r_1().border_color(theme::black(0.25)))).child(div().flex_1()))
-                    .when(shown == 0, |d| d.child(div().absolute().top_0().left_0().size_full().flex().items_center().justify_center().text_size(px(13.)).text_color(theme::label3()).child("slide to rate")))
+                    .when(shown == 0, |d| d.child(div().absolute().top_0().left_0().size_full().flex().items_center().justify_center().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child("slide to rate")))
                     .on_hover(cx.listener(|d, on: &bool, _, cx| {
                         if !*on {
                             d.hover_star = 0;
@@ -420,16 +420,19 @@ impl Detail {
                         .detach();
                     })),
             )
-            .when(shown > 0, |d| {
-                d.child(
-                    div()
-                        .flex()
-                        .items_end()
-                        .gap(px(6.))
-                        .child(div().text_size(px(22.)).line_height(px(22.)).font_weight(FontWeight::BLACK).text_color(theme::lamp()).child(format!("{shown}")))
-                        .child(div().text_size(px(13.)).text_color(theme::label2()).child(format!("/10 · {word}"))),
-                )
-            })
+            // always the same width, so nothing beside it moves while you point
+            .child(
+                div()
+                    .w(px(150.))
+                    .flex_none()
+                    .flex()
+                    .items_end()
+                    .gap(px(6.))
+                    .when(shown > 0, |d| {
+                        d.child(div().text_size(px(22.)).line_height(px(22.)).font_weight(FontWeight::BLACK).text_color(theme::lamp()).child(format!("{shown}")))
+                            .child(div().text_size(px(13.)).text_color(theme::label2()).child(format!("/10 · {word}")))
+                    }),
+            )
     }
 }
 
@@ -491,7 +494,7 @@ impl Render for Detail {
         let (mut plabel, mut pvideo, mut psub) = self.primary();
         // all of it seen: the film's flag, or every released episode of a show
         let all_seen = {
-            let flagged_now = self.item.as_ref().map_or(false, |i| i["state"]["flaggedWatched"].as_bool() == Some(true));
+            let flagged_now = self.item.as_ref().map_or(false, |i| crate::api::flag(&i["state"]["flaggedWatched"]));
             match &full {
                 Some(f) if f["type"] == "series" => {
                     let today = chrono_now();
@@ -499,7 +502,7 @@ impl Render for Detail {
                     let eps: Vec<String> = playback::ordered(f).iter().filter(|v| v["season"].as_i64().unwrap_or(0) > 0 && released(v, &today)).filter_map(|v| v["id"].as_str().map(String::from)).collect();
                     !eps.is_empty() && eps.iter().all(|e| w.contains(e))
                 }
-                _ => flagged_now,
+                _ => flagged_now || self.item.as_ref().map_or(false, |i| i["state"]["timesWatched"].as_i64().unwrap_or(0) > 0),
             }
         };
         // all seen and nothing half-way: watch it again from the start
@@ -513,8 +516,17 @@ impl Render for Detail {
                 }
             }
         }
-        let flagged = self.item.as_ref().map_or(false, |i| i["state"]["flaggedWatched"].as_bool() == Some(true));
-        let owned = self.item.as_ref().map_or(false, |i| i["removed"].as_bool() != Some(true) && i["temp"].as_bool() != Some(true));
+        let flagged = self.item.as_ref().map_or(false, |i| crate::api::flag(&i["state"]["flaggedWatched"]));
+        // in My List, or in any of your couch lists
+        let base_id = m.id.split(':').next().unwrap_or("").to_string();
+        let owned = self.item.as_ref().map_or(false, |i| i["removed"].as_bool() != Some(true) && i["temp"].as_bool() != Some(true))
+            || crate::views::addto::load().iter().any(|l| l["items"].as_array().map_or(false, |a| a.iter().any(|x| x["id"].as_str().map_or(false, |x| x.split(':').next() == Some(base_id.as_str())))));
+        // the library changed somewhere else (the + sheet): read this title again
+        let lg = LIB_GEN.load(std::sync::atomic::Ordering::Relaxed);
+        if lg != self.lib_seen {
+            self.lib_seen = lg;
+            self.refresh_item(cx);
+        }
         let name = m.name.clone();
         // rating only once you've actually watched it
         let seen_it = self.rating.is_some() || flagged || !self.watched().is_empty() || self.item.as_ref().map_or(false, |i| i["state"]["timesWatched"].as_i64().unwrap_or(0) > 0);
@@ -676,9 +688,28 @@ impl Render for Detail {
                                             .filter_map(|v| v["id"].as_str().map(|s| s.to_string()))
                                             .collect()
                                     });
+                                    // show it straight away; the library's answer follows
+                                    if let Some(i) = d.item.as_mut() {
+                                        i["state"]["flaggedWatched"] = json!(if on { 1 } else { 0 });
+                                        i["state"]["timesWatched"] = json!(if on { 1 } else { 0 });
+                                        if let Some(a) = &all {
+                                            i["state"]["watchedIds"] = json!(if on { a.clone() } else { vec![] });
+                                        }
+                                    }
+                                    cx.notify();
                                     cx.spawn(async move |this, cx| {
-                                        let _ = api::call::<Value>("library_set_watched", json!({ "meta": f, "videoId": Value::Null, "watched": on, "allVideos": all })).await;
-                                        let _ = this.update(cx, |d, cx| d.refresh_item(cx));
+                                        let r = api::call::<Value>("library_set_watched", json!({ "meta": f, "videoId": Value::Null, "watched": on, "allVideos": all })).await;
+                                        let _ = this.update(cx, |d, cx| {
+                                            match r {
+                                                Ok(item) if !item.is_null() => {
+                                                    d.item = Some(item);
+                                                    cx.notify();
+                                                }
+                                                _ => d.refresh_item(cx),
+                                            }
+                                            Nav::toast(if on { "marked watched".into() } else { "marked unwatched".into() }, cx);
+                                        });
+                                        crate::views::detail::library_changed();
                                     })
                                     .detach();
                                 }),
