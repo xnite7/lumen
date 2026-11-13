@@ -109,7 +109,20 @@ pub fn card_with(
                 }),
         )
         // sound on/off while it previews
-        .children(clip.is_some().then(|| div().absolute().top(px(10.)).right(px(10.)).child(crate::ui::video::sound_button("card:".into(), 32.))))
+        // sound on/off: bottom left, showing only when the pointer comes near it
+        .children(clip.is_some().then(|| {
+            div()
+                .absolute()
+                .left_0()
+                .bottom_0()
+                .w(px(120.))
+                .h(px(96.))
+                .group("snd-zone")
+                .flex()
+                .items_end()
+                .p(px(8.))
+                .child(div().opacity(0.).group_hover("snd-zone", |s| s.opacity(1.)).child(crate::ui::video::sound_button("card:".into(), 34.)))
+        }))
         .into_any_element();
     // under the picture: the progress bar, then "S1 E2" on the left and the
     // time left on the right (a tab in `sub` splits the two)

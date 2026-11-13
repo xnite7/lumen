@@ -104,19 +104,22 @@ impl Home {
                         crate::views::detail::prefetch(&pick, cx);
                         cx.notify();
                     });
-                    // a couple of seconds in, the billboard plays a clip (muted)
+                    // a couple of seconds in, the billboard plays the title's
+                    // trailer, once (a clip only when there's no trailer)
                     crate::timer::after(std::time::Duration::from_millis(2000)).await;
                     let year = pick.year();
-                    let clip = match std::env::var("COUCH_TEST_CLIP") {
-                        Ok(f) => Ok(Some(f)),
-                        Err(_) => api::call::<Option<String>>("clip_url", json!({ "id": pick.id, "title": pick.name, "year": year })).await,
+                    let trailer = api::call::<Option<String>>("trailer_get", json!({ "kind": pick.kind, "id": pick.id })).await.ok().flatten().filter(|k| !k.is_empty()).map(|k| format!("https://www.youtube.com/watch?v={k}"));
+                    let url = match (std::env::var("COUCH_TEST_CLIP"), trailer) {
+                        (Ok(f), _) => Some(f),
+                        (_, Some(t)) => Some(t),
+                        _ => api::call::<Option<String>>("clip_url", json!({ "id": pick.id, "title": pick.name, "year": year })).await.ok().flatten(),
                     };
-                    if let Ok(Some(url)) = clip {
+                    if let Some(url) = url {
                         let owner = format!("hero:{scope}:{}", pick.id);
                         let _ = this.update(cx, |v, cx| {
                             v.clip = Some((owner.clone(), url.clone()));
                             let vid = crate::ui::video::get(cx);
-                            vid.update(cx, |x, cx| x.play(&owner, &url, cx));
+                            vid.update(cx, |x, cx| x.play_once(&owner, &url, cx));
                         });
                     }
                 }
@@ -322,7 +325,8 @@ impl Render for Home {
                 }
                 page = page.child(hero::hero(
                     m,
-                    vh * 0.86,
+                    // a taller billboard: more picture above the title
+                    vh * 0.94,
                     clip,
                     Box::new(move |_, _, cx| Nav::play(&a, cx)),
                     Box::new(move |_, _, cx| Nav::detail(&b, cx)),

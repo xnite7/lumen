@@ -81,8 +81,14 @@ impl Clip {
     }
 
     pub fn play(&self, url: &str, muted: bool) {
+        self.play_with(url, muted, true);
+    }
+
+    /// Play once (it holds on the last frame; `ended` then says so) or loop.
+    pub fn play_with(&self, url: &str, muted: bool, looping: bool) {
         self.gen.fetch_add(1, Ordering::Relaxed);
         self.ready.store(false, Ordering::Relaxed);
+        let _ = self.mpv.set_property("loop-file", if looping { "inf" } else { "no" });
         let _ = self.mpv.set_property("mute", muted);
         let _ = self.mpv.command("loadfile", &[url, "replace"]);
         let _ = self.mpv.set_property("pause", false);
@@ -99,6 +105,11 @@ impl Clip {
 
     pub fn set_muted(&self, muted: bool) {
         let _ = self.mpv.set_property("mute", muted);
+    }
+
+    /// a play-once file reached its end
+    pub fn ended(&self) -> bool {
+        self.mpv.get_property::<bool>("eof-reached").unwrap_or(false)
     }
 
     pub fn is_ready(&self) -> bool {

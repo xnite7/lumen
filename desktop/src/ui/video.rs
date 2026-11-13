@@ -31,40 +31,37 @@ pub struct Video {
     old: Vec<Arc<RenderImage>>,
     ready_tx: Option<futures::channel::mpsc::UnboundedSender<()>>,
     pub paused: bool,
+    /// this clip plays once (the billboard), not on a loop
+    once: bool,
 }
 
-/// Is this kind of clip muted? (trailers never; billboard / previews by setting)
+/// One sound switch for the billboard and the previews: on (sound) unless
+/// you turned it off, and it stays how you left it, next time too.
+const MUTED_KEY: &str = "gpui_clips_muted";
+static MUTED: std::sync::OnceLock<std::sync::atomic::AtomicBool> = std::sync::OnceLock::new();
+
+fn muted_flag() -> &'static std::sync::atomic::AtomicBool {
+    MUTED.get_or_init(|| std::sync::atomic::AtomicBool::new(couch::state::try_get().and_then(|s| s.core.db.get::<bool>(MUTED_KEY)).unwrap_or(false)))
+}
+
+/// Is this kind of clip muted? (trailers never)
 pub fn is_muted(owner: &str) -> bool {
-    let g = couch::state::get().core.settings().general;
-    if owner.starts_with("trailer:") {
-        false
-    } else if owner.starts_with("hero:") {
-        g.hero_muted
-    } else {
-        g.preview_muted
-    }
+    !owner.starts_with("trailer:") && muted_flag().load(std::sync::atomic::Ordering::Relaxed)
 }
 
-/// The speaker on the billboard / a preview: flips its sound switch (kept).
-pub fn toggle_sound(owner: &str, cx: &mut App) {
-    let core = couch::state::get().core.clone();
-    let mut s = core.settings();
-    let hero = owner.starts_with("hero:");
-    let now = if hero { &mut s.general.hero_muted } else { &mut s.general.preview_muted };
-    *now = !*now;
-    let muted = *now;
-    let v = serde_json::to_value(&s).unwrap_or_default();
-    *core.settings.write() = s;
-    couch::rt::spawn(async move {
-        let _ = couch::dispatch::invoke("settings_set", serde_json::json!({ "settings": v })).await;
-    });
+/// The speaker on the billboard / a preview: flips the sound switch (kept).
+pub fn toggle_sound(_owner: &str, cx: &mut App) {
+    let muted = !muted_flag().load(std::sync::atomic::Ordering::Relaxed);
+    muted_flag().store(muted, std::sync::atomic::Ordering::Relaxed);
+    let _ = couch::state::get().core.db.set(MUTED_KEY, &muted);
     let vid = get(cx);
     vid.update(cx, |x, cx| {
-        if x.owner.starts_with(if hero { "hero:" } else { "card:" }) {
+        if !x.owner.starts_with("trailer:") {
             x.set_muted(muted);
         }
         cx.notify();
     });
+    cx.refresh_windows();
 }
 
 /// A round speaker button for a playing clip.
@@ -77,11 +74,9 @@ pub fn sound_button(owner: String, size: f32) -> impl IntoElement {
         .items_center()
         .justify_center()
         .rounded_full()
-        .bg(crate::theme::black(0.45))
-        .border_1()
-        .border_color(crate::theme::white(0.35))
+        // no ring, no plate: just the speaker, a light glass behind it on hover
         .cursor_pointer()
-        .hover(|s| s.bg(crate::theme::black(0.7)))
+        .hover(|s| s.bg(crate::theme::white(0.16)))
         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .on_click(move |_, _, cx| {
             cx.stop_propagation();
@@ -138,6 +133,7 @@ pub fn init(cx: &mut App) {
             old: vec![],
             ready_tx: Some(tx),
             paused: false,
+            once: false,
         }
     });
     cx.set_global(VideoHandle(v));
@@ -170,7 +166,17 @@ impl Video {
     /// Play `url` for `owner` (looping). Trailers have sound; the billboard
     /// and previews follow their sound switch (the speaker button on them).
     pub fn play(&mut self, owner: &str, url: &str, cx: &mut Context<Self>) {
+        self.play_with(owner, url, true, cx)
+    }
+
+    /// The billboard plays its trailer once, then goes back to its picture.
+    pub fn play_once(&mut self, owner: &str, url: &str, cx: &mut Context<Self>) {
+        self.play_with(owner, url, false, cx)
+    }
+
+    fn play_with(&mut self, owner: &str, url: &str, looping: bool, cx: &mut Context<Self>) {
         let muted = is_muted(owner);
+        self.once = !looping;
         self.paused = false;
         self.owner = owner.to_string();
         self.since = None;
@@ -179,7 +185,7 @@ impl Video {
         }
         #[cfg(target_os = "windows")]
         if let Some(n) = self.native() {
-            n.play(url, muted);
+            n.play_with(url, muted, looping);
             cx.notify();
             return;
         }
@@ -267,6 +273,13 @@ impl Video {
         }
         #[cfg(target_os = "windows")]
         if let Some(n) = &self.native {
+            // played once and done: back to the picture
+            if self.once && n.is_ready() && n.ended() {
+                n.stop();
+                self.owner.clear();
+                self.since = None;
+                return None;
+            }
             return n.is_ready().then_some(Pic::Native);
         }
         let s = self.surface.as_ref()?;
@@ -417,9 +430,9 @@ pub fn hover(m: &crate::api::Meta, on: bool, cx: &mut App) {
         return;
     }
     cx.set_global(Pending(owner.clone()));
-    // half the hover delay setting: previews start sooner here than in the old app
-    let delay = (couch::state::get().core.settings().general.hover_delay_ms / 2).max(150) as u64;
-    let (id, name, year) = (m.id.clone(), m.name.clone(), m.year());
+    // a quarter of the hover delay setting: previews start quickly here
+    let delay = (couch::state::get().core.settings().general.hover_delay_ms / 4).max(100) as u64;
+    let (id, name, year, kind) = (m.id.clone(), m.name.clone(), m.year(), m.kind.clone());
     cx.spawn(async move |cx| {
         crate::timer::after(std::time::Duration::from_millis(delay)).await;
         let still = cx.update(|cx| cx.try_global::<Pending>().map_or(false, |p| p.0 == owner));
@@ -429,6 +442,11 @@ pub fn hover(m: &crate::api::Meta, on: bool, cx: &mut App) {
         let url = match std::env::var("COUCH_TEST_CLIP") {
             Ok(f) => Some(f),
             Err(_) => crate::api::call::<Option<String>>("clip_url", serde_json::json!({ "id": id, "title": name, "year": year })).await.ok().flatten(),
+        };
+        // no clip for it (Money Heist, The Matrix…): its trailer instead
+        let url = match url {
+            Some(u) => Some(u),
+            None => crate::api::call::<Option<String>>("trailer_get", serde_json::json!({ "kind": kind, "id": id })).await.ok().flatten().filter(|k| !k.is_empty()).map(|k| format!("https://www.youtube.com/watch?v={k}")),
         };
         let Some(url) = url else { return };
         let _ = cx.update(|cx| {

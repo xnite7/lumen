@@ -21,6 +21,11 @@ mod timer;
 mod ui;
 mod views;
 
+thread_local! {
+    static FPS_ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static FRAMES: std::cell::RefCell<std::collections::VecDeque<std::time::Instant>> = std::cell::RefCell::new(std::collections::VecDeque::new());
+}
+
 static ON_PLAYER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// couch's window to the front (restored if minimised). Call it only when
@@ -394,6 +399,12 @@ impl Root {
     /// keys: space play/pause, arrows seek/volume, f full screen, esc back
     fn key(&mut self, e: &gpui::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let k = e.keystroke.key.as_str();
+        // ctrl+shift+f: a frame-rate meter in the corner (how smooth is it here?)
+        if k == "f" && e.keystroke.modifiers.control && e.keystroke.modifiers.shift {
+            FPS_ON.with(|f| f.set(!f.get()));
+            cx.notify();
+            return;
+        }
         // esc closes a menu or sheet first
         if k == "escape" && self.menu.read(cx).open.is_some() {
             self.menu.update(cx, |m, cx| {
@@ -703,6 +714,19 @@ fn window_controls() -> impl IntoElement {
 impl Render for Root {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         ui::video::begin_frame();
+        let fps = FPS_ON.with(|f| f.get()).then(|| {
+            // frames drawn in the last second (while it's on, it keeps drawing)
+            window.request_animation_frame();
+            FRAMES.with(|fr| {
+                let mut fr = fr.borrow_mut();
+                let now = std::time::Instant::now();
+                fr.push_back(now);
+                while fr.front().map_or(false, |t| now.duration_since(*t).as_secs_f32() > 1.) {
+                    fr.pop_front();
+                }
+                fr.len()
+            })
+        });
         ON_PLAYER.store(self.route == Route::Player, std::sync::atomic::Ordering::Relaxed);
         ui::set_scale(window.scale_factor(), f32::from(window.viewport_size().width));
         // nothing has the keyboard (the box that had it is gone): couch takes it,
@@ -839,6 +863,7 @@ impl Render for Root {
             .child(page)
             .when(!playing && self.route != Route::SignIn, |d| d.child(self.nav_bar(cx)))
             .when(self.route == Route::SignIn, |d| d.child(window_controls()))
+            .children(fps.map(|n| div().absolute().bottom(px(12.)).left(px(12.)).px(px(10.)).py(px(4.)).rounded(px(8.)).bg(theme::black(0.7)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(if n >= 130 { gpui::rgb(0x7ee08a) } else if n >= 90 { gpui::rgb(0xf4c76a) } else { gpui::rgb(0xff6b6b) }).child(format!("{n} fps"))))
             // while playing: a strip along the top moves the window (it never pauses the film)
             .when(playing && !pip::is_on(), |d| d.child(div().absolute().top_0().left_0().right(px(150.)).h(px(24.)).window_control_area(WindowControlArea::Drag)))
             .when(playing && !pip::is_on(), |d| d.child(window_controls()))
