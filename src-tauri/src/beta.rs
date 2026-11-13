@@ -107,7 +107,11 @@ pub async fn install_and_open(core: &Core) -> AppResult<()> {
 /// os error 156xx). Then the package is removed (it's re-made by itself on the
 /// next start) and it's started again.
 pub fn launch(exe: &std::path::Path, dir: &std::path::Path) -> std::io::Result<std::process::Child> {
-    match std::process::Command::new(exe).current_dir(dir).spawn() {
+    launch_with(exe, dir, &[])
+}
+
+pub fn launch_with(exe: &std::path::Path, dir: &std::path::Path, args: &[&str]) -> std::io::Result<std::process::Child> {
+    match std::process::Command::new(exe).args(args).current_dir(dir).spawn() {
         Ok(c) => Ok(c),
         #[cfg(target_os = "windows")]
         Err(e) if e.raw_os_error().map_or(false, |c| (15600..15700).contains(&c)) => {
@@ -116,7 +120,7 @@ pub fn launch(exe: &std::path::Path, dir: &std::path::Path) -> std::io::Result<s
                 .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", "Get-AppxPackage -Name Midnite.Couch | Remove-AppxPackage"])
                 .creation_flags(0x0800_0000)
                 .status();
-            std::process::Command::new(exe).current_dir(dir).spawn()
+            std::process::Command::new(exe).args(args).current_dir(dir).spawn()
         }
         Err(e) => Err(e),
     }

@@ -14,6 +14,17 @@ pub fn requested() -> Option<String> {
     args.iter().position(|a| a == "--open").and_then(|i| args.get(i + 1).cloned()).or_else(|| std::env::var("COUCH_START").ok())
 }
 
+/// Wait (up to `max`) until no other couch is answering.
+pub fn wait_gone(max: Duration) {
+    let until = std::time::Instant::now() + max;
+    while std::time::Instant::now() < until {
+        if TcpStream::connect_timeout(&([127, 0, 0, 1], PORT).into(), Duration::from_millis(200)).is_err() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
 /// Already open? Hand it the page and return true (this launch then quits).
 pub fn forward(spec: Option<&str>) -> bool {
     let Ok(mut s) = TcpStream::connect_timeout(&([127, 0, 0, 1], PORT).into(), Duration::from_millis(300)) else { return false };

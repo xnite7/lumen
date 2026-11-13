@@ -949,6 +949,11 @@ fn main() {
         uninstall::run();
         return;
     }
+    // started by the update's "restart now": the old couch is still closing,
+    // so wait for it to go (else this one would hand over to it and quit too)
+    if std::env::args().any(|a| a == "--after-update") {
+        jump::wait_gone(std::time::Duration::from_secs(15));
+    }
     // couch already open? hand it the page asked for, and stop here
     if jump::forward(Some(jump::requested().unwrap_or_else(|| "show".into()).as_str())) {
         return;
