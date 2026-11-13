@@ -62,6 +62,7 @@ pub fn start(cx: &mut App) {
         couch::beta::clean_old(&d);
         if VERSION != "0.0.0" {
             start_menu(&d);
+            crate::uninstall::register(VERSION);
         }
     }
     // a dev build (no version) doesn't update itself

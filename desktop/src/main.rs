@@ -14,6 +14,7 @@ mod theme;
 mod mini;
 mod jump;
 mod tile;
+mod uninstall;
 mod media;
 mod notify;
 mod timer;
@@ -918,6 +919,11 @@ async fn refresh_jump_list() {
 }
 
 fn main() {
+    // from Windows' Apps list: remove couch (a script finishes once this closes)
+    if uninstall::requested() {
+        uninstall::run();
+        return;
+    }
     // couch already open? hand it the page asked for, and stop here
     if jump::forward(Some(jump::requested().unwrap_or_else(|| "show".into()).as_str())) {
         return;

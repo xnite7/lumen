@@ -129,6 +129,8 @@ pub struct Settings {
     cache: Value,
     tobii: Value,
     scroll: ScrollHandle,
+    /// "remove the new couch" asks once more before it goes
+    confirm_remove: bool,
 }
 
 impl Settings {
@@ -143,7 +145,7 @@ impl Settings {
             }
         })
         .detach();
-        let me = Self { addons: vec![], secrets: Value::Null, url, hue_ip, bridges: vec![], hue: Value::Null, hue_busy: false, testing: false, cache: Value::Null, tobii: Value::Null, scroll: ScrollHandle::new() };
+        let me = Self { addons: vec![], secrets: Value::Null, url, hue_ip, bridges: vec![], hue: Value::Null, hue_busy: false, testing: false, cache: Value::Null, tobii: Value::Null, scroll: ScrollHandle::new(), confirm_remove: false };
         Self::load(cx);
         me
     }
@@ -497,6 +499,7 @@ impl Render for Settings {
         // ---------------------------------------------------------- storage
         let mb = |k: &str| self.cache[k].as_f64().map(|b| format!("{:.0} MB", b / 1_048_576.)).unwrap_or_default();
         let total = ["images", "torrents", "thumbs", "bytes", "total"].iter().map(|k| mb(k)).find(|s| !s.is_empty()).unwrap_or_default();
+        let sure = self.confirm_remove;
         page = page.child(heading("storage")).child(
             group().child(
                 line(0)
@@ -510,6 +513,19 @@ impl Render for Settings {
                             });
                         })
                         .detach();
+                    }))),
+            )
+            .child(
+                line(1)
+                    .child(label("remove the new couch", if sure { "sure? click again — your lists, ratings and sign-ins stay (the old couch has them)" } else { "takes it off this PC: the app, its shortcuts, its tile" }))
+                    .child(small_btn("remove-couch".into(), if sure { "remove it" } else { "remove" }, false).on_click(cx.listener(|s, _, _, cx| {
+                        if !s.confirm_remove {
+                            s.confirm_remove = true;
+                            cx.notify();
+                            return;
+                        }
+                        crate::uninstall::run();
+                        cx.quit();
                     }))),
             ),
         );
