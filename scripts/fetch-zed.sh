@@ -23,3 +23,5 @@ if ! grep -q "msix.v1" "$M"; then
   sed -i 's|</assembly>|    <msix xmlns="urn:schemas-microsoft-com:msix.v1" publisher="CN=midnite couch" packageName="Midnite.Couch" applicationId="couch" />\n</assembly>|' "$M"
   grep -q "msix.v1" "$M" || { echo "couch manifest patch did not apply" >&2; exit 1; }
 fi
+# couch's own files over Zed's (pace frames to the fastest screen: 144 Hz)
+cp -R "$(dirname "$0")/zed-patches/." "$DIR/"
