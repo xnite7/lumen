@@ -38,6 +38,13 @@ fn run(days: &HashSet<NaiveDate>) -> u32 {
     n
 }
 
+/// Nights in a row you've watched together with this person (2+ is a streak).
+pub fn together_streak(id: &str) -> u32 {
+    let all = couch::state::get().core.db.get::<HashMap<String, Vec<String>>>(NIGHTS_KEY).unwrap_or_default();
+    let nights: HashSet<NaiveDate> = all.get(id).into_iter().flatten().filter_map(|d| d.parse().ok()).collect();
+    run(&nights)
+}
+
 /// Watched together with someone tonight: remembered for the streaks.
 pub fn note_together(id: &str) {
     if id.is_empty() {

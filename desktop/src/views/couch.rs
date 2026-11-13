@@ -244,8 +244,12 @@ impl Render for Couch {
                     let name = p["name"].as_str().unwrap_or("").to_string();
                     let on = self.members.iter().any(|m| m["id"] == p["id"]);
                     let pid = p["id"].as_str().unwrap_or("").to_string();
+                    // nights in a row the two of you watched together (yours only, nobody else sees it)
+                    let streak = crate::views::crewx::together_streak(&pid);
+                    let group = SharedString::from(format!("crew-g-{pid}"));
                     div()
                         .id(SharedString::from(format!("crew-{pid}")))
+                        .group(group.clone())
                         .cursor_pointer()
                         .on_click(move |_, _, cx| Nav::go(crate::Route::Member(pid.clone()), cx))
                         .w(px(92.))
@@ -253,8 +257,52 @@ impl Render for Couch {
                         .flex_col()
                         .items_center()
                         .gap(px(8.))
-                        .child(div().rounded_full().when(!on, |d| d.opacity(0.45)).child(avatar(p["avatar"].as_str(), &name, 72.)))
-                        .child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).truncate().child(name))
+                        .child(
+                            div()
+                                .relative()
+                                .child(div().rounded_full().when(!on, |d| d.opacity(0.45)).child(avatar(p["avatar"].as_str(), &name, 72.)))
+                                .when(streak >= 2, |d| {
+                                    d.child(
+                                        div()
+                                            .absolute()
+                                            .right(px(-6.))
+                                            .bottom(px(-4.))
+                                            .h(px(26.))
+                                            .px(px(7.))
+                                            .rounded_full()
+                                            .bg(theme::black(0.85))
+                                            .flex()
+                                            .items_center()
+                                            .gap(px(2.))
+                                            .text_size(px(13.))
+                                            .font_weight(FontWeight::BLACK)
+                                            .child(crate::ui::emoji::text("🔥", 13.))
+                                            .child(div().text_color(theme::lamp()).child(streak.to_string())),
+                                    )
+                                }),
+                        )
+                        // the name; on hover with a streak, what the fire means
+                        .child(
+                            div()
+                                .relative()
+                                .w_full()
+                                .flex()
+                                .justify_center()
+                                .child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).truncate().when(streak >= 2, |d| d.group_hover(group.clone(), |s| s.opacity(0.))).child(name))
+                                .when(streak >= 2, |d| {
+                                    d.child(
+                                        div()
+                                            .absolute()
+                                            .top(px(-2.))
+                                            .w(px(150.))
+                                            .flex()
+                                            .justify_center()
+                                            .opacity(0.)
+                                            .group_hover(group, |s| s.opacity(1.))
+                                            .child(div().px(px(8.)).py(px(3.)).rounded(px(8.)).bg(theme::black(0.85)).text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::lamp()).child(format!("{streak}-night streak together"))),
+                                    )
+                                }),
+                        )
                 })
             ));
         }

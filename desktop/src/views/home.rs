@@ -387,7 +387,7 @@ impl Render for Home {
             );
         }
         // the crew's activity: reviews, ratings, finished
-        if !self.feed.is_empty() || !self.streaks.is_empty() {
+        if !self.feed.is_empty() {
             // one card per title, everyone who rated or reviewed it together;
             // a review gets a big quote card over the art, a bare rating a poster
             // with the scores on it, so the row isn't the same box over and over
@@ -400,8 +400,7 @@ impl Render for Home {
                 }
             }
             // who's on a roll first, then what they've been up to
-            let mut items: Vec<gpui::AnyElement> = self.streaks.iter().take(4).enumerate().map(|(i, s)| streak_card(i, s)).collect();
-            items.extend(groups.into_iter().take(16).enumerate().map(|(i, (_, acts))| feed_card(i, &acts)));
+            let items: Vec<gpui::AnyElement> = groups.into_iter().take(16).enumerate().map(|(i, (_, acts))| feed_card(i, &acts)).collect();
             crew_rows.push(
                 div()
                     .flex()
@@ -764,55 +763,6 @@ fn feed_card(i: usize, acts: &[&Value]) -> gpui::AnyElement {
     }
 }
 
-/// "🔥 5 nights in a row": someone on a roll, or the two of you together
-fn streak_card(i: usize, s: &crate::views::crewx::Streak) -> gpui::AnyElement {
-    let id = s.id.clone();
-    let face = |avatar: Option<String>, name: &str, size: f32| -> gpui::AnyElement {
-        match avatar {
-            Some(u) => gpui::img(crate::net::face(&u, size)).size(px(size)).flex_none().into_any_element(),
-            None => div().size(px(size)).flex_none().rounded_full().bg(theme::black(0.3)).flex().items_center().justify_center().text_size(px(size * 0.45)).font_weight(FontWeight::BLACK).child(name.chars().next().unwrap_or('?').to_uppercase().to_string()).into_any_element(),
-        }
-    };
-    let me = couch::state::get().core.db.get::<Value>("discord_user").unwrap_or_default();
-    let line = if s.together { format!("you & {}", s.name) } else { s.name.clone() };
-    div()
-        .id(("streak", i))
-        .flex_none()
-        .w(px(156.))
-        .h(px(236.))
-        .rounded(px(16.))
-        .overflow_hidden()
-        .relative()
-        .cursor_pointer()
-        .bg(gpui::linear_gradient(160., gpui::linear_color_stop(theme::lamp(), 0.), gpui::linear_color_stop(theme::neon(), 1.)))
-        .on_click(move |_, _, cx| Nav::go(crate::Route::Member(id.clone()), cx))
-        .child(
-            div()
-                .absolute()
-                .top_0()
-                .left_0()
-                .size_full()
-                .p(px(14.))
-                .flex()
-                .flex_col()
-                .justify_between()
-                .child(
-                    div()
-                        .flex()
-                        .child(face(s.avatar.clone(), &s.name, 34.))
-                        .when(s.together, |d| d.child(div().ml(px(-10.)).child(face(me["avatar"].as_str().map(String::from), "you", 34.)))),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .child(div().text_size(px(58.)).line_height(px(58.)).font_weight(FontWeight::BLACK).text_color(gpui::black()).child(format!("{}", s.nights)))
-                        .child(div().text_size(px(15.)).font_weight(FontWeight::BLACK).text_color(gpui::black()).child(if s.together { "nights in a row, together 🔥" } else { "nights in a row 🔥" }))
-                        .child(div().mt(px(6.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::black(0.7)).truncate().child(crate::ui::emoji::text(&line, 13.))),
-                ),
-        )
-        .into_any_element()
-}
 
 /// "because you watched X": recommendations for your two latest finishes,
 /// without anything you've already seen or started
