@@ -164,11 +164,16 @@ impl Mpv {
                 ("cscale", "ewa_lanczossharp".into()),
                 ("dscale", "mitchell".into()),
                 ("sub-font-size", "46".into()),
+                // subtitles in Figtree (the new couch ships it in fonts/ beside the .exe)
+                ("sub-font", "Figtree".into()),
                 ("sub-border-size", "2.4".into()),
                 ("screenshot-format", "png".into()),
             ];
             // Set LUMEN_MPV_LOG=1 to get a full mpv log next to the cache.
             let mut opts = opts;
+            if let Some(fd) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("fonts"))).filter(|d| d.exists()) {
+                opts.push(("sub-fonts-dir", fd.to_string_lossy().to_string()));
+            }
             if std::env::var("LUMEN_MPV_LOG").is_ok() {
                 opts.push(("log-file", log_path.clone()));
             }

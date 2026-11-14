@@ -63,6 +63,9 @@ jobs:
           Copy-Item desktop/resources/tiles/*.png dist/
           # the live tile package reads its pictures from couch's folder
           Copy-Item desktop/resources/package/*.png dist/
+          # Figtree for subtitles mpv draws itself
+          New-Item -ItemType Directory -Force dist/fonts | Out-Null
+          Copy-Item desktop/assets/fonts/Figtree-*.ttf dist/fonts/
           # trailers (YouTube) play through yt-dlp
           Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile dist/yt-dlp.exe
       - name: Package (MSIX, signed)

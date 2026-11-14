@@ -581,6 +581,8 @@ impl Render for PlayerView {
                         .rounded(px(8.))
                         .bg(theme::black(0.55))
                         .text_center()
+                        // subtitles in Figtree (open, easy to read at a glance)
+                        .font_family("Figtree")
                         .text_size(px(30.))
                         .font_weight(FontWeight::SEMIBOLD)
                         .line_height(px(40.))
