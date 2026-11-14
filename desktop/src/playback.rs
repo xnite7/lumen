@@ -28,6 +28,7 @@ pub struct State {
     pub aid: String,
     pub sid: String,
     pub ended: bool,
+    pub sub_delay: f64,
 }
 
 #[derive(Default)]
@@ -81,6 +82,7 @@ pub fn init(cx: &mut App) {
                     aid: v["aid"].as_str().map(|s| s.to_string()).unwrap_or_else(|| v["aid"].to_string()),
                     sid: v["sid"].as_str().map(|s| s.to_string()).unwrap_or_else(|| v["sid"].to_string()),
                     ended: v["ended"].as_bool().unwrap_or(false),
+                    sub_delay: v["subDelay"].as_f64().unwrap_or(0.),
                 };
                 let _ = this.update(cx, |p, cx| {
                     if p.loading && !s.buffering && s.duration > 0. {
