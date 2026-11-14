@@ -110,3 +110,12 @@ jobs:
           $files = @("couch-gpui.zip")
           if (Test-Path couch.msix) { $files += @("couch.msix", "couch.cer") }
           gh release create "gpui-$env:COUCH_VERSION" @files --repo "${{ github.repository }}" --prerelease --target "${{ github.sha }}" --title "couch (new) $env:COUCH_VERSION" --notes "$notes"
+          # a fixed "couch" release that always holds the newest build, so this link never goes stale:
+          # https://github.com/xnite7/lumen/releases/download/couch/couch-gpui.zip
+          # (prerelease, so GitHub's "latest" stays on the old app, whose updater reads it)
+          gh release view couch --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create couch --repo "${{ github.repository }}" --prerelease --target "${{ github.sha }}" --title "couch download" --notes "always the newest couch build."
+          }
+          gh release upload couch @files --repo "${{ github.repository }}" --clobber
+          gh release edit couch --repo "${{ github.repository }}" --notes "always the newest couch build. this one: $env:COUCH_VERSION"
