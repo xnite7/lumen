@@ -675,6 +675,14 @@ impl Render for Detail {
                                 let m = m.clone();
                                 move |_, _, cx| Nav::plan_party(&m, cx)
                             }))
+                            .child(act("d-share", icon("share", 22.), "Share").on_click({
+                                let m = m.clone();
+                                move |_, _, cx| {
+                                    let url = couch::commands::share_link(m.kind.clone(), m.id.clone(), m.name.clone());
+                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(url));
+                                    Nav::toast("link copied. paste it anywhere".into(), cx);
+                                }
+                            }))
                             .child(act("d-seen", icon(if all_seen { "checkCircle" } else { "eye" }, 22.), if all_seen { "Watched" } else { "Mark watched" }).on_click(
                                 cx.listener(move |d, _, _, cx| {
                                     let Some(f) = d.full.clone() else { return };

@@ -45,7 +45,6 @@ impl Render for Person {
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .child(crate::ui::smooth::wheel(&self.scroll, "person"))
-            .bg(theme::bg())
             .pt(px(100.))
             .px(px(g))
             .flex()

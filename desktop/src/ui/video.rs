@@ -372,6 +372,11 @@ pub fn spot(radius: f32) -> impl IntoElement {
     .size_full()
 }
 
+/// where a clip is showing through the window right now (nothing may paint there)
+pub fn hole() -> Option<Bounds<Pixels>> {
+    HOLE.with(|h| h.get()).map(|(_, visible, _)| visible)
+}
+
 /// couch's background, with the hole where a GPU clip shows; then the
 /// clip's window goes under it (or away when nothing's showing).
 pub fn paint_bg(color: gpui::Hsla) -> impl IntoElement {

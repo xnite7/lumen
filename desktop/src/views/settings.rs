@@ -786,6 +786,6 @@ impl Render for Settings {
             .pl(px(44.))
             .pr(px(g))
             .child(div().max_w(px(760.)).flex().flex_col().gap(px(12.)).children(body).child(div().flex_none().h(px(80.))));
-        div().size_full().flex().bg(theme::bg()).child(side).child(page)
+        div().size_full().flex().child(side).child(page)
     }
 }

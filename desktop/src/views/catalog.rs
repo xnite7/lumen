@@ -173,7 +173,6 @@ impl Render for Catalog {
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .child(crate::ui::smooth::wheel(&self.scroll, "catalog"))
-            .bg(theme::bg())
             .px(px(g))
             .pt(px(100.))
             .pb(px(80.))

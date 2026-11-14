@@ -88,7 +88,6 @@ impl Render for Couch {
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .child(crate::ui::smooth::wheel(&self.scroll, "couch"))
-            .bg(theme::bg())
             .pt(px(96.))
             .px(px(g))
             .flex()

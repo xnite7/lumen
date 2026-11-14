@@ -157,9 +157,34 @@ impl Render for Library {
         let cols = (((vw - g * 2.) + 14.) / (176. + 14.)).floor().max(2.);
         let w = ((vw - g * 2.) - (cols - 1.) * 14.) / cols;
         let mut page = div().id("library").size_full().overflow_y_scroll().track_scroll(&self.scroll)
-            .child(crate::ui::smooth::wheel(&self.scroll, "library")).bg(theme::bg()).pt(px(96.)).px(px(g)).flex().flex_col().gap(px(22.));
+            .child(crate::ui::smooth::wheel(&self.scroll, "library")).pt(px(96.)).px(px(g)).flex().flex_col().gap(px(22.));
         page = page
-            .child(div().flex_none().text_size(px(40.)).font_weight(FontWeight::BLACK).child("my lists"))
+            .child(
+                div()
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap(px(18.))
+                    .child(div().text_size(px(40.)).font_weight(FontWeight::BLACK).child("my lists"))
+                    .child(
+                        div()
+                            .id("lists-following")
+                            .px(px(16.))
+                            .h(px(38.))
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .rounded_full()
+                            .bg(theme::white(0.08))
+                            .hover(|s| s.bg(theme::white(0.16)))
+                            .cursor_pointer()
+                            .text_size(px(15.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .on_click(|_, _, cx| crate::Nav::go(crate::Route::Following, cx))
+                            .child(crate::ui::icon("heart", 17.))
+                            .child("following"),
+                    ),
+            )
             .child(div().flex_none().flex().gap(px(8.)).flex_wrap().children(TABS.iter().map(|(t, label)| {
                 let t = *t;
                 chip(SharedString::from(format!("lt-{label}")), label, self.tab == t).on_click(cx.listener(move |l, _, _, cx| {

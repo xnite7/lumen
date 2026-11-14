@@ -99,6 +99,7 @@ pub enum Route {
     Studio(u64, String),
     Catalog(views::catalog::Spec),
     Vibe,
+    Following,
 }
 
 /// Getting around from anywhere: `Nav::detail(&meta, cx)`.
@@ -132,6 +133,11 @@ impl Nav {
                     if r.route == Route::Lists {
                         if let Some(l) = &r.library {
                             l.update(cx, |_, cx| views::library::Library::load(cx));
+                        }
+                    }
+                    if r.route == Route::Following {
+                        if let Some(f) = &r.following {
+                            f.update(cx, |_, cx| views::following::Following::load(cx));
                         }
                     }
                 }
@@ -172,6 +178,7 @@ impl Nav {
         });
     }
     pub fn detail(m: &Meta, cx: &mut App) {
+        ui::ambient::set(m.background.clone().or(m.poster.clone()).map(|u| api::sized(&u, "w342")), cx);
         Self::go(Route::Detail(m.clone()), cx);
     }
     pub fn play(m: &Meta, cx: &mut App) {
@@ -263,6 +270,7 @@ pub struct Root {
     studio: Option<Entity<views::studio::Studio>>,
     catalog: Option<Entity<views::catalog::Catalog>>,
     vibe: Option<Entity<views::vibe::Vibe>>,
+    following: Option<Entity<views::following::Following>>,
     invite: Entity<views::invite::Invite>,
     pub planner: Entity<views::planner::Planner>,
     pub wrapped: Entity<views::wrapped::Wrapped>,
@@ -799,6 +807,11 @@ impl Render for Root {
                 }
                 self.studio.clone().unwrap().into_any_element()
             }
+            Route::Following => {
+                // always fresh: you may have followed someone since
+                let f = self.following.get_or_insert_with(|| cx.new(views::following::Following::new)).clone();
+                f.into_any_element()
+            }
             Route::Lists => self.library.get_or_insert_with(|| cx.new(views::library::Library::new)).clone().into_any_element(),
             Route::Search => {
                 let s = self.search.get_or_insert_with(|| cx.new(views::search::Search::new)).clone();
@@ -859,6 +872,8 @@ impl Render for Root {
             }))
             // the background, with a see-through spot where a GPU clip plays
             .when(!playing, |d| d.child(ui::video::paint_bg(theme::bg().into())))
+            // the artwork you're on, glowing behind the page
+            .when(!playing && self.route != Route::SignIn, |d| d.child(ui::ambient::layer(window)))
             .font_family(theme::FONT)
             .text_color(theme::text())
             .child(page)
@@ -1153,6 +1168,7 @@ fn main() {
                             studio: None,
                             catalog: None,
                             vibe: None,
+                            following: None,
                             invite: cx.new(views::invite::Invite::new),
                             planner: cx.new(views::planner::Planner::new),
                             wrapped: cx.new(views::wrapped::Wrapped::new),

@@ -36,3 +36,4 @@ pub fn soon(name: &str) -> AnyElement {
         .child(div().text_size(px(16.)).text_color(theme::label2()).child("being rebuilt for the new app"))
         .into_any_element()
 }
+pub mod following;

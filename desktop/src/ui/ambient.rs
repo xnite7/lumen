@@ -1,0 +1,140 @@
+//! The light behind everything: the artwork you're on, enormous and blurred,
+//! glowing down from the top of the window and cross-fading when it changes.
+use gpui::{canvas, div, prelude::*, px, App, Bounds, Corners, Pixels, Window};
+use std::cell::RefCell;
+use std::sync::Arc;
+use std::time::Instant;
+
+#[derive(Default)]
+struct State {
+    want: String,
+    cur: Option<Arc<gpui::Image>>,
+    prev: Option<Arc<gpui::Image>>,
+    at: Option<Instant>,
+}
+
+thread_local! {
+    static S: RefCell<State> = RefCell::new(State::default());
+}
+
+const FADE: f32 = 0.7;
+
+/// Tiny, soft and dim: stretched over the window it reads as a glow.
+fn glow(bytes: &[u8]) -> Option<Arc<gpui::Image>> {
+    let im = image::load_from_memory(bytes).ok()?;
+    let small = image::imageops::resize(&im.to_rgba8(), 48, 27, image::imageops::FilterType::Triangle);
+    let mut soft = image::imageops::blur(&small, 2.2);
+    let h = soft.height() as f32;
+    for (_, y, p) in soft.enumerate_pixels_mut() {
+        // brightest along the top, gone by the bottom
+        let fall = (1. - y as f32 / (h - 1.)).powf(1.35);
+        let k = 0.46 * fall;
+        // a little more colour than the picture has (dim pictures still glow)
+        let (r, g, b) = (p[0] as f32, p[1] as f32, p[2] as f32);
+        let l = 0.299 * r + 0.587 * g + 0.114 * b;
+        let sat = |c: f32| (l + (c - l) * 1.35).clamp(0., 255.);
+        p[0] = (sat(r) * k) as u8;
+        p[1] = (sat(g) * k) as u8;
+        p[2] = (sat(b) * k) as u8;
+        p[3] = 255;
+    }
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(soft).write_to(&mut out, image::ImageFormat::Png).ok()?;
+    Some(Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
+}
+
+/// This is the artwork in front of you now.
+pub fn set(url: Option<String>, cx: &mut App) {
+    let Some(url) = url.filter(|u| !u.is_empty()) else { return };
+    let same = S.with(|s| {
+        let mut s = s.borrow_mut();
+        if s.want == url {
+            return true;
+        }
+        s.want = url.clone();
+        false
+    });
+    if same {
+        return;
+    }
+    cx.spawn(async move |cx| {
+        // a moment, so sweeping across a row doesn't load every poster
+        crate::timer::after(std::time::Duration::from_millis(140)).await;
+        if S.with(|s| s.borrow().want != url) {
+            return;
+        }
+        let u = url.clone();
+        let pic = couch::rt::spawn(async move {
+            let core = couch::state::get().core.clone();
+            couch::images::load(&core, &u).await.ok().and_then(|(b, _)| glow(&b))
+        })
+        .await
+        .ok()
+        .flatten();
+        let Some(pic) = pic else { return };
+        let ok = S.with(|s| {
+            let mut s = s.borrow_mut();
+            if s.want != url {
+                return false;
+            }
+            s.prev = s.cur.take();
+            s.cur = Some(pic);
+            s.at = Some(Instant::now());
+            true
+        });
+        if ok {
+            let _ = cx.update(|cx| cx.refresh_windows());
+        }
+    })
+    .detach();
+}
+
+fn piece(pic: Arc<gpui::Image>) -> impl IntoElement {
+    canvas(
+        |_, _, _| (),
+        move |bounds, _, window, cx| {
+            let Some(data) = pic.clone().use_render_image(window, cx) else { return };
+            // never over a playing clip (it shows through a hole in the window)
+            let parts: Vec<Bounds<Pixels>> = match crate::ui::video::hole() {
+                None => vec![bounds],
+                Some(r) => {
+                    let (o, s) = (bounds.origin, bounds.size);
+                    vec![
+                        Bounds::new(o, gpui::size(s.width, r.top() - o.y)),
+                        Bounds::new(gpui::point(o.x, r.bottom()), gpui::size(s.width, o.y + s.height - r.bottom())),
+                        Bounds::new(gpui::point(o.x, r.top()), gpui::size(r.left() - o.x, r.size.height)),
+                        Bounds::new(gpui::point(r.right(), r.top()), gpui::size(o.x + s.width - r.right(), r.size.height)),
+                    ]
+                }
+            };
+            for q in parts {
+                if q.size.width > px(0.) && q.size.height > px(0.) {
+                    let _ = window.paint_image(q, bounds, Corners::default(), data.clone(), 0, false);
+                }
+            }
+        },
+    )
+    .absolute()
+    .size_full()
+}
+
+/// The glow, under the page.
+pub fn layer(window: &mut Window) -> impl IntoElement {
+    let (cur, prev, t) = S.with(|s| {
+        let s = s.borrow();
+        let t = s.at.map_or(1., |a| (a.elapsed().as_secs_f32() / FADE).min(1.));
+        (s.cur.clone(), s.prev.clone(), t)
+    });
+    if t < 1. {
+        window.request_animation_frame();
+    }
+    // ease in and out
+    let e = t * t * (3. - 2. * t);
+    div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .size_full()
+        .children(prev.filter(|_| t < 1.).map(|p| div().absolute().size_full().opacity(1. - e).child(piece(p))))
+        .children(cur.map(|c| div().absolute().size_full().opacity(e).child(piece(c))))
+}

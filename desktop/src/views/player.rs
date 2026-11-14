@@ -44,6 +44,8 @@ pub struct PlayerView {
     aspect: &'static str,
     /// the season the episodes menu is showing (None: the one playing)
     ep_season: Option<i64>,
+    /// how well the stream is coming in while it loads: 0-4 bars (None: not that kind of stream)
+    signal: Option<u8>,
 }
 
 impl PlayerView {
@@ -72,9 +74,39 @@ impl PlayerView {
             };
         })
         .detach();
+        // while it loads: how strong the connection is, as bars
+        cx.spawn(async move |this, cx| loop {
+            crate::timer::after(Duration::from_millis(900)).await;
+            let Ok(loading) = this.update(cx, |v, cx| v.pb.read(cx).loading) else { break };
+            let sig = if loading {
+                let st = crate::api::call::<serde_json::Value>("torrent_stats", json!({})).await.unwrap_or_default();
+                (!st.is_null()).then(|| {
+                    let peers = st["peers"].as_u64().unwrap_or(0);
+                    let sp = st["downloadMbps"].as_f64().unwrap_or(0.);
+                    match (peers, sp) {
+                        (0, _) => 0,
+                        (_, s) if s < 0.2 => 1,
+                        (_, s) if s < 0.8 => 2,
+                        (_, s) if s < 2.5 => 3,
+                        _ => 4,
+                    }
+                })
+            } else {
+                None
+            };
+            let Ok(()) = this.update(cx, |v, cx| {
+                if v.signal != sig {
+                    v.signal = sig;
+                    cx.notify();
+                }
+            }) else {
+                break;
+            };
+        })
+        .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_x: Default::default(), aspect: "fit", ep_season: None }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_x: Default::default(), aspect: "fit", ep_season: None, signal: None }
     }
 
     pub fn poke(&mut self, cx: &mut Context<Self>) {
@@ -713,9 +745,20 @@ impl Render for PlayerView {
                         })
                         .child(
                             div()
-                                .text_size(px(16.))
-                                .text_color(if p.error.is_empty() { theme::label2() } else { gpui::rgb(0xff8a8a) })
-                                .child(if p.error.is_empty() { p.status.clone() } else { p.error.clone() }),
+                                .flex()
+                                .items_center()
+                                .gap(px(12.))
+                                .children(self.signal.filter(|_| p.error.is_empty()).map(|n| {
+                                    div().flex().items_end().gap(px(3.)).h(px(16.)).children((0..4u8).map(move |i| {
+                                        div().w(px(4.)).h(px(5. + 3.7 * i as f32)).rounded(px(1.5)).bg(if i < n { theme::text().into() } else { theme::white(0.25) })
+                                    }))
+                                }))
+                                .child(
+                                    div()
+                                        .text_size(px(16.))
+                                        .text_color(if p.error.is_empty() { theme::label2() } else { gpui::rgb(0xff8a8a) })
+                                        .child(if p.error.is_empty() { p.status.clone() } else { p.error.clone() }),
+                                ),
                         )
                         // not this one? choose
                         .when(p.all.len() > 1, |d| {

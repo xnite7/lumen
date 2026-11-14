@@ -9,13 +9,27 @@ use serde_json::{json, Value};
 
 pub struct Menu {
     pub open: Option<(Meta, Point<Pixels>)>,
+    /// the title is on "continue watching" (so it can be taken off)
+    in_cw: bool,
+}
+
+thread_local! {
+    static DISMISSED: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+/// titles taken off "continue watching" this session (Home drops them right away)
+pub fn dismissed() -> Vec<String> {
+    DISMISSED.with(|d| d.borrow().clone())
 }
 
 impl Menu {
     pub fn new(_cx: &mut Context<Self>) -> Self {
-        Self { open: None }
+        Self { open: None, in_cw: false }
     }
     pub fn show(&mut self, m: Meta, at: Point<Pixels>, cx: &mut Context<Self>) {
+        self.in_cw = couch::commands::continue_watching(couch::state::get())
+            .map(|l| l.iter().any(|i| i["_id"].as_str().or(i["id"].as_str()) == Some(m.id.as_str())))
+            .unwrap_or(false)
+            && !dismissed().contains(&m.id);
         self.open = Some((m, at));
         cx.notify();
     }
@@ -25,10 +39,10 @@ impl Render for Menu {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some((m, at)) = self.open.clone() else { return div().absolute().into_any_element() };
         let vs = window.viewport_size();
-        let (w, h) = (250., 300.);
+        let (w, h) = (270., if self.in_cw { 345. } else { 300. });
         let x = f32::from(at.x).min(f32::from(vs.width) - w - 12.);
         let y = f32::from(at.y).min(f32::from(vs.height) - h - 12.);
-        let items: Vec<(&'static str, &'static str, Box<dyn Fn(&Meta, &mut gpui::App)>)> = vec![
+        let mut items: Vec<(&'static str, &'static str, Box<dyn Fn(&Meta, &mut gpui::App)>)> = vec![
             ("play", "play", Box::new(|m, cx| Nav::play(m, cx))),
             ("info", "open", Box::new(|m, cx| Nav::detail(m, cx))),
             ("plus", "add to…", Box::new(|m, cx| Nav::add(m, cx))),
@@ -67,6 +81,23 @@ impl Render for Menu {
                 }),
             ),
         ];
+        if self.in_cw {
+            items.push((
+                "close",
+                "remove from continue watching",
+                Box::new(|m, cx| {
+                    let id = m.id.clone();
+                    DISMISSED.with(|d| d.borrow_mut().push(id.clone()));
+                    cx.refresh_windows();
+                    cx.spawn(async move |cx| {
+                        if let Err(e) = api::call::<Value>("cw_dismiss", json!({ "id": id })).await {
+                            let _ = cx.update(|cx| Nav::toast(e, cx));
+                        }
+                    })
+                    .detach();
+                }),
+            ));
+        }
         let rows = items.into_iter().enumerate().map(|(i, (ic, label, f))| {
             let m = m.clone();
             div()

@@ -101,6 +101,7 @@ impl Home {
                     let pick = list[turn % list.len()].clone();
                     let _ = this.update(cx, |v, cx| {
                         v.hero = Some(pick.clone());
+                        crate::ui::ambient::set(pick.background.clone().or(pick.poster.clone()).map(|u| crate::api::sized(&u, "w342")), cx);
                         crate::views::detail::prefetch(&pick, cx);
                         cx.notify();
                     });
@@ -291,6 +292,23 @@ impl Home {
 
 impl Render for Home {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // taken off "continue watching" from the right-click menu: gone right away
+        let gone = super::menu::dismissed();
+        if !gone.is_empty() {
+            if let Some(r) = self.rows.iter_mut().find(|r| r.key == "cw") {
+                let keep: Vec<bool> = r.items.iter().map(|m| !gone.contains(&m.id)).collect();
+                if keep.iter().any(|k| !k) {
+                    let mut k = keep.iter();
+                    r.items.retain(|_| *k.next().unwrap_or(&true));
+                    let mut k = keep.iter();
+                    r.extra.retain(|_| *k.next().unwrap_or(&true));
+                    if let Some(spec) = r.spec.as_mut() {
+                        spec.fixed = Some(r.items.clone());
+                    }
+                }
+            }
+            self.rows.retain(|r| r.key != "cw" || !r.items.is_empty());
+        }
         let vh = window.viewport_size().height;
         let mut page = div().id(SharedString::from(format!("home-{}", self.scope))).size_full().overflow_y_scroll().track_scroll(&self.scroll)
             .child(crate::ui::smooth::wheel(&self.scroll, self.scope));
@@ -584,7 +602,10 @@ fn row_head(key: &str, title: &str, spec: Option<views_catalog::Spec>) -> gpui::
                 .items_center()
                 .gap(px(6.))
                 .cursor_pointer()
-                .on_click(move |_, _, cx| Nav::go(crate::Route::Catalog(spec.clone()), cx))
+                .on_click({
+                    let following = key == "follow";
+                    move |_, _, cx| Nav::go(if following { crate::Route::Following } else { crate::Route::Catalog(spec.clone()) }, cx)
+                })
                 .child(t)
                 .child(
                     div()
