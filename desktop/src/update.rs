@@ -15,6 +15,16 @@ pub const VERSION: &str = match option_env!("COUCH_VERSION") {
 pub struct Ready(pub Option<String>);
 impl Global for Ready {}
 
+/// how the waiting version goes in: the loose files were swapped already, or
+/// a signed package (an update to the installed couch, or the move to it)
+#[derive(Clone)]
+enum Via {
+    Files,
+    Package(std::path::PathBuf),
+    MoveTo { msix: std::path::PathBuf, cer: std::path::PathBuf },
+}
+static VIA: parking_lot::Mutex<Option<Via>> = parking_lot::Mutex::new(None);
+
 fn newer(a: &str, b: &str) -> bool {
     let p = |s: &str| s.split('.').map(|x| x.parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
     let (a, b) = (p(a), p(b));
@@ -58,7 +68,9 @@ fn start_menu(d: &std::path::Path) {
 
 pub fn start(cx: &mut App) {
     cx.set_global(Ready::default());
-    if let Some(d) = dir() {
+    if crate::packaged::is_packaged() {
+        crate::packaged::tidy_old();
+    } else if let Some(d) = dir() {
         couch::beta::clean_old(&d);
         if VERSION != "0.0.0" {
             start_menu(&d);
@@ -89,7 +101,20 @@ pub fn start(cx: &mut App) {
             if !newer(&v, &have) {
                 continue;
             }
-            let ok = couch::rt::spawn(async move { couch::beta::download_into(&core, &dir).await }).await.map(|r| r.is_ok()).unwrap_or(false);
+            // the signed package for it, when there is one: installed couch
+            // updates with it; a loose-folder couch moves over to it
+            let msix = crate::packaged::fetch(&crate::packaged::asset_url(&v, "couch.msix"), &format!("couch-{v}.msix")).await;
+            let via = match (msix, crate::packaged::is_packaged()) {
+                (Some(m), true) => Some(Via::Package(m)),
+                (Some(m), false) => crate::packaged::fetch(&crate::packaged::asset_url(&v, "couch.cer"), "couch.cer").await.map(|c| Via::MoveTo { msix: m, cer: c }),
+                (None, true) => None,
+                (None, false) => {
+                    let ok = couch::rt::spawn(async move { couch::beta::download_into(&core, &dir).await }).await.map(|r| r.is_ok()).unwrap_or(false);
+                    ok.then_some(Via::Files)
+                }
+            };
+            let ok = via.is_some();
+            *VIA.lock() = via;
             if ok {
                 have = v.clone();
                 let _ = cx.update(|cx| {
@@ -104,11 +129,41 @@ pub fn start(cx: &mut App) {
 
 /// Into the new version now: save what's playing, open the new couch, close this one.
 pub fn restart(cx: &mut App) {
-    let Some(d) = dir() else { return };
     let player = couch::state::get().player.clone();
     let _ = couch::rt::block_on(async move { player.stop().await });
-    if couch::beta::launch_with(&d.join("couch.exe"), &d, &["--after-update"]).is_ok() {
-        cx.quit();
+    match VIA.lock().clone() {
+        Some(Via::Package(m)) => {
+            crate::packaged::apply_update(&m);
+            cx.quit();
+        }
+        Some(Via::MoveTo { msix, cer }) => {
+            // trust couch once (the admin prompt), then Windows' installer
+            cx.spawn(async move |cx| {
+                let ok = couch::rt::spawn_blocking(move || {
+                    if !crate::packaged::trusted() && !crate::packaged::trust(&cer) {
+                        return false;
+                    }
+                    crate::packaged::open_installer(&msix);
+                    true
+                })
+                .await
+                .unwrap_or(false);
+                let _ = cx.update(|cx| {
+                    if ok {
+                        cx.quit();
+                    } else {
+                        crate::Nav::toast("couch needs that yes to install itself — try again from the card".into(), cx);
+                    }
+                });
+            })
+            .detach();
+        }
+        _ => {
+            let Some(d) = dir() else { return };
+            if couch::beta::launch_with(&d.join("couch.exe"), &d, &["--after-update"]).is_ok() {
+                cx.quit();
+            }
+        }
     }
 }
 
@@ -144,12 +199,16 @@ pub fn card(cx: &mut App) -> Option<impl IntoElement> {
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(div().flex().flex_col().gap(px(2.)).child(div().text_size(px(16.)).font_weight(FontWeight::BLACK).child(format!("couch {v} is ready"))).child(div().text_size(px(13.)).text_color(crate::theme::label2()).child("restart to get it — or it's there next time you open couch")))
+            .child(div().flex().flex_col().gap(px(2.)).child(div().text_size(px(16.)).font_weight(FontWeight::BLACK).child(format!("couch {v} is ready"))).child(div().text_size(px(13.)).text_color(crate::theme::label2()).child(if matches!(*VIA.lock(), Some(Via::MoveTo { .. })) {
+                "couch now installs like a proper app: Windows asks once to trust it, then its installer opens"
+            } else {
+                "restart to get it — or it's there next time you open couch"
+            })))
             .child(
                 div()
                     .flex()
                     .gap(px(8.))
-                    .child(btn("upd-now", "restart now", true).on_click(|_, _, cx| restart(cx)))
+                    .child(btn("upd-now", if matches!(*VIA.lock(), Some(Via::MoveTo { .. })) { "install now" } else { "restart now" }, true).on_click(|_, _, cx| restart(cx)))
                     .child(btn("upd-later", "later", false).on_click(|_, _, cx| {
                         cx.set_global(Ready(None));
                         cx.refresh_windows();

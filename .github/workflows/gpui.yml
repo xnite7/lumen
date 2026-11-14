@@ -65,31 +65,31 @@ jobs:
           Copy-Item desktop/resources/package/*.png dist/
           # trailers (YouTube) play through yt-dlp
           Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile dist/yt-dlp.exe
-      - name: Live tile package (Windows 10)
-        # a signed sparse package that gives couch.exe an identity, so it can
-        # drive its Start tile. Needs COUCH_SIGN_PFX (base64 .pfx whose subject
-        # is "CN=midnite couch") and COUCH_SIGN_PASS; without them: skipped.
+      - name: Package (MSIX, signed)
+        # couch as a packaged app: Windows' own installer, uninstall from Start.
+        # Signed with COUCH_SIGN_PFX (base64 .pfx, subject "CN=midnite couch")
+        # and COUCH_SIGN_PASS; couch.cer is its public half (trusted once per PC).
         shell: pwsh
         env:
           PFX: ${{ secrets.COUCH_SIGN_PFX }}
           PFX_PASS: ${{ secrets.COUCH_SIGN_PASS }}
         run: |
-          if (-not $env:PFX) { Write-Host "::warning::COUCH_SIGN_PFX not set; no live tile package"; exit 0 }
+          if (-not $env:PFX) { Write-Host "::warning::COUCH_SIGN_PFX not set; no package"; exit 0 }
           $kit = Get-Item "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64" | Where-Object { Test-Path (Join-Path $_.FullName makeappx.exe) } | Sort-Object { [version]$_.Parent.Name } -Descending | Select-Object -First 1
           $makeappx = Join-Path $kit.FullName makeappx.exe
           $signtool = Join-Path $kit.FullName signtool.exe
           New-Item -ItemType Directory -Force pkg | Out-Null
-          Copy-Item desktop/resources/package/* pkg/
-          & $makeappx pack /d pkg /p dist/couch.msix /nv /o
+          Copy-Item dist/* pkg/ -Recurse
+          (Get-Content desktop/resources/msix/AppxManifest.xml -Raw).Replace('VERSION', "$env:COUCH_VERSION.0") | Set-Content pkg/AppxManifest.xml -Encoding utf8
+          & $makeappx pack /d pkg /p couch.msix /o
           if ($LASTEXITCODE) { exit 1 }
           $pfx = Join-Path $env:RUNNER_TEMP sign.pfx
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX))
-          & $signtool sign /fd SHA256 /f $pfx /p $env:PFX_PASS dist/couch.msix
+          & $signtool sign /fd SHA256 /f $pfx /p $env:PFX_PASS couch.msix
           $signed = $LASTEXITCODE -eq 0
           if ($signed) {
-            # the public half, so couch can ask Windows to trust it (once)
             $c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfx, $env:PFX_PASS)
-            [IO.File]::WriteAllBytes("dist/couch.cer", $c.Export('Cert'))
+            [IO.File]::WriteAllBytes("couch.cer", $c.Export('Cert'))
           }
           Remove-Item $pfx
           if (-not $signed) { exit 1 }
@@ -104,4 +104,6 @@ jobs:
         run: |
           Compress-Archive -Path dist/* -DestinationPath couch-gpui.zip -Force
           $notes = git log -1 --pretty=%s
-          gh release create "gpui-$env:COUCH_VERSION" couch-gpui.zip --repo "${{ github.repository }}" --prerelease --target "${{ github.sha }}" --title "couch (new) $env:COUCH_VERSION" --notes "$notes"
+          $files = @("couch-gpui.zip")
+          if (Test-Path couch.msix) { $files += @("couch.msix", "couch.cer") }
+          gh release create "gpui-$env:COUCH_VERSION" @files --repo "${{ github.repository }}" --prerelease --target "${{ github.sha }}" --title "couch (new) $env:COUCH_VERSION" --notes "$notes"

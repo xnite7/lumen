@@ -11,7 +11,10 @@ const SEEN_KEY: &str = "gpui_notified_eps";
 pub fn start(cx: &mut App) {
     #[cfg(target_os = "windows")]
     {
-        std::thread::spawn(imp::register_links);
+        // (the installed couch declares its couch: links in its package)
+        if !crate::packaged::is_packaged() {
+            std::thread::spawn(imp::register_links);
+        }
         cx.spawn(async move |_| {
             crate::timer::after(Duration::from_secs(45)).await;
             loop {

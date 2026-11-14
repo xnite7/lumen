@@ -15,12 +15,8 @@ pub fn start(cx: &mut App) {
     #[cfg(target_os = "windows")]
     cx.spawn(async move |cx| {
         crate::timer::after(Duration::from_secs(8)).await;
-        let had = imp::has_identity();
-        let fresh = couch::rt::spawn_blocking(imp::register).await.unwrap_or(false);
-        if fresh && !had {
-            let _ = cx.update(|cx| crate::Nav::toast("live tile ready — restart couch, then pin “midnite couch” to Start".to_string(), cx));
-        }
-        if !had {
+        // the tile belongs to the installed (packaged) couch
+        if !crate::packaged::is_packaged() {
             return;
         }
         loop {
@@ -38,10 +34,7 @@ pub fn start(cx: &mut App) {
 
 /// Does couch run with its package identity (the tile is live)?
 pub fn live() -> bool {
-    #[cfg(target_os = "windows")]
-    return imp::has_identity();
-    #[cfg(not(target_os = "windows"))]
-    false
+    crate::packaged::is_packaged()
 }
 
 /// the package's manifest version (resources/package/AppxManifest.xml)

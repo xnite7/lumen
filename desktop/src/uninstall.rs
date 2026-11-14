@@ -77,6 +77,16 @@ pub fn requested() -> bool {
 /// Hand the clean-up to the script, which waits for couch to close, then
 /// removes everything. The caller quits right after.
 pub fn run() {
+    // the installed couch: Windows takes the package away (as Start's uninstall does)
+    #[cfg(target_os = "windows")]
+    if crate::packaged::is_packaged() {
+        use std::os::windows::process::CommandExt;
+        let _ = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", "Start-Sleep -Milliseconds 800; Get-AppxPackage -Name MidniteCouch | Remove-AppxPackage"])
+            .creation_flags(0x0800_0000 | 0x0000_0008)
+            .spawn();
+        return;
+    }
     #[cfg(target_os = "windows")]
     if let Some(path) = write_script() {
         use std::os::windows::process::CommandExt;

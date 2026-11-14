@@ -14,6 +14,7 @@ mod theme;
 mod mini;
 mod jump;
 mod tile;
+mod packaged;
 mod uninstall;
 mod media;
 mod notify;
@@ -969,7 +970,13 @@ fn main() {
     }
     // if couch ever crashes, say why in a file (%LOCALAPPDATA%\\midnite couch (new)\\crash.log)
     std::panic::set_hook(Box::new(|info| {
-        let dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())).unwrap_or_else(std::env::temp_dir);
+        // (the installed couch's own folder is read-only: its log goes to %LOCALAPPDATA%\\midnite couch)
+        let dir = if packaged::is_packaged() {
+            dirs::data_local_dir().map(|d| d.join("midnite couch")).unwrap_or_else(std::env::temp_dir)
+        } else {
+            std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())).unwrap_or_else(std::env::temp_dir)
+        };
+        let _ = std::fs::create_dir_all(&dir);
         let msg = format!("{}\n{info}\n{}\n\n", update::VERSION, std::backtrace::Backtrace::force_capture());
         use std::io::Write;
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("crash.log")) {
@@ -1046,7 +1053,8 @@ fn main() {
                     // the new GPUI fills an "opaque" window with white first
                     window_background: WindowBackgroundAppearance::Transparent,
                     window_min_size: Some(size(px(900.), px(560.))),
-                    app_id: Some("com.midnite.couch".into()),
+                    // (installed as a package, Windows names the window itself)
+                    app_id: (!packaged::is_packaged()).then(|| "com.midnite.couch".into()),
                     ..Default::default()
                 },
                 |window, cx| {

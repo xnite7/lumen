@@ -11,7 +11,12 @@ const PORT: u16 = 53692;
 /// What a launch asked for: `--open detail:series:tt123` (or nothing: just show couch).
 pub fn requested() -> Option<String> {
     let args: Vec<String> = std::env::args().collect();
-    args.iter().position(|a| a == "--open").and_then(|i| args.get(i + 1).cloned()).or_else(|| std::env::var("COUCH_START").ok())
+    args.iter()
+        .position(|a| a == "--open")
+        .and_then(|i| args.get(i + 1).cloned())
+        // a couch: link (installed couch is started with the link itself)
+        .or_else(|| args.iter().skip(1).find(|a| a.starts_with("couch:")).cloned())
+        .or_else(|| std::env::var("COUCH_START").ok())
 }
 
 /// Wait (up to `max`) until no other couch is answering.
@@ -67,7 +72,16 @@ pub fn set(groups: Vec<(String, Vec<Item>)>) {
     use windows::Win32::UI::Shell::Common::{IObjectArray, IObjectCollection};
     use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
     use windows::Win32::UI::Shell::{DestinationList, EnumerableObjectCollection, ICustomDestinationList, IShellLinkW, ShellLink};
-    let Ok(exe) = std::env::current_exe() else { return };
+    // the installed couch is started through its alias (its own folder can't be run from directly)
+    let exe = if crate::packaged::is_packaged() {
+        match dirs::data_local_dir() {
+            Some(d) => d.join("Microsoft\\WindowsApps\\couch.exe"),
+            None => return,
+        }
+    } else {
+        let Ok(exe) = std::env::current_exe() else { return };
+        exe
+    };
     // COM on a thread of its own (the UI thread's COM setup is GPUI's business)
     let _ = std::thread::spawn(move || unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
