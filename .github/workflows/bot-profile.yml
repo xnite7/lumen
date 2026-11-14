@@ -1,4 +1,4 @@
-# Sets couch's bot "About Me" (the app description) from bot/profile.json.
+# Sets the bot's "About Me" (Usher, which also does couch's role checks) from bot/profile.json.
 name: Bot profile
 on:
   push:
