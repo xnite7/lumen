@@ -137,23 +137,23 @@ pub fn restart(cx: &mut App) {
             cx.quit();
         }
         Some(Via::MoveTo { msix, cer }) => {
-            // trust couch once (the admin prompt), then Windows' installer
+            // trust couch once (the admin prompt), install it quietly, and only
+            // then close: if anything says no, this couch stays open and says why
+            crate::Nav::toast("installing… say yes if Windows asks".into(), cx);
             cx.spawn(async move |cx| {
-                let ok = couch::rt::spawn_blocking(move || {
+                let r = couch::rt::spawn_blocking(move || {
                     if !crate::packaged::trusted() && !crate::packaged::trust(&cer) {
-                        return false;
+                        return Err("couch needs that yes to install itself. try again from the card".to_string());
                     }
-                    crate::packaged::open_installer(&msix);
-                    true
+                    crate::packaged::install(&msix)?;
+                    crate::packaged::launch_installed();
+                    Ok(())
                 })
                 .await
-                .unwrap_or(false);
-                let _ = cx.update(|cx| {
-                    if ok {
-                        cx.quit();
-                    } else {
-                        crate::Nav::toast("couch needs that yes to install itself — try again from the card".into(), cx);
-                    }
+                .unwrap_or_else(|e| Err(e.to_string()));
+                let _ = cx.update(|cx| match r {
+                    Ok(()) => cx.quit(),
+                    Err(e) => crate::Nav::toast(format!("couldn't install: {e}"), cx),
                 });
             })
             .detach();

@@ -41,8 +41,8 @@ fn ps_hidden(script: &str, wait: bool) -> bool {
     if wait {
         c.status().map_or(false, |s| s.success())
     } else {
-        // detached: it outlives couch
-        c.creation_flags(0x0800_0000 | 0x0000_0008).spawn().is_ok()
+        // no window, and it outlives couch (a child keeps running after its parent on Windows)
+        c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().is_ok()
     }
 }
 
@@ -97,6 +97,42 @@ pub fn trust(cer: &std::path::Path) -> bool {
     }
 }
 
+/// Install the package for this user, quietly (no installer window to find or
+/// lose). Err: what Windows said.
+pub fn install(msix: &std::path::Path) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        let p = msix.display().to_string().replace('\'', "''");
+        let script = format!("try {{ Add-AppxPackage -Path '{p}' -ForceUpdateFromAnyVersion -ErrorAction Stop; if (-not (Get-AppxPackage -Name {NAME})) {{ throw 'Windows did not install it' }} }} catch {{ Write-Output $_.Exception.Message; exit 1 }}");
+        let out = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", &script])
+            .creation_flags(0x0800_0000)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if out.status.success() {
+            return Ok(());
+        }
+        let said = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let _ = std::fs::write(std::env::temp_dir().join("midnite-couch").join("install-error.txt"), &said);
+        return Err(said.lines().next().unwrap_or("Windows wouldn't install it").chars().take(180).collect());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = msix;
+        Ok(())
+    }
+}
+
+/// Start the installed couch once this one has closed.
+pub fn launch_installed() {
+    #[cfg(target_os = "windows")]
+    ps_hidden(
+        &format!("Start-Sleep -Milliseconds 1500; $p = Get-AppxPackage -Name {NAME}; if ($p) {{ Start-Process ('shell:AppsFolder\\' + $p.PackageFamilyName + '!couch') }}"),
+        false,
+    );
+}
+
 /// Open the package in Windows' installer (the "Install midnite couch?" window).
 pub fn open_installer(msix: &std::path::Path) {
     #[cfg(target_os = "windows")]
@@ -116,7 +152,7 @@ pub fn apply_update(msix: &std::path::Path) {
         let p = msix.display().to_string().replace('\'', "''");
         ps_hidden(
             &format!(
-                "Start-Sleep -Milliseconds 800; Add-AppxPackage -Path '{p}' -ForceApplicationShutdown -ForceUpdateFromAnyVersion; Start-Process (Join-Path $env:LOCALAPPDATA 'Microsoft\\WindowsApps\\couch.exe') -ArgumentList '--after-update'"
+                "Start-Sleep -Milliseconds 800; Add-AppxPackage -Path '{p}' -ForceApplicationShutdown -ForceUpdateFromAnyVersion; $p = Get-AppxPackage -Name {NAME}; Start-Process ('shell:AppsFolder\\' + $p.PackageFamilyName + '!couch')"
             ),
             false,
         );
