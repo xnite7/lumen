@@ -41,6 +41,17 @@ pub struct Together {
     waiting_told: bool,
     /// the host stream this guest last switched to
     sk_applied: Value,
+    /// who I let onto my couch this time (Discord: "watching with …")
+    guests: Vec<String>,
+}
+
+/// Discord's "watching with Mari" / "watching with 3 others".
+fn company(names: &[String]) -> Option<String> {
+    match names.len() {
+        0 => None,
+        1 => Some(format!("watching with {}", names[0])),
+        n => Some(format!("watching with {n} others")),
+    }
 }
 
 #[derive(Clone, Default)]
@@ -298,6 +309,8 @@ impl Together {
     fn stop_hosting(&mut self) {
         if self.hosting.take().is_some() {
             self.line = None;
+            self.guests.clear();
+            couch::discord::set_company(None);
         }
     }
 
@@ -322,6 +335,10 @@ impl Together {
                 let me = api::call::<Value>("discord_me", json!({})).await.ok().and_then(|v| v["id"].as_str().map(|s| s.to_string()));
                 crate::views::crewx::note_together(&from);
                 let _ = this.update(cx, |t, cx| {
+                    if !t.guests.contains(&name) {
+                        t.guests.push(name.clone());
+                    }
+                    couch::discord::set_company(company(&t.guests));
                     if let Some(me) = me {
                         t.start_hosting(me, cx);
                     }
@@ -415,6 +432,7 @@ impl Together {
             let start = room["now"].as_f64().map(|n| n + 2.);
             let prefer: Option<Value> = room["sk"].as_str().and_then(|s| serde_json::from_str(s).ok());
             crate::views::crewx::note_together(&host);
+            couch::discord::set_company(company(&[name.clone()]));
             let _ = cx.update(|cx| {
                 Nav::toast(format!("watching with {name}"), cx);
                 playback::quick_play_with(meta, vid, start, prefer, cx);
@@ -738,6 +756,7 @@ impl Together {
 
     pub fn leave(&mut self, cx: &mut Context<Self>) {
         let f = self.following.take();
+        couch::discord::set_company(None);
         self.line = None;
         self.host_st = None;
         self.can_control = false;

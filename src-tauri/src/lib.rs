@@ -5,6 +5,7 @@ pub mod core;
 pub mod db;
 pub mod crew;
 pub mod discord;
+pub mod discord_art;
 pub mod engine;
 pub mod error;
 pub mod host;

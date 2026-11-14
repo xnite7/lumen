@@ -305,6 +305,15 @@ export default {
     }
     const clipCheck = url.pathname.match(/^\/clip-status\/(tt\d{5,10})$/);
     if (clipCheck) return clipStatus(env, clipCheck[1], false, req); // download check verified; off so nobody burns the monthly downloads
+    // Discord pictures: a title's animated "on the big screen" card, made by
+    // couch and kept here so Discord can show it (public, like the logo)
+    const artFile = url.pathname.match(/^\/art\/([A-Za-z0-9_.-]{1,80})\.gif$/);
+    if (artFile) {
+      // kept in the Durable Object (the Cache API does nothing on workers.dev)
+      const fwd = new Request(req);
+      fwd.headers.delete("x-who");
+      return env.CREW.get(env.CREW.idFromName("midnite")).fetch(fwd);
+    }
     // which country the app is in (for "Top 10 in UAE"); just the 2-letter code
     if (url.pathname === "/geo") return json({ country: String((req as any).cf?.country ?? "").toLowerCase() });
     if (!url.pathname.startsWith("/v1/")) return json({ error: "not here" }, 404);
@@ -933,6 +942,21 @@ export class Crew {
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     this.sweep();
+    // a Discord card (public): stored in pieces (storage values are small)
+    const artGet = url.pathname.match(/^\/art\/([A-Za-z0-9_.-]{1,80})\.gif$/);
+    if (artGet) {
+      const meta = await this.storage.get<{ n: number; at: number }>(`art:${artGet[1]}`);
+      if (!meta) return new Response("no card", { status: 404 });
+      const parts = await this.storage.get<ArrayBuffer>(Array.from({ length: meta.n }, (_, i) => `art:${artGet[1]}:${i}`));
+      const out = new Uint8Array(Array.from(parts.values()).reduce((n, b) => n + b.byteLength, 0));
+      let o = 0;
+      for (let i = 0; i < meta.n; i++) {
+        const b = new Uint8Array(parts.get(`art:${artGet[1]}:${i}`) ?? new ArrayBuffer(0));
+        out.set(b, o);
+        o += b.byteLength;
+      }
+      return new Response(out, { headers: { "content-type": "image/gif", "cache-control": "public, max-age=604800" } });
+    }
     let who: Who;
     try {
       who = JSON.parse(req.headers.get("x-who") ?? "");
@@ -942,6 +966,28 @@ export class Crew {
 
     const line = url.pathname.match(/^\/v1\/room\/([A-Za-z0-9_-]{1,40})\/ws$/);
     if (line && req.headers.get("upgrade") === "websocket") return this.openLine(line[1], who);
+
+    // couch hands in a title's Discord card (a GIF, kept 30 days)
+    const artPut = url.pathname.match(/^\/v1\/art\/([A-Za-z0-9_.-]{1,80})$/);
+    if (artPut && req.method === "PUT") {
+      const b = await req.arrayBuffer();
+      const head = String.fromCharCode(...new Uint8Array(b.slice(0, 6)));
+      if (b.byteLength > 1_500_000 || head !== "GIF89a") return json({ error: "not a card" }, 400);
+      const key = artPut[1];
+      const size = 100_000;
+      const n = Math.ceil(b.byteLength / size);
+      const put: Record<string, unknown> = { [`art:${key}`]: { n, at: Date.now() } };
+      for (let i = 0; i < n; i++) put[`art:${key}:${i}`] = b.slice(i * size, (i + 1) * size);
+      await this.storage.put(put);
+      // forget cards nobody has shown in 30 days
+      const old = await this.storage.list<{ n: number; at: number }>({ prefix: "art:", limit: 400 });
+      for (const [k, v] of old) {
+        if (k.split(":").length === 2 && v && Date.now() - v.at > 30 * 86400_000) {
+          await this.storage.delete([k, ...Array.from({ length: v.n }, (_, i) => `${k}:${i}`)]);
+        }
+      }
+      return json({ url: `${url.origin}/art/${key}.gif` });
+    }
 
     if (req.method === "GET" && url.pathname === "/v1/presence") {
       const members = [...this.members.values()].sort((a, b) => b.at - a.at).map((m) => ({ ...m, frameAt: this.frames.get(m.id)?.at }));

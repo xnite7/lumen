@@ -28,6 +28,19 @@ pub struct Known {
     pub link: Option<String>,
     /// "S2 · E4" / "S2 · E4 · The Episode" for shows, None for films
     pub episode: Option<String>,
+    /// the title's wide art (for the big-screen card) and a short key for it
+    pub art: Option<String>,
+    pub key: Option<String>,
+}
+
+fn art_of(meta: &Value) -> Option<String> {
+    meta.get("background").and_then(|p| p.as_str()).filter(|p| p.starts_with("http")).map(|p| p.to_string())
+}
+
+fn key_of(meta: &Value, video_id: &str) -> Option<String> {
+    let id = meta.get("id").and_then(|i| i.as_str()).unwrap_or(video_id).split(':').next().unwrap_or("");
+    let k: String = id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-').take(40).collect();
+    (!k.is_empty()).then_some(k)
 }
 
 /// What to show for a session: Simkl's title and poster when Simkl knows it,
@@ -63,6 +76,8 @@ fn from_meta(meta: &Value, video_id: &str, episode_title: Option<&str>) -> Optio
         poster: meta.get("poster").and_then(|p| p.as_str()).filter(|p| p.starts_with("http")).map(|p| p.to_string()),
         link: id.starts_with("tt").then(|| format!("https://www.imdb.com/title/{id}/")),
         episode,
+        art: art_of(meta),
+        key: key_of(meta, video_id),
     })
 }
 
@@ -124,6 +139,8 @@ async fn from_simkl(core: &Core, meta: &Value, video_id: &str, episode_title: Op
         poster: hit.get("poster").and_then(|p| p.as_str()).map(|p| format!("https://simkl.in/posters/{p}_m.jpg")),
         link: sid.map(|id| format!("https://simkl.com/{section}/{id}/{slug}")),
         episode,
+        art: art_of(meta),
+        key: key_of(meta, video_id),
     })
 }
 
@@ -234,9 +251,16 @@ mod imp {
     }
 
     fn activity(k: &Known, pos: f64, duration: f64, paused: bool, rich: bool) -> Activity<'_> {
+        // "watching with Mari · 2015" / "S2 · E4 · 2019" / "2015"
         let year = k.year.map(|y| y.to_string());
-        let what = k.episode.clone().or(year).unwrap_or_else(|| "a film".into());
-        let state = if paused { format!("on the couch · paused · {what}") } else { format!("on the couch · {what}") };
+        let what = [k.episode.clone(), year].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+        let with = super::COMPANY.lock().clone();
+        let state = match (with, what.is_empty()) {
+            (Some(w), true) => w,
+            (Some(w), false) => format!("{w} · {what}"),
+            (None, false) => what,
+            (None, true) => "a film".into(),
+        };
         let mut a = Activity::new().activity_type(ActivityType::Watching).details(k.title.clone()).state(state);
         if rich {
             a = a.status_display_type(StatusDisplayType::Details);
@@ -249,13 +273,15 @@ mod imp {
             btns.push(Button::new("Get couch", GET_COUCH.to_string()));
             a = a.buttons(btns);
         }
-        let logo = LOGO.lock().clone();
-        let mut assets = Assets::new()
-            .large_text(k.title.clone())
-            .small_image(if logo.is_empty() { "midnite".to_string() } else { logo })
-            .small_text("midnite™ couch");
-        if let Some(p) = &k.poster {
-            assets = assets.large_image(p.clone());
+        // the tilted midnite mark in the corner (opens where to get couch)
+        let mut assets = Assets::new().large_text(k.title.clone()).small_image(super::SMALL_LOGO.to_string()).small_text("midnite™ couch");
+        if rich {
+            assets = assets.small_url(GET_COUCH.to_string());
+        }
+        // the title on the big screen (once made), else its wide art, else the poster
+        let card = k.key.as_deref().and_then(crate::discord_art::url_for);
+        if let Some(p) = card.or(k.art.clone()).or(k.poster.clone()) {
+            assets = assets.large_image(p);
             if let (true, Some(l)) = (rich, &k.link) {
                 assets = assets.large_url(l.clone());
             }
@@ -279,6 +305,43 @@ pub fn status() -> String {
     String::new()
 }
 
+/// The small corner mark: the midnite logo, inverted and tilted.
+const SMALL_LOGO: &str = "https://raw.githubusercontent.com/xnite7/lumen/gpui/assets/rpc/couch-tilt.png";
+
+/// Who you're watching with ("watching with Mari", "watching with 3 others").
+static COMPANY: parking_lot::Mutex<Option<String>> = parking_lot::Mutex::new(None);
+static LAST: parking_lot::Mutex<Option<Msg>> = parking_lot::Mutex::new(None);
+
+pub fn set_company(c: Option<String>) {
+    let changed = *COMPANY.lock() != c;
+    *COMPANY.lock() = c;
+    if changed {
+        resend();
+    }
+}
+
+/// Show the last presence again (a card got made, the company changed).
+fn resend() {
+    let last = LAST.lock().clone();
+    let Some(st) = crate::state::try_get() else { return };
+    if let Some(m) = last {
+        let core = &st.core;
+        #[cfg(desktop)]
+        {
+            let (on, id) = {
+                let s = core.settings.read();
+                (s.integrations.discord_presence, s.integrations.discord_app_id.trim().to_string())
+            };
+            let id = if id.is_empty() { DEFAULT_APP_ID.to_string() } else { id };
+            if on {
+                imp::send(&id, m);
+            }
+        }
+        #[cfg(not(desktop))]
+        let _ = (core, m);
+    }
+}
+
 /// Tell Discord. A no-op when presence is off, no app id is set, or on iOS.
 pub fn update(core: &Core, m: Msg) {
     #[cfg(desktop)]
@@ -288,8 +351,14 @@ pub fn update(core: &Core, m: Msg) {
             (s.integrations.discord_presence, s.integrations.discord_app_id.trim().to_string())
         };
         let id = if id.is_empty() { DEFAULT_APP_ID.to_string() } else { id };
-        *imp::LOGO.lock() = format!("{}/logo.png", crate::crew::CREW_URL.trim_end_matches('/'));
         let m = if on { m } else { Msg::Clear };
+        *LAST.lock() = Some(m.clone());
+        // the big-screen card: made once per title, then shown
+        if let Msg::Show { known, .. } = &m {
+            if let (Some(k), Some(a)) = (known.key.clone(), known.art.clone()) {
+                crate::discord_art::ensure(core, k, a, resend);
+            }
+        }
         imp::send(&id, m);
     }
     #[cfg(not(desktop))]
