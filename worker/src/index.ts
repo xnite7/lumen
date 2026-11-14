@@ -140,7 +140,8 @@ type Who = { id: string; name: string; avatar?: string };
 const SESSION_TTL = 120;
 const enc = new TextEncoder();
 const b64u = (b: ArrayBuffer | Uint8Array) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-const unb64u = (s: string) => atob(s.replace(/-/g, "+").replace(/_/g, "/"));
+// the token is UTF-8 JSON: decode its bytes as UTF-8, not as Latin-1, or "✿" turns into "â¿"
+const unb64u = (s: string) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)));
 
 async function hmac(key: string, data: string) {
   const k = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -233,7 +234,7 @@ type Member = {
 /** "can I join your couch?" */
 type Ask = { id: string; from: string; fromName: string; fromAvatar?: string; to: string; at: number; status: "pending" | "accepted" | "declined" | "ended" };
 /** a host's playback, followed by the guests they let in */
-type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[]; shared?: boolean; cmds?: Cmd[]; stalled?: boolean; wsAt?: number };
+type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; sk?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[]; shared?: boolean; cmds?: Cmd[]; stalled?: boolean; wsAt?: number };
 /** a guest steering the host's player (only when the host shares control) */
 type Cmd = { from: string; name: string; action: "pause" | "play" | "seek"; pos?: number; at: number };
 type React = { n: number; who: string; name: string; avatar?: string; emoji: string; at: number };
@@ -304,6 +305,15 @@ export default {
     }
     const clipCheck = url.pathname.match(/^\/clip-status\/(tt\d{5,10})$/);
     if (clipCheck) return clipStatus(env, clipCheck[1], false, req); // download check verified; off so nobody burns the monthly downloads
+    // Discord pictures: a title's animated "on the big screen" card, made by
+    // couch and kept here so Discord can show it (public, like the logo)
+    const artFile = url.pathname.match(/^\/art\/([A-Za-z0-9_.-]{1,80})\.gif$/);
+    if (artFile) {
+      // kept in the Durable Object (the Cache API does nothing on workers.dev)
+      const fwd = new Request(req);
+      fwd.headers.delete("x-who");
+      return env.CREW.get(env.CREW.idFromName("midnite")).fetch(fwd);
+    }
     // which country the app is in (for "Top 10 in UAE"); just the 2-letter code
     if (url.pathname === "/geo") return json({ country: String((req as any).cf?.country ?? "").toLowerCase() });
     if (!url.pathname.startsWith("/v1/")) return json({ error: "not here" }, 404);
@@ -350,7 +360,7 @@ async function clipSearch(env: Env, q: string): Promise<{ status: number; error?
 async function clipPick(env: Env, imdb: string, title?: string | null, year?: string | null): Promise<Clip> {
   if (!env.CLIPCAFE_KEY) return null;
   const cache = caches.default;
-  const key = new Request(`https://couch.clips/pick3/${imdb}`);
+  const key = new Request(`https://couch.clips/pick4/${imdb}`);
   const hit = await cache.match(key);
   if (hit) return (await hit.json()) as Clip;
   let pick: Clip = null;
@@ -375,9 +385,12 @@ async function clipPick(env: Env, imdb: string, title?: string | null, year?: st
       failed = true; // key/limit trouble: don't remember "no clip"
       break;
     }
-    if (r.clips.length) {
-      r.clips.sort((a: any, b: any) => (Number(b.views) || 0) - (Number(a.views) || 0));
-      const c = r.clips[0];
+    // a scene, not a whole sequence: big, long clips (the most-viewed ones for
+    // The Matrix, Pulp Fiction, Money Heist) were too heavy to fetch and cache
+    const fit = r.clips.filter((c: any) => (Number(c.duration) || 0) <= 75);
+    if (fit.length) {
+      fit.sort((a: any, b: any) => (Number(b.views) || 0) - (Number(a.views) || 0));
+      const c = fit[0];
       pick = { slug: String(c.slug), download: String(c.download ?? ""), duration: Number(c.duration) || 0 };
       break;
     }
@@ -400,7 +413,7 @@ async function clipDownloadUrl(env: Env, pick: NonNullable<Clip>): Promise<strin
 
 async function clipStream(env: Env, imdb: string, req: Request, title?: string | null, year?: string | null): Promise<Response> {
   const cache = caches.default;
-  const fileKey = `https://couch.clips/file/${imdb}.mp4`;
+  const fileKey = `https://couch.clips/file2/${imdb}.mp4`;
   // ranges (seeking) are answered straight from the cache
   const cached = await cache.match(new Request(fileKey, { headers: req.headers.get("range") ? { range: req.headers.get("range")! } : {} }));
   if (cached) return cached;
@@ -411,10 +424,14 @@ async function clipStream(env: Env, imdb: string, req: Request, title?: string |
   const r = await fetch(dl);
   const type = r.headers.get("content-type") ?? "";
   if (!r.ok || !r.body || type.includes("json") || type.includes("html")) return new Response("clip unavailable", { status: 502 });
-  const body = await r.arrayBuffer();
-  const res = new Response(body, { headers: { "content-type": "video/mp4", "cache-control": `public, max-age=${CLIP_DAYS * 86400}`, "accept-ranges": "bytes" } });
-  await cache.put(new Request(fileKey), res.clone());
-  return res;
+  // straight through to the player while a copy goes into the cache (no
+  // holding the whole file in memory first)
+  const [a, b] = r.body.tee();
+  const headers = { "content-type": "video/mp4", "cache-control": `public, max-age=${CLIP_DAYS * 86400}`, "accept-ranges": "bytes" };
+  const len = r.headers.get("content-length");
+  const h2: Record<string, string> = len ? { ...headers, "content-length": len } : headers;
+  cache.put(new Request(fileKey), new Response(b, { headers: h2 })).catch(() => {});
+  return new Response(a, { headers: h2 });
 }
 
 /** Is ClipCafe answering couch's key? Never shows the key or a download link. */
@@ -509,7 +526,7 @@ export class Crew {
     const r = this.rooms.get(hostId);
     const s = this.socks.get(hostId);
     if (!r || !s) return;
-    const msg = JSON.stringify({ k: "s", v: r.videoId, m: r.metaId, ty: r.type, ti: r.title, p: this.roomNow(r), pa: r.paused, st: !!r.stalled, sh: !!r.shared });
+    const msg = JSON.stringify({ k: "s", v: r.videoId, m: r.metaId, ty: r.type, ti: r.title, sk: r.sk, p: this.roomNow(r), pa: r.paused, st: !!r.stalled, sh: !!r.shared });
     for (const ws of only ? [only] : s.guests.keys()) {
       try {
         ws.send(msg);
@@ -559,6 +576,8 @@ export class Crew {
           metaId: str(d.m, 100) ?? room.metaId,
           type: str(d.ty, 20) ?? room.type,
           title: str(d.ti, 200) ?? room.title,
+          // which stream the host plays, so guests can play the same file
+          sk: str(d.sk, 700) ?? room.sk,
           pos: num(d.p),
           paused: !!d.pa,
           stalled: !!d.st,
@@ -923,6 +942,21 @@ export class Crew {
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
     this.sweep();
+    // a Discord card (public): stored in pieces (storage values are small)
+    const artGet = url.pathname.match(/^\/art\/([A-Za-z0-9_.-]{1,80})\.gif$/);
+    if (artGet) {
+      const meta = await this.storage.get<{ n: number; at: number }>(`art:${artGet[1]}`);
+      if (!meta) return new Response("no card", { status: 404 });
+      const parts = await this.storage.get<ArrayBuffer>(Array.from({ length: meta.n }, (_, i) => `art:${artGet[1]}:${i}`));
+      const out = new Uint8Array(Array.from(parts.values()).reduce((n, b) => n + b.byteLength, 0));
+      let o = 0;
+      for (let i = 0; i < meta.n; i++) {
+        const b = new Uint8Array(parts.get(`art:${artGet[1]}:${i}`) ?? new ArrayBuffer(0));
+        out.set(b, o);
+        o += b.byteLength;
+      }
+      return new Response(out, { headers: { "content-type": "image/gif", "cache-control": "public, max-age=604800" } });
+    }
     let who: Who;
     try {
       who = JSON.parse(req.headers.get("x-who") ?? "");
@@ -932,6 +966,28 @@ export class Crew {
 
     const line = url.pathname.match(/^\/v1\/room\/([A-Za-z0-9_-]{1,40})\/ws$/);
     if (line && req.headers.get("upgrade") === "websocket") return this.openLine(line[1], who);
+
+    // couch hands in a title's Discord card (a GIF, kept 30 days)
+    const artPut = url.pathname.match(/^\/v1\/art\/([A-Za-z0-9_.-]{1,80})$/);
+    if (artPut && req.method === "PUT") {
+      const b = await req.arrayBuffer();
+      const head = String.fromCharCode(...new Uint8Array(b.slice(0, 6)));
+      if (b.byteLength > 1_500_000 || head !== "GIF89a") return json({ error: "not a card" }, 400);
+      const key = artPut[1];
+      const size = 100_000;
+      const n = Math.ceil(b.byteLength / size);
+      const put: Record<string, unknown> = { [`art:${key}`]: { n, at: Date.now() } };
+      for (let i = 0; i < n; i++) put[`art:${key}:${i}`] = b.slice(i * size, (i + 1) * size);
+      await this.storage.put(put);
+      // forget cards nobody has shown in 30 days
+      const old = await this.storage.list<{ n: number; at: number }>({ prefix: "art:", limit: 400 });
+      for (const [k, v] of old) {
+        if (k.split(":").length === 2 && v && Date.now() - v.at > 30 * 86400_000) {
+          await this.storage.delete([k, ...Array.from({ length: v.n }, (_, i) => `${k}:${i}`)]);
+        }
+      }
+      return json({ url: `${url.origin}/art/${key}.gif` });
+    }
 
     if (req.method === "GET" && url.pathname === "/v1/presence") {
       const members = [...this.members.values()].sort((a, b) => b.at - a.at).map((m) => ({ ...m, frameAt: this.frames.get(m.id)?.at }));
