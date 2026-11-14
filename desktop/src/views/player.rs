@@ -18,6 +18,7 @@ pub enum Menu {
     Subs,
     Speed,
     Episodes,
+    Sources,
 }
 
 pub struct PlayerView {
@@ -365,6 +366,63 @@ impl PlayerView {
                 }
                 ("speed", rows)
             }
+            Menu::Sources => {
+                // every stream found, best first; the one playing is ticked
+                let cur = p.stream.as_ref().map(playback::stream_key).unwrap_or_default();
+                let rows = p
+                    .all
+                    .iter()
+                    .take(40)
+                    .enumerate()
+                    .map(|(i, s)| {
+                        let c = &s["_couch"];
+                        let mut bits: Vec<String> = vec![];
+                        bits.push(c["res"].as_str().filter(|r| *r != "Unknown").unwrap_or("?").to_string());
+                        if let Some(h) = c["hdr"].as_array().and_then(|h| h.first()).and_then(|h| h.as_str()) {
+                            bits.push(h.to_string());
+                        }
+                        if let Some(b) = c["sizeBytes"].as_f64() {
+                            bits.push(format!("{:.1} GB", b / 1e9));
+                        }
+                        if c["cached"].as_bool() == Some(true) {
+                            bits.push("⚡ instant".into());
+                        } else if let Some(n) = c["seeders"].as_u64() {
+                            bits.push(format!("{n} seeds"));
+                        }
+                        let from = s["_addonName"].as_str().unwrap_or("").to_string();
+                        let key = playback::stream_key(s);
+                        let on = key == cur;
+                        let pb = self.pb.clone();
+                        let st = s.clone();
+                        div()
+                            .id(SharedString::from(format!("src-{i}")))
+                            .flex()
+                            .items_center()
+                            .gap(px(10.))
+                            .px(px(14.))
+                            .py(px(8.))
+                            .rounded(px(10.))
+                            .cursor_pointer()
+                            .hover(|d| d.bg(theme::white(0.1)))
+                            .child(div().w(px(18.)).flex_none().children(on.then(|| icon("check", 18.))))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .flex()
+                                    .flex_col()
+                                    .child(div().text_size(px(15.)).font_weight(if on { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM }).child(bits.join(" · ")))
+                                    .child(div().text_size(px(12.)).text_color(theme::label3()).truncate().child(from)),
+                            )
+                            .on_click(move |_, _, cx| {
+                                if !on {
+                                    pb.update(cx, |p, cx| p.pick(st.clone(), cx));
+                                }
+                            })
+                            .into_any_element()
+                    })
+                    .collect();
+                ("streams", rows)
+            }
         };
         div()
             .id("pl-menu")
@@ -483,7 +541,32 @@ impl Render for PlayerView {
                                 .text_size(px(16.))
                                 .text_color(if p.error.is_empty() { theme::label2() } else { gpui::rgb(0xff8a8a) })
                                 .child(if p.error.is_empty() { p.status.clone() } else { p.error.clone() }),
-                        ),
+                        )
+                        // not this one? choose
+                        .when(p.all.len() > 1, |d| {
+                            d.child(
+                                div()
+                                    .id("pl-choose")
+                                    .occlude()
+                                    .px(px(16.))
+                                    .h(px(36.))
+                                    .flex()
+                                    .items_center()
+                                    .rounded_full()
+                                    .bg(theme::white(0.12))
+                                    .hover(|s| s.bg(theme::white(0.2)))
+                                    .cursor_pointer()
+                                    .text_size(px(14.))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                    .on_click(cx.listener(|v, _, _, cx| {
+                                        cx.stop_propagation();
+                                        v.menu = Some(Menu::Sources);
+                                        cx.notify();
+                                    }))
+                                    .child(format!("choose a stream ({})", p.all.len())),
+                            )
+                        }),
                 );
         }
 
@@ -585,6 +668,7 @@ impl Render for PlayerView {
         let next = p.next_video().map(|n| format!("S{} E{}", n["season"].as_i64().unwrap_or(0), n["episode"].as_i64().or(n["number"].as_i64()).unwrap_or(0)));
         let is_series = p.meta.as_ref().map_or(false, |m| m.kind == "series");
         let near_end = st.duration > 300. && st.duration - st.pos < 45. && next.is_some();
+        let has_streams = !p.all.is_empty();
         let menu = self.menu.map(|m| self.menu_panel(m, cx));
         let root = root.children(menu);
         // skip intro / recap; at the credits (or the last bit): next episode
@@ -847,6 +931,13 @@ impl Render for PlayerView {
                                     cx.stop_propagation();
                                     r.update(cx, |r, cx| r.toggle(cx));
                                 }))
+                            })
+                            .when(has_streams, |d| {
+                                d.child(round_btn("pl-src", icon("link", 24.), 50.).on_click(cx.listener(|v, _, _, cx| {
+                                    cx.stop_propagation();
+                                    v.menu = if v.menu == Some(Menu::Sources) { None } else { Some(Menu::Sources) };
+                                    cx.notify();
+                                })))
                             })
                             .child(round_btn("pl-subs", icon("subtitles", 26.), 50.).on_click(cx.listener(|v, _, _, cx| {
                                 cx.stop_propagation();

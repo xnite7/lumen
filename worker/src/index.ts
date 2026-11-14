@@ -234,7 +234,7 @@ type Member = {
 /** "can I join your couch?" */
 type Ask = { id: string; from: string; fromName: string; fromAvatar?: string; to: string; at: number; status: "pending" | "accepted" | "declined" | "ended" };
 /** a host's playback, followed by the guests they let in */
-type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[]; shared?: boolean; cmds?: Cmd[]; stalled?: boolean; wsAt?: number };
+type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; sk?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[]; shared?: boolean; cmds?: Cmd[]; stalled?: boolean; wsAt?: number };
 /** a guest steering the host's player (only when the host shares control) */
 type Cmd = { from: string; name: string; action: "pause" | "play" | "seek"; pos?: number; at: number };
 type React = { n: number; who: string; name: string; avatar?: string; emoji: string; at: number };
@@ -517,7 +517,7 @@ export class Crew {
     const r = this.rooms.get(hostId);
     const s = this.socks.get(hostId);
     if (!r || !s) return;
-    const msg = JSON.stringify({ k: "s", v: r.videoId, m: r.metaId, ty: r.type, ti: r.title, p: this.roomNow(r), pa: r.paused, st: !!r.stalled, sh: !!r.shared });
+    const msg = JSON.stringify({ k: "s", v: r.videoId, m: r.metaId, ty: r.type, ti: r.title, sk: r.sk, p: this.roomNow(r), pa: r.paused, st: !!r.stalled, sh: !!r.shared });
     for (const ws of only ? [only] : s.guests.keys()) {
       try {
         ws.send(msg);
@@ -567,6 +567,8 @@ export class Crew {
           metaId: str(d.m, 100) ?? room.metaId,
           type: str(d.ty, 20) ?? room.type,
           title: str(d.ti, 200) ?? room.title,
+          // which stream the host plays, so guests can play the same file
+          sk: str(d.sk, 700) ?? room.sk,
           pos: num(d.p),
           paused: !!d.pa,
           stalled: !!d.st,

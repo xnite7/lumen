@@ -41,6 +41,11 @@ pub struct Playback {
     pub episode_title: String,
     pub stream: Option<Value>,
     pub queue: Vec<Value>,
+    /// every stream found for what's on, best first (the sources menu)
+    pub all: Vec<Value>,
+    /// stalls since this stream got going (lag watch)
+    lag: Lag,
+    last_seek: std::cell::Cell<Option<std::time::Instant>>,
     pub state: State,
     pub tracks: Vec<Value>,
     pub sub: String,
@@ -92,6 +97,7 @@ pub fn init(cx: &mut App) {
                             p.cmd("seek", json!({ "to": end }));
                         }
                     }
+                    p.watch_lag(&s, cx);
                     // reached the end: the next episode by itself
                     let finished = s.ended && !p.state.ended;
                     p.state = s;
@@ -376,6 +382,9 @@ impl Playback {
 
     pub fn cmd(&self, name: &str, args: Value) {
         let name = name.to_string();
+        if name == "seek" {
+            self.last_seek.set(Some(std::time::Instant::now()));
+        }
         couch::rt::spawn(async move {
             let _ = couch::dispatch::invoke("player_cmd", json!({ "cmd": name, "args": args })).await;
         });
@@ -391,7 +400,80 @@ impl Playback {
         true
     }
 
+    /// Switch to this stream (the sources menu), from where you are. The pick
+    /// is remembered for this episode/film, and goes first next time.
+    pub fn pick(&mut self, stream: Value, cx: &mut Context<Self>) {
+        let key = stream_key(&stream);
+        let mut picks = couch::state::get().core.db.get::<serde_json::Map<String, Value>>(PICKS_KEY).unwrap_or_default();
+        picks.insert(self.video_id.clone(), json!(key));
+        if picks.len() > 400 {
+            if let Some(k) = picks.keys().next().cloned() {
+                picks.remove(&k);
+            }
+        }
+        let _ = couch::state::get().core.db.set(PICKS_KEY, &picks);
+        let at = (self.state.pos > 5.).then_some(self.state.pos);
+        self.queue = self.all.iter().filter(|s| stream_key(s) != key).cloned().collect();
+        self.status = "switching streams…".into();
+        self.start(stream, at, cx);
+    }
+
+    /// Switch to this stream without remembering it (following the host).
+    pub fn use_stream(&mut self, stream: Value, at: Option<f64>, cx: &mut Context<Self>) {
+        let key = stream_key(&stream);
+        self.queue = self.all.iter().filter(|s| stream_key(s) != key).cloned().collect();
+        self.status = "switching to the host's stream…".into();
+        self.start(stream, at, cx);
+    }
+
+    /// The host's stream among the ones found here (or theirs as it is).
+    pub fn host_choice(&self, tag: &Value) -> Option<Value> {
+        self.all.iter().find(|s| same_as_host(s, tag)).cloned().or_else(|| host_stream(tag))
+    }
+
+    /// Is this the stream the host is on?
+    pub fn on_host_stream(&self, tag: &Value) -> bool {
+        self.stream.as_ref().map_or(true, |s| same_as_host(s, tag))
+    }
+
+    /// The stream keeps stalling (not just a seek or a pause): count it bad
+    /// and move on to the next one, from the same moment.
+    fn watch_lag(&mut self, s: &State, cx: &mut Context<Self>) {
+        let now = std::time::Instant::now();
+        let seeking = self.last_seek.get().map_or(false, |t| t.elapsed().as_secs_f32() < 3.);
+        if self.lag.playing_since.is_none() {
+            if !s.buffering && !s.paused && s.pos > 0.5 && !self.loading {
+                self.lag.playing_since = Some(now);
+            }
+            return;
+        }
+        if s.paused || seeking || self.queue.is_empty() {
+            self.lag.stall_at = None;
+            return;
+        }
+        if s.buffering && !self.state.buffering {
+            self.lag.stall_at = Some(now);
+            self.lag.stalls += 1;
+        }
+        if !s.buffering {
+            self.lag.stall_at = None;
+        }
+        let young = self.lag.playing_since.map_or(false, |t| t.elapsed().as_secs() < 180);
+        let long = self.lag.stall_at.map_or(false, |t| t.elapsed().as_secs_f32() > 8.);
+        if long || (young && self.lag.stalls >= 4) {
+            if let Some(cur) = self.stream.clone() {
+                mark_bad(&cur);
+            }
+            let at = (s.pos > 5.).then_some(s.pos);
+            let next = self.queue.remove(0);
+            self.status = "that stream kept stalling, trying another…".into();
+            self.start(next, at, cx);
+            cx.defer(|cx| crate::Nav::toast("that stream kept lagging — switched to another".into(), cx));
+        }
+    }
+
     fn start(&mut self, stream: Value, start_at: Option<f64>, cx: &mut Context<Self>) {
+        self.lag = Lag::default();
         self.loading = true;
         self.error.clear();
         self.stream = Some(stream.clone());
@@ -447,6 +529,12 @@ impl Playback {
 /// Play straight away: couch finds the streams, ranks them and starts the
 /// best. Shows pick up at the episode you're on.
 pub fn quick_play(base: Meta, video_id: Option<String>, start_at: Option<f64>, cx: &mut App) {
+    quick_play_with(base, video_id, start_at, None, cx)
+}
+
+/// `prefer`: a stream to start with if it's among the ones found (on someone's
+/// couch: the host's own stream, so you're both on the same file).
+pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f64>, prefer: Option<Value>, cx: &mut App) {
     let pb = get(cx);
     pb.update(cx, |p, cx| {
         p.open = true;
@@ -506,6 +594,30 @@ pub fn quick_play(base: Meta, video_id: Option<String>, start_at: Option<f64>, c
                 })
                 .collect();
             let mut order = rank(ok, mbps, &rt);
+            // ones that lagged before go last; your own pick (or the host's) first
+            let bad = couch::state::get().core.db.get::<serde_json::Map<String, Value>>(BAD_KEY).unwrap_or_default();
+            let (good, lagged): (Vec<Value>, Vec<Value>) = order.into_iter().partition(|s| !bad.contains_key(&stream_key(s)));
+            order = good.into_iter().chain(lagged).collect();
+            let mine = couch::state::get().core.db.get::<serde_json::Map<String, Value>>(PICKS_KEY).unwrap_or_default().get(&vid).and_then(|v| v.as_str().map(String::from));
+            if let Some(h) = prefer.as_ref() {
+                match order.iter().position(|s| same_as_host(s, h)) {
+                    Some(i) => {
+                        let s = order.remove(i);
+                        order.insert(0, s);
+                    }
+                    // not among mine: the host's stream itself, as they play it
+                    None => {
+                        if let Some(s) = host_stream(h) {
+                            order.insert(0, s);
+                        }
+                    }
+                }
+            } else if let Some(k) = mine {
+                if let Some(i) = order.iter().position(|s| stream_key(s) == k) {
+                    let s = order.remove(i);
+                    order.insert(0, s);
+                }
+            }
             let _ = this.update(cx, |p, cx| {
                 if !p.open {
                     return;
@@ -519,6 +631,7 @@ pub fn quick_play(base: Meta, video_id: Option<String>, start_at: Option<f64>, c
                     cx.notify();
                     return;
                 }
+                p.all = order.clone();
                 let first = order.remove(0);
                 p.queue = order;
                 p.status = "starting…".into();
@@ -527,4 +640,72 @@ pub fn quick_play(base: Meta, video_id: Option<String>, start_at: Option<f64>, c
         })
         .detach();
     });
+}
+
+#[derive(Default)]
+struct Lag {
+    playing_since: Option<std::time::Instant>,
+    stall_at: Option<std::time::Instant>,
+    stalls: u32,
+}
+
+const PICKS_KEY: &str = "gpui_stream_picks";
+const BAD_KEY: &str = "gpui_bad_streams";
+
+/// One stream, the same whichever addon listed it: its torrent (and file), or its address.
+pub fn stream_key(s: &Value) -> String {
+    match (s["infoHash"].as_str(), s["url"].as_str()) {
+        (Some(h), _) => format!("bt:{}:{}", h.to_lowercase(), s["fileIdx"].as_i64().unwrap_or(-1)),
+        (None, Some(u)) => format!("url:{u}"),
+        _ => String::new(),
+    }
+}
+
+/// A stream that kept stalling: tried last for a week.
+fn mark_bad(s: &Value) {
+    let k = stream_key(s);
+    if k.is_empty() {
+        return;
+    }
+    let db = &couch::state::get().core.db;
+    let mut bad = db.get::<serde_json::Map<String, Value>>(BAD_KEY).unwrap_or_default();
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+    bad.retain(|_, t| t.as_u64().map_or(false, |t| now.saturating_sub(t) < 7 * 86400));
+    bad.insert(k, json!(now));
+    let _ = db.set(BAD_KEY, &bad);
+}
+
+/// What the host tells guests about their stream (small: it rides the live line).
+pub fn host_tag(s: &Value) -> Value {
+    let title: String = s["title"].as_str().or(s["name"].as_str()).unwrap_or("").chars().take(80).collect();
+    match (s["infoHash"].as_str(), s["url"].as_str()) {
+        (Some(h), _) => json!({ "h": h.to_lowercase(), "f": s["fileIdx"], "a": s["_addonName"], "t": title }),
+        (None, Some(u)) if u.len() < 480 => json!({ "u": u, "a": s["_addonName"], "t": title }),
+        _ => json!({ "a": s["_addonName"], "t": title }),
+    }
+}
+
+fn same_as_host(s: &Value, h: &Value) -> bool {
+    if let Some(hh) = h["h"].as_str() {
+        let f = h["f"].as_i64();
+        return s["infoHash"].as_str().map_or(false, |x| x.eq_ignore_ascii_case(hh)) && (f.is_none() || s["fileIdx"].as_i64() == f);
+    }
+    if let Some(u) = h["u"].as_str() {
+        if s["url"].as_str() == Some(u) {
+            return true;
+        }
+    }
+    // the same release from the same addon (a debrid link differs per account)
+    !h["t"].as_str().unwrap_or("").is_empty() && s["_addonName"] == h["a"] && s["title"].as_str().or(s["name"].as_str()).map(|t| t.chars().take(80).collect::<String>()) == h["t"].as_str().map(String::from)
+}
+
+fn host_stream(h: &Value) -> Option<Value> {
+    if let Some(hh) = h["h"].as_str() {
+        let mut s = json!({ "infoHash": hh, "title": h["t"], "name": h["a"] });
+        if let Some(f) = h["f"].as_i64() {
+            s["fileIdx"] = json!(f);
+        }
+        return Some(s);
+    }
+    h["u"].as_str().map(|u| json!({ "url": u, "title": h["t"], "name": h["a"] }))
 }

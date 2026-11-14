@@ -39,11 +39,14 @@ pub struct Together {
     pub denied: Option<(&'static str, String, Instant)>,
     /// told the guest we're waiting on a silent host (once per silence)
     waiting_told: bool,
+    /// the host stream this guest last switched to
+    sk_applied: Value,
 }
 
 #[derive(Clone, Default)]
 struct Sent {
     v: String,
+    sk: String,
     pa: bool,
     st: bool,
     sh: bool,
@@ -58,6 +61,8 @@ struct HostState {
     m: String,
     ty: String,
     ti: String,
+    /// the host's stream (playback::host_tag), so guests play the same file
+    sk: Value,
     p: f64,
     pa: bool,
     st: bool,
@@ -217,6 +222,7 @@ impl Together {
             "k": "s", "v": p.video_id, "m": p.meta.as_ref().map(|m| m.id.clone()), "ty": p.meta.as_ref().map(|m| m.kind.clone()),
             "ti": p.meta.as_ref().map(|m| m.name.clone()), "p": p.state.pos, "pa": p.state.paused,
             "st": p.state.buffering && !p.state.paused, "sh": self.shared, "lag": rtt / 2. * 1000.,
+            "sk": p.stream.as_ref().map(|s| playback::host_tag(s).to_string()),
         })
     }
 
@@ -235,6 +241,7 @@ impl Together {
         let since = s.at.map_or(f64::MAX, |a| now.duration_since(a).as_secs_f64());
         let expect = if s.pa || s.st { s.p } else { s.p + since.min(1e6) };
         let changed = st["v"].as_str().unwrap_or("") != s.v
+            || st["sk"].as_str().unwrap_or("") != s.sk
             || st["pa"].as_bool() != Some(s.pa)
             || st["st"].as_bool() != Some(s.st)
             || st["sh"].as_bool() != Some(s.sh)
@@ -247,6 +254,7 @@ impl Together {
                 st: st["st"].as_bool().unwrap_or(false),
                 sh: self.shared,
                 p: st["p"].as_f64().unwrap_or(0.),
+                sk: st["sk"].as_str().unwrap_or("").into(),
                 at: Some(now),
             };
         }
@@ -405,10 +413,11 @@ impl Together {
             let meta = Meta { id: room["metaId"].as_str().unwrap_or("").into(), kind: room["type"].as_str().unwrap_or("movie").into(), name: room["title"].as_str().unwrap_or("").into(), ..Default::default() };
             let vid = room["videoId"].as_str().map(|s| s.to_string());
             let start = room["now"].as_f64().map(|n| n + 2.);
+            let prefer: Option<Value> = room["sk"].as_str().and_then(|s| serde_json::from_str(s).ok());
             crate::views::crewx::note_together(&host);
             let _ = cx.update(|cx| {
                 Nav::toast(format!("watching with {name}"), cx);
-                playback::quick_play(meta, vid, start, cx);
+                playback::quick_play_with(meta, vid, start, prefer, cx);
             });
             let (line, mut rx) = open_line(host.clone());
             let _ = this.update(cx, |t, _| {
@@ -511,6 +520,7 @@ impl Together {
             m: d["m"].as_str().or(d["metaId"].as_str()).unwrap_or("").into(),
             ty: d["ty"].as_str().or(d["type"].as_str()).unwrap_or("").into(),
             ti: d["ti"].as_str().or(d["title"].as_str()).unwrap_or("").into(),
+            sk: d["sk"].as_str().and_then(|s| serde_json::from_str(s).ok()).unwrap_or(Value::Null),
             p: d["p"].as_f64().or(d["now"].as_f64()).unwrap_or(0.),
             pa: d["pa"].as_bool().or(d["paused"].as_bool()).unwrap_or(false),
             st: d["st"].as_bool().or(d["stalled"].as_bool()).unwrap_or(false),
@@ -566,7 +576,8 @@ impl Together {
                 let v = h.v.clone();
                 let at = if h.pa { h.p } else { self.host_now() + self.seek_cost };
                 let start = (at > 3.).then_some(at);
-                cx.defer(move |cx| playback::quick_play(m, Some(v), start, cx));
+                let prefer = (!h.sk.is_null()).then(|| h.sk.clone());
+                cx.defer(move |cx| playback::quick_play_with(m, Some(v), start, prefer, cx));
                 cx.spawn(async move |this, cx| {
                     // until the new one is actually playing (or 20 s)
                     let until = Instant::now() + Duration::from_secs(20);
@@ -591,6 +602,24 @@ impl Together {
         }
         if loading || self.switching || self.steered_at.map_or(false, |a| a.elapsed() < Duration::from_millis(1500)) {
             return;
+        }
+        // the host moved to another stream of the same thing: the same file as them
+        if !h.sk.is_null() && !pbe.read(cx).on_host_stream(&h.sk) && self.sk_applied != h.sk {
+            self.sk_applied = h.sk.clone();
+            if let Some(s) = pbe.read(cx).host_choice(&h.sk) {
+                let at = self.host_now() + self.seek_cost;
+                self.switching = true;
+                pbe.update(cx, |p, cx| p.use_stream(s, Some(at.max(0.)), cx));
+                cx.spawn(async move |this, cx| {
+                    crate::timer::after(Duration::from_secs(6)).await;
+                    let _ = this.update(cx, |t, _| {
+                        t.switching = false;
+                        t.seek_at = Some(Instant::now());
+                    });
+                })
+                .detach();
+                return;
+            }
         }
         let p = pbe.read(cx);
         // a seek still landing: let it
