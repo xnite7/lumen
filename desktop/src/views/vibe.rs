@@ -161,11 +161,14 @@ impl Render for Vibe {
                     .child(div().w(px(84.)).h(px(126.)).flex_none().rounded(px(10.)).overflow_hidden().bg(theme::surface2()).children(m.poster.as_ref().map(|u| img(sized(u, "w342")).size_full().object_fit(ObjectFit::Cover))))
                     .child(
                         div()
+                            .flex_1()
+                            .min_w_0()
+                            .py(px(4.))
                             .flex()
                             .flex_col()
                             .gap(px(6.))
                             .child(div().flex().items_baseline().gap(px(10.)).child(div().text_size(px(19.)).font_weight(FontWeight::BLACK).child(m.name.clone())).children(m.year().map(|y| div().text_color(theme::label3()).child(y))))
-                            .child(div().text_size(px(15.)).line_height(px(21.)).text_color(theme::white(0.82)).child(why.clone())),
+                            .child(div().w_full().text_size(px(15.)).line_height(px(21.)).text_color(theme::white(0.82)).whitespace_normal().line_clamp(4).child(why.clone())),
                     )
             })));
         }

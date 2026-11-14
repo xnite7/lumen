@@ -66,7 +66,7 @@ pub fn card_with(
             move |on, _, cx| {
                 if *on {
                     crate::views::detail::prefetch(&hover_meta, cx);
-                    crate::ui::ambient::set(hover_meta.background.clone().or(hover_meta.poster.clone()).map(|u| sized(&u, "w342")), cx);
+                    crate::ui::ambient::hover(&hover_meta, cx);
                 }
                 if previews {
                     crate::ui::video::hover(&hover_meta, *on, cx);
@@ -164,7 +164,7 @@ pub fn poster(id: SharedString, m: &Meta, w: f32, on_click: impl Fn(&gpui::Click
         .on_hover(move |on, _, cx| {
             if *on {
                 crate::views::detail::prefetch(&pre, cx);
-                crate::ui::ambient::set(pre.background.clone().or(pre.poster.clone()).map(|u| sized(&u, "w342")), cx);
+                crate::ui::ambient::hover(&pre, cx);
             }
         })
         .on_mouse_down(gpui::MouseButton::Right, move |e, _, cx| {

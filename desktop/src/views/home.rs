@@ -101,7 +101,9 @@ impl Home {
                     let pick = list[turn % list.len()].clone();
                     let _ = this.update(cx, |v, cx| {
                         v.hero = Some(pick.clone());
-                        crate::ui::ambient::set(pick.background.clone().or(pick.poster.clone()).map(|u| crate::api::sized(&u, "w342")), cx);
+                        if v.scope == "all" {
+                            crate::ui::ambient::set_home(&pick, cx);
+                        }
                         crate::views::detail::prefetch(&pick, cx);
                         cx.notify();
                     });

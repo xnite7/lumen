@@ -655,7 +655,8 @@ impl Render for PlayerView {
         let shown = self.shown || p.loading || !p.error.is_empty();
         let art = p.meta.as_ref().and_then(|m| m.background.clone().or(m.poster.clone())).map(|u| sized(&u, "original"));
         let logo = p.meta.as_ref().and_then(|m| m.logo.clone()).map(|u| crate::net::logo(&sized(&u, "large"), 480.));
-        let starting = p.loading && st.pos < 0.5;
+        // the loading screen until the picture is really there (never see-through to the desktop)
+        let starting = p.loading || (p.open && st.duration <= 0. && p.error.is_empty());
 
         let mut root = div()
             .id("player")
@@ -727,7 +728,8 @@ impl Render for PlayerView {
         if starting || !p.error.is_empty() {
             root = root
                 .bg(theme::bg())
-                .children(art.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(0.35)))
+                .children(art.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(0.28)))
+                .child(div().absolute().top_0().left_0().size_full().bg(linear_gradient(180., linear_color_stop(theme::black(0.2), 0.), linear_color_stop(theme::black(0.85), 1.))))
                 .child(
                     div()
                         .absolute()
@@ -738,10 +740,18 @@ impl Render for PlayerView {
                         .flex_col()
                         .items_center()
                         .justify_center()
-                        .gap(px(18.))
+                        .gap(px(14.))
                         .child(match logo.clone() {
-                            Some(u) => img(u).max_w(px(420.)).max_h(px(140.)).object_fit(ObjectFit::Contain).into_any_element(),
+                            Some(u) => {
+                                let t = title.clone();
+                                img(u).max_w(px(420.)).max_h(px(130.)).object_fit(ObjectFit::Contain).with_fallback(move || div().text_size(px(48.)).font_weight(FontWeight::BLACK).child(t.clone()).into_any_element()).into_any_element()
+                            }
                             None => div().text_size(px(48.)).font_weight(FontWeight::BLACK).child(title.clone()).into_any_element(),
+                        })
+                        // the couch, turning
+                        .when(p.error.is_empty(), |d| {
+                            window.request_animation_frame();
+                            d.child(div().w(px(150.)).h(px(135.)).children(crate::couch_spin_frame().map(|f| img(gpui::ImageSource::Render(f)).size_full().object_fit(ObjectFit::Contain))))
                         })
                         .child(
                             div()

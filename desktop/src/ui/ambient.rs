@@ -43,6 +43,41 @@ fn glow(bytes: &[u8]) -> Option<Arc<gpui::Image>> {
     Some(Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
 }
 
+thread_local! {
+    static HOME: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+fn art(m: &crate::api::Meta) -> Option<String> {
+    m.background.clone().or(m.poster.clone()).map(|u| crate::api::sized(&u, "w342"))
+}
+
+/// Home's billboard title: Home glows with it.
+pub fn set_home(m: &crate::api::Meta, cx: &mut App) {
+    let a = art(m);
+    HOME.with(|h| *h.borrow_mut() = a.clone());
+    if matches!(crate::Nav::route(cx), None | Some(crate::Route::Home)) {
+        set(a, cx);
+    }
+}
+
+/// A page opened: a title's page glows with that title, Home with its billboard;
+/// browsing pages keep the last glow until you point at something.
+pub fn follow(route: &crate::Route, cx: &mut App) {
+    match route {
+        crate::Route::Detail(m) => set(art(m), cx),
+        crate::Route::Home => set(HOME.with(|h| h.borrow().clone()), cx),
+        _ => {}
+    }
+}
+
+/// Pointing at a title: only on the pages for browsing (search, lists, rows, people, studios…).
+pub fn hover(m: &crate::api::Meta, cx: &mut App) {
+    use crate::Route::*;
+    if matches!(crate::Nav::route(cx), Some(Search | Lists | Catalog(_) | Person(..) | Studio(..) | Following | Vibe | Member(_) | Calendar | Shows | Movies)) {
+        set(art(m), cx);
+    }
+}
+
 /// This is the artwork in front of you now.
 pub fn set(url: Option<String>, cx: &mut App) {
     let Some(url) = url.filter(|u| !u.is_empty()) else { return };

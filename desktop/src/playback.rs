@@ -55,6 +55,9 @@ pub struct Playback {
     pub segments: Value,
     skipped: Vec<String>,
     pub sleep: Option<Sleep>,
+    /// since loading began, mpv has shown it's on the new file (no length yet, or buffering):
+    /// only then can a "ready" state end the loading screen (old states arrive late)
+    fresh: bool,
 }
 
 pub struct PlaybackHandle(pub Entity<Playback>);
@@ -85,7 +88,10 @@ pub fn init(cx: &mut App) {
                     sub_delay: v["subDelay"].as_f64().unwrap_or(0.),
                 };
                 let _ = this.update(cx, |p, cx| {
-                    if p.loading && !s.buffering && s.duration > 0. {
+                    if p.loading && (s.duration <= 0. || s.buffering) {
+                        p.fresh = true;
+                    }
+                    if p.loading && p.fresh && !s.buffering && s.duration > 0. {
                         p.loading = false;
                     }
                     // auto-skip intros / recaps when asked to
@@ -142,6 +148,9 @@ pub fn init(cx: &mut App) {
             while loaded.next().await.is_some() {
                 let vid = this
                     .update(cx, |p, cx| {
+                        if p.stream.is_none() {
+                            return String::new();
+                        }
                         p.loading = false;
                         p.segments = Value::Null;
                         p.skipped.clear();
@@ -477,6 +486,7 @@ impl Playback {
     fn start(&mut self, stream: Value, start_at: Option<f64>, cx: &mut Context<Self>) {
         self.lag = Lag::default();
         self.loading = true;
+        self.fresh = false;
         self.error.clear();
         self.stream = Some(stream.clone());
         self.state = State { volume: self.state.volume, speed: 1., ..Default::default() };
@@ -541,6 +551,9 @@ pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f6
     pb.update(cx, |p, cx| {
         p.open = true;
         p.loading = true;
+        p.fresh = false;
+        p.stream = None;
+        p.state = State { volume: p.state.volume, muted: p.state.muted, speed: 1., ..Default::default() };
         p.error.clear();
         p.status = "finding the best stream for your connection…".into();
         p.meta = Some(base.clone());

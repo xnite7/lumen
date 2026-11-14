@@ -71,6 +71,25 @@ fn decode_intro() {
     });
 }
 
+/// The couch turning, on a loop (the intro's frames): the frame for this moment, or None while they decode.
+pub fn couch_spin_frame() -> Option<std::sync::Arc<gpui::RenderImage>> {
+    static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let fr = INTRO.get()?;
+    let total: f32 = fr.iter().map(|x| x.1).sum();
+    if total <= 0. {
+        return None;
+    }
+    // a short rest on the last frame each turn
+    let t = (T0.get_or_init(std::time::Instant::now).elapsed().as_secs_f32()) % (total + 0.5);
+    let mut acc = 0.;
+    fr.iter().find(|x| {
+        acc += x.1;
+        acc > t
+    })
+    .or(fr.last())
+    .map(|x| x.0.clone())
+}
+
 use api::Meta;
 use futures::StreamExt;
 use gpui::{
@@ -117,6 +136,7 @@ impl Nav {
         cx.defer(move |cx| Self::go_now(route, cx));
     }
     fn go_now(route: Route, cx: &mut App) {
+        ui::ambient::follow(&route, cx);
         let v = crate::ui::video::get(cx);
         v.update(cx, |v, cx| v.stop_prefix("trailer:", cx));
         if let Some(r) = Self::root(cx) {
@@ -156,8 +176,14 @@ impl Nav {
                     r.turned = Some((std::time::Instant::now(), true));
                     cx.notify();
                 });
+                let route = r.read(cx).route.clone();
+                ui::ambient::follow(&route, cx);
             }
         });
+    }
+    /// where we are (for things that act differently per page)
+    pub fn route(cx: &App) -> Option<Route> {
+        Self::root(cx).map(|r| r.read(cx).route.clone())
     }
     /// is this title's page the one on screen?
     pub fn showing_detail(id: &str, cx: &App) -> bool {
@@ -178,7 +204,6 @@ impl Nav {
         });
     }
     pub fn detail(m: &Meta, cx: &mut App) {
-        ui::ambient::set(m.background.clone().or(m.poster.clone()).map(|u| api::sized(&u, "w342")), cx);
         Self::go(Route::Detail(m.clone()), cx);
     }
     pub fn play(m: &Meta, cx: &mut App) {

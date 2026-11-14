@@ -446,14 +446,27 @@ fn act(id: &'static str, ic: impl IntoElement, label: &str) -> gpui::Stateful<gp
         .w(px(96.))
         .cursor_pointer()
         .child(
+            // liquid glass: a lit rim, light pooling at the top, a soft shadow under it
             div()
-                .size(px(48.))
+                .relative()
+                .size(px(52.))
                 .rounded_full()
                 .flex()
                 .items_center()
                 .justify_center()
-                .bg(theme::white(0.12))
-                .hover(|s| s.bg(theme::white(0.2)))
+                .bg(gpui::linear_gradient(170., gpui::linear_color_stop(theme::white(0.30), 0.), gpui::linear_color_stop(theme::white(0.08), 1.)))
+                .border_1()
+                .border_color(theme::white(0.32))
+                .shadow(vec![
+                    gpui::BoxShadow { color: theme::black(0.45), offset: gpui::point(px(0.), px(8.)), blur_radius: px(22.), spread_radius: px(0.), inset: false },
+                    gpui::BoxShadow { color: theme::white(0.10), offset: gpui::point(px(0.), px(0.)), blur_radius: px(14.), spread_radius: px(0.), inset: false },
+                ])
+                .hover(|s| {
+                    s.bg(gpui::linear_gradient(170., gpui::linear_color_stop(theme::white(0.42), 0.), gpui::linear_color_stop(theme::white(0.14), 1.)))
+                        .border_color(theme::white(0.5))
+                })
+                // the shine across the top
+                .child(div().absolute().top(px(3.)).left(px(11.)).w(px(28.)).h(px(12.)).rounded_full().bg(gpui::linear_gradient(180., gpui::linear_color_stop(theme::white(0.35), 0.), gpui::linear_color_stop(theme::white(0.0), 1.))))
                 .child(ic),
         )
         .child(div().w_full().text_center().whitespace_nowrap().text_size(px(13.)).font_weight(FontWeight::MEDIUM).text_color(theme::label2()).child(label.to_string()))
