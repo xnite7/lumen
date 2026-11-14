@@ -42,6 +42,11 @@ pub struct TextInput {
     last_layout: Option<ShapedLine>,
     last_bounds: Option<Bounds<Pixels>>,
     is_selecting: bool,
+    /// the caret: a neon line that glides, breathes while idle, flares as you type
+    caret_x: Option<f32>,
+    caret_show: f32,
+    caret_frame: std::time::Instant,
+    typed_at: std::time::Instant,
 }
 
 /// The text changed (typed, pasted, deleted).
@@ -63,12 +68,17 @@ impl TextInput {
             last_layout: None,
             last_bounds: None,
             is_selecting: false,
+            caret_x: None,
+            caret_show: 0.,
+            caret_frame: std::time::Instant::now(),
+            typed_at: std::time::Instant::now(),
         }
     }
 
     pub fn set_text(&mut self, t: &str, cx: &mut Context<Self>) {
         self.content = t.to_string().into();
         self.selected_range = t.len()..t.len();
+        self.typed_at = std::time::Instant::now();
         cx.emit(Changed);
         cx.notify();
     }
@@ -349,6 +359,7 @@ impl EntityInputHandler for TextInput {
                 .into();
         self.selected_range = range.start + new_text.len()..range.start + new_text.len();
         self.marked_range.take();
+        self.typed_at = std::time::Instant::now();
         cx.emit(Changed);
         cx.notify();
     }
@@ -584,10 +595,51 @@ impl Element for TextElement {
         line.paint(bounds.origin, window.line_height(), gpui::TextAlign::Left, None, window, cx)
             .unwrap();
 
-        if focus_handle.is_focused(window)
-            && let Some(cursor) = prepaint.cursor.take()
-        {
-            window.paint_quad(cursor);
+        // the caret
+        let focused = focus_handle.is_focused(window);
+        let target = prepaint.cursor.take().map(|c| c.bounds);
+        let (x, show, since_typed) = self.input.update(cx, |i, _| {
+            let dt = i.caret_frame.elapsed().as_secs_f32().min(0.05);
+            i.caret_frame = std::time::Instant::now();
+            let want = if focused && target.is_some() { 1. } else { 0. };
+            // in a little quicker than out
+            i.caret_show += (want - i.caret_show) * (dt * if want > i.caret_show { 16. } else { 9. }).min(1.);
+            if let Some(t) = target {
+                let tx = f32::from(t.origin.x);
+                i.caret_x = Some(match i.caret_x {
+                    Some(x) if i.caret_show > 0.05 => x + (tx - x) * (dt * 30.).min(1.),
+                    _ => tx,
+                });
+            }
+            (i.caret_x, i.caret_show, i.typed_at.elapsed().as_secs_f32())
+        });
+        if let (Some(x), true) = (x, show > 0.01) {
+            let full = f32::from(bounds.bottom() - bounds.top());
+            let h = full * (0.35 + 0.65 * show);
+            let top = f32::from(bounds.top()) + (full - h) / 2.;
+            // idle: a slow breath. typing: steady, with a flare that dies away
+            let idle = ((since_typed - 0.7) / 0.5).clamp(0., 1.);
+            let breath = 0.5 + 0.5 * (since_typed * std::f32::consts::TAU / 1.6).cos();
+            let glow = show * ((1. - idle) + idle * (0.35 + 0.65 * breath));
+            let flare = (-since_typed * 7.).exp();
+            let neon = crate::theme::neon();
+            let layer = |w: f32, grow: f32, a: f32| {
+                let mut c = neon;
+                c.a = (a * glow).clamp(0., 1.);
+                fill(Bounds::new(point(px(x + 1.25 - w / 2.), px(top - grow)), size(px(w), px(h + grow * 2.))), c).corner_radii(px(w / 2.))
+            };
+            // the bloom: wide and faint to narrow and bright
+            window.paint_quad(layer(22. + 14. * flare, 5., 0.05 + 0.05 * flare));
+            window.paint_quad(layer(13. + 8. * flare, 3., 0.09 + 0.07 * flare));
+            window.paint_quad(layer(7. + 3. * flare, 1.5, 0.2 + 0.1 * flare));
+            window.paint_quad(layer(2.5, 0., 1.));
+            // a hot white core
+            let mut core = gpui::rgb(0xffffff);
+            core.a = (0.55 + 0.45 * flare) * glow;
+            window.paint_quad(fill(Bounds::new(point(px(x + 0.75), px(top + 1.)), size(px(1.), px((h - 2.).max(0.)))), core));
+        }
+        if focused || show > 0.01 {
+            window.request_animation_frame();
         }
 
         self.input.update(cx, |input, _cx| {
