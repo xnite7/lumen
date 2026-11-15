@@ -28,6 +28,7 @@
   import Reactions from "./components/Reactions.svelte";
   import { finish } from "./lib/stores/social.svelte";
   import Gate from "./ui/Gate.svelte";
+  import Moved from "./ui/Moved.svelte";
   import UpdateBanner from "./components/UpdateBanner.svelte";
   import { installRails } from "./lib/rails";
   import { startLive, live } from "./lib/stores/live.svelte";
@@ -314,6 +315,8 @@
   {#if !pb.open || pb.mini}<PartyInvite />{/if}
 {/if}
 {#if splashing}<Splash ondone={() => (splashing = false)} />{/if}
+<!-- retired: everyone moves to the new couch -->
+{#if !splashing}<Moved />{/if}
 
 <style>
   .drag {

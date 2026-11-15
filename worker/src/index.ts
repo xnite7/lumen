@@ -20,6 +20,7 @@
 
 import logo from "./logo.png";
 import { TERMS_HTML } from "./terms";
+import { DOWNLOAD_HTML } from "./download";
 
 export interface Env {
   CREW: DurableObjectNamespace;
@@ -266,6 +267,9 @@ type Party = {
 type Person = { id: string; name: string; avatar?: string; accent?: string; at: number };
 const FEED_MAX = 150;
 const REACTIONS = ["😂", "😭", "😱", "🔥", "❤️", "👀", "💀", "🍿", "👏", "🤯"];
+/** one emoji (people pick their own): a short run of emoji characters, nothing else */
+const isEmoji = (e: unknown): e is string =>
+  typeof e === "string" && e.length > 0 && e.length <= 16 && /^(?:\p{Extended_Pictographic}|\p{Emoji_Component}|\u200D|\uFE0F|\p{Regional_Indicator})+$/u.test(e) && /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(e);
 const ASK_TTL = 120_000;
 const ROOM_TTL = 90_000;
 
@@ -288,7 +292,9 @@ export default {
     if (url.pathname === "/logo.png") {
       return new Response(logo, { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
     }
-    if (url.pathname === "/") return new Response("on the couch.\n");
+    if (url.pathname === "/" || url.pathname === "/download" || url.pathname === "/couch") {
+      return new Response(DOWNLOAD_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
+    }
     if (url.pathname === "/join") return joinPage(url);
     if (url.pathname === "/terms" || url.pathname === "/tos") {
       return new Response(TERMS_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
@@ -911,7 +917,7 @@ export class Crew {
       const now = Date.now();
       r.reacts = (r.reacts ?? []).filter((x) => now - x.at < 20_000);
       if (req.method === "POST") {
-        const emoji = REACTIONS.includes(b?.emoji) ? b.emoji : null;
+        const emoji = REACTIONS.includes(b?.emoji) || isEmoji(b?.emoji) ? b.emoji : null;
         if (!emoji) return json({ error: "bad reaction" }, 400);
         const mine = r.reacts.filter((x) => x.who === who.id && now - x.at < 3000).length;
         if (mine >= 20) return json({ ok: true }); // easy there
@@ -919,7 +925,12 @@ export class Crew {
         return json({ ok: true });
       }
       const since = Number(url.searchParams.get("since") ?? 0) || 0;
-      return json({ reactions: r.reacts.filter((x) => x.n > since), last: this.reactN });
+      // who's on this couch (so everyone can see who they're watching with)
+      const people = [r.host, ...r.guests].map((id) => {
+        const mm = this.members.get(id);
+        return { id, name: mm?.name ?? "someone", avatar: mm?.avatar, host: id === r.host };
+      });
+      return json({ reactions: r.reacts.filter((x) => x.n > since), last: this.reactN, people });
     }
     m = p.match(/^\/v1\/room\/([A-Za-z0-9_-]{1,40})(?:\/([A-Za-z0-9_-]{1,40}))?$/);
     if (m) {
