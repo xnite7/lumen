@@ -270,28 +270,137 @@ fn soft_light(pic: &std::sync::Arc<gpui::Image>) -> Option<std::sync::Arc<gpui::
     Some(std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
 }
 
-/// Which progress bar: "mesh" (the title's colours, moving), "chameleon"
-/// (the title's colours, still) or "white".
+/// The progress bar styles: (key, name in settings, moves?)
+pub const BAR_STYLES: [(&str, &str, bool); 12] = [
+    ("mesh", "living colours", true),
+    ("chameleon", "title colours", false),
+    ("white", "plain white", false),
+    ("steel", "steel", true),
+    ("pulse", "pulse", true),
+    ("aurora", "aurora", true),
+    ("ember", "ember", true),
+    ("ocean", "ocean", true),
+    ("midnite", "midnite", true),
+    ("gold", "gold", true),
+    ("blocks", "blocks", false),
+    ("rainbow", "rainbow", true),
+];
+
+/// Which progress bar is picked in settings (living colours unless chosen).
 pub fn bar_style() -> &'static str {
-    match couch::state::get().core.db.get::<String>("gpui_bar_style").as_deref() {
-        Some("chameleon") => "chameleon",
-        Some("white") => "white",
-        _ => "mesh",
-    }
+    let k = couch::state::get().core.db.get::<String>("gpui_bar_style").unwrap_or_default();
+    BAR_STYLES.iter().find(|s| s.0 == k).map_or("mesh", |s| s.0)
+}
+
+/// does this style animate (it needs frames)?
+pub fn bar_moves(style: &str) -> bool {
+    BAR_STYLES.iter().find(|s| s.0 == style).map_or(false, |s| s.2)
 }
 
 /// the progress bar's fill, filling its parent
 pub fn bar_fill(style: &str, c1: gpui::Hsla, c2: gpui::Hsla, t: f32) -> gpui::AnyElement {
+    let h = |hh: f32, s: f32, l: f32| gpui::hsla(hh / 360., s, l, 1.);
     match style {
         "white" => div().absolute().size_full().bg(gpui::white()).into_any_element(),
         "chameleon" => div().absolute().size_full().bg(linear_gradient(90., linear_color_stop(c1, 0.), linear_color_stop(c2, 1.))).into_any_element(),
+        // brushed metal with a light running along it
+        "steel" => sheen(h(220., 0.06, 0.62), h(220., 0.08, 0.82), t, 0.9).into_any_element(),
+        // plain white, a soft brighter band breathing along it
+        "pulse" => sheen(h(0., 0., 0.86), h(0., 0., 1.), t, 1.6).into_any_element(),
+        "aurora" => mesh3(h(150., 0.75, 0.55), h(185., 0.8, 0.55), h(275., 0.6, 0.6), t, false).into_any_element(),
+        "ember" => mesh3(h(18., 0.95, 0.55), h(38., 1., 0.58), h(355., 0.85, 0.45), t, true).into_any_element(),
+        "ocean" => mesh3(h(200., 0.85, 0.5), h(215., 0.9, 0.62), h(180., 0.7, 0.45), t, false).into_any_element(),
+        "midnite" => mesh3(h(320., 0.9, 0.6), h(280., 0.75, 0.55), h(340., 0.95, 0.68), t, true).into_any_element(),
+        "gold" => sheen(h(42., 0.85, 0.5), h(48., 1., 0.78), t, 0.7).into_any_element(),
+        "blocks" => blocks().into_any_element(),
+        "rainbow" => rainbow(t).into_any_element(),
         _ => mesh(c1, c2, t).into_any_element(),
     }
+}
+
+fn mesh3(a: gpui::Hsla, b: gpui::Hsla, c: gpui::Hsla, t: f32, sparks: bool) -> impl IntoElement {
+    mesh_with(a, b, Some(c), t, sparks)
+}
+
+/// one colour with a brighter band gliding along it (`speed`: passes per second, roughly)
+fn sheen(base: gpui::Hsla, light: gpui::Hsla, t: f32, speed: f32) -> impl IntoElement {
+    gpui::canvas(
+        |_, _, _| (),
+        move |b, _, window, _| {
+            let (x0, y0, w, hh) = (f32::from(b.origin.x), f32::from(b.origin.y), f32::from(b.size.width), f32::from(b.size.height));
+            if w < 1. {
+                return;
+            }
+            window.paint_quad(gpui::fill(b, base));
+            // the band moves across the whole bar's length, ~220px wide, softly edged
+            let band = 220f32.min(w);
+            let span = 1400f32.max(w + band);
+            let cx_ = ((t * speed * 0.25).fract()) * span - band / 2.;
+            let step = 3.;
+            let n = (band / step) as i32;
+            let (a, l) = (base.to_rgb(), light.to_rgb());
+            for k in 0..n {
+                let x = cx_ - band / 2. + k as f32 * step;
+                if x < 0. || x > w {
+                    continue;
+                }
+                let d = ((k as f32 / n as f32) - 0.5).abs() * 2.;
+                let m = (1. - d * d).max(0.) * 0.85;
+                let col = gpui::Rgba { r: a.r + (l.r - a.r) * m, g: a.g + (l.g - a.g) * m, b: a.b + (l.b - a.b) * m, a: 1. };
+                window.paint_quad(gpui::fill(gpui::Bounds::new(gpui::point(px(x0 + x), px(y0)), gpui::size(px(step + 0.5), px(hh))), col));
+            }
+        },
+    )
+    .absolute()
+    .size_full()
+}
+
+/// white blocks with small gaps, like an old VU meter
+fn blocks() -> impl IntoElement {
+    gpui::canvas(
+        |_, _, _| (),
+        |b, _, window, _| {
+            let (x0, y0, w, hh) = (f32::from(b.origin.x), f32::from(b.origin.y), f32::from(b.size.width), f32::from(b.size.height));
+            let (bw, gap) = (10f32, 3f32);
+            let mut x = 0.;
+            while x < w {
+                let ww = bw.min(w - x);
+                window.paint_quad(gpui::fill(gpui::Bounds::new(gpui::point(px(x0 + x), px(y0)), gpui::size(px(ww), px(hh))), gpui::white()).corner_radii(px(1.5)));
+                x += bw + gap;
+            }
+        },
+    )
+    .absolute()
+    .size_full()
+}
+
+/// the whole spectrum, slowly sliding
+fn rainbow(t: f32) -> impl IntoElement {
+    gpui::canvas(
+        |_, _, _| (),
+        move |b, _, window, _| {
+            let (x0, y0, w, hh) = (f32::from(b.origin.x), f32::from(b.origin.y), f32::from(b.size.width), f32::from(b.size.height));
+            let step = 3f32;
+            let mut x = 0f32;
+            while x < w {
+                let hue = ((x / 900.) - t * 0.06).rem_euclid(1.);
+                window.paint_quad(gpui::fill(gpui::Bounds::new(gpui::point(px(x0 + x), px(y0)), gpui::size(px(step.min(w - x) + 0.5), px(hh))), gpui::hsla(hue, 0.85, 0.6, 1.)));
+                x += step;
+            }
+        },
+    )
+    .absolute()
+    .size_full()
 }
 
 /// The progress fill: the title's colours as a living mesh, waves of them
 /// drifting through each other, film grain over it, a few sparks riding along.
 fn mesh(c1: gpui::Hsla, c2: gpui::Hsla, t: f32) -> impl IntoElement {
+    mesh_with(c1, c2, None, t, true)
+}
+
+/// (`third`: a third colour; none = a deeper shade of the first; `sparks`: the riding lights)
+fn mesh_with(c1: gpui::Hsla, c2: gpui::Hsla, third: Option<gpui::Hsla>, t: f32, sparks: bool) -> impl IntoElement {
     gpui::canvas(
         |_, _, _| (),
         move |b, _, window, _| {
@@ -303,7 +412,7 @@ fn mesh(c1: gpui::Hsla, c2: gpui::Hsla, t: f32) -> impl IntoElement {
             let a = c1.to_rgb();
             let bb = c2.to_rgb();
             // a third, deeper shade between them
-            let c3 = gpui::hsla((c1.h + 0.94) % 1., c1.s, (c1.l * 0.7).max(0.3), 1.).to_rgb();
+            let c3 = third.unwrap_or(gpui::hsla((c1.h + 0.94) % 1., c1.s, (c1.l * 0.7).max(0.3), 1.)).to_rgb();
             let mixc = |p: &gpui::Rgba, q: &gpui::Rgba, k: f32| gpui::Rgba { r: p.r + (q.r - p.r) * k, g: p.g + (q.g - p.g) * k, b: p.b + (q.b - p.b) * k, a: 1. };
             // grain changes at 24 fps, like film
             let frame = (t * 24.) as u32;
@@ -333,7 +442,7 @@ fn mesh(c1: gpui::Hsla, c2: gpui::Hsla, t: f32) -> impl IntoElement {
                 }
             }
             // sparks: a few soft lights riding the waves
-            for k in 0..12u32 {
+            for k in 0..if sparks { 12u32 } else { 0 } {
                 let sp = 0.035 + (k as f32 * 0.37).fract() * 0.06;
                 let px_ = ((k as f32 * 0.618 + t * sp).fract()) * w;
                 let life = 0.5 + 0.5 * (t * (1.3 + k as f32 * 0.21) + k as f32).sin();
@@ -1448,7 +1557,7 @@ impl Render for PlayerView {
                                 .child({
                     let [c1, c2] = self.tint.as_ref().map(|t| t.1).unwrap_or([theme::neon().into(), theme::neon().into()]);
                     let style = bar_style();
-                    if !paused && style == "mesh" {
+                    if !paused && bar_moves(style) {
                         window.request_animation_frame();
                     }
                     div().absolute().left(px(10.)).right(px(10.)).bottom(px(10.)).h(px(4.)).rounded_full().bg(theme::white(0.25)).child(
@@ -1755,7 +1864,7 @@ impl Render for PlayerView {
                                         let [c1, c2] = self.tint.as_ref().map(|t| t.1).unwrap_or([theme::neon().into(), theme::neon().into()]);
                                         let style = bar_style();
                                         let t = self.born.elapsed().as_secs_f32();
-                                        if ca > 0. && !paused && style == "mesh" {
+                                        if ca > 0. && !paused && bar_moves(style) {
                                             window.request_animation_frame();
                                         }
                                         div()

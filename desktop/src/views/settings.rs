@@ -148,6 +148,8 @@ pub struct Settings {
     testing: bool,
     cache: Value,
     scroll: ScrollHandle,
+    /// (the progress bar samples' clock)
+    opened: std::time::Instant,
     /// "remove couch" / "disconnect" ask once more before they go
     confirm_remove: bool,
     confirm_simkl: bool,
@@ -203,6 +205,7 @@ impl Settings {
             testing: false,
             cache: Value::Null,
             scroll: ScrollHandle::new(),
+            opened: std::time::Instant::now(),
             confirm_remove: false,
             confirm_simkl: false,
             confirm_out: false,
@@ -747,7 +750,7 @@ impl Settings {
 }
 
 impl Render for Settings {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let g = theme::GUTTER;
         let cur = serde_json::to_value(couch::state::get().core.settings()).unwrap_or_default();
         let q = self.find.read(cx).content.trim().to_lowercase();
@@ -835,29 +838,34 @@ impl Render for Settings {
                     let mut rows = self.plain(t, "", &cur, cx);
                     if t == Tab::Video {
                         let now = crate::views::player::bar_style();
+                        // the samples move like the real thing
+                        let t = self.opened.elapsed().as_secs_f32();
+                        window.request_animation_frame();
                         rows.insert(
                             1,
                             line(0)
                                 .child(label("progress bar", "how the bar under the film fills"))
-                                .child(div().flex().gap(px(4.)).p(px(3.)).rounded_full().bg(theme::white(0.08)).children([("mesh", "living colours"), ("chameleon", "title colours"), ("white", "plain white")].into_iter().map(|(k, l)| {
+                                .child(div().flex().flex_wrap().justify_end().max_w(px(560.)).gap(px(8.)).children(crate::views::player::BAR_STYLES.iter().map(|&(k, l, _)| {
                                     let on = now == k;
+                                    let n = theme::neon();
                                     div()
                                         .id(SharedString::from(format!("bar-{k}")))
-                                        .px(px(12.))
-                                        .h(px(30.))
+                                        .w(px(126.))
+                                        .p(px(8.))
                                         .flex()
-                                        .items_center()
-                                        .rounded_full()
-                                        .text_size(px(14.))
-                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .flex_col()
+                                        .gap(px(7.))
+                                        .rounded(px(12.))
                                         .cursor_pointer()
-                                        .when(on, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))
-                                        .when(!on, |d| d.hover(|s| s.bg(theme::white(0.1))))
+                                        .border_1()
+                                        .when(on, |d| d.bg(theme::white(0.12)).border_color(theme::white(0.5)))
+                                        .when(!on, |d| d.bg(theme::white(0.04)).border_color(theme::white(0.06)).hover(|s| s.bg(theme::white(0.09))))
                                         .on_click(cx.listener(move |_, _, _, cx| {
                                             let _ = couch::state::get().core.db.set("gpui_bar_style", &k.to_string());
                                             cx.notify();
                                         }))
-                                        .child(l)
+                                        .child(div().w_full().h(px(5.)).rounded_full().bg(theme::white(0.15)).child(div().relative().h_full().w(px(80.)).rounded_full().overflow_hidden().child(crate::views::player::bar_fill(k, n.into(), theme::neon_soft().into(), t))))
+                                        .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(if on { theme::text() } else { theme::label2() }).child(l))
                                 })))
                                 .into_any_element(),
                         );

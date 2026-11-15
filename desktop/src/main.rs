@@ -700,7 +700,7 @@ impl Root {
         };
         let left_edge = f32::from(window.viewport_size().width) - mini::M - mini::W;
         let t0 = MINI_AT.with(|m| m.borrow().map_or(0., |t| t.elapsed().as_secs_f32()));
-        if !paused && views::player::bar_style() == "mesh" {
+        if !paused && views::player::bar_moves(views::player::bar_style()) {
             window.request_animation_frame();
         }
         div()
