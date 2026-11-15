@@ -30,6 +30,7 @@
   import { social, loadMe, reviewsOf, postActivity, isFav, toggleFav, ago, ref, type Activity } from "../lib/stores/social.svelte";
 
   let { type, id, hint, preview }: { type: string; id: string; hint?: string; preview?: any } = $props();
+  import { tintOf } from "../lib/tint";
 
   let meta = $state<Meta | null>(null);
   let extra = $state<any>(null);
@@ -118,6 +119,13 @@
   // later loads only fill in what was missing, so nothing swaps after a second.
   const backdrop = $derived(preview?.background ?? m?.background ?? extra?.backdrop ?? m?.poster);
   const logo = $derived(preview?.logo ?? m?.logo ?? extra?.logo);
+  // the logo's colour: the heart and the rating wear it
+  let tint = $state<string | null>(null);
+  $effect(() => {
+    const u = logo ? img(logo) : null;
+    tint = null;
+    tintOf(u).then((c) => (tint = c));
+  });
   $effect(() => {
     if (backdrop && isActive(page)) setAmbient(backdrop);
   });
@@ -195,6 +203,8 @@
       rating = n;
       toast(n ? `Rated ${m.name} ${n}/10${app.secrets.simkl_token ? " on Simkl" : ""}` : "Rating removed", "ok");
       if (n) postActivity("rating", m, n);
+      // rated: a few words about it?
+      if (n) reviewOpen = true;
     } catch (e) {
       toast(errorText(e), "error");
     }
@@ -257,21 +267,26 @@
               {primary.label}{#if primary.sub}<span class="psub">{primary.sub}</span>{/if}
             </button>
           {/if}
-          <div class="secondary">
-            <button class="act press" onclick={(e) => { haptic("light"); addTo(m, e.currentTarget); }} aria-label={owned ? "Remove from My List" : "Add to My List"}>
-              <span class="act-ic glass"><Icon name={owned ? "check" : "plus"} size={20} /></span><span class="act-l">My List</span>
-            </button>
+          <div class="secondary" style:--tint={tint ?? "#ff5a8a"}>
             <button class="act press" onclick={() => { haptic("light"); markAll(); }} aria-label="Mark watched">
-              <span class="act-ic glass" class:lit={item?.state?.flaggedWatched}><Icon name={item?.state?.flaggedWatched ? "checkCircle" : "eye"} size={20} /></span><span class="act-l">{item?.state?.flaggedWatched ? "Watched" : "Mark watched"}</span>
+              <span class="act-ic" class:lit={item?.state?.flaggedWatched}><Icon name={item?.state?.flaggedWatched ? "checkCircle" : "eye"} size={20} /></span><span class="act-l">{item?.state?.flaggedWatched ? "Watched" : "Mark watched"}</span>
+            </button>
+            <button class="act press" onclick={(e) => { haptic("light"); addTo(m, e.currentTarget); }} aria-label={owned ? "Remove from My List" : "Add to My List"}>
+              <span class="act-ic"><Icon name={owned ? "check" : "plus"} size={20} /></span><span class="act-l">My List</span>
             </button>
             <button class="act press" onclick={() => { haptic("light"); toast(toggleFav(m) ? "added to favourites" : "removed from favourites", "ok"); }} aria-label="Favourite">
-              <span class="act-ic glass" class:fav={isFav(m.id)}><Icon name="heart" size={19} fill={isFav(m.id)} /></span><span class="act-l">Favourite</span>
+              <span class="act-ic" class:fav={isFav(m.id)}><Icon name="heart" size={19} fill={isFav(m.id)} /></span><span class="act-l">Favourite</span>
+            </button>
+            {#if trailerKey()}
+              <button class="act press" onclick={() => playTrailer()} aria-label="Trailer">
+                <span class="act-ic"><Icon name="film" size={20} /></span><span class="act-l">Trailer</span>
+              </button>
+            {/if}
+            <button class="act press" onclick={doShare} aria-label="Share">
+              <span class="act-ic"><Icon name="share" size={19} /></span><span class="act-l">Share</span>
             </button>
             <button class="act press" onclick={() => m && (parties.plan = { meta: m })} aria-label="Throw a watch party">
-              <span class="act-ic glass"><Icon name="couch" size={20} /></span><span class="act-l">Watch party</span>
-            </button>
-            <button class="act press" onclick={doShare} aria-label="Share">
-              <span class="act-ic glass"><Icon name="share" size={19} /></span><span class="act-l">Share</span>
+              <span class="act-ic"><Icon name="couch" size={20} /></span><span class="act-l">Watch party</span>
             </button>
           </div>
         </div>
@@ -282,7 +297,7 @@
           </button>
         {/if}
         {#if seenIt}
-          <div class="stars" role="radiogroup" tabindex="-1" aria-label="Your rating" onmouseleave={() => (hoverStar = 0)}>
+          <div class="stars" style:--tint={tint ?? "var(--rating)"} role="radiogroup" tabindex="-1" aria-label="Your rating" onmouseleave={() => (hoverStar = 0)}>
             <span class="foot dim">Your rating</span>
             {#each Array(10) as _, n}
               <button
@@ -294,9 +309,6 @@
               ><Icon name="star" size={16} fill={(hoverStar || rating || 0) > n} /></button>
             {/each}
           </div>
-          <button class="review-btn press" onclick={() => (reviewOpen = true)}>
-            <Icon name="pencil" size={15} />{myReview?.text ? "Edit your review" : "Write a review"}
-          </button>
         {/if}
       </div>
     </section>
@@ -313,7 +325,8 @@
         </header>
         <div class="eps scroll-x">
           {#each episodes as v (v.id)}
-            {@const p = progressOf(lid, v.id)}
+            {@const p0 = progressOf(lid, v.id)}
+            {@const p = p0 >= 0.9 ? 0 : p0}
             {@const seen = watched.has(v.id)}
             {@const future = v.released && new Date(v.released).getTime() > Date.now()}
             {@const info = epInfo[`${v.season}:${v.episode ?? v.number}`]}
@@ -323,6 +336,7 @@
                 <button class="thumb press" use:tvFocus={{ max: 5 }} onclick={() => !future && openStreams(v)} aria-label="Play {v.title ?? v.name}">
                   <!-- the episode's still, IMDb's, then the show's own art; else couch's placeholder -->
                   <img src={img(v.thumbnail ?? imdbEpisode(m.id, v.season, v.episode ?? v.number) ?? undefined)} alt="" loading="lazy" use:fallback={[imdbEpisode(m.id, v.season, v.episode ?? v.number), backdrop ? img(backdrop, "w780") : null]} />
+                  {#if seen}<span class="seen-shade" aria-hidden="true"></span>{/if}
                   <span class="num">{v.episode ?? v.number}</span>
                   {#if !future}<span class="play glass clear"><Icon name="play" size={16} /></span>{/if}
                 </button>
@@ -599,9 +613,15 @@
   .act-ic {
     width: 50px;
     height: 50px;
-    border-radius: 50%;
+    border-radius: 14px;
     display: grid;
     place-items: center;
+    background: rgb(255 255 255 / 0.12);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+    transition: background var(--t-fast);
+  }
+  .act:hover .act-ic {
+    background: rgb(255 255 255 / 0.2);
   }
   .act-ic.lit {
     color: var(--green);
@@ -665,7 +685,7 @@
     background: rgb(255 255 255 / 0.14);
   }
   .act-ic.fav {
-    color: #ff5a8a;
+    color: var(--tint, #ff5a8a);
   }
   .reviews {
     padding: 0 var(--gutter);
@@ -719,7 +739,7 @@
     transition: transform var(--t-fast) var(--spring), color var(--t-fast);
   }
   .star.on {
-    color: var(--rating);
+    color: var(--tint, var(--rating));
   }
   .star:hover {
     transform: scale(1.2);
@@ -1162,5 +1182,11 @@
   .cta :global(svg) {
     width: 24px;
     height: 24px;
+  }
+  .seen-shade {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(225deg, rgb(0 0 0 / 0.55), transparent 60%);
+    pointer-events: none;
   }
 </style>

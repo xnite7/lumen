@@ -77,6 +77,7 @@ pub fn tile(r: &Value, kind: &str) -> Value {
         "description": r.get("overview"),
         "imdbRating": r.get("vote_average").and_then(|v| v.as_f64()).filter(|v| *v > 0.0).map(|v| format!("{:.1}", v)),
         "character": r.get("character"),
+        "originalLanguage": r.get("original_language"),
     })
 }
 
@@ -357,6 +358,7 @@ pub async fn enrich(core: &Core, stremio_type: &str, id: &str) -> AppResult<Valu
         "videos": videos,
         "recommendations": recommendations,
         "keywords": keywords,
+        "originalLanguage": full.get("original_language"),
         "collection": collection,
         "seasons": seasons,
         "spokenLanguages": full.get("spoken_languages").and_then(|n| n.as_array()).map(|n| n.iter().map(|x| x["english_name"].clone()).collect::<Vec<_>>()),

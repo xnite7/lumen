@@ -316,7 +316,7 @@
 {/if}
 {#if splashing}<Splash ondone={() => (splashing = false)} />{/if}
 <!-- retired: everyone moves to the new couch -->
-{#if !splashing}<Moved />{/if}
+{#if !splashing && app.platform === "windows"}<Moved />{/if}
 
 <style>
   .drag {
