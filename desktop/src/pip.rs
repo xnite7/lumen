@@ -48,6 +48,30 @@ mod imp {
         }
     }
 
+    /// Move the window from `a` to `b` over a quarter second, easing out
+    /// (then maximize, if asked). On its own thread: each step is a real move.
+    fn glide(hwnd: isize, a: RECT, b: RECT, max_after: bool) {
+        std::thread::spawn(move || {
+            let h = HWND(hwnd as *mut _);
+            const STEPS: i32 = 16;
+            for i in 1..=STEPS {
+                let x = i as f32 / STEPS as f32;
+                let e = 1. - (1. - x).powi(3);
+                let l = |p: i32, q: i32| p + ((q - p) as f32 * e).round() as i32;
+                let (left, top, right, bottom) = (l(a.left, b.left), l(a.top, b.top), l(a.right, b.right), l(a.bottom, b.bottom));
+                unsafe {
+                    let _ = SetWindowPos(h, None, left, top, right - left, bottom - top, SWP_NOACTIVATE | windows::Win32::UI::WindowsAndMessaging::SWP_NOZORDER);
+                }
+                std::thread::sleep(std::time::Duration::from_millis(15));
+            }
+            if max_after {
+                unsafe {
+                    let _ = ShowWindow(h, SW_MAXIMIZE);
+                }
+            }
+        });
+    }
+
     /// one pixel wider and back: a real resize, end to end
     pub fn wiggle(hwnd: isize) {
         use windows::Win32::UI::WindowsAndMessaging::{SWP_NOMOVE, SWP_NOZORDER};
@@ -74,9 +98,14 @@ mod imp {
                 let mut r = RECT::default();
                 let _ = GetWindowRect(h, &mut r);
                 let max = IsZoomed(h).as_bool();
-                *RESTORE.lock() = Some((r, max));
                 if max {
+                    // restored size to come back to; the glide starts from the full screen
                     let _ = ShowWindow(h, SW_RESTORE);
+                    let mut back = RECT::default();
+                    let _ = GetWindowRect(h, &mut back);
+                    *RESTORE.lock() = Some((back, true));
+                } else {
+                    *RESTORE.lock() = Some((r, false));
                 }
                 // full screen (a borderless window covering the monitor) counts as big too
                 let style = windows::Win32::UI::WindowsAndMessaging::GetWindowLongW(h, windows::Win32::UI::WindowsAndMessaging::GWL_STYLE) as u32;
@@ -89,12 +118,15 @@ mod imp {
                 let scale = windows::Win32::UI::HiDpi::GetDpiForWindow(h) as f32 / 96.;
                 let (w, hgt) = ((480. * scale) as i32, (270. * scale) as i32);
                 let m = (24. * scale) as i32;
-                let _ = SetWindowPos(h, Some(HWND_TOPMOST), wa.right - w - m, wa.bottom - hgt - m, w, hgt, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+                // it shrinks into the corner instead of jumping there
+                let _ = SetWindowPos(h, Some(HWND_TOPMOST), r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+                glide(hwnd, r, RECT { left: wa.right - w - m, top: wa.bottom - hgt - m, right: wa.right - m, bottom: wa.bottom - m }, false);
             } else if let Some((r, max)) = RESTORE.lock().take() {
-                let _ = SetWindowPos(h, Some(HWND_NOTOPMOST), r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_SHOWWINDOW);
-                if max {
-                    let _ = ShowWindow(h, SW_MAXIMIZE);
-                }
+                let mut from = RECT::default();
+                let _ = GetWindowRect(h, &mut from);
+                let _ = SetWindowPos(h, Some(HWND_NOTOPMOST), from.left, from.top, from.right - from.left, from.bottom - from.top, SWP_SHOWWINDOW);
+                // and grows back out of it
+                glide(hwnd, from, r, max);
             }
         }
     }
@@ -113,7 +145,7 @@ pub fn toggle(cx: &mut gpui::App) {
             // the picture follows the window once it has settled at its new size
             // (Windows resizes in steps; one late fit missed it until a full-screen round trip)
             cx.spawn(async move |cx| {
-                for (k, ms) in [40u64, 120, 300, 700].into_iter().enumerate() {
+                for (k, ms) in [120u64, 200, 380, 750].into_iter().enumerate() {
                     crate::timer::after(std::time::Duration::from_millis(ms)).await;
                     let _ = cx.update(|cx| {
                         // once it has settled: a 1px wiggle makes everything (couch's

@@ -84,6 +84,13 @@ jobs:
           New-Item -ItemType Directory -Force pkg | Out-Null
           Copy-Item dist/* pkg/ -Recurse
           (Get-Content desktop/resources/msix/AppxManifest.xml -Raw).Replace('VERSION', "$env:COUCH_VERSION.0") | Set-Content pkg/AppxManifest.xml -Encoding utf8
+          # the resource index: lets Windows pick the unplated taskbar icons
+          # (pkg-Square44x44Logo.targetsize-N_altform-unplated.png) instead of
+          # a small couch on a coloured square
+          $makepri = Join-Path $kit.FullName makepri.exe
+          & $makepri createconfig /cf priconfig.xml /dq en-US /pv 10.0.0 /o
+          & $makepri new /pr pkg /cf priconfig.xml /mn pkg/AppxManifest.xml /of pkg/resources.pri /o
+          if ($LASTEXITCODE) { Write-Host "::warning::makepri failed; plain icons"; Remove-Item pkg/resources.pri -ErrorAction SilentlyContinue }
           & $makeappx pack /d pkg /p couch.msix /o
           if ($LASTEXITCODE) { exit 1 }
           $pfx = Join-Path $env:RUNNER_TEMP sign.pfx
