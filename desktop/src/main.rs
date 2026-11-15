@@ -11,6 +11,7 @@ mod playback;
 mod together;
 mod update;
 mod theme;
+mod motion;
 mod mini;
 mod jump;
 mod tile;
@@ -297,12 +298,17 @@ impl Nav {
     fn toast_now(msg: String, cx: &mut App) {
         if let Some(r) = Self::root(cx) {
             r.update(cx, |r, cx| {
+                let at = std::time::Instant::now();
                 r.toast = Some(msg);
+                r.toast_at = at;
                 cx.notify();
                 cx.spawn(async move |this, cx| {
-                    crate::timer::after(std::time::Duration::from_secs(3)).await;
+                    crate::timer::after(std::time::Duration::from_secs_f32(TOAST_FOR)).await;
                     let _ = this.update(cx, |r, cx| {
-                        r.toast = None;
+                        // (a newer toast keeps its own time)
+                        if r.toast_at == at {
+                            r.toast = None;
+                        }
                         cx.notify();
                     });
                 })
@@ -312,6 +318,9 @@ impl Nav {
     }
 }
 
+/// how long a toast stays (seconds)
+const TOAST_FOR: f32 = 3.0;
+
 pub struct Root {
     route: Route,
     back: Vec<Route>,
@@ -319,6 +328,8 @@ pub struct Root {
     shows: Option<Entity<views::home::Home>>,
     movies: Option<Entity<views::home::Home>>,
     toast: Option<String>,
+    /// when the toast arrived (it springs up, sits, then sinks away)
+    toast_at: std::time::Instant,
     mark: Arc<Image>,
     player: Entity<views::player::PlayerView>,
     detail: Option<Entity<views::detail::Detail>>,
@@ -497,10 +508,7 @@ impl Root {
             match k {
                 "right" | "space" => w.update(cx, |w, cx| w.step(1, cx)),
                 "left" => w.update(cx, |w, cx| w.step(-1, cx)),
-                "escape" => w.update(cx, |w, cx| {
-                    w.open = false;
-                    cx.notify();
-                }),
+                "escape" => w.update(cx, |w, cx| w.close(cx)),
                 _ => {}
             }
             return;
@@ -605,7 +613,7 @@ impl Root {
         };
         let (w, h) = (240., 216.);
         // ease in, then away: slow to start so the first frames of the zoom don't jump
-        let e = if fade < 0.5 { 4. * fade * fade * fade } else { 1. - (-2. * fade + 2.).powi(3) / 2. };
+        let e = crate::motion::in_out3(fade);
         let mut stage = div().relative().w(px(w)).h(px(h));
         if fade > 0. {
             // zoom blur: a few copies of the last frame, each further forward and fainter
@@ -1052,12 +1060,12 @@ impl Render for Root {
         };
         // a page change eases in: it fades up from a little below (from a little
         // above when going back) instead of snapping
-        const TURN: f32 = 0.32;
+        const TURN: f32 = motion::dur::TURN;
         let (e, dy) = match self.turned {
             // opening from a card: the picture is the motion, the page holds still
             Some((at, back)) if !playing && at.elapsed().as_secs_f32() < TURN && !(ui::zoom::is_opening() && !back) => {
                 let t = at.elapsed().as_secs_f32() / TURN;
-                let e = 1. - (1. - t).powi(3);
+                let e = crate::motion::out3(t);
                 window.request_animation_frame();
                 (e, (1. - e) * if back { -14. } else { 22. })
             }
@@ -1117,14 +1125,30 @@ impl Render for Root {
             .children(ui::zoom::overlay(window, cx))
             .children(self.intro(window))
             .children(self.toast.clone().map(|t| {
-                div().absolute().bottom(px(28.)).left_0().w_full().flex().justify_center().child(
+                // springs up from below with a little weight, sits, then sinks away
+                let s = motion::secs(self.toast_at);
+                let leave = motion::in3(motion::along(s, TOAST_FOR - 0.35, 0.35));
+                let rise = motion::bouncy(s);
+                if s < TOAST_FOR {
+                    window.request_animation_frame();
+                }
+                div().absolute().bottom(px(28. + 22. * rise - 22. - 14. * leave)).left_0().w_full().flex().justify_center().opacity(motion::out3(motion::along(s, 0., 0.18)) * (1. - leave)).child(
                     div()
-                        .px(px(18.))
+                        .flex()
+                        .items_center()
+                        .gap(px(12.))
+                        .pl(px(16.))
+                        .pr(px(20.))
                         .py(px(12.))
-                        .rounded(px(14.))
-                        .bg(theme::surface2())
+                        .rounded_full()
+                        .bg(theme::surface3())
+                        .border_1()
+                        .border_color(theme::white(0.07))
+                        .shadow(vec![gpui::BoxShadow { color: theme::black(0.6), offset: gpui::point(px(0.), px(14.)), blur_radius: px(34.), spread_radius: px(-10.), inset: false }])
                         .text_size(px(15.))
-                        .font_weight(FontWeight::MEDIUM)
+                        .font_weight(FontWeight::SEMIBOLD)
+                        // the lamp, switched on for a moment
+                        .child(div().size(px(8.)).rounded_full().bg(theme::lamp()).shadow(theme::glow_lamp(0.8 * (1. - leave))))
                         .child(t),
                 )
             }))
@@ -1379,6 +1403,7 @@ fn main() {
                             shows: None,
                             movies: None,
                             toast: None,
+                            toast_at: std::time::Instant::now(),
                             mark,
                             player: cx.new(views::player::PlayerView::new),
                             detail: None,

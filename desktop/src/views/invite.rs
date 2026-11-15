@@ -33,7 +33,7 @@ fn clamp01(x: f32) -> f32 {
     x.clamp(0., 1.)
 }
 fn out_cubic(t: f32) -> f32 {
-    1. - (1. - t).powi(3)
+    crate::motion::out3(t)
 }
 fn in_cubic(t: f32) -> f32 {
     t * t * t

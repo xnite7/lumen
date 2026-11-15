@@ -1016,7 +1016,7 @@ impl Render for Detail {
             Some(t) if t.elapsed().as_secs_f32() < 0.35 => {
                 window.request_animation_frame();
                 let e = t.elapsed().as_secs_f32() / 0.35;
-                1. - (1. - e).powi(3)
+                crate::motion::out3(e)
             }
             _ => 1.,
         };

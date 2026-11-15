@@ -53,7 +53,7 @@ pub fn card_with(
     let dwell = crate::ui::video::dwell_secs();
     let (grow, moving) = if hov {
         let x = ((since.elapsed().as_secs_f32() - dwell) / 0.32).clamp(0., 1.);
-        (1. - (1. - x).powi(3), x < 1.)
+        (crate::motion::out3(x), x < 1.)
     } else {
         // shrinking back from however far it had grown
         let x = (since.elapsed().as_secs_f32() / 0.24).min(1.);
@@ -100,7 +100,7 @@ pub fn card_with(
                     let mut g = g.borrow_mut();
                     // leaving: remember how far it had grown, to shrink from there
                     let from = g.get(&hkey).map_or(0., |&(h, t, _)| if h { ((t.elapsed().as_secs_f32() - crate::ui::video::dwell_secs()) / 0.32).clamp(0., 1.) } else { 0. });
-                    g.insert(hkey.clone(), (*on, std::time::Instant::now(), if *on { 0. } else { 1. - (1. - from).powi(3) }));
+                    g.insert(hkey.clone(), (*on, std::time::Instant::now(), if *on { 0. } else { crate::motion::out3(from) }));
                 });
                 cx.refresh_windows();
                 if *on {
