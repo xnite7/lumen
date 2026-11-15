@@ -65,9 +65,13 @@ fn rows(tab: Tab) -> Vec<R> {
         Tab::Subtitles => vec![
             Switch("on by default", "", "subtitles.enabledByDefault"),
             Switch("hide [sound descriptions]", "", "subtitles.hideSdh"),
-            Choice("size", "subtitles.size", vec![(json!(0.8), "small"), (json!(1.0), "medium"), (json!(1.25), "large"), (json!(1.5), "huge")]),
-            Choice("weight", "subtitles.weight", vec![(json!(400), "regular"), (json!(600), "semibold"), (json!(750), "bold")]),
-            Choice("colour", "subtitles.color", vec![(json!("#ffffff"), "white"), (json!("#ffe14a"), "yellow"), (json!("#bfe9ff"), "ice")]),
+            Choice("font", "subtitles.font", vec![(json!("Figtree"), "Figtree"), (json!("Satoshi"), "Satoshi"), (json!("Segoe UI"), "Segoe"), (json!("Arial"), "Arial"), (json!("Georgia"), "Georgia"), (json!("Consolas"), "mono")]),
+            Choice("style", "subtitles.background", vec![(json!("box"), "box"), (json!("glass"), "glass"), (json!("outline"), "outline"), (json!("shadow"), "shadow"), (json!("none"), "none")]),
+            Choice("background", "subtitles.bgOpacity", vec![(json!(0.0), "clear"), (json!(0.25), "light"), (json!(0.45), "medium"), (json!(0.65), "dark"), (json!(0.85), "solid")]),
+            Choice("size", "subtitles.size", vec![(json!(0.8), "small"), (json!(1.0), "medium"), (json!(1.15), "large"), (json!(1.3), "larger"), (json!(1.5), "huge")]),
+            Choice("weight", "subtitles.weight", vec![(json!(400), "regular"), (json!(500), "medium"), (json!(600), "semibold"), (json!(750), "bold"), (json!(900), "black")]),
+            Choice("colour", "subtitles.color", vec![(json!("#ffffff"), "white"), (json!("#fff4d6"), "cream"), (json!("#ffe14a"), "yellow"), (json!("#bfe9ff"), "ice"), (json!("#b8ffb0"), "mint")]),
+            Choice("height", "subtitles.bottomOffset", vec![(json!(4.0), "low"), (json!(7.0), "normal"), (json!(12.0), "raised"), (json!(18.0), "high")]),
         ],
         Tab::Couch => vec![
             Switch("previews on hover", "posters play a clip when you point at them", "general.hoverPreviews"),
@@ -110,14 +114,21 @@ fn get<'a>(v: &'a Value, path: &str) -> &'a Value {
 
 /// change one setting (by path) and save
 fn set(path: &str, val: Value) {
+    set_many(&[(path, val)]);
+}
+
+/// change several at once (one save, so they can't land out of order)
+fn set_many(changes: &[(&str, Value)]) {
     let core = couch::state::get().core.clone();
     let mut v = serde_json::to_value(core.settings()).unwrap_or_default();
-    let mut cur = &mut v;
-    let keys: Vec<&str> = path.split('.').collect();
-    for k in &keys[..keys.len() - 1] {
-        cur = &mut cur[*k];
+    for (path, val) in changes {
+        let mut cur = &mut v;
+        let keys: Vec<&str> = path.split('.').collect();
+        for k in &keys[..keys.len() - 1] {
+            cur = &mut cur[*k];
+        }
+        cur[keys[keys.len() - 1]] = val.clone();
     }
-    cur[keys[keys.len() - 1]] = val;
     if let Ok(s) = serde_json::from_value::<couch::settings::Settings>(v.clone()) {
         *core.settings.write() = s;
     }
@@ -322,7 +333,75 @@ fn caption(t: &str) -> gpui::Div {
     div().flex_none().mt(px(10.)).px(px(4.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child(t.to_string())
 }
 
+/// one-click looks for subtitles: (name, font, weight, colour, style, background, size)
+const SUB_PRESETS: [(&str, &str, u32, &str, &str, f32, f32); 6] = [
+    ("classic", "Figtree", 600, "#ffffff", "box", 0.55, 1.0),
+    ("cinema", "Satoshi", 600, "#ffffff", "outline", 0.0, 1.05),
+    ("clean", "Figtree", 500, "#ffffff", "shadow", 0.0, 1.0),
+    ("glass", "Figtree", 600, "#ffffff", "glass", 0.35, 1.0),
+    ("big & bold", "Figtree", 750, "#ffffff", "box", 0.75, 1.3),
+    ("yellow", "Figtree", 700, "#ffe14a", "outline", 0.0, 1.1),
+];
+
 impl Settings {
+    /// the subtitles section's top: a live preview, then the presets
+    fn sub_look(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let ss = couch::state::get().core.settings().subtitles.clone();
+        let preview = div()
+            .flex_none()
+            .relative()
+            .w_full()
+            .h(px(250.))
+            .rounded(px(18.))
+            .overflow_hidden()
+            // a bright sky over a dark street: easy to see what reads on both
+            .bg(gpui::linear_gradient(180., gpui::linear_color_stop(gpui::rgb(0xe9b98a), 0.), gpui::linear_color_stop(gpui::rgb(0x3a2a3c), 0.62)))
+            .child(div().absolute().left_0().bottom_0().w_full().h(px(110.)).bg(gpui::linear_gradient(180., gpui::linear_color_stop(gpui::rgba(0x1b141c00), 0.), gpui::linear_color_stop(gpui::rgb(0x120d13), 1.))))
+            .child(div().absolute().top(px(28.)).right(px(60.)).size(px(70.)).rounded_full().bg(gpui::rgb(0xfff1d2)))
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .w_full()
+                    .bottom(px((250. * ss.bottom_offset / 100.).max(10.)))
+                    .flex()
+                    .justify_center()
+                    .child(crate::views::player::sub_block("[door creaks] We made it. (whispering) Don't wake them.", 1150., &ss)),
+            );
+        let cur_is = |p: &(&str, &str, u32, &str, &str, f32, f32)| {
+            ss.font == p.1 && ss.weight == p.2 && ss.color.eq_ignore_ascii_case(p.3) && ss.background == p.4 && (ss.bg_opacity - p.5).abs() < 0.01 && (ss.size - p.6).abs() < 0.01
+        };
+        let presets = div().flex_none().flex().flex_wrap().gap(px(8.)).children(SUB_PRESETS.iter().enumerate().map(|(i, p)| {
+            let on = cur_is(p);
+            let p = *p;
+            div()
+                .id(("sub-preset", i))
+                .px(px(16.))
+                .h(px(36.))
+                .flex()
+                .items_center()
+                .rounded_full()
+                .text_size(px(14.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .cursor_pointer()
+                .when(on, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))
+                .when(!on, |d| d.bg(theme::white(0.08)).hover(|s| s.bg(theme::white(0.14))))
+                .on_click(cx.listener(move |_, _, _, cx| {
+                    set_many(&[
+                        ("subtitles.font", json!(p.1)),
+                        ("subtitles.weight", json!(p.2)),
+                        ("subtitles.color", json!(p.3)),
+                        ("subtitles.background", json!(p.4)),
+                        ("subtitles.bgOpacity", json!(p.5)),
+                        ("subtitles.size", json!(p.6)),
+                    ]);
+                    cx.notify();
+                }))
+                .child(p.0)
+        }));
+        vec![preview.into_any_element(), caption("presets").into_any_element(), presets.into_any_element(), caption("your own").into_any_element()]
+    }
+
     fn switch_row(&self, key: String, i: usize, t: &'static str, sub: &str, path: &'static str, cur: &Value, cx: &mut Context<Self>) -> AnyElement {
         let on = get(cur, path).as_bool().unwrap_or(false);
         line(i)
@@ -749,6 +828,10 @@ impl Render for Settings {
                 Tab::Lights => body.extend(self.lights(&cur, cx)),
                 Tab::Storage => body.extend(self.storage(cx)),
                 Tab::About => body.extend(self.about(cx)),
+                Tab::Subtitles => {
+                    body.extend(self.sub_look(cx));
+                    body.push(group(self.plain(Tab::Subtitles, "", &cur, cx)).into_any_element());
+                }
                 t => {
                     let mut rows = self.plain(t, "", &cur, cx);
                     if t == Tab::Video {

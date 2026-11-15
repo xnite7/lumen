@@ -496,6 +496,16 @@ fn _unused() -> gpui::Div {
 // fresh; leaving the card stops it.
 
 struct Pending(String);
+
+thread_local! {
+    /// when a clip last failed to show (then trailers only, for a while)
+    static CLIPS_BAD: Cell<Option<Instant>> = const { Cell::new(None) };
+}
+
+/// how long to rest on a card before it grows and plays (seconds)
+pub fn dwell_secs() -> f32 {
+    (couch::state::get().core.settings().general.hover_delay_ms as f32 / 2000.).clamp(0.45, 0.9)
+}
 impl Global for Pending {}
 
 pub fn hover(m: &crate::api::Meta, on: bool, cx: &mut App) {
@@ -509,7 +519,7 @@ pub fn hover(m: &crate::api::Meta, on: bool, cx: &mut App) {
     }
     cx.set_global(Pending(owner.clone()));
     // rest on it a moment (passing over a row doesn't set every card off)
-    let delay = (couch::state::get().core.settings().general.hover_delay_ms / 2).clamp(450, 900) as u64;
+    let delay = (dwell_secs() * 1000.) as u64;
     let (id, name, year, kind) = (m.id.clone(), m.name.clone(), m.year(), m.kind.clone());
     cx.spawn(async move |cx| {
         crate::timer::after(std::time::Duration::from_millis(delay)).await;
@@ -517,8 +527,11 @@ pub fn hover(m: &crate::api::Meta, on: bool, cx: &mut App) {
         if !still {
             return;
         }
+        // clips that wouldn't load lately (ClipCafe's daily limit): straight to the trailer
+        let skip_clips = CLIPS_BAD.with(|c| c.get().map_or(false, |t| t.elapsed().as_secs() < 30 * 60));
         let url = match std::env::var("COUCH_TEST_CLIP") {
             Ok(f) => Some(f),
+            Err(_) if skip_clips => None,
             Err(_) => crate::api::call::<Option<String>>("clip_url", serde_json::json!({ "id": id, "title": name, "year": year })).await.ok().flatten(),
         };
         // no clip for it (Money Heist, The Matrix…): its trailer instead
@@ -535,9 +548,10 @@ pub fn hover(m: &crate::api::Meta, on: bool, cx: &mut App) {
         });
         // a clip that never shows up (the clip server couldn't fetch it): the trailer
         if clip {
-            crate::timer::after(std::time::Duration::from_secs(5)).await;
+            crate::timer::after(std::time::Duration::from_millis(3500)).await;
             let stuck = cx.update(|cx| cx.try_global::<Pending>().map_or(false, |p| p.0 == owner) && !get(cx).read(cx).showing(&owner));
             if stuck {
+                CLIPS_BAD.with(|c| c.set(Some(Instant::now())));
                 let t = crate::api::call::<Option<String>>("trailer_get", serde_json::json!({ "kind": kind, "id": id })).await.ok().flatten().filter(|k| !k.is_empty());
                 if let Some(k) = t {
                     let url = format!("https://www.youtube.com/watch?v={k}");

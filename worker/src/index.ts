@@ -343,7 +343,13 @@ export default {
     const who = await verify(env, isWs ? `Bearer ${url.searchParams.get("t") ?? ""}` : req.headers.get("authorization"));
     if (!who) return json({ error: "sign in again" }, 401);
     const clipAsk = url.pathname.match(/^\/v1\/clip\/(tt\d{5,10})$/);
-    if (clipAsk) return json({ clip: !!(await clipPick(env, clipAsk[1], url.searchParams.get("title"), url.searchParams.get("year"))) });
+    if (clipAsk) {
+      // already fetched once: it plays from the cache, no request needed
+      if (await caches.default.match(new Request(`https://couch.clips/file2/${clipAsk[1]}.mp4`))) return json({ clip: true });
+      // out of ClipCafe requests today: no clip (the app plays a trailer)
+      if (await clipsOut()) return json({ clip: false, out: true });
+      return json({ clip: !!(await clipPick(env, clipAsk[1], url.searchParams.get("title"), url.searchParams.get("year"))) });
+    }
     if (url.pathname.startsWith("/v1/update/")) return updates(url, env);
     if (url.pathname === "/v1/gpui/latest" || url.pathname === "/v1/gpui/file") return gpui(url, env);
     // the Durable Object trusts this header; set it here, never from the client
@@ -371,7 +377,22 @@ async function clipSearch(env: Env, q: string): Promise<{ status: number; error?
   const r = await fetch(`https://api.clip.cafe/?api_key=${encodeURIComponent(env.CLIPCAFE_KEY ?? "")}&${q}`);
   const d: any = await r.json().catch(() => null);
   const clips = (d?.hits?.hits ?? []).map((h: any) => h?._source).filter((c: any) => c?.slug);
-  return { status: r.status, error: d?.error ? String(d.error).slice(0, 200) : undefined, clips };
+  const error = d?.error ? String(d.error).slice(0, 200) : undefined;
+  // out of requests for today (the free plan's 100): say so until midnight UTC,
+  // so the apps go straight to a trailer instead of waiting on a clip
+  if (r.status === 429 || r.status === 402 || r.status === 403 || /limit|quota|exceed/i.test(error ?? "")) await clipsOutToday();
+  return { status: r.status, error, clips };
+}
+
+const CLIPS_OUT = "https://couch.clips/out";
+async function clipsOutToday() {
+  const now = new Date();
+  const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  const secs = Math.max(60, Math.floor((midnight - now.getTime()) / 1000));
+  await caches.default.put(new Request(CLIPS_OUT), new Response("1", { headers: { "cache-control": `public, max-age=${secs}` } }));
+}
+async function clipsOut(): Promise<boolean> {
+  return !!(await caches.default.match(new Request(CLIPS_OUT)));
 }
 
 async function clipPick(env: Env, imdb: string, title?: string | null, year?: string | null): Promise<Clip> {

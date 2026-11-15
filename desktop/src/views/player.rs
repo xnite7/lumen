@@ -43,6 +43,8 @@ pub struct PlayerView {
     track_w: f32,
     /// the volume slider slides out of its button while you point at it
     vol_open: bool,
+    /// clicks on the picture (a double click cancels the single's pause)
+    click_gen: u64,
     /// when the volume pop-out opened
     vol_since: Option<Instant>,
     /// clicked open (stays until clicked again or elsewhere)
@@ -155,7 +157,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -1062,12 +1064,9 @@ impl Render for PlayerView {
                     return;
                 }
                 if e.click_count() == 2 {
-                    // double click: full screen (undo the first click's pause)
+                    // double click: full screen; the first click's pause never happens
+                    v.click_gen += 1;
                     window.toggle_fullscreen();
-                    let paused = v.pb.read(cx).state.paused;
-                    if may(if paused { "play" } else { "pause" }, None, cx) {
-                        v.pb.read(cx).cmd("pause", json!({ "value": !paused }));
-                    }
                     return;
                 }
                 // a click on the picture: play / pause (double click: full screen)
@@ -1076,10 +1075,22 @@ impl Render for PlayerView {
                     v.vol_pinned = false;
                     cx.notify();
                 } else if e.click_count() == 1 {
-                    let paused = v.pb.read(cx).state.paused;
-                    if may(if paused { "play" } else { "pause" }, None, cx) {
-                        v.pb.read(cx).cmd("pause", json!({ "value": !paused }));
-                    }
+                    // wait a moment: a second click makes it full screen instead
+                    v.click_gen += 1;
+                    let g = v.click_gen;
+                    cx.spawn(async move |this, cx| {
+                        crate::timer::after(Duration::from_millis(320)).await;
+                        let _ = this.update(cx, |v, cx| {
+                            if v.click_gen != g {
+                                return;
+                            }
+                            let paused = v.pb.read(cx).state.paused;
+                            if may(if paused { "play" } else { "pause" }, None, cx) {
+                                v.pb.read(cx).cmd("pause", json!({ "value": !paused }));
+                            }
+                        });
+                    })
+                    .detach();
                 }
                 v.poke(cx);
             }))
@@ -1254,28 +1265,13 @@ impl Render for PlayerView {
                 );
         }
 
-        // subtitles, drawn by couch
-        let sub_px = (f32::from(vw) * 0.0158).clamp(13., 30.);
+        // subtitles, drawn by couch, the way they're set up in settings
         if !p.sub.is_empty() {
-            root = root.child(
-                div().absolute().left_0().w_full().bottom(px(if f32::from(vw) < 640. { 14. } else if shown { 160. } else { 64. })).flex().justify_center().child(
-                    div()
-                        .max_w(px(1100.))
-                        .px(px(16.))
-                        .py(px(6.))
-                        .rounded(px(8.))
-                        .bg(theme::black(0.55))
-                        .text_center()
-                        // subtitles in Figtree (open, easy to read at a glance)
-                        .font_family("Figtree")
-                        // sized to the window: small in picture-in-picture, 30 on a big screen
-                        .text_size(px(sub_px))
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .line_height(px(sub_px * 1.33))
-                        .text_color(gpui::rgb(0xffffff))
-                        .child(styled_sub(&p.sub)),
-                ),
-            );
+            let ss = couch::state::get().core.settings().subtitles.clone();
+            let vh = f32::from(window.viewport_size().height);
+            // above the controls while they show; otherwise where settings put them
+            let lift = if f32::from(vw) < 640. { 14. } else if shown { 160f32.max(vh * ss.bottom_offset / 100.) } else { vh * ss.bottom_offset / 100. };
+            root = root.child(div().absolute().left_0().w_full().bottom(px(lift)).flex().justify_center().child(sub_block(&p.sub, f32::from(vw), &ss)));
         }
 
         if let Some(at) = self.vol_hud.filter(|a| a.elapsed() < Duration::from_millis(1200)) {
@@ -1634,7 +1630,16 @@ impl Render for PlayerView {
                     .flex_col()
                     .items_end()
                     .gap(px(12.))
-                    .child(div().flex().gap(px(8.)).children(crate::ui::badges::format(&c, height, &codec).into_iter().map(|b| img(b.src).h(px(24.)).flex_none().object_fit(ObjectFit::Contain))))
+                    .child({
+                        let bs = crate::ui::badges::format(&c, height, &codec);
+                        div()
+                            .relative()
+                            .flex()
+                            .gap(px(10.))
+                            // a soft dark pool under them, so they read on a bright picture
+                            .when(!bs.is_empty(), |d| d.child(div().absolute().top(px(4.)).bottom(px(4.)).left(px(6.)).right(px(6.)).rounded_full().shadow(vec![gpui::BoxShadow { color: theme::black(0.5), offset: gpui::point(px(0.), px(2.)), blur_radius: px(26.), spread_radius: px(10.), inset: false }])))
+                            .children(bs.into_iter().map(|b| img(b.src).h(px(32.)).flex_none().object_fit(ObjectFit::Contain)))
+                    })
                     .when(people.len() > 1, |d| d.child(crate::ui::faces_below("party", people, 30.)))
             })
             // bottom: the scrub bar, then one glass bar with everything on it
@@ -1958,11 +1963,85 @@ fn aspect_icon(k: &str, on: bool) -> impl IntoElement {
 
 /// A subtitle with its asides set apart: "[steven]" (who's speaking, or a
 /// sound) quieter and in small letters, "(whispering)" quieter and slanted,
+/// A subtitle line as the settings say: font, size (scaled to the window),
+/// weight, colour, and a box / glass / outline / shadow / nothing behind it.
+/// (Settings uses this too, for its preview.)
+pub fn sub_block(text: &str, vw: f32, ss: &couch::settings::Subtitles) -> gpui::AnyElement {
+    let size = (vw * 0.0158).clamp(13., 30.) * ss.size.clamp(0.5, 2.);
+    let font: &'static str = match ss.font.as_str() {
+        "Satoshi" => "Satoshi",
+        "Segoe UI" => "Segoe UI",
+        "Georgia" => "Georgia",
+        "Consolas" => "Consolas",
+        "Arial" => "Arial",
+        _ => "Figtree",
+    };
+    let weight = FontWeight(ss.weight.clamp(300, 900) as f32);
+    let color = parse_hex(&ss.color).unwrap_or(gpui::hsla(0., 0., 1., 1.));
+    let lh = size * 1.33;
+    let text_el = |c: gpui::Hsla, styled: bool| {
+        div()
+            .w_full()
+            .text_center()
+            .font_family(font)
+            .text_size(px(size))
+            .font_weight(weight)
+            .line_height(px(lh))
+            .text_color(c)
+            .child(styled_sub_in(text, if styled { None } else { Some(c) }))
+    };
+    let op = ss.bg_opacity.clamp(0., 1.);
+    let base = div().relative().max_w(px((vw * 0.8).min(1200.))).text_center();
+    match ss.background.as_str() {
+        // the letters drawn over a dark copy of themselves, a hair out each way
+        "outline" | "shadow" => {
+            let k = (size / 18.).clamp(1., 2.4);
+            let offsets: Vec<(f32, f32)> = if ss.background == "outline" {
+                vec![(-k, 0.), (k, 0.), (0., -k), (0., k), (-k * 0.7, -k * 0.7), (k * 0.7, -k * 0.7), (-k * 0.7, k * 0.7), (k * 0.7, k * 0.7)]
+            } else {
+                vec![(k * 0.6, k * 1.2), (k * 1.1, k * 1.8)]
+            };
+            let dark = gpui::hsla(0., 0., 0., (if ss.background == "outline" { 0.95f32 } else { 0.55f32 }).max(op));
+            let mut d = base.px(px(10.));
+            for (dx, dy) in offsets {
+                d = d.child(div().absolute().left(px(10. + dx)).right(px(10. - dx)).top(px(dy)).child(text_el(dark, false)));
+            }
+            d.child(div().relative().child(text_el(color, true))).into_any_element()
+        }
+        "none" => base.px(px(10.)).child(text_el(color, true)).into_any_element(),
+        // frosted: softer corners, a faint rim
+        "glass" => base
+            .px(px(18.))
+            .py(px(6.))
+            .rounded(px(14.))
+            .bg(gpui::hsla(0.9, 0.1, 0.07, op.max(0.15)))
+            .border_1()
+            .border_color(theme::white(0.08))
+            .child(text_el(color, true))
+            .into_any_element(),
+        _ => base.px(px(16.)).py(px(6.)).rounded(px(8.)).bg(theme::black(op)).child(text_el(color, true)).into_any_element(),
+    }
+}
+
+fn parse_hex(h: &str) -> Option<gpui::Hsla> {
+    let h = h.trim_start_matches('#');
+    if h.len() != 6 {
+        return None;
+    }
+    let v = u32::from_str_radix(h, 16).ok()?;
+    Some(gpui::rgb(v).into())
+}
+
 /// ♪ lyrics slanted.
 fn styled_sub(text: &str) -> gpui::StyledText {
+    styled_sub_in(text, None)
+}
+
+/// (`ink`: one colour for everything, for the dark copies behind an outline)
+fn styled_sub_in(text: &str, ink: Option<gpui::Hsla>) -> gpui::StyledText {
     let mut marks: Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> = vec![];
-    let aside = gpui::HighlightStyle { color: Some(gpui::hsla(0., 0., 0.78, 1.)), font_weight: Some(FontWeight::MEDIUM), ..Default::default() };
-    let slant = gpui::HighlightStyle { color: Some(gpui::hsla(0., 0., 0.78, 1.)), font_style: Some(gpui::FontStyle::Italic), font_weight: Some(FontWeight::MEDIUM), ..Default::default() };
+    let aside = gpui::HighlightStyle { color: Some(ink.unwrap_or(gpui::hsla(0., 0., 0.78, 1.))), font_weight: Some(FontWeight::MEDIUM), ..Default::default() };
+    let slant = gpui::HighlightStyle { color: Some(ink.unwrap_or(gpui::hsla(0., 0., 0.78, 1.))), font_style: Some(gpui::FontStyle::Italic), font_weight: Some(FontWeight::MEDIUM), ..Default::default() };
     for (open, close, style) in [('[', ']', aside), ('(', ')', slant)] {
         let mut from = None;
         for (i, c) in text.char_indices() {

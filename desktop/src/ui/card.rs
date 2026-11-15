@@ -9,7 +9,7 @@ pub const H: f32 = 169.0;
 
 thread_local! {
     /// each card: is the pointer on it, since when (it grows while you rest on it)
-    static GROW: std::cell::RefCell<std::collections::HashMap<String, (bool, std::time::Instant)>> = std::cell::RefCell::new(std::collections::HashMap::new());
+    static GROW: std::cell::RefCell<std::collections::HashMap<String, (bool, std::time::Instant, f32)>> = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 pub fn card(id: SharedString, m: &Meta, on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> AnyElement {
@@ -48,11 +48,17 @@ pub fn card_with(
     let lkey = zkey.clone();
     // resting on it: the card grows a little, over its neighbours
     let hkey = zkey.clone();
-    let (hov, since) = GROW.with(|g| g.borrow().get(&zkey).copied()).unwrap_or((false, std::time::Instant::now() - std::time::Duration::from_secs(5)));
-    let x = (since.elapsed().as_secs_f32() / if hov { 0.28 } else { 0.22 }).min(1.);
-    let moving = x < 1.;
-    // in: quick then soft; out: an even ease
-    let grow = if hov { 1. - (1. - x).powi(3) } else { 1. - x * x * (3. - 2. * x) };
+    // only after you've rested on it (the same wait as the preview); each card waits on its own
+    let (hov, since, from) = GROW.with(|g| g.borrow().get(&zkey).copied()).unwrap_or((false, std::time::Instant::now() - std::time::Duration::from_secs(5), 0.));
+    let dwell = crate::ui::video::dwell_secs();
+    let (grow, moving) = if hov {
+        let x = ((since.elapsed().as_secs_f32() - dwell) / 0.32).clamp(0., 1.);
+        (1. - (1. - x).powi(3), x < 1.)
+    } else {
+        // shrinking back from however far it had grown
+        let x = (since.elapsed().as_secs_f32() / 0.24).min(1.);
+        (from * (1. - x * x * (3. - 2. * x)), x < 1. && from > 0.)
+    };
     let s = 1. + 0.07 * grow;
     let (gw, gh) = (W * s, H * s);
     // seen it already: the card steps back a little (not while it previews)
@@ -72,7 +78,7 @@ pub fn card_with(
         .overflow_hidden()
         .when(grow > 0.01, |d| d.shadow(vec![gpui::BoxShadow { color: theme::black(0.55 * grow), offset: gpui::point(px(0.), px(12. * grow)), blur_radius: px(30.), spread_radius: px(0.), inset: false }]))
         // keeps the frames coming while it grows or shrinks
-        .when(moving, |d| d.child(gpui::canvas(|_, _, _| (), |_, _, w, _| w.request_animation_frame()).absolute().size_0()))
+        .when(moving || (hov && grow < 1.), |d| d.child(gpui::canvas(|_, _, _| (), |_, _, w, _| w.request_animation_frame()).absolute().size_0()))
         // a GPU clip shows through this card: nothing of the card under it
         .when(!matches!(clip, Some((crate::ui::video::Pic::Native, _, _))), |d| d.bg(theme::surface2()))
         .cursor_pointer()
@@ -91,7 +97,10 @@ pub fn card_with(
             let previews = preview.is_some();
             move |on, _, cx| {
                 GROW.with(|g| {
-                    g.borrow_mut().insert(hkey.clone(), (*on, std::time::Instant::now()));
+                    let mut g = g.borrow_mut();
+                    // leaving: remember how far it had grown, to shrink from there
+                    let from = g.get(&hkey).map_or(0., |&(h, t, _)| if h { ((t.elapsed().as_secs_f32() - crate::ui::video::dwell_secs()) / 0.32).clamp(0., 1.) } else { 0. });
+                    g.insert(hkey.clone(), (*on, std::time::Instant::now(), if *on { 0. } else { 1. - (1. - from).powi(3) }));
                 });
                 cx.refresh_windows();
                 if *on {

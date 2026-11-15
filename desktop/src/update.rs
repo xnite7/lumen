@@ -191,19 +191,25 @@ pub fn card(cx: &mut App) -> Option<impl IntoElement> {
             .absolute()
             .left(px(24.))
             .bottom(px(24.))
-            .w(px(340.))
-            .p(px(16.))
-            .rounded(px(18.))
-            .bg(crate::theme::surface())
-            .shadow_lg()
+            .w(px(360.))
+            .p(px(18.))
+            .rounded(px(20.))
+            // lit, so it stands out from any page: the neon at the edge, a glow under it
+            .bg(gpui::linear_gradient(160., gpui::linear_color_stop(gpui::rgba(0x2a1a2cf7), 0.), gpui::linear_color_stop(gpui::rgba(0x150d17f7), 1.)))
+            .border_1()
+            .border_color(crate::theme::neon())
+            .shadow(vec![
+                gpui::BoxShadow { color: crate::theme::black(0.6), offset: gpui::point(px(0.), px(16.)), blur_radius: px(40.), spread_radius: px(0.), inset: false },
+                gpui::BoxShadow { color: gpui::Hsla::from(crate::theme::neon()).opacity(0.45), offset: gpui::point(px(0.), px(0.)), blur_radius: px(28.), spread_radius: px(0.), inset: false },
+            ])
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(div().flex().flex_col().gap(px(2.)).child(div().text_size(px(16.)).font_weight(FontWeight::BLACK).child(format!("couch {v} is ready"))).child(div().text_size(px(13.)).text_color(crate::theme::label2()).child(if matches!(*VIA.lock(), Some(Via::MoveTo { .. })) {
+            .child(div().flex().items_center().gap(px(12.)).child(div().size(px(40.)).flex_none().rounded_full().bg(crate::theme::neon()).flex().items_center().justify_center().child(crate::ui::icon("download", 20.))).child(div().flex().flex_col().gap(px(2.)).child(div().text_size(px(17.)).font_weight(FontWeight::BLACK).child(format!("couch {v} is ready"))).child(div().text_size(px(13.)).text_color(crate::theme::label2()).child(if matches!(*VIA.lock(), Some(Via::MoveTo { .. })) {
                 "couch now installs like a proper app: Windows asks once to trust it, then its installer opens"
             } else {
                 "restart to get it — or it's there next time you open couch"
-            })))
+            }))))
             .child(
                 div()
                     .flex()
