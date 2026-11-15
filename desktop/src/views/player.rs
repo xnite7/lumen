@@ -1858,6 +1858,43 @@ impl Render for PlayerView {
                                     .items_center()
                                     .cursor_pointer()
                                     .child(gpui::canvas({ let at = self.scrub_at.clone(); move |b, _, _| at.set((f32::from(b.origin.x), f32::from(b.size.width))) }, |_, _, _, _| {}).absolute().size_full())
+                                    // while dragging: the release ends it wherever it happens (over a
+                                    // button, outside the window), not only over the picture
+                                    .when(self.drag, |d| {
+                                        let me = cx.entity().downgrade();
+                                        let me2 = me.clone();
+                                        let at = self.scrub_at.clone();
+                                        d.child(
+                                            gpui::canvas(
+                                                |_, _, _| (),
+                                                move |_, _, window, _| {
+                                                    let me = me.clone();
+                                                    window.on_mouse_event(move |_: &gpui::MouseUpEvent, phase, _, cx| {
+                                                        if phase == gpui::DispatchPhase::Capture {
+                                                            let _ = me.update(cx, |v, cx| v.finish_drag(cx));
+                                                        }
+                                                    });
+                                                    let me2 = me2.clone();
+                                                    let at = at.clone();
+                                                    window.on_mouse_event(move |e: &MouseMoveEvent, phase, _, cx| {
+                                                        if phase == gpui::DispatchPhase::Capture {
+                                                            let x = f32::from(e.position.x) - at.get().0;
+                                                            let _ = me2.update(cx, |v, cx| {
+                                                                if e.pressed_button != Some(gpui::MouseButton::Left) {
+                                                                    v.finish_drag(cx);
+                                                                } else {
+                                                                    v.hover_x = Some(x);
+                                                                    cx.notify();
+                                                                }
+                                                            });
+                                                        }
+                                                    });
+                                                },
+                                            )
+                                            .absolute()
+                                            .size_0(),
+                                        )
+                                    })
                                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |v, e: &gpui::MouseDownEvent, _, cx| {
                                         cx.stop_propagation();
                                         v.drag = true;
