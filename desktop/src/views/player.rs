@@ -24,6 +24,9 @@ pub enum Menu {
 pub struct PlayerView {
     pb: Entity<Playback>,
     menu: Option<Menu>,
+    /// the menu last shown, and when it opened (it rises in)
+    menu_seen: Option<Menu>,
+    menu_at: Instant,
     /// seek-bar stills, every 10 s of the film
     stills: std::collections::HashMap<i64, Option<std::sync::Arc<gpui::Image>>>,
     vol_hud: Option<Instant>,
@@ -48,6 +51,9 @@ pub struct PlayerView {
     scrub_at: std::rc::Rc<std::cell::Cell<(f32, f32)>>,
     /// the controls: showing or not, and since when (they slide in and out)
     chrome_on: bool,
+    /// the paused screen (which episode, big), and when it last came or went
+    pause_on: bool,
+    pause_at: Instant,
     chrome_at: Instant,
     /// the progress bar's colours, from the title's logo (or its picture): (for which url, two colours)
     tint: Option<(String, [gpui::Hsla; 2])>,
@@ -143,7 +149,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -928,6 +934,7 @@ impl Render for PlayerView {
             Some(format!("S{} E{}", v["season"].as_i64()?, v["episode"].as_i64().or(v["number"].as_i64())?))
         });
         let shown = self.shown || p.loading || !p.error.is_empty();
+        let is_series_now = p.meta.as_ref().map_or(false, |m| m.kind == "series");
         let art = p.meta.as_ref().and_then(|m| m.background.clone().or(m.poster.clone())).map(|u| sized(&u, "original"));
         let logo = p.meta.as_ref().and_then(|m| m.logo.clone()).map(|u| crate::net::logo(&sized(&u, "large"), 480.));
         // the loading screen until the picture is really there (never see-through to the desktop)
@@ -1192,22 +1199,87 @@ impl Render for PlayerView {
             })
             .detach();
         }
-        let root = root.child(self.reactions.clone()).children(denied_sign(cx, window));
+        let mut root = root.child(self.reactions.clone()).children(denied_sign(cx, window));
         // the controls slide in and out
         if shown != self.chrome_on {
             self.chrome_on = shown;
             self.chrome_at = Instant::now();
         }
         let ct = self.chrome_at.elapsed().as_secs_f32();
+        // in: quick then soft (ease-out quint); out: a slow, even fade (ease-in-out)
         let ca = if self.chrome_on {
-            let x = (ct / 0.22).min(1.);
-            1. - (1. - x).powi(3)
+            let x = (ct / 0.42).min(1.);
+            1. - (1. - x).powi(5)
         } else {
-            let x = (ct / 0.32).min(1.);
-            1. - x * x
+            let x = (ct / 0.6).min(1.);
+            1. - if x < 0.5 { 4. * x * x * x } else { 1. - (-2. * x + 2.).powi(3) / 2. }
         };
-        if ct < 0.35 {
+        if ct < 0.62 {
             window.request_animation_frame();
+        }
+        // paused: which episode, big, bottom left; each part rises in after the last
+        let want_pause = st.paused && !starting && self.pb.read(cx).error.is_empty() && self.menu.is_none();
+        if want_pause != self.pause_on {
+            self.pause_on = want_pause;
+            self.pause_at = Instant::now();
+        }
+        let pt = self.pause_at.elapsed().as_secs_f32();
+        if pt < 1.3 {
+            window.request_animation_frame();
+        }
+        let ein = |d: f32, dur: f32| 1. - (1. - ((pt - d) / dur).clamp(0., 1.)).powi(5);
+        let eout = |d: f32, dur: f32| {
+            let x = ((pt - d) / dur).clamp(0., 1.);
+            1. - if x < 0.5 { 4. * x * x * x } else { 1. - (-2. * x + 2.).powi(3) / 2. }
+        };
+        // (shade, S:E, title, logo, the top logo stepping away)
+        let (pv_shade, pv_label, pv_title, pv_logo, pv_top) = if self.pause_on {
+            (ein(0., 0.7), ein(0.12, 0.7), ein(0.22, 0.75), ein(0.42, 0.8), ein(0., 0.35))
+        } else {
+            (eout(0.1, 0.6), eout(0.16, 0.45), eout(0.08, 0.45), eout(0., 0.45), eout(0.25, 0.45))
+        };
+        if pv_shade > 0.001 {
+            let has_ep = is_series_now && (label.is_some() || !ep.is_empty());
+            let big_logo = logo.clone();
+            let t2 = title.clone();
+            let rise = |v: f32| px((1. - v) * 34.);
+            root = root
+                .child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .size_full()
+                        .opacity(pv_shade)
+                        .bg(linear_gradient(40., linear_color_stop(theme::black(0.88), 0.), linear_color_stop(theme::black(0.0), 0.62))),
+                )
+                .child(
+                    div()
+                        .absolute()
+                        .left(px(g))
+                        .bottom(px(150.))
+                        .max_w(px(900.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.))
+                        .when(has_ep, |d| {
+                            d.children(label.clone().map(|l| {
+                                div().relative().top(rise(pv_label)).opacity(pv_label).text_size(px(30.)).font_weight(FontWeight::BLACK).text_color(theme::white(0.72)).child(l.replace(' ', ":"))
+                            }))
+                            .children((!ep.is_empty()).then(|| {
+                                div().relative().top(rise(pv_title)).opacity(pv_title).text_size(px(68.)).line_height(px(74.)).font_weight(FontWeight::BLACK).line_clamp(2).child(ep.clone())
+                            }))
+                        })
+                        .child(div().relative().top(rise(pv_logo)).opacity(pv_logo).mt(px(if has_ep { 18. } else { 0. })).child(match big_logo {
+                            Some(u) => img(u)
+                                .h(px(if has_ep { 110. } else { 170. }))
+                                .max_w(px(520.))
+                                .object_fit(ObjectFit::Contain)
+                                .with_fallback(move || div().text_size(px(56.)).font_weight(FontWeight::BLACK).child(t2.clone()).into_any_element())
+                                .into_any_element(),
+                            None => div().text_size(px(if has_ep { 36. } else { 64. })).font_weight(FontWeight::BLACK).child(title.clone()).into_any_element(),
+                        })),
+                );
         }
         if ca <= 0.001 {
             return root;
@@ -1264,7 +1336,16 @@ impl Render for PlayerView {
         let is_series = p.meta.as_ref().map_or(false, |m| m.kind == "series");
         let near_end = st.duration > 300. && st.duration - st.pos < 45. && next.is_some();
         let has_streams = !p.all.is_empty();
-        let menu = self.menu.map(|m| self.menu_panel(m, window, cx));
+        if self.menu != self.menu_seen {
+            self.menu_seen = self.menu;
+            self.menu_at = Instant::now();
+        }
+        let mt = (self.menu_at.elapsed().as_secs_f32() / 0.32).min(1.);
+        if mt < 1. {
+            window.request_animation_frame();
+        }
+        let ma = 1. - (1. - mt).powi(4);
+        let menu = self.menu.map(|m| self.menu_panel(m, window, cx)).map(|el| div().absolute().left_0().top(px((1. - ma) * 16.)).w_full().h_full().opacity(ma).child(el));
         // skip intro / recap; at the credits (or the last bit): next episode
         let skip = match &segment {
             Some((k, end)) if k == "intro" || k == "recap" => {
@@ -1357,7 +1438,6 @@ impl Render for PlayerView {
         let vol_max = if couch::state::get().core.settings().playback.volume_boost { 130. } else { 100. };
         let vol_frac = (vol_now / vol_max).clamp(0., 1.) as f32;
         let vol_x = self.vol_x.clone();
-        let now_line = [label.clone().unwrap_or_default(), ep.clone()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
         let _ = &title;
         let top_logo = logo.clone();
         let top_title = title.clone();
@@ -1366,7 +1446,7 @@ impl Render for PlayerView {
             .child(
                 div()
                     .absolute()
-                    .top(px(-(1. - ca) * 18.))
+                    .top(px(-(1. - ca) * 32.))
                     .opacity(ca)
                     .left_0()
                     .w_full()
@@ -1399,7 +1479,7 @@ impl Render for PlayerView {
                                     })
                                     .child(icon("back", 24.)),
                             )
-                            .child(match top_logo {
+                            .child(div().opacity(1. - pv_top).relative().top(px(-pv_top * 14.)).child(match top_logo {
                                 Some(u) => {
                                     let t = top_title.clone();
                                     img(u)
@@ -1410,7 +1490,7 @@ impl Render for PlayerView {
                                         .into_any_element()
                                 }
                                 None => div().text_size(px(22.)).font_weight(FontWeight::BLACK).child(top_title).into_any_element(),
-                            }),
+                            })),
                     ),
             )
             // what's playing, as badges (4K, Dolby Vision, Atmos...)
@@ -1423,7 +1503,7 @@ impl Render for PlayerView {
                 let people: Vec<(Option<String>, String)> = self.reactions.read(cx).people.iter().map(|x| (x["avatar"].as_str().map(String::from), x["name"].as_str().unwrap_or("someone").to_string())).collect();
                 div()
                     .absolute()
-                    .top(px(50. - (1. - ca) * 18.))
+                    .top(px(50. - (1. - ca) * 32.))
                     .opacity(ca)
                     .right(px(g))
                     .flex()
@@ -1437,27 +1517,12 @@ impl Render for PlayerView {
             .child(
                 div()
                     .absolute()
-                    .bottom(px(-(1. - ca) * 26.))
+                    .bottom(px(-(1. - ca) * 48.))
                     .opacity(ca)
                     .left_0()
                     .w_full()
                     .h(px(210.))
                     .bg(linear_gradient(180., linear_color_stop(theme::black(0.0), 0.), linear_color_stop(theme::black(0.72), 1.)))
-                    // paused on an episode: which one, above the controls (the show's logo is up top)
-                    .when(paused && is_series && !now_line.is_empty(), |d| {
-                        d.child(
-                            div()
-                                .absolute()
-                                .left(px(g))
-                                .bottom(px(104.))
-                                .max_w(px(700.))
-                                .flex()
-                                .flex_col()
-                                .gap(px(4.))
-                                .children(label.clone().map(|l| div().text_size(px(15.)).font_weight(FontWeight::BLACK).text_color(theme::label2()).child(l.replace(' ', ":"))))
-                                .children((!ep.is_empty()).then(|| div().text_size(px(30.)).line_height(px(36.)).font_weight(FontWeight::BLACK).line_clamp(2).child(ep.clone()))),
-                        )
-                    })
                     .child(
                         glass(div())
                             .absolute()
