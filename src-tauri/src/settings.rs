@@ -250,6 +250,8 @@ pub struct Subtitles {
     pub style_sdh: bool,
     pub hide_sdh: bool,
     pub rtl_fix: bool,
+    /// how solid the letters are (1 = fully)
+    pub text_opacity: f32,
 }
 
 impl Default for Subtitles {
@@ -269,6 +271,7 @@ impl Default for Subtitles {
             style_sdh: true,
             hide_sdh: false,
             rtl_fix: true,
+            text_opacity: 1.0,
         }
     }
 }

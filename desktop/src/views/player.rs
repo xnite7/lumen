@@ -2024,23 +2024,7 @@ impl Render for PlayerView {
                                                                         .child(div().absolute().left(px(-5.)).bottom(px(SH * vol_frac - 8.)).size(px(16.)).rounded_full().bg(theme::text()).shadow(vec![gpui::BoxShadow { color: theme::black(0.4), offset: gpui::point(px(0.), px(2.)), blur_radius: px(6.), spread_radius: px(0.), inset: false }])),
                                                                 ),
                                                         )
-                                                        .child(
-                                                            div()
-                                                                .id("pl-mute-t")
-                                                                .size(px(34.))
-                                                                .flex()
-                                                                .items_center()
-                                                                .justify_center()
-                                                                .rounded_full()
-                                                                .cursor_pointer()
-                                                                .when(muted, |d| d.bg(theme::text()))
-                                                                .when(!muted, |d| d.bg(theme::white(0.1)).hover(|s| s.bg(theme::white(0.18))))
-                                                                .on_click(move |_, _, cx| {
-                                                                    cx.stop_propagation();
-                                                                    pb.read(cx).cmd("mute", json!({}));
-                                                                })
-                                                                .child(if muted { icon("mute", 17.).text_color(gpui::rgb(0x000000)) } else { icon("mute", 17.) }),
-                                                        ),
+,
                                                 ),
                                         )
                                     }),
@@ -2135,7 +2119,7 @@ pub fn sub_block(text: &str, vw: f32, ss: &couch::settings::Subtitles) -> gpui::
         _ => "Figtree",
     };
     let weight = FontWeight(ss.weight.clamp(300, 900) as f32);
-    let color = parse_hex(&ss.color).unwrap_or(gpui::hsla(0., 0., 1., 1.));
+    let color = parse_hex(&ss.color).unwrap_or(gpui::hsla(0., 0., 1., 1.)).opacity(ss.text_opacity.clamp(0.2, 1.));
     let lh = size * 1.33;
     let text_el = |c: gpui::Hsla, styled: bool| {
         div()
@@ -2154,15 +2138,24 @@ pub fn sub_block(text: &str, vw: f32, ss: &couch::settings::Subtitles) -> gpui::
         // the letters drawn over a dark copy of themselves, a hair out each way
         "outline" | "shadow" => {
             let k = (size / 18.).clamp(1., 2.4);
-            let offsets: Vec<(f32, f32)> = if ss.background == "outline" {
-                vec![(-k, 0.), (k, 0.), (0., -k), (0., k), (-k * 0.7, -k * 0.7), (k * 0.7, -k * 0.7), (-k * 0.7, k * 0.7), (k * 0.7, k * 0.7)]
-            } else {
-                vec![(k * 0.6, k * 1.2), (k * 1.1, k * 1.8)]
-            };
-            let dark = gpui::hsla(0., 0., 0., (if ss.background == "outline" { 0.95f32 } else { 0.55f32 }).max(op));
             let mut d = base.px(px(10.));
-            for (dx, dy) in offsets {
-                d = d.child(div().absolute().left(px(10. + dx)).right(px(10. - dx)).top(px(dy)).child(text_el(dark, false)));
+            if ss.background == "outline" {
+                let dark = gpui::hsla(0., 0., 0., 0.95f32.max(op));
+                for (dx, dy) in [(-k, 0.), (k, 0.), (0., -k), (0., k), (-k * 0.7, -k * 0.7), (k * 0.7, -k * 0.7), (-k * 0.7, k * 0.7), (k * 0.7, k * 0.7)] {
+                    d = d.child(div().absolute().left(px(10. + dx)).right(px(10. - dx)).top(px(dy)).child(text_el(dark, false)));
+                }
+            } else {
+                // a soft, spread-out shadow: faint copies on rings around the
+                // letters (a little lower than them), adding up to a blur
+                let faint = gpui::hsla(0., 0., 0., 0.09 + op * 0.06);
+                for (ring, r) in [1.0f32, 2.2, 3.6].into_iter().enumerate() {
+                    let n = 8 + ring * 4;
+                    for a in 0..n {
+                        let ang = a as f32 / n as f32 * std::f32::consts::TAU;
+                        let (dx, dy) = (ang.cos() * r * k, ang.sin() * r * k + k * 0.9);
+                        d = d.child(div().absolute().left(px(10. + dx)).right(px(10. - dx)).top(px(dy)).child(text_el(faint, false)));
+                    }
+                }
             }
             d.child(div().relative().child(text_el(color, true))).into_any_element()
         }

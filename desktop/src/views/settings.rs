@@ -404,6 +404,59 @@ impl Settings {
         vec![preview.into_any_element(), caption("presets").into_any_element(), presets.into_any_element(), caption("your own").into_any_element()]
     }
 
+    /// a slider from `lo` to `hi` (shown as a percent), by path
+    fn slider_row(&self, id: &'static str, t: &'static str, sub: &'static str, path: &'static str, lo: f32, hi: f32, cur: &Value, cx: &mut Context<Self>) -> AnyElement {
+        const W: f32 = 240.;
+        let v = (get(cur, path).as_f64().unwrap_or(hi as f64) as f32).clamp(lo, hi);
+        let frac = (v - lo) / (hi - lo);
+        let x0 = std::rc::Rc::new(std::cell::Cell::new(0f32));
+        let (x1, x2, x3) = (x0.clone(), x0.clone(), x0.clone());
+        let pick = move |x: f32, x0: f32| -> f32 {
+            let f = ((x - x0) / W).clamp(0., 1.);
+            ((lo + f * (hi - lo)) * 20.).round() / 20.
+        };
+        line(0)
+            .child(label(t, sub))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(12.))
+                    .child(
+                        div()
+                            .id(id)
+                            .w(px(W))
+                            .h(px(26.))
+                            .flex()
+                            .items_center()
+                            .cursor_pointer()
+                            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |_, e: &gpui::MouseDownEvent, _, cx| {
+                                set(path, json!(pick(f32::from(e.position.x), x1.get())));
+                                cx.notify();
+                            }))
+                            .on_mouse_move(cx.listener(move |_, e: &gpui::MouseMoveEvent, _, cx| {
+                                if e.pressed_button == Some(gpui::MouseButton::Left) {
+                                    set(path, json!(pick(f32::from(e.position.x), x2.get())));
+                                    cx.notify();
+                                }
+                            }))
+                            .child(
+                                div()
+                                    .relative()
+                                    .w_full()
+                                    .h(px(5.))
+                                    .rounded_full()
+                                    .bg(theme::white(0.15))
+                                    .child(gpui::canvas(move |b, _, _| x3.set(f32::from(b.origin.x)), |_, _, _, _| {}).absolute().size_full())
+                                    .child(div().h_full().rounded_full().bg(theme::text()).w(px(W * frac)))
+                                    .child(div().absolute().top(px(-6.)).left(px(W * frac - 8.)).size(px(17.)).rounded_full().bg(theme::text())),
+                            ),
+                    )
+                    .child(div().w(px(42.)).text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).child(format!("{}%", (v * 100.).round() as i32))),
+            )
+            .into_any_element()
+    }
+
     fn switch_row(&self, key: String, i: usize, t: &'static str, sub: &str, path: &'static str, cur: &Value, cx: &mut Context<Self>) -> AnyElement {
         let on = get(cur, path).as_bool().unwrap_or(false);
         line(i)
@@ -832,7 +885,10 @@ impl Render for Settings {
                 Tab::About => body.extend(self.about(cx)),
                 Tab::Subtitles => {
                     body.extend(self.sub_look(cx));
-                    body.push(group(self.plain(Tab::Subtitles, "", &cur, cx)).into_any_element());
+                    let mut rows = self.plain(Tab::Subtitles, "", &cur, cx);
+                    let at = rows.len().min(4);
+                    rows.insert(at, self.slider_row("sub-opacity", "letters", "how solid the words are", "subtitles.textOpacity", 0.2, 1.0, &cur, cx));
+                    body.push(group(rows).into_any_element());
                 }
                 t => {
                     let mut rows = self.plain(t, "", &cur, cx);
