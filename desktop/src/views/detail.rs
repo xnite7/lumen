@@ -24,6 +24,8 @@ pub struct Detail {
     favs: Option<Vec<Value>>,
     /// the trailer's YouTube key (None: not looked up, Some(""): there isn't one)
     trailer: Option<String>,
+    /// the trailer button: the page steps aside for it (when, on/off)
+    theater: Option<(std::time::Instant, bool)>,
     /// the main studio: id, name, its logo (made white when it's too dark to read)
     studio: Option<(u64, String, Option<std::sync::Arc<gpui::Image>>, Option<String>)>,
     /// what the crew wrote about this title
@@ -153,38 +155,11 @@ impl Detail {
                 d.trailer = Some(key.clone());
                 cx.notify();
             });
-            if key.is_empty() {
-                return;
-            }
-            // 2.5 s resting at the top of this page: the trailer starts by itself
-            let mut still = 0u32;
-            loop {
-                crate::timer::after(std::time::Duration::from_millis(250)).await;
-                let Ok(go) = this.update(cx, |d, cx| {
-                    let here = crate::Nav::showing_detail(&d.base.id, cx);
-                    let top = -f32::from(d.scroll.offset().y) < 40.;
-                    (here, here && top)
-                }) else {
-                    break;
-                };
-                if !go.0 {
-                    break;
-                }
-                still = if go.1 { still + 1 } else { 0 };
-                if still >= 10 {
-                    let _ = this.update(cx, |d, cx| {
-                        let o = format!("trailer:{}", d.base.id);
-                        let url = format!("https://www.youtube.com/watch?v={key}");
-                        crate::ui::video::get(cx).update(cx, |x, cx| x.play(&o, &url, cx));
-                    });
-                    break;
-                }
-            }
         })
         .detach();
         let review_text = cx.new(|cx| crate::ui::input::TextInput::new("what did you think? (emoji welcome)", cx));
         cx.subscribe(&review_text, |d: &mut Self, _, _: &crate::ui::input::Submitted, cx| d.post_review(cx)).detach();
-        let mut me = Self { base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, rate_box: Default::default(), lib_seen: LIB_GEN.load(std::sync::atomic::Ordering::Relaxed), favs: None, trailer: None, studio: None, reviews: vec![], writing: false, review_text, scroll: ScrollHandle::new(), shown: None };
+        let mut me = Self { theater: None, base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, rate_box: Default::default(), lib_seen: LIB_GEN.load(std::sync::atomic::Ordering::Relaxed), favs: None, trailer: None, studio: None, reviews: vec![], writing: false, review_text, scroll: ScrollHandle::new(), shown: None };
         if let Some(l) = ready {
             me.fill(l);
             // fresh copy in the background (your progress, ratings, reviews may have moved)
@@ -561,12 +536,32 @@ impl Render for Detail {
         if tframe.as_ref().map_or(false, |f| f.1 < 1.) {
             window.request_animation_frame();
         }
-        // scrolled down: the trailer waits; back at the top: plays on
-        if trailer_on {
-            let away = -f32::from(self.scroll.offset().y) > 120.;
-            let o = towner.clone();
-            vid.update(cx, |x, _| x.set_paused(&o, away));
+        // the trailer: the page fades back, a scroll or ^ (or its end) brings it back
+        let th_on = matches!(self.theater, Some((_, true)));
+        if th_on {
+            let started = self.theater.map_or(0., |t| t.0.elapsed().as_secs_f32());
+            let scrolled = -f32::from(self.scroll.offset().y) > 30.;
+            let over = started > 2. && !trailer_on;
+            if scrolled || over {
+                let o = towner.clone();
+                vid.update(cx, |x, cx| x.stop(&o, cx));
+                self.theater = Some((std::time::Instant::now(), false));
+            }
         }
+        let th = match self.theater {
+            Some((t, on)) => {
+                let x = (t.elapsed().as_secs_f32() / 0.6).min(1.);
+                if x < 1. {
+                    window.request_animation_frame();
+                }
+                let e = x * x * (3. - 2. * x);
+                if on { e } else { 1. - e }
+            }
+            None => 0.,
+        };
+        let th_on = matches!(self.theater, Some((_, true)));
+        // opened from a card: the words wait for the picture to land
+        let ca = crate::ui::zoom::content_alpha(window);
         let hero = div()
             .relative()
             .w_full()
@@ -580,13 +575,41 @@ impl Render for Detail {
                 Some((p, a)) => crate::ui::video::layers(art.clone(), p, *a, 0.),
                 None => art.clone().map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).into_any_element()).into_iter().collect(),
             })
-            .child(div().absolute().top_0().left_0().size_full().bg(linear_gradient(90., linear_color_stop(theme::black(0.85), 0.), linear_color_stop(theme::black(0.0), 0.7))))
-            .child(div().absolute().left_0().bottom_0().w_full().h(vh * 0.5).bg(linear_gradient(180., linear_color_stop(theme::black(0.0), 0.), linear_color_stop(theme::black(1.0), 1.))))
+            .child(div().absolute().top_0().left_0().size_full().opacity(1. - th).bg(linear_gradient(90., linear_color_stop(theme::black(0.85), 0.), linear_color_stop(theme::black(0.0), 0.7))))
+            .child(div().absolute().left_0().bottom_0().w_full().h(vh * 0.5).opacity(1. - th * 0.85).child(crate::ui::ambient::melt()))
+            // watching the trailer: ^ brings the page back
+            .when(th_on, |d| {
+                let o = towner.clone();
+                d.child(
+                    div().absolute().bottom(px(26.)).left_0().w_full().flex().justify_center().opacity(th).child(
+                        div()
+                            .id("d-back-up")
+                            .size(px(50.))
+                            .rounded_full()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .bg(gpui::linear_gradient(170., gpui::linear_color_stop(theme::white(0.28), 0.), gpui::linear_color_stop(theme::white(0.08), 1.)))
+                            .border_1()
+                            .border_color(theme::white(0.3))
+                            .hover(|s| s.bg(theme::white(0.3)))
+                            .on_click(cx.listener(move |me, _, _, cx| {
+                                let o = o.clone();
+                                crate::ui::video::get(cx).update(cx, |x, cx| x.stop(&o, cx));
+                                me.theater = Some((std::time::Instant::now(), false));
+                                cx.notify();
+                            }))
+                            .child(icon("chevronUp", 24.)),
+                    ),
+                )
+            })
             .child(
                 // the words start well below the tabs so the art shows; a tall
                 // block makes the billboard taller rather than climbing up into it
                 div()
                     .relative()
+                    .opacity((1. - th) * ca)
                     .ml(px(g))
                     .pt(vh * 0.4)
                     .pb(px(22.))
@@ -683,6 +706,21 @@ impl Render for Detail {
                                     })
                                     .detach();
                                 }))
+                            })
+                            .when(self.trailer.as_ref().map_or(false, |k| !k.is_empty()), |d| {
+                                let key = self.trailer.clone().unwrap_or_default();
+                                let o = towner.clone();
+                                d.child(act("d-trailer", icon("film", 22.), "Trailer").on_click(cx.listener(move |me, _, _, cx| {
+                                    if th > 0.01 {
+                                        return;
+                                    }
+                                    me.scroll.set_offset(gpui::point(px(0.), px(0.)));
+                                    me.theater = Some((std::time::Instant::now(), true));
+                                    let url = format!("https://www.youtube.com/watch?v={key}");
+                                    let o = o.clone();
+                                    crate::ui::video::get(cx).update(cx, |x, cx| x.play_once(&o, &url, cx));
+                                    cx.notify();
+                                })))
                             })
                             .child(act("d-party", icon("couch", 22.), "Watch party").on_click({
                                 let m = m.clone();
@@ -822,7 +860,7 @@ impl Render for Detail {
             }
             _ => 1.,
         };
-        let mut rest = div().flex().flex_col().relative().top(px((1. - fade) * 16.)).opacity(fade);
+        let mut rest = div().flex().flex_col().relative().top(px((1. - fade) * 16.)).opacity(fade * (1. - th) * ca);
 
         // ------------------------------------------------- what the crew said
         let said: Vec<&Value> = self.reviews.iter().filter(|r| r["text"].as_str().map_or(false, |t| !t.is_empty()) || r["rating"].is_number()).collect();

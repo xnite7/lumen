@@ -15,6 +15,8 @@ struct State {
 
 thread_local! {
     static S: RefCell<State> = RefCell::new(State::default());
+    /// where the glow was painted this frame (the window)
+    static AREA: std::cell::Cell<Option<Bounds<Pixels>>> = const { std::cell::Cell::new(None) };
 }
 
 const FADE: f32 = 0.7;
@@ -128,6 +130,7 @@ fn piece(pic: Arc<gpui::Image>) -> impl IntoElement {
     canvas(
         |_, _, _| (),
         move |bounds, _, window, cx| {
+            AREA.with(|a| a.set(Some(bounds)));
             let Some(data) = pic.clone().use_render_image(window, cx) else { return };
             // never over a playing clip (it shows through a hole in the window)
             let parts: Vec<Bounds<Pixels>> = match crate::ui::video::hole() {
@@ -172,4 +175,38 @@ pub fn layer(window: &mut Window) -> impl IntoElement {
         .size_full()
         .children(prev.filter(|_| t < 1.).map(|p| div().absolute().size_full().opacity(1. - e).child(piece(p))))
         .children(cur.map(|c| div().absolute().size_full().opacity(e).child(piece(c))))
+}
+
+/// The bottom of a big picture (a billboard, a title's backdrop) melting into
+/// the page: the glow that's behind the page painted over it, more and more
+/// of it toward the bottom, so there's no edge where the picture stops.
+/// Put it absolute, at the bottom of the picture, as tall as the melt.
+pub fn melt() -> impl IntoElement {
+    const STEPS: usize = 24;
+    let cur = S.with(|s| s.borrow().cur.clone());
+    let strip = |i: usize| {
+        let cur = cur.clone();
+        canvas(
+            |_, _, _| (),
+            move |b, _, window, cx| {
+                // this strip's slice of the band
+                let h = b.size.height / STEPS as f32;
+                let r = Bounds::new(gpui::point(b.origin.x, b.origin.y + h * i as f32), gpui::size(b.size.width, h + px(1.)));
+                let area = AREA.with(|a| a.get()).unwrap_or(r);
+                // under the glow: the page's black
+                window.paint_quad(gpui::fill(r, gpui::black()));
+                if let Some(data) = cur.clone().and_then(|p| p.use_render_image(window, cx)) {
+                    let _ = window.paint_image(r, area, Corners::default(), data, 0, false);
+                }
+            },
+        )
+        .absolute()
+        .size_full()
+    };
+    div().absolute().left_0().bottom_0().w_full().h_full().children((0..STEPS).map(move |i| {
+        // eased: barely there at the top, the page itself at the bottom
+        let x = (i as f32 + 0.5) / STEPS as f32;
+        let a = x * x * (3. - 2. * x);
+        div().absolute().size_full().opacity(a).child(strip(i))
+    }))
 }

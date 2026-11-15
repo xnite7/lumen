@@ -39,8 +39,13 @@ pub fn card_with(
     let art = m.background.clone().or(m.poster.clone()).map(|u| crate::net::fit(&sized(&u, "w780"), W));
     // no logo given: metahub's (and TMDB's behind it) by the IMDb id
     let logo = m.logo.clone().or_else(|| m.id.starts_with("tt").then(|| format!("https://images.metahub.space/logo/medium/{}/img", m.id.split(':').next().unwrap_or(&m.id)))).map(|u| crate::net::logo(&sized(&u, "w500"), 170.));
+    let zkey = id.to_string();
+    let (zid, zart) = (m.id.clone(), art.clone());
+    let zk2 = zkey.clone();
     let el = div()
         .id(id)
+        .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| crate::ui::zoom::pressed(&zid, &zk2, zart.clone(), 12.))
+        .child(crate::ui::zoom::track(zkey))
         .flex_none()
         .w(px(W))
         .h(px(H))
@@ -159,8 +164,12 @@ pub fn poster(id: SharedString, m: &Meta, w: f32, on_click: impl Fn(&gpui::Click
     let name = m.name.clone();
     let menu_meta = m.clone();
     let pre = m.clone();
+    let zkey = id.to_string();
+    let (zid, zart, zk2) = (m.id.clone(), art.clone(), zkey.clone());
     div()
         .id(id)
+        .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| crate::ui::zoom::pressed(&zid, &zk2, zart.clone(), 10.))
+        .child(crate::ui::zoom::track(zkey))
         .on_hover(move |on, _, cx| {
             if *on {
                 crate::views::detail::prefetch(&pre, cx);

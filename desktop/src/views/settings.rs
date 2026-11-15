@@ -102,7 +102,7 @@ fn keywords(tab: Tab) -> &'static str {
         Tab::Simkl => "simkl connect account watch history watchlist sync ratings",
         Tab::Lights => "philips hue lights bridge room ambilight dim couch mode",
         Tab::Storage => "storage cache clear space",
-        Tab::About => "about version update text smooth sharp sign out discord account remove uninstall",
+        Tab::About => "about version update text smooth sharp sign out discord account remove uninstall intro sound",
         _ => "",
     }
 }
@@ -619,6 +619,20 @@ impl Settings {
             group(vec![
                 line(0).child(label("midnite™ couch", &format!("version {}", crate::update::VERSION))).child(div().text_size(px(13.)).text_color(theme::label3()).child("updates install themselves")).into_any_element(),
                 text,
+                {
+                    let on = couch::state::get().core.db.get::<bool>("gpui_intro_sound").unwrap_or(true);
+                    line(0)
+                        .id("intro-sound")
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme::white(0.03)))
+                        .on_click(cx.listener(move |_, _, _, cx| {
+                            let _ = couch::state::get().core.db.set("gpui_intro_sound", &!on);
+                            cx.notify();
+                        }))
+                        .child(label("intro sound", "when couch opens"))
+                        .child(toggle(on))
+                        .into_any_element()
+                },
             ])
             .into_any_element(),
             caption("account").into_any_element(),

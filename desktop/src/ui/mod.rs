@@ -1,4 +1,5 @@
 pub mod ambient;
+pub mod zoom;
 pub mod card;
 pub mod badges;
 pub mod emoji;

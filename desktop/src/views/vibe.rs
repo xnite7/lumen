@@ -143,13 +143,15 @@ impl Render for Vibe {
             page = page.child(div().text_color(gpui::rgb(0xff8a8a)).child(self.error.clone()));
         }
         if !self.busy && !self.read.is_empty() {
-            page = page.child(div().max_w(px(820.)).text_size(px(18.)).italic().text_color(theme::label2()).child(format!("“{}”", self.read)));
+            page = page.child(div().w_full().max_w(px(820.)).whitespace_normal().text_size(px(18.)).italic().text_color(theme::label2()).child(format!("“{}”", self.read)));
         }
         if !self.busy && !self.picks.is_empty() {
-            page = page.child(div().flex().flex_col().gap(px(12.)).max_w(px(900.)).children(self.picks.iter().enumerate().map(|(i, (m, why))| {
+            page = page.child(div().w_full().flex().flex_col().gap(px(12.)).max_w(px(900.)).children(self.picks.iter().enumerate().map(|(i, (m, why))| {
                 let mm = m.clone();
                 div()
                     .id(SharedString::from(format!("vp-{i}")))
+                    .w_full()
+                    .overflow_hidden()
                     .flex()
                     .gap(px(16.))
                     .p(px(12.))
@@ -167,7 +169,7 @@ impl Render for Vibe {
                             .flex()
                             .flex_col()
                             .gap(px(6.))
-                            .child(div().flex().items_baseline().gap(px(10.)).child(div().text_size(px(19.)).font_weight(FontWeight::BLACK).child(m.name.clone())).children(m.year().map(|y| div().text_color(theme::label3()).child(y))))
+                            .child(div().w_full().flex().items_baseline().gap(px(10.)).child(div().min_w_0().truncate().text_size(px(19.)).font_weight(FontWeight::BLACK).child(m.name.clone())).children(m.year().map(|y| div().text_color(theme::label3()).child(y))))
                             .child(div().w_full().text_size(px(15.)).line_height(px(21.)).text_color(theme::white(0.82)).whitespace_normal().line_clamp(4).child(why.clone())),
                     )
             })));

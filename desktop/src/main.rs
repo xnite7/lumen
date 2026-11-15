@@ -71,6 +71,20 @@ fn decode_intro() {
     });
 }
 
+/// The intro's sound (a soft turn, a landing, a whoosh into the app). Off with "intro sound" in settings.
+fn play_intro_sound() {
+    if !couch::state::get().core.db.get::<bool>("gpui_intro_sound").unwrap_or(true) {
+        return;
+    }
+    #[cfg(target_os = "windows")]
+    if let Some(b) = assets::bytes("brand/intro.wav") {
+        use windows::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_MEMORY, SND_NODEFAULT};
+        unsafe {
+            let _ = PlaySoundW(windows::core::PCWSTR(b.as_ptr() as *const u16), None, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
+        }
+    }
+}
+
 /// The couch turning, on a loop (the intro's frames): the frame for this moment, or None while they decode.
 pub fn couch_spin_frame() -> Option<std::sync::Arc<gpui::RenderImage>> {
     static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
@@ -168,6 +182,9 @@ impl Nav {
     pub fn back(cx: &mut App) {
         cx.defer(|cx| {
             if let Some(r) = Self::root(cx) {
+                if let Route::Detail(m) = &r.read(cx).route {
+                    ui::zoom::back(&m.id);
+                }
                 let v = ui::video::get(cx);
                 let owner = v.read(cx).owner.clone();
                 v.update(cx, |v, cx| v.stop(&owner, cx));
@@ -204,6 +221,8 @@ impl Nav {
         });
     }
     pub fn detail(m: &Meta, cx: &mut App) {
+        // from a card: its picture grows into the page
+        ui::zoom::open(m, m.background.clone().or(m.poster.clone()).map(|u| crate::net::fit(&api::sized(&u, "original"), ui::view_w())));
         Self::go(Route::Detail(m.clone()), cx);
     }
     pub fn play(m: &Meta, cx: &mut App) {
@@ -528,12 +547,14 @@ impl Root {
         // it rushes at you: zoom blur and fade
         const HOLD: f32 = 0.35;
         const END: f32 = 0.15;
-        const FADE: f32 = 0.6;
+        const FADE: f32 = 0.7;
         let start = self.splash?;
         let t = start.elapsed().as_secs_f32();
         let frames = INTRO.get();
         if self.intro_play.is_none() && t >= HOLD && (frames.is_some() || t > 3.) {
             self.intro_play = Some(std::time::Instant::now());
+            // the sound starts with the turn
+            play_intro_sound();
         }
         let play: f32 = frames.map_or(0., |f| f.iter().map(|x| x.1).sum());
         let p = self.intro_play.map(|a| a.elapsed().as_secs_f32());
@@ -544,7 +565,12 @@ impl Root {
         }
         window.request_animation_frame();
         let first = || img("brand/intro-first.png").size_full().object_fit(gpui::ObjectFit::Contain).into_any_element();
-        let last = || img("brand/intro-last.png").size_full().object_fit(gpui::ObjectFit::Contain).into_any_element();
+        // the last frame, already decoded (a path image here can stall the zoom while it loads)
+        let last_r = frames.and_then(|f| f.last()).map(|x| x.0.clone());
+        let last = || match last_r.clone() {
+            Some(r) => img(gpui::ImageSource::Render(r)).size_full().object_fit(gpui::ObjectFit::Contain).into_any_element(),
+            None => img("brand/intro-last.png").size_full().object_fit(gpui::ObjectFit::Contain).into_any_element(),
+        };
         let (pic, fade) = match (p, frames) {
             (None, _) => (first(), 0.),
             (Some(p), Some(fr)) if p < play => {
@@ -559,13 +585,14 @@ impl Root {
             (Some(p), _) => (last(), ((p - play - END) / FADE).clamp(0., 1.)),
         };
         let (w, h) = (240., 216.);
-        let e = 1. - (1. - fade).powi(2);
+        // ease in, then away: slow to start so the first frames of the zoom don't jump
+        let e = if fade < 0.5 { 4. * fade * fade * fade } else { 1. - (-2. * fade + 2.).powi(3) / 2. };
         let mut stage = div().relative().w(px(w)).h(px(h));
         if fade > 0. {
-            // zoom blur: copies of the last frame, each further forward and fainter
-            for k in (0..7).rev() {
-                let s = 1. + e * (0.35 + k as f32 * 0.16);
-                let a = (1. - e) * if k == 0 { 1. } else { 0.42 / k as f32 };
+            // zoom blur: a few copies of the last frame, each further forward and fainter
+            for k in (0..4).rev() {
+                let s = 1. + e * (0.6 + k as f32 * 0.22);
+                let a = ((1. - e) * if k == 0 { 1. } else { 0.38 / k as f32 }).clamp(0., 1.);
                 stage = stage.child(
                     div()
                         .absolute()
@@ -588,7 +615,7 @@ impl Root {
                 .left_0()
                 .size_full()
                 .occlude()
-                .bg(theme::black((1. - e * 1.1).clamp(0., 1.)))
+                .bg(theme::black((1. - e * 1.05).clamp(0., 1.)))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -915,6 +942,7 @@ impl Render for Root {
             .when(self.wrapped.read(cx).open, |d| d.child(self.wrapped.clone()))
             .when(mini::is_on(), |d| d.child(self.mini_bar(cx)))
             .children(if playing { None } else { update::card(cx) })
+            .children(ui::zoom::overlay(window, cx))
             .children(self.intro(window))
             .children(self.toast.clone().map(|t| {
                 div().absolute().bottom(px(28.)).left_0().w_full().flex().justify_center().child(

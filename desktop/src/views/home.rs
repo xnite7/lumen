@@ -22,6 +22,10 @@ pub struct Home {
     scope: &'static str,
     /// the billboard's clip: (owner, url)
     pub clip: Option<(String, String)>,
+    /// scrolled away from the billboard: its clip waits (Some = when we came back to the top)
+    away: Option<Option<std::time::Instant>>,
+    /// the clip picked up again here: fade it back in from this moment
+    resumed: Option<std::time::Instant>,
     hero: Option<Meta>,
     rows: Vec<Row>,
     /// streaming services: (TMDB provider id, name, logo)
@@ -52,7 +56,7 @@ impl Home {
     /// scope: "all" (Home), "series" (Shows) or "movie" (Movies)
     pub fn new(scope: &'static str, cx: &mut Context<Self>) -> Self {
         cx.observe(&crate::ui::video::get(cx), |_, _, cx| cx.notify()).detach();
-        let me = Self { scope, clip: None, hero: None, rows: vec![], services: vec![], browse: vec![], genres: (None, vec![]), live: vec![], feed: vec![], streaks: vec![], scroll: ScrollHandle::new() };
+        let me = Self { scope, away: None, resumed: None, clip: None, hero: None, rows: vec![], services: vec![], browse: vec![], genres: (None, vec![]), live: vec![], feed: vec![], streaks: vec![], scroll: ScrollHandle::new() };
         if scope == "all" {
             cx.spawn(async move |this, cx| {
                 let mut n = 0u32;
@@ -318,6 +322,31 @@ impl Render for Home {
             Some(m) => {
                 let (a, b, c) = (m.clone(), m.clone(), m.clone());
                 let vid = crate::ui::video::get(cx);
+                // scrolled past the billboard: the clip waits and the backdrop and logo
+                // show; back at the top, a second's beat before it plays on
+                let gone = -f32::from(self.scroll.offset().y) > f32::from(vh) * 0.45;
+                if gone {
+                    self.away = Some(None);
+                } else if let Some(back) = self.away {
+                    match back {
+                        None => self.away = Some(Some(std::time::Instant::now())),
+                        Some(t) if t.elapsed().as_secs_f32() >= 1. => {
+                            self.away = None;
+                            self.resumed = Some(std::time::Instant::now());
+                        }
+                        Some(_) => {}
+                    }
+                    if self.away.is_some() {
+                        // check again in a moment
+                        cx.spawn(async move |this, cx| {
+                            crate::timer::after(std::time::Duration::from_millis(250)).await;
+                            let _ = this.update(cx, |_, cx| cx.notify());
+                        })
+                        .detach();
+                    }
+                }
+                let waiting = self.away.is_some();
+                let resumed = self.resumed;
                 // the clip: resume it if we came back to this page
                 let clip = match &self.clip {
                     Some((owner, url)) => {
@@ -327,21 +356,20 @@ impl Render for Home {
                         }
                         let owner = owner.clone();
                         vid.update(cx, |x, _| {
+                            x.set_paused(&owner, waiting);
                             let f = x.frame(&owner, window)?;
+                            if waiting {
+                                return None;
+                            }
                             let a = x.since.map_or(0., |t| (t.elapsed().as_secs_f32() / 0.8).min(1.));
-                            Some((f, a))
+                            let b = resumed.map_or(1., |t| (t.elapsed().as_secs_f32() / 0.8).min(1.));
+                            Some((f, a.min(b)))
                         })
                     }
                     None => None,
                 };
                 if clip.as_ref().map_or(false, |c| c.1 < 1.) {
                     window.request_animation_frame();
-                }
-                // scrolled away from the billboard: it waits; back at the top: plays on
-                if let Some((owner, _)) = &self.clip {
-                    let away = -f32::from(self.scroll.offset().y) > f32::from(vh) * 0.45;
-                    let o = owner.clone();
-                    vid.update(cx, |x, _| x.set_paused(&o, away));
                 }
                 page = page.child(hero::hero(
                     m,
