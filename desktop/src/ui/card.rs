@@ -8,6 +8,8 @@ pub const W: f32 = 300.0;
 pub const H: f32 = 169.0;
 
 thread_local! {
+    /// each card's slot: its left edge on screen, last frame
+    static SLOTS: std::cell::RefCell<std::collections::HashMap<String, f32>> = std::cell::RefCell::new(std::collections::HashMap::new());
     /// each card: is the pointer on it, since when (it grows while you rest on it)
     static GROW: std::cell::RefCell<std::collections::HashMap<String, (bool, std::time::Instant, f32)>> = std::cell::RefCell::new(std::collections::HashMap::new());
 }
@@ -61,6 +63,21 @@ pub fn card_with(
     };
     let s = 1. + 0.07 * grow;
     let (gw, gh) = (W * s, H * s);
+    // grown, it keeps clear of the window's edges (and comes fully into view
+    // when it was half off the side)
+    let dx = if grow > 0. {
+        SLOTS.with(|m| m.borrow().get(&zkey).copied()).map_or(0., |sx: f32| {
+            let vw = crate::ui::view_w();
+            let margin = 28.;
+            let left = sx - (gw - W) / 2.;
+            let right = left + gw;
+            let want = if left < margin { margin - left } else if right > vw - margin { vw - margin - right } else { 0. };
+            want * grow
+        })
+    } else {
+        0.
+    };
+    let skey = zkey.clone();
     // seen it already: the card steps back a little (not while it previews)
     let watched = clip.is_none() && progress.is_none() && crate::seen::status(&m.id).0;
     let (zid, zart) = (m.id.clone(), art.clone());
@@ -70,7 +87,7 @@ pub fn card_with(
         .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| crate::ui::zoom::pressed(&zid, &zk2, zart.clone(), 12.))
         .child(crate::ui::zoom::track(zkey))
         .absolute()
-        .left(px(-(gw - W) / 2.))
+        .left(px(-(gw - W) / 2. + dx))
         .top(px(-(gh - H) / 2.))
         .w(px(gw))
         .h(px(gh))
@@ -188,7 +205,14 @@ pub fn card_with(
         .into_any_element();
     // its slot in the row stays the same size; the card itself is drawn over
     // the neighbours (deferred) while it's grown
-    let el = div().relative().flex_none().w(px(W)).h(px(H)).child(if grow > 0.001 { gpui::deferred(el).with_priority(1).into_any_element() } else { el }).into_any_element();
+    let el = div()
+        .relative()
+        .flex_none()
+        .w(px(W))
+        .h(px(H))
+        // where its slot is on screen (for keeping the grown card in view)
+        .child(gpui::canvas(move |b, _, _| SLOTS.with(|m| { m.borrow_mut().insert(skey.clone(), f32::from(b.origin.x)); }), |_, _, _, _| {}).absolute().size_full())
+        .child(if grow > 0.001 { gpui::deferred(el).with_priority(1).into_any_element() } else { el }).into_any_element();
     // under the picture: the progress bar, then "S1 E2" on the left and the
     // time left on the right (a tab in `sub` splits the two)
     // a square-ended white bar, 60% of the card's width
