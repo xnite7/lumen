@@ -34,6 +34,20 @@ mod imp {
         r
     }
 
+    /// What clicking another window and back did (that fixed it): a lost and
+    /// regained focus, then GPUI's own "draw the whole window again" message.
+    pub fn kick(hwnd: isize) {
+        use windows::Win32::Foundation::{LPARAM, WPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_ACTIVATE, WM_USER};
+        let h = HWND(hwnd as *mut _);
+        unsafe {
+            let _ = PostMessageW(Some(h), WM_ACTIVATE, WPARAM(0), LPARAM(0));
+            let _ = PostMessageW(Some(h), WM_ACTIVATE, WPARAM(1), LPARAM(0));
+            // (gpui's WM_GPUI_FORCE_UPDATE_WINDOW)
+            let _ = PostMessageW(Some(h), WM_USER + 5, WPARAM(0), LPARAM(0));
+        }
+    }
+
     /// one pixel wider and back: a real resize, end to end
     pub fn wiggle(hwnd: isize) {
         use windows::Win32::UI::WindowsAndMessaging::{SWP_NOMOVE, SWP_NOZORDER};
@@ -106,6 +120,10 @@ pub fn toggle(cx: &mut gpui::App) {
                         // drawing, mpv's window) take the new size, like a focus change did
                         if k == 2 {
                             imp::wiggle(h);
+                        }
+                        // and what a click on another window did: couch draws itself afresh
+                        if k >= 1 {
+                            imp::kick(h);
                         }
                         cx.refresh_windows();
                         let s = cx.windows().first().and_then(|w| w.update(cx, |_, w, _| w.scale_factor()).ok()).unwrap_or(1.);
