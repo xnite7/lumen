@@ -281,18 +281,44 @@ impl Detail {
         (st["timeOffset"].as_f64().unwrap_or(0.) / d).min(1.)
     }
 
+    /// "1h 12m left" for where you stopped (in `video`, for a show), if anywhere
+    fn left(&self, video: Option<&str>) -> Option<String> {
+        let i = self.item.as_ref()?;
+        let st = &i["state"];
+        if let Some(v) = video {
+            if st["video_id"].as_str() != Some(v) {
+                return None;
+            }
+        }
+        let (d, o) = (st["duration"].as_f64()?, st["timeOffset"].as_f64().unwrap_or(0.));
+        if d <= 0. || o / d < 0.02 {
+            return None;
+        }
+        // the library keeps milliseconds
+        let secs = ((d - o).max(0.) / if d > 100_000. { 1000. } else { 1. }) as i64;
+        let m = (secs + 59) / 60;
+        Some(if m >= 60 { format!("{}h {}m left", m / 60, m % 60) } else { format!("{m}m left") })
+    }
+
     /// What the big button does: resume, next unwatched episode, or start.
     fn primary(&self) -> (String, Option<Value>, String) {
         let Some(f) = &self.full else { return ("Play".into(), None, String::new()) };
         let eps: Vec<Value> = playback::ordered(f);
         if f["type"] != "series" || eps.is_empty() {
-            return (if self.progress(None) > 0.02 { "Resume" } else { "Play" }.into(), None, String::new());
+            return match self.left(None) {
+                Some(l) => ("Resume".into(), None, l),
+                None => ("Play".into(), None, String::new()),
+            };
         }
         let label = |v: &Value| format!("S{} E{}", v["season"].as_i64().unwrap_or(0), v["episode"].as_i64().or(v["number"].as_i64()).unwrap_or(0));
         if let Some(vid) = self.item.as_ref().and_then(|i| i["state"]["video_id"].as_str()) {
             if self.progress(Some(vid)) > 0.02 {
                 if let Some(v) = eps.iter().find(|x| x["id"].as_str() == Some(vid)) {
-                    return ("Resume".into(), Some(v.clone()), label(v));
+                    let sub = match self.left(Some(vid)) {
+                        Some(l) => format!("{} · {l}", label(v)),
+                        None => label(v),
+                    };
+                    return ("Resume".into(), Some(v.clone()), sub);
                 }
             }
         }
@@ -1092,6 +1118,7 @@ impl Render for Detail {
                                     let seen = watched.contains(&vid);
                                     let future = !released(v, &today);
                                     let p = self.progress(Some(&vid));
+                                    let left = self.left(Some(&vid));
                                     let imdb = api::imdb_episode(&vid);
                                     let thumb = v["thumbnail"].as_str().map(|s| s.to_string()).or(imdb.clone()).or(back_art.clone()).map(|u| crate::net::fit(&u, 300.));
                                     let alt = imdb.or(back_art.clone()).map(|u| crate::net::fit(&u, 300.));
@@ -1137,6 +1164,20 @@ impl Render for Detail {
                                                         .text_color(theme::white(0.92))
                                                         .child(n.to_string()),
                                                 )
+                                                // where you stopped: how much is left
+                                                .children(left.map(|l| {
+                                                    div()
+                                                        .absolute()
+                                                        .right(px(10.))
+                                                        .bottom(px(12.))
+                                                        .px(px(8.))
+                                                        .py(px(2.))
+                                                        .rounded_full()
+                                                        .bg(theme::black(0.6))
+                                                        .text_size(px(12.))
+                                                        .font_weight(FontWeight::SEMIBOLD)
+                                                        .child(l)
+                                                }))
                                                 .when(p > 0.01, |d| {
                                                     d.child(div().absolute().left_0().bottom_0().w_full().h(px(4.)).bg(theme::white(0.25)).child(
                                                         div().h_full().w(px(300. * p as f32)).bg(gpui::white()),
