@@ -172,7 +172,7 @@ impl Tobii {
         let Some(dll) = self.find_dll() else {
             self.running.store(false, Ordering::SeqCst);
             *self.status.lock() = "Stream Engine not found".into();
-            return Err(AppError::msg("Couldn't find tobii_stream_engine.dll — set its path in Settings → Eye tracking"));
+            return Err(AppError::msg("Couldn't find tobii_stream_engine.dll. Set its path in Settings → Eye tracking"));
         };
         let (tx, rx) = mpsc::channel::<Ev>();
         *SINK.lock() = Some(tx);

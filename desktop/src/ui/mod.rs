@@ -53,7 +53,7 @@ pub fn follow_btn(kind: &'static str, id: u64, name: String, img: Option<String>
             cx.spawn(async move |cx| {
                 let _ = crate::api::call::<serde_json::Value>("follow_toggle", serde_json::json!({ "kind": kind, "id": id, "name": name, "img": img })).await;
                 let _ = cx.update(|cx| {
-                    crate::Nav::toast(if on { format!("unfollowed {name}") } else { format!("following {name} — their new releases show up on Home") }, cx);
+                    crate::Nav::toast(if on { format!("unfollowed {name}") } else { format!("following {name}. their new releases show up on Home") }, cx);
                     cx.refresh_windows();
                 });
             })

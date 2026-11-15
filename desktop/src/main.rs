@@ -926,7 +926,7 @@ fn window_controls() -> impl IntoElement {
         .top_0()
         .right_0()
         .flex()
-        .child(btn("win-min", "—", WindowControlArea::Min, false))
+        .child(btn("win-min", "─", WindowControlArea::Min, false))
         .child(btn("win-max", "▢", WindowControlArea::Max, false))
         .child(btn("win-close", "✕", WindowControlArea::Close, true))
 }

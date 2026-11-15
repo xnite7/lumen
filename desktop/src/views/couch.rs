@@ -105,7 +105,7 @@ impl Render for Couch {
             .child(div().flex_none().text_size(px(16.)).text_color(theme::label2()).child("see what your friends from the server are watching right now."));
         match self.setup {
             None => return page.child(div().text_color(theme::label2()).child("finding the remote…")),
-            Some(false) => return page.child(div().text_color(theme::label2()).child("sign in with Discord in the old app first — the new one picks it up.")),
+            Some(false) => return page.child(div().text_color(theme::label2()).child("sign in with Discord first, then the couch shows up here.")),
             _ => {}
         }
 

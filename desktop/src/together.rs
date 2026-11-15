@@ -489,7 +489,7 @@ impl Together {
                                 Ok(r) if r.is_null() => {
                                     gone += 1;
                                     if gone >= 2 {
-                                        let msg = format!("{name} stopped watching — you're on your own now");
+                                        let msg = format!("{name} stopped watching. you're on your own now");
                                         let _ = this.update(cx, |t, cx| {
                                             t.leave(cx);
                                             cx.defer(move |cx| Nav::toast(msg, cx));
@@ -746,7 +746,7 @@ impl Together {
             _ => ("film", "only the host picks what's on"),
         };
         let host = self.following.as_ref().map(|f| f.1.clone()).unwrap_or_default();
-        let words = if host.is_empty() { words.to_string() } else { format!("{words} — {host} has the remote") };
+        let words = if host.is_empty() { words.to_string() } else { format!("{words} · {host} has the remote") };
         self.denied = Some((icon, words.clone(), Instant::now()));
         cx.notify();
         if !crate::Nav::on_player(cx) {

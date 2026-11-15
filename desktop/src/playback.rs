@@ -513,7 +513,7 @@ impl Playback {
             let next = self.queue.remove(0);
             self.status = "that stream kept stalling, trying another…".into();
             self.start(next, at, cx);
-            cx.defer(|cx| crate::Nav::toast("that stream kept lagging — switched to another".into(), cx));
+            cx.defer(|cx| crate::Nav::toast("that stream kept lagging, so couch switched to another".into(), cx));
         }
     }
 

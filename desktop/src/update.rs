@@ -205,10 +205,10 @@ pub fn card(cx: &mut App) -> Option<impl IntoElement> {
             .flex()
             .flex_col()
             .gap(px(12.))
-            .child(div().flex().items_center().gap(px(12.)).child(div().size(px(40.)).flex_none().rounded_full().bg(crate::theme::neon()).flex().items_center().justify_center().child(crate::ui::icon("download", 20.))).child(div().flex().flex_col().gap(px(2.)).child(div().text_size(px(17.)).font_weight(FontWeight::BLACK).child(format!("couch {v} is ready"))).child(div().text_size(px(13.)).text_color(crate::theme::label2()).child(if matches!(*VIA.lock(), Some(Via::MoveTo { .. })) {
+            .child(div().flex().items_center().gap(px(12.)).child(div().size(px(40.)).flex_none().rounded_full().bg(crate::theme::neon()).flex().items_center().justify_center().child(crate::ui::icon("download", 20.))).child(div().flex_1().min_w_0().flex().flex_col().gap(px(2.)).child(div().text_size(px(17.)).font_weight(FontWeight::BLACK).child(format!("couch {v} is ready"))).child(div().w_full().text_size(px(13.)).line_height(px(18.)).text_color(crate::theme::label2()).child(if matches!(*VIA.lock(), Some(Via::MoveTo { .. })) {
                 "couch now installs like a proper app: Windows asks once to trust it, then its installer opens"
             } else {
-                "restart to get it — or it's there next time you open couch"
+                "restart to get it, or it's there next time you open couch"
             }))))
             .child(
                 div()
