@@ -404,7 +404,17 @@ impl Render for Home {
         let mut crew_rows: Vec<gpui::AnyElement> = vec![];
         // on the couch: what the crew is watching right now
         if !self.live.is_empty() {
-            let cards = self.live.iter().enumerate().map(|(i, mb)| {
+            // one card per title; everyone watching it, as faces on the picture
+            let mut groups: Vec<(String, Vec<&Value>)> = vec![];
+            for mb in &self.live {
+                let id = mb["watching"]["metaId"].as_str().unwrap_or("").to_string();
+                match groups.iter_mut().find(|g| g.0 == id) {
+                    Some(g) => g.1.push(mb),
+                    None => groups.push((id, vec![mb])),
+                }
+            }
+            let cards = groups.into_iter().enumerate().map(|(i, (_, who))| {
+                let mb = who[0];
                 let w = &mb["watching"];
                 let m = Meta {
                     id: w["metaId"].as_str().unwrap_or("").into(),
@@ -419,9 +429,23 @@ impl Render for Home {
                     (Some(p), Some(d)) if d > 0. => Some((p / d).clamp(0., 1.) as f32),
                     _ => None,
                 };
-                let who = mb["name"].as_str().unwrap_or("someone").to_string();
-                let sub = [format!("{who} is watching"), w["episode"].as_str().unwrap_or("").to_string()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
-                card::card_with(SharedString::from(format!("live-{i}")), &m, frac, Some(sub), None, |_, _, cx| Nav::go(crate::Route::Couch, cx))
+                let (se, ep_title) = crate::ui::split_episode(w["episode"].as_str().unwrap_or(""));
+                let people: Vec<(Option<String>, String)> = who.iter().map(|p| (p["avatar"].as_str().map(String::from), p["name"].as_str().unwrap_or("someone").to_string())).collect();
+                let key = format!("live-{i}");
+                div()
+                    .relative()
+                    .flex_none()
+                    .child(card::card_with(SharedString::from(key.clone()), &m, frac, ep_title.or(Some(String::new())), None, |_, _, cx| Nav::go(crate::Route::Couch, cx)))
+                    .child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .w(px(card::W))
+                            .h(px(card::H))
+                            .children(se.map(|t| div().absolute().top(px(10.)).right(px(10.)).child(crate::ui::ep_badge(t))))
+                            .child(div().absolute().bottom(px(10.)).right(px(10.)).child(crate::ui::faces(&key, people, 30.))),
+                    )
             });
             // on the couch leads the page, above continue watching
             below = below.child(
@@ -836,8 +860,49 @@ async fn because_you_watched() -> Vec<Row> {
             .collect();
         (done, seen)
     };
+    // what you loved (a 10, or a favourite) and liked (7 to 9), newest first
+    let lib = api::call::<Vec<Value>>("library_list", json!({})).await.unwrap_or_default();
+    let known: std::collections::HashMap<String, Meta> = lib
+        .iter()
+        .filter_map(|i| {
+            let id = i["_id"].as_str()?.to_string();
+            Some((id.clone(), Meta { id, kind: i["type"].as_str().unwrap_or("").into(), name: i["name"].as_str().unwrap_or("").into(), ..Default::default() }))
+        })
+        .collect();
+    let ratings = couch::commands::local_ratings(couch::state::get());
+    let mut rated: Vec<(String, i64, u64)> = ratings
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(k, v)| Some((k.clone(), v["rating"].as_i64()?, v["at"].as_u64().unwrap_or(0))))
+        .collect();
+    rated.sort_by(|a, b| b.2.cmp(&a.2));
+    let favs: Vec<Meta> = api::call::<Value>("crew_social", json!({ "method": "GET", "path": "/v1/favs", "body": Value::Null }))
+        .await
+        .ok()
+        .and_then(|v| v["favs"].as_array().cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|f| serde_json::from_value::<Meta>(f).ok())
+        .filter(|m| !m.id.is_empty() && !m.name.is_empty())
+        .collect();
+    let loved: Vec<Meta> = rated.iter().filter(|r| r.1 >= 10).filter_map(|r| known.get(&r.0).cloned()).chain(favs).collect();
+    let liked: Vec<Meta> = rated.iter().filter(|r| (7..=9).contains(&r.1)).filter_map(|r| known.get(&r.0).cloned()).collect();
+
+    let mut used: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut picks: Vec<(Meta, &'static str)> = vec![];
+    for (list, why, n) in [(loved, "because you loved", 1), (liked, "because you liked", 1), (done, "because you watched", 2)] {
+        let mut took = 0;
+        for m in list {
+            if took >= n || m.name.is_empty() || !used.insert(m.id.clone()) {
+                continue;
+            }
+            picks.push((m, why));
+            took += 1;
+        }
+    }
     let mut rows = vec![];
-    for m in done.into_iter().take(2) {
+    for (m, why) in picks {
         let ex = api::call::<Value>("meta_enrich", json!({ "kind": m.kind, "id": m.id })).await.unwrap_or_default();
         let recs: Vec<Meta> = ex["recommendations"].as_array().into_iter().flatten().filter_map(|r| serde_json::from_value::<Meta>(r.clone()).ok()).take(18).collect();
         // TMDB's ids to the real ones (so they open, show logos, and can be checked against what you've seen)
@@ -856,7 +921,7 @@ async fn because_you_watched() -> Vec<Row> {
             seen.insert(r.id.clone());
         }
         if items.len() >= 4 {
-            let title = format!("because you watched {}", m.name);
+            let title = format!("{why} {}", m.name);
             let spec = views_catalog::Spec { title: title.clone(), fixed: Some(items.clone()), ..Default::default() };
             rows.push(Row { key: format!("byw-{}", m.id), title, items, extra: vec![], spec: Some(spec) });
         }

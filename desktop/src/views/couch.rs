@@ -124,7 +124,17 @@ impl Render for Couch {
                     (Some(p), Some(d)) if d > 0. => (p / d).clamp(0., 1.) as f32,
                     _ => 0.,
                 };
-                let line = [wt["title"].as_str().unwrap_or(""), wt["episode"].as_str().unwrap_or("")].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
+                // under the picture: the episode's name only (its S:E is on the picture)
+                let (se, ep_title) = crate::ui::split_episode(wt["episode"].as_str().unwrap_or(""));
+                let line = ep_title.unwrap_or_default();
+                let meta_id = wt["metaId"].as_str().unwrap_or("").to_string();
+                let logo = wt["logo"]
+                    .as_str()
+                    .map(String::from)
+                    .or_else(|| meta_id.starts_with("tt").then(|| format!("https://images.metahub.space/logo/medium/{}/img", meta_id.split(':').next().unwrap_or(&meta_id))))
+                    .map(|u| crate::net::logo(&sized(&u, "w500"), 220.));
+                let tname = wt["title"].as_str().unwrap_or("").to_string();
+                let paused = m["paused"].as_bool() == Some(true);
                 let to = id.clone();
                 let nm = name.clone();
                 let title = crate::api::Meta { id: wt["metaId"].as_str().unwrap_or("").into(), kind: wt["type"].as_str().unwrap_or("").into(), name: wt["title"].as_str().unwrap_or("").into(), poster: wt["poster"].as_str().map(String::from), background: wt["background"].as_str().map(String::from), logo: wt["logo"].as_str().map(String::from), ..Default::default() };
@@ -154,8 +164,37 @@ impl Render for Couch {
                             .bg(theme::surface2())
                             .children(art.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover)))
                             .child(div().absolute().top_0().left_0().size_full().bg(linear_gradient(180., linear_color_stop(theme::black(0.0), 0.4), linear_color_stop(theme::black(0.8), 1.))))
-                            .child(div().absolute().left(px(12.)).top(px(12.)).flex().items_center().gap(px(8.)).child(avatar(m["avatar"].as_str(), &name, 28.)).child(div().font_weight(FontWeight::SEMIBOLD).child(name.clone())))
-                            .child(div().absolute().right(px(12.)).top(px(12.)).text_size(px(12.)).text_color(theme::label2()).child(if m["paused"].as_bool() == Some(true) { "paused" } else { "" }))
+                            // who: face and name, lifted off the picture
+                            .child(
+                                div()
+                                    .absolute()
+                                    .left(px(10.))
+                                    .top(px(10.))
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.))
+                                    .pl(px(3.))
+                                    .pr(px(12.))
+                                    .py(px(3.))
+                                    .rounded_full()
+                                    .bg(theme::black(0.45))
+                                    .shadow(crate::ui::lift())
+                                    .child(div().rounded_full().shadow(crate::ui::lift()).child(avatar(m["avatar"].as_str(), &name, 28.)))
+                                    .child(div().font_weight(FontWeight::SEMIBOLD).text_size(px(14.)).child(name.clone()))
+                                    .when(paused, |d| d.child(div().text_size(px(12.)).text_color(theme::label2()).child("· paused"))),
+                            )
+                            // S3:E2
+                            .children(se.map(|t| div().absolute().right(px(12.)).top(px(12.)).child(crate::ui::ep_badge(t))))
+                            // the title's logo
+                            .child(
+                                div().absolute().left(px(16.)).bottom(px(16.)).h(px(60.)).max_w(px(w * 0.55)).flex().items_end().child(match logo {
+                                    Some(u) => {
+                                        let n = tname.clone();
+                                        img(u).max_h(px(60.)).max_w(px(w * 0.55)).object_fit(ObjectFit::Contain).with_fallback(move || div().text_size(px(20.)).font_weight(FontWeight::BLACK).line_clamp(2).child(n.clone()).into_any_element()).into_any_element()
+                                    }
+                                    None => div().text_size(px(20.)).font_weight(FontWeight::BLACK).line_clamp(2).child(tname.clone()).into_any_element(),
+                                }),
+                            )
                             .child(
                                 div()
                                     .absolute()
@@ -170,7 +209,7 @@ impl Render for Couch {
                     )
                     // under the picture, like continue watching: square, white, 60% wide
                     .child(div().w(px(w)).flex().justify_center().child(div().w(px(bw)).h(px(4.)).bg(theme::white(0.18)).child(div().h_full().w(px(bw * frac)).bg(gpui::white()))))
-                    .child(div().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).truncate().child(line))
+                    .when(!line.is_empty(), |d| d.child(div().text_size(px(15.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).truncate().child(line)))
             })));
         }
 

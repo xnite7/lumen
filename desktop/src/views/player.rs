@@ -40,6 +40,10 @@ pub struct PlayerView {
     track_w: f32,
     /// the volume slider slides out of its button while you point at it
     vol_open: bool,
+    /// clicked open (stays until clicked again or elsewhere)
+    vol_pinned: bool,
+    /// when "next" started being pointed at (its card fades in)
+    next_since: Option<Instant>,
     vol_x: std::rc::Rc<std::cell::Cell<f32>>,
     aspect: &'static str,
     /// the season the episodes menu is showing (None: the one playing)
@@ -106,7 +110,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_x: Default::default(), aspect: "fit", ep_season: None, signal: None }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_pinned: false, next_since: None, vol_x: Default::default(), aspect: "fit", ep_season: None, signal: None }
     }
 
     pub fn poke(&mut self, cx: &mut Context<Self>) {
@@ -621,9 +625,9 @@ impl PlayerView {
             .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .absolute()
             .right(px(theme::GUTTER))
-            .bottom(px(100.))
+            .bottom(px(136.))
             .w(px(320.))
-            .max_h(px(460.))
+            .max_h(px(520.))
             .overflow_y_scroll()
             .p(px(8.))
             .rounded(px(22.))
@@ -688,8 +692,9 @@ impl Render for PlayerView {
                     return;
                 }
                 // a click on the picture: play / pause (double click: full screen)
-                if v.menu.is_some() {
+                if v.menu.is_some() || v.vol_pinned {
                     v.menu = None;
+                    v.vol_pinned = false;
                     cx.notify();
                 } else if e.click_count() == 1 {
                     let paused = v.pb.read(cx).state.paused;
@@ -700,7 +705,10 @@ impl Render for PlayerView {
                 v.poke(cx);
             }))
             .on_scroll_wheel(cx.listener(|v, e: &gpui::ScrollWheelEvent, w, cx| {
-                // scroll = volume
+                // scroll = volume (not while a menu is open: that scrolls the menu)
+                if v.menu.is_some() {
+                    return;
+                }
                 // 5% a notch, however fast you spin (fast spins arrive as bigger steps)
                 let step = match e.delta {
                     gpui::ScrollDelta::Lines(l) => l.y / 3. * 5.,
@@ -902,7 +910,6 @@ impl Render for PlayerView {
         let near_end = st.duration > 300. && st.duration - st.pos < 45. && next.is_some();
         let has_streams = !p.all.is_empty();
         let menu = self.menu.map(|m| self.menu_panel(m, cx));
-        let root = root.children(menu);
         // skip intro / recap; at the credits (or the last bit): next episode
         let skip = match &segment {
             Some((k, end)) if k == "intro" || k == "recap" => {
@@ -919,6 +926,13 @@ impl Render for PlayerView {
         };
         let root = root.children(skip.map(|b| div().absolute().right(px(theme::GUTTER)).bottom(px(140.)).child(b)));
         // what's next, while you point at "next"
+        let next_a = self.next_since.map_or(0., |t| {
+            let x = (t.elapsed().as_secs_f32() / 0.22).min(1.);
+            if x < 1. {
+                window.request_animation_frame();
+            }
+            1. - (1. - x).powi(3)
+        });
         let next_card = self.next_hover.then(|| self.pb.read(cx).next_video()).flatten().map(|n| {
             let imdb = crate::api::imdb_episode(n["id"].as_str().unwrap_or(""));
             let still = n["thumbnail"].as_str().map(String::from).or(imdb.clone());
@@ -926,11 +940,15 @@ impl Render for PlayerView {
             div()
                 .absolute()
                 .right(px(theme::GUTTER))
-                .bottom(px(100.))
+                // above the scrub bar, rising a little as it fades in
+                .bottom(px(140. + 10. * next_a))
+                .opacity(next_a)
                 .w(px(340.))
-                .rounded(px(16.))
+                .rounded(px(18.))
                 .overflow_hidden()
-                .bg(theme::black(0.85))
+                .bg(gpui::rgba(0x151114f2))
+                .border_1()
+                .border_color(theme::white(0.10))
                 .flex()
                 .flex_col()
                 .children(still.map(|u| {
@@ -951,7 +969,6 @@ impl Render for PlayerView {
                         .children((!over.is_empty()).then(|| div().text_size(px(13.)).line_height(px(18.)).text_color(theme::label2()).line_clamp(3).child(over))),
                 )
         });
-        let root = root.children(next_card);
         let tw: f32 = f32::from(bar_w) - 92.;
         self.track_w = tw;
         let dragging = self.drag;
@@ -1191,6 +1208,7 @@ impl Render for PlayerView {
                                     })
                                     .on_hover(cx.listener(|v, on: &bool, _, cx| {
                                         v.next_hover = *on;
+                                        v.next_since = on.then(Instant::now);
                                         cx.notify();
                                     }))
                             }))
@@ -1203,7 +1221,7 @@ impl Render for PlayerView {
                                     .flex()
                                     .items_center()
                                     .rounded_full()
-                                    .when(self.vol_open, |d| d.bg(theme::white(0.08)).pr(px(14.)))
+                                    .when(self.vol_open || self.vol_pinned, |d| d.bg(theme::white(0.08)).pr(px(6.)))
                                     .on_hover(cx.listener(|v, on: &bool, _, cx| {
                                         v.vol_open = *on;
                                         if !*on {
@@ -1212,10 +1230,16 @@ impl Render for PlayerView {
                                         cx.notify();
                                     }))
                                     .child(
-                                        bar_btn("pl-mute", icon(if st.muted || st.volume <= 0. { "mute" } else { "volume" }, 23.), false)
-                                            .on_click(move |_, _, cx| pb4.read(cx).cmd("mute", json!({}))),
+                                        bar_btn("pl-mute", icon(if st.muted || st.volume <= 0. { "mute" } else { "volume" }, 23.), self.vol_pinned)
+                                            .on_click(cx.listener(|v, _, _, cx| {
+                                                cx.stop_propagation();
+                                                v.vol_pinned = !v.vol_pinned;
+                                                cx.notify();
+                                            })),
                                     )
-                                    .when(self.vol_open, |d| {
+                                    .when(self.vol_open || self.vol_pinned, |d| {
+                                        let pb = pb4.clone();
+                                        let muted = st.muted;
                                         d.child(
                                             div()
                                                 .id("pl-vol-slide")
@@ -1244,6 +1268,26 @@ impl Render for PlayerView {
                                                         .child(div().h_full().rounded_full().bg(theme::text()).w(px(96. * vol_frac)))
                                                         .child(div().absolute().top(px(-5.)).left(px(96. * vol_frac - 7.)).size(px(14.)).rounded_full().bg(theme::text())),
                                                 ),
+                                        )
+                                        .child(div().w(px(36.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).flex().justify_center().child(format!("{}", vol_now.round() as i64)))
+                                        .child(
+                                            div()
+                                                .id("pl-mute-t")
+                                                .px(px(10.))
+                                                .h(px(30.))
+                                                .flex()
+                                                .items_center()
+                                                .rounded_full()
+                                                .cursor_pointer()
+                                                .text_size(px(12.))
+                                                .font_weight(FontWeight::SEMIBOLD)
+                                                .when(muted, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))
+                                                .when(!muted, |d| d.bg(theme::white(0.1)).hover(|s| s.bg(theme::white(0.18))))
+                                                .on_click(move |_, _, cx| {
+                                                    cx.stop_propagation();
+                                                    pb.read(cx).cmd("mute", json!({}));
+                                                })
+                                                .child(if muted { "muted" } else { "mute" }),
                                         )
                                     }),
                             )
@@ -1289,6 +1333,9 @@ impl Render for PlayerView {
                             .child(bar_btn("pl-full", icon(if window.is_fullscreen() { "exitFullscreen" } else { "fullscreen" }, 22.), false).on_click(|_, window, _| window.toggle_fullscreen())),
                     ),
             )
+            // over everything else: the open menu, and what's next
+            .children(menu)
+            .children(next_card)
     }
 }
 

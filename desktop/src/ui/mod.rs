@@ -116,3 +116,84 @@ pub fn readable_logo(bytes: &[u8]) -> Option<std::sync::Arc<gpui::Image>> {
     image::DynamicImage::ImageRgba8(im).write_to(&mut out, image::ImageFormat::Png).ok()?;
     Some(std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
 }
+
+/// "S3 · E7 · The Strings That Bind" → ("S3:E7", "The Strings That Bind")
+pub fn split_episode(s: &str) -> (Option<String>, Option<String>) {
+    let mut it = s.splitn(3, " · ");
+    let (a, b, c) = (it.next().unwrap_or(""), it.next().unwrap_or(""), it.next());
+    if a.starts_with('S') && b.starts_with('E') {
+        (Some(format!("{a}:{b}")), c.map(|t| t.to_string()).filter(|t| !t.trim().is_empty()))
+    } else {
+        (None, Some(s.to_string()).filter(|t| !t.trim().is_empty()))
+    }
+}
+
+/// a soft shadow, so faces and names read on any picture
+pub fn lift() -> Vec<gpui::BoxShadow> {
+    vec![gpui::BoxShadow { color: theme::black(0.55), offset: gpui::point(px(0.), px(2.)), blur_radius: px(10.), spread_radius: px(0.), inset: false }]
+}
+
+/// "S3:E7", heavy, for the corner of a picture
+pub fn ep_badge(t: String) -> impl IntoElement {
+    gpui::div()
+        .px(px(9.))
+        .py(px(3.))
+        .rounded(px(8.))
+        .bg(theme::black(0.55))
+        .shadow(lift())
+        .text_size(px(14.))
+        .font_weight(gpui::FontWeight::BLACK)
+        .text_color(theme::text())
+        .child(t)
+}
+
+/// The faces of who's watching, overlapping in a row; pointing at one shows the name.
+pub fn faces(key: &str, people: Vec<(Option<String>, String)>, size: f32) -> impl IntoElement {
+    let key = key.to_string();
+    gpui::div().flex().flex_row_reverse().children(people.into_iter().enumerate().map(move |(i, (pic, name))| {
+        let group = gpui::SharedString::from(format!("face-{key}-{i}"));
+        let initial = name.chars().next().unwrap_or('?').to_uppercase().to_string();
+        gpui::div()
+            .id(gpui::SharedString::from(format!("facei-{key}-{i}")))
+            .group(group.clone())
+            .relative()
+            .when(i > 0, |d| d.mr(px(-size * 0.28)))
+            .size(px(size))
+            .flex_none()
+            .rounded_full()
+            .border_2()
+            .border_color(theme::black(0.55))
+            .shadow(lift())
+            .bg(theme::neon())
+            .flex()
+            .items_center()
+            .justify_center()
+            .text_size(px(size * 0.42))
+            .font_weight(gpui::FontWeight::BLACK)
+            .child(match pic {
+                Some(u) => gpui::img(crate::net::face(&u, size)).size_full().rounded_full().into_any_element(),
+                None => gpui::div().child(initial).into_any_element(),
+            })
+            // the name, above it, while pointed at
+            .child(
+                gpui::div()
+                    .absolute()
+                    .bottom(px(size + 6.))
+                    .right(px(-8.))
+                    .px(px(10.))
+                    .py(px(4.))
+                    .rounded_full()
+                    .bg(gpui::rgba(0x151114f0))
+                    .border_1()
+                    .border_color(theme::white(0.12))
+                    .shadow(lift())
+                    .whitespace_nowrap()
+                    .text_size(px(13.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(theme::text())
+                    .opacity(0.)
+                    .group_hover(group, |s| s.opacity(1.))
+                    .child(name),
+            )
+    }))
+}

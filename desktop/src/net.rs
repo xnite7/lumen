@@ -134,6 +134,38 @@ fn shrink(bytes: &[u8], w: u32, k: char) -> Option<Vec<u8>> {
             changed = true;
         }
     }
+    // a title logo that's (nearly) all black would vanish on couch's dark
+    // pictures: its black parts turn white, colours stay
+    if trim {
+        let mut rgba = im.to_rgba8();
+        let dark = |p: &image::Rgba<u8>| {
+            let (r, g, b) = (p[0] as f32 / 255., p[1] as f32 / 255., p[2] as f32 / 255.);
+            0.299 * r + 0.587 * g + 0.114 * b < 0.3 && r.max(g).max(b) - r.min(g).min(b) < 0.2
+        };
+        let (mut n, mut d) = (0u64, 0u64);
+        for p in rgba.pixels() {
+            if p[3] > 128 {
+                n += 1;
+                if dark(p) {
+                    d += 1;
+                }
+            }
+        }
+        if n > 0 && d as f64 / n as f64 > 0.55 {
+            for p in rgba.pixels_mut() {
+                if p[3] > 0 && dark(p) {
+                    // dark grey stays a little grey (keeps outlines and shading)
+                    let l = (0.299 * p[0] as f32 + 0.587 * p[1] as f32 + 0.114 * p[2] as f32) / 255.;
+                    let v = (255. * (1. - l * 0.6)) as u8;
+                    p[0] = v;
+                    p[1] = v;
+                    p[2] = v;
+                }
+            }
+            im = image::DynamicImage::ImageRgba8(rgba);
+            changed = true;
+        }
+    }
     if im.width() > w + w / 8 {
         let h = ((im.height() as u64 * w as u64) / im.width() as u64).max(1) as u32;
         im = im.resize_exact(w, h, image::imageops::FilterType::Lanczos3);
