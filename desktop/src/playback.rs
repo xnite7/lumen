@@ -412,10 +412,11 @@ impl Playback {
             return None;
         }
         let today = couch::integrations::tmdb::today_str();
-        if n["released"].as_str().map_or(false, |r| &r[..r.len().min(10)] > today.as_str()) {
-            return None;
+        // not out yet, or no date at all (announced, not aired): no next
+        match n["released"].as_str().or(n["firstAired"].as_str()).filter(|r| !r.is_empty()) {
+            Some(r) if &r[..r.len().min(10)] <= today.as_str() => Some(n.clone()),
+            _ => None,
         }
-        Some(n.clone())
     }
 
     pub fn play_next(&mut self, cx: &mut Context<Self>) {

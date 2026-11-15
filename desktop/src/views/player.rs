@@ -43,6 +43,8 @@ pub struct PlayerView {
     track_w: f32,
     /// the volume slider slides out of its button while you point at it
     vol_open: bool,
+    /// when the volume pop-out opened
+    vol_since: Option<Instant>,
     /// clicked open (stays until clicked again or elsewhere)
     vol_pinned: bool,
     /// when "next" started being pointed at (its card fades in)
@@ -62,6 +64,8 @@ pub struct PlayerView {
     glow_prev: Option<std::sync::Arc<gpui::Image>>,
     glow_at: Instant,
     vol_x: std::rc::Rc<std::cell::Cell<f32>>,
+    /// the menus' lists, for gliding scroll (audio, subs, episodes, streams)
+    ms: [gpui::ScrollHandle; 4],
     aspect: &'static str,
     /// the season the episodes menu is showing (None: the one playing)
     ep_season: Option<i64>,
@@ -149,7 +153,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -444,7 +448,8 @@ impl PlayerView {
 
     fn set_volume_at(&mut self, x: f32, cx: &mut Context<Self>) {
         let max = if couch::state::get().core.settings().playback.volume_boost { 130. } else { 100. };
-        let vol = (((x - self.vol_x.get()) / 96.).clamp(0., 1.) as f64 * max).round();
+        // (x is the pointer's height; vol_x the track's bottom)
+        let vol = (((self.vol_x.get() - x) / 130.).clamp(0., 1.) as f64 * max).round();
         self.vol_target = Some(vol);
         self.pb.read(cx).cmd("volume", json!({ "value": vol }));
         cx.notify();
@@ -539,13 +544,15 @@ impl PlayerView {
                             pb.read(cx).cmd("sub-delay", json!({ "value": ((now + by) * 10.).round() / 10. }));
                         })
                 };
-                let left = div().id("pm-audio").flex_1().min_w_0().max_h(px(420.)).overflow_y_scroll().flex().flex_col().child(head("audio")).children(col("audio"));
+                let left = div().id("pm-audio").flex_1().min_w_0().max_h(px(420.)).overflow_y_scroll().track_scroll(&self.ms[0]).child(crate::ui::smooth::wheel(&self.ms[0], "pm-audio")).flex().flex_col().child(head("audio")).children(col("audio"));
                 let right = div()
                     .id("pm-subs")
                     .flex_1()
                     .min_w_0()
                     .max_h(px(420.))
                     .overflow_y_scroll()
+                    .track_scroll(&self.ms[1])
+                    .child(crate::ui::smooth::wheel(&self.ms[1], "pm-subs"))
                     .flex()
                     .flex_col()
                     .child(head("subtitles"))
@@ -638,13 +645,13 @@ impl PlayerView {
                                 .w(px(128.))
                                 .h(px(72.))
                                 .flex_none()
-                                .rounded(px(8.))
+                                .rounded(px(12.))
                                 .overflow_hidden()
                                 .bg(theme::white(0.06))
                                 .children(still.map(|u| {
                                     let alt = alt.clone().filter(|a| a != &u);
-                                    img(u).size_full().object_fit(ObjectFit::Cover).with_fallback(move || match alt.clone() {
-                                        Some(a) => img(a).size_full().object_fit(ObjectFit::Cover).into_any_element(),
+                                    img(u).size_full().rounded(px(12.)).object_fit(ObjectFit::Cover).with_fallback(move || match alt.clone() {
+                                        Some(a) => img(a).size_full().rounded(px(12.)).object_fit(ObjectFit::Cover).into_any_element(),
                                         None => div().into_any_element(),
                                     })
                                 }))
@@ -670,7 +677,7 @@ impl PlayerView {
                         .flex_col()
                         .child(head("episodes"))
                         .children(picker)
-                        .child(div().id("ep-list").max_h(px(440.)).overflow_y_scroll().flex().flex_col().gap(px(2.)).children(rows))
+                        .child(div().id("ep-list").max_h(px(440.)).overflow_y_scroll().track_scroll(&self.ms[2]).child(crate::ui::smooth::wheel(&self.ms[2], "ep-list")).flex().flex_col().gap(px(2.)).children(rows))
                         .into_any_element(),
                 )
             }
@@ -825,7 +832,7 @@ impl PlayerView {
                             .into_any_element()
                     })
                     .collect::<Vec<_>>();
-                (340., div().id("src-list").max_h(px(460.)).overflow_y_scroll().flex().flex_col().child(head("streams")).children(rows).into_any_element())
+                (340., div().id("src-list").max_h(px(460.)).overflow_y_scroll().track_scroll(&self.ms[3]).child(crate::ui::smooth::wheel(&self.ms[3], "src-list")).flex().flex_col().child(head("streams")).children(rows).into_any_element())
             }
         };
         div()
@@ -987,10 +994,10 @@ impl Render for PlayerView {
                 if v.menu.is_some() {
                     return;
                 }
-                // 5% a notch, however fast you spin (fast spins arrive as bigger steps)
+                // 10% a notch, however fast you spin (fast spins arrive as bigger steps)
                 let step = match e.delta {
-                    gpui::ScrollDelta::Lines(l) => l.y / 3. * 5.,
-                    gpui::ScrollDelta::Pixels(p) => f32::from(p.y) / 40. * 5.,
+                    gpui::ScrollDelta::Lines(l) => l.y.signum() * l.y.abs().max(1.) * 10.,
+                    gpui::ScrollDelta::Pixels(p) => f32::from(p.y) / 40. * 10.,
                 };
                 let _ = w;
                 v.vol_acc += step as f64;
@@ -1003,7 +1010,8 @@ impl Render for PlayerView {
                 let max = if couch::state::get().core.settings().playback.volume_boost { 130. } else { 100. };
                 // build on the volume we last asked for (mpv's reply lags behind fast spins)
                 let base = v.vol_target.filter(|_| v.vol_hud.map_or(false, |t| t.elapsed() < Duration::from_millis(800))).unwrap_or(p.state.volume);
-                let vol = (base + change).clamp(0., max).round();
+                // on the tens, so it lands on 50, 60, 70…
+                let vol = (((base + change) / 10.).round() * 10.).clamp(0., max);
                 v.vol_target = Some(vol);
                 p.cmd("volume", json!({ "value": vol }));
                 v.vol_hud = Some(Instant::now());
@@ -1335,7 +1343,16 @@ impl Render for PlayerView {
         let next = p.next_video().map(|n| format!("S{} E{}", n["season"].as_i64().unwrap_or(0), n["episode"].as_i64().or(n["number"].as_i64()).unwrap_or(0)));
         let is_series = p.meta.as_ref().map_or(false, |m| m.kind == "series");
         let near_end = st.duration > 300. && st.duration - st.pos < 45. && next.is_some();
-        let has_streams = !p.all.is_empty();
+        // another stream to switch to (not counting AIOStreams' 🦆 ones)
+        let has_streams = p
+            .all
+            .iter()
+            .filter(|s| {
+                let text = [&s["name"], &s["title"], &s["description"], &s["_addonName"]].iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(" ");
+                !(text.contains('🦆') || text.to_lowercase().contains("aiostreams"))
+            })
+            .count()
+            > 1;
         if self.menu != self.menu_seen {
             self.menu_seen = self.menu;
             self.menu_at = Instant::now();
@@ -1655,19 +1672,18 @@ impl Render for PlayerView {
                                         cx.notify();
                                     }))
                             }))
-                            // volume: the slider slides out while you're on it
+                            // volume: a slider that pops out above the button
                             .child(
                                 div()
                                     .id("pl-vol")
+                                    .relative()
                                     .occlude()
                                     .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                                    .flex()
-                                    .items_center()
-                                    .rounded_full()
-                                    .when(self.vol_open || self.vol_pinned, |d| d.bg(theme::white(0.08)).pr(px(6.)))
                                     .on_hover(cx.listener(|v, on: &bool, _, cx| {
                                         v.vol_open = *on;
-                                        if !*on {
+                                        if *on {
+                                            v.vol_since = Some(Instant::now());
+                                        } else {
                                             v.vol_target = None;
                                         }
                                         cx.notify();
@@ -1677,60 +1693,88 @@ impl Render for PlayerView {
                                             .on_click(cx.listener(|v, _, _, cx| {
                                                 cx.stop_propagation();
                                                 v.vol_pinned = !v.vol_pinned;
+                                                v.vol_since = Some(Instant::now());
                                                 cx.notify();
                                             })),
                                     )
                                     .when(self.vol_open || self.vol_pinned, |d| {
                                         let pb = pb4.clone();
                                         let muted = st.muted;
+                                        let va = self.vol_since.map_or(1., |t| {
+                                            let x = (t.elapsed().as_secs_f32() / 0.24).min(1.);
+                                            if x < 1. {
+                                                window.request_animation_frame();
+                                            }
+                                            1. - (1. - x).powi(4)
+                                        });
+                                        const SH: f32 = 130.;
                                         d.child(
+                                            // (a bridge under it, so moving up from the button keeps it open)
                                             div()
-                                                .id("pl-vol-slide")
-                                                .w(px(96.))
-                                                .h(px(44.))
-                                                .flex()
-                                                .items_center()
-                                                .cursor_pointer()
-                                                .on_mouse_down(gpui::MouseButton::Left, cx.listener(|v, e: &gpui::MouseDownEvent, _, cx| {
-                                                    cx.stop_propagation();
-                                                    v.set_volume_at(f32::from(e.position.x), cx);
-                                                }))
-                                                .on_mouse_move(cx.listener(|v, e: &MouseMoveEvent, _, cx| {
-                                                    if e.pressed_button == Some(gpui::MouseButton::Left) {
-                                                        v.set_volume_at(f32::from(e.position.x), cx);
-                                                    }
-                                                }))
+                                                .absolute()
+                                                .left(px(-8.))
+                                                .bottom(px(44.))
+                                                .w(px(60.))
+                                                .pb(px(12. - (1. - va) * 8.))
+                                                .opacity(va)
                                                 .child(
-                                                    div()
-                                                        .relative()
-                                                        .w_full()
-                                                        .h(px(4.))
-                                                        .rounded_full()
-                                                        .bg(theme::white(0.22))
-                                                        .child(gpui::canvas(move |b, _, _| vol_x.set(f32::from(b.origin.x)), |_, _, _, _| {}).absolute().size_full())
-                                                        .child(div().h_full().rounded_full().bg(theme::text()).w(px(96. * vol_frac)))
-                                                        .child(div().absolute().top(px(-5.)).left(px(96. * vol_frac - 7.)).size(px(14.)).rounded_full().bg(theme::text())),
+                                                    glass(div())
+                                                        .id("pl-vol-pop")
+                                                        .occlude()
+                                                        .rounded(px(18.))
+                                                        .py(px(12.))
+                                                        .flex()
+                                                        .flex_col()
+                                                        .items_center()
+                                                        .gap(px(10.))
+                                                        .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).child(format!("{}", vol_now.round() as i64)))
+                                                        .child(
+                                                            div()
+                                                                .id("pl-vol-slide")
+                                                                .w(px(44.))
+                                                                .h(px(SH))
+                                                                .flex()
+                                                                .justify_center()
+                                                                .cursor_pointer()
+                                                                .on_mouse_down(gpui::MouseButton::Left, cx.listener(|v, e: &gpui::MouseDownEvent, _, cx| {
+                                                                    cx.stop_propagation();
+                                                                    v.set_volume_at(f32::from(e.position.y), cx);
+                                                                }))
+                                                                .on_mouse_move(cx.listener(|v, e: &MouseMoveEvent, _, cx| {
+                                                                    if e.pressed_button == Some(gpui::MouseButton::Left) {
+                                                                        v.set_volume_at(f32::from(e.position.y), cx);
+                                                                    }
+                                                                }))
+                                                                .child(
+                                                                    div()
+                                                                        .relative()
+                                                                        .w(px(6.))
+                                                                        .h_full()
+                                                                        .rounded_full()
+                                                                        .bg(theme::white(0.18))
+                                                                        .child(gpui::canvas(move |b, _, _| vol_x.set(f32::from(b.origin.y + b.size.height)), |_, _, _, _| {}).absolute().size_full())
+                                                                        .child(div().absolute().bottom_0().left_0().w_full().rounded_full().bg(theme::text()).h(px(SH * vol_frac)))
+                                                                        .child(div().absolute().left(px(-5.)).bottom(px(SH * vol_frac - 8.)).size(px(16.)).rounded_full().bg(theme::text()).shadow(vec![gpui::BoxShadow { color: theme::black(0.4), offset: gpui::point(px(0.), px(2.)), blur_radius: px(6.), spread_radius: px(0.), inset: false }])),
+                                                                ),
+                                                        )
+                                                        .child(
+                                                            div()
+                                                                .id("pl-mute-t")
+                                                                .size(px(34.))
+                                                                .flex()
+                                                                .items_center()
+                                                                .justify_center()
+                                                                .rounded_full()
+                                                                .cursor_pointer()
+                                                                .when(muted, |d| d.bg(theme::text()))
+                                                                .when(!muted, |d| d.bg(theme::white(0.1)).hover(|s| s.bg(theme::white(0.18))))
+                                                                .on_click(move |_, _, cx| {
+                                                                    cx.stop_propagation();
+                                                                    pb.read(cx).cmd("mute", json!({}));
+                                                                })
+                                                                .child(if muted { icon("mute", 17.).text_color(gpui::rgb(0x000000)) } else { icon("mute", 17.) }),
+                                                        ),
                                                 ),
-                                        )
-                                        .child(div().w(px(36.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).flex().justify_center().child(format!("{}", vol_now.round() as i64)))
-                                        .child(
-                                            div()
-                                                .id("pl-mute-t")
-                                                .px(px(10.))
-                                                .h(px(30.))
-                                                .flex()
-                                                .items_center()
-                                                .rounded_full()
-                                                .cursor_pointer()
-                                                .text_size(px(12.))
-                                                .font_weight(FontWeight::SEMIBOLD)
-                                                .when(muted, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))
-                                                .when(!muted, |d| d.bg(theme::white(0.1)).hover(|s| s.bg(theme::white(0.18))))
-                                                .on_click(move |_, _, cx| {
-                                                    cx.stop_propagation();
-                                                    pb.read(cx).cmd("mute", json!({}));
-                                                })
-                                                .child(if muted { "muted" } else { "mute" }),
                                         )
                                     }),
                             )

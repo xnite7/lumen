@@ -721,45 +721,60 @@ fn friendly(e: &libmpv2::Error) -> String {
 /// is then fitted as usual, so nothing of the film is lost.
 fn crop_bars(mpv: &libmpv2::Mpv, gen: u64) {
     let current = || CROP_GEN.load(std::sync::atomic::Ordering::Relaxed) == gen;
-    // wait for real frames (a few seconds in: skips black fades and logos)
+    // wait until it's really playing (we need its length)
+    let mut dur = 0.0f64;
     for _ in 0..80 {
         if !current() {
             return;
         }
-        let t: f64 = mpv.get_property("time-pos").unwrap_or(0.0);
-        let paused: bool = mpv.get_property("pause").unwrap_or(false);
-        if t > 3.0 && !paused {
+        dur = mpv.get_property("duration").unwrap_or(0.0);
+        if dur > 0.0 {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(250));
     }
-    let (vw, vh): (i64, i64) = (mpv.get_property("width").unwrap_or(0), mpv.get_property("height").unwrap_or(0));
-    if vw <= 0 || vh <= 0 || !current() {
+    if dur <= 0.0 {
         return;
     }
-    let _ = mpv.command("vf", &["add", "@couchcd:lavfi=[cropdetect=limit=24/255:round=2:reset=0]"]);
-    std::thread::sleep(std::time::Duration::from_millis(1800));
-    let get = |k: &str| -> Option<i64> {
-        for path in [format!("vf-metadata/couchcd/by-key/lavfi.cropdetect.{k}"), format!("vf-metadata/couchcd/lavfi.cropdetect.{k}")] {
-            if let Ok(v) = mpv.get_property::<String>(&path) {
-                if let Ok(n) = v.trim().parse::<i64>() {
-                    return Some(n);
-                }
-            }
+    // bars baked into the picture (a 4:3 show inside a 16:9 file, a scope film
+    // with black top and bottom): measured on stills from a few places in it.
+    // A bar has to be black in every one, so a dark scene doesn't count.
+    let mut cut: Option<[f64; 4]> = None; // left, right, top, bottom (fractions)
+    for f in [0.18, 0.37, 0.55, 0.73] {
+        if !current() {
+            return;
         }
-        None
-    };
-    let found = (get("w"), get("h"), get("x"), get("y"));
-    let _ = mpv.command("vf", &["remove", "@couchcd"]);
+        let Some(jpg) = crate::state::player().thumb(dur * f) else { continue };
+        let Ok(im) = image::load_from_memory(&jpg) else { continue };
+        let im = im.to_luma8();
+        let (w, h) = (im.width() as usize, im.height() as usize);
+        if w < 32 || h < 32 {
+            continue;
+        }
+        let px = |x: usize, y: usize| im.get_pixel(x as u32, y as u32)[0];
+        // a line is bar when (nearly) all of it is dark: allow a few bright specks (a channel logo)
+        let dark_col = |x: usize| (0..h).filter(|&y| px(x, y) > 30).count() * 50 < h;
+        let dark_row = |y: usize| (0..w).filter(|&x| px(x, y) > 30).count() * 50 < w;
+        let left = (0..w / 2).take_while(|&x| dark_col(x)).count();
+        let right = (0..w / 2).take_while(|&x| dark_col(w - 1 - x)).count();
+        let top = (0..h / 2).take_while(|&y| dark_row(y)).count();
+        let bottom = (0..h / 2).take_while(|&y| dark_row(h - 1 - y)).count();
+        let here = [left as f64 / w as f64, right as f64 / w as f64, top as f64 / h as f64, bottom as f64 / h as f64];
+        cut = Some(match cut {
+            None => here,
+            Some(c) => [c[0].min(here[0]), c[1].min(here[1]), c[2].min(here[2]), c[3].min(here[3])],
+        });
+    }
+    let Some([l, r, t, b]) = cut else { return };
     if !current() {
         return;
     }
-    let (Some(w), Some(h), Some(x), Some(y)) = found else { return };
-    // only bars: a sliver isn't worth it, and more than a quarter isn't bars
-    let cut_w = vw - w;
-    let cut_h = vh - h;
-    if w <= 0 || h <= 0 || (cut_w < vw / 50 && cut_h < vh / 50) || cut_w > vw / 4 || cut_h > vh / 4 {
+    // one pixel in from each edge (jpeg fuzz), slivers ignored, never more than 40%
+    let clean = |v: f64| if v < 0.015 || v > 0.4 { 0.0 } else { (v + 0.004).min(0.4) };
+    let (l, r, t, b) = (clean(l), clean(r), clean(t), clean(b));
+    if l + r + t + b <= 0.0 {
         return;
     }
-    let _ = mpv.command("vf", &["add", &format!("@couchcrop:lavfi=[crop={w}:{h}:{x}:{y}]")]);
+    let (fw, fh) = (1.0 - l - r, 1.0 - t - b);
+    let _ = mpv.command("vf", &["add", &format!("@couchcrop:lavfi=[crop=w=trunc(iw*{fw:.4}/2)*2:h=trunc(ih*{fh:.4}/2)*2:x=trunc(iw*{l:.4}):y=trunc(ih*{t:.4})]")]);
 }
