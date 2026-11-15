@@ -515,7 +515,7 @@ impl Root {
                 "down" => p.cmd("volume", json!({ "value": (p.state.volume - 5.).max(0.) })),
                 "m" => p.cmd("mute", json!({})),
                 "f" => window.toggle_fullscreen(),
-                "p" | "i" => pip::toggle(cx),
+                "p" | "i" => pip::toggle_in(window, cx),
                 "escape" => {
                     if pip::is_on() {
                         pip::toggle(cx);

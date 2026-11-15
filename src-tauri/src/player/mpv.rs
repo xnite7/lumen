@@ -7,6 +7,8 @@ use libmpv2::Format;
 use parking_lot::Mutex;
 use serde_json::{json, Value};
 use std::sync::Arc;
+
+static CROP_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Default)]
@@ -393,7 +395,11 @@ impl Mpv {
         self.state.lock().sub_overlay = !native;
     }
 
-    fn apply_aspect(&self, mpv: &libmpv2::Mpv, mode: &str) {
+    fn apply_aspect(&self, mpv: &Arc<libmpv2::Mpv>, mode: &str) {
+        // any earlier crop goes (and one still being measured stops); "crop" finds it again
+        let gen = CROP_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        let _ = mpv.command("vf", &["remove", "@couchcrop"]);
+        let _ = mpv.command("vf", &["remove", "@couchcd"]);
         match mode {
             "fill" => {
                 let _ = mpv.set_property("keepaspect", true);
@@ -407,6 +413,10 @@ impl Mpv {
                 let _ = mpv.set_property("keepaspect", true);
                 let _ = mpv.set_property("panscan", 0.0f64);
             }
+        }
+        if mode == "crop" {
+            let mpv = mpv.clone();
+            std::thread::spawn(move || crop_bars(&mpv, gen));
         }
     }
 
@@ -695,4 +705,53 @@ fn friendly(e: &libmpv2::Error) -> String {
         Some(-15) => "The video renderer couldn't start. Turn off Settings → Playback → Video inside couch and try again.".into(),
         _ => format!("The player hit an error ({raw}). Try another stream."),
     }
+}
+
+
+/// "crop": cut away black bars that are part of the picture itself (a 2.39:1
+/// film inside a 16:9 file), measured from the frames, never more. The picture
+/// is then fitted as usual, so nothing of the film is lost.
+fn crop_bars(mpv: &libmpv2::Mpv, gen: u64) {
+    let current = || CROP_GEN.load(std::sync::atomic::Ordering::Relaxed) == gen;
+    // wait for real frames (a few seconds in: skips black fades and logos)
+    for _ in 0..80 {
+        if !current() {
+            return;
+        }
+        let t: f64 = mpv.get_property("time-pos").unwrap_or(0.0);
+        let paused: bool = mpv.get_property("pause").unwrap_or(false);
+        if t > 3.0 && !paused {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    let (vw, vh): (i64, i64) = (mpv.get_property("width").unwrap_or(0), mpv.get_property("height").unwrap_or(0));
+    if vw <= 0 || vh <= 0 || !current() {
+        return;
+    }
+    let _ = mpv.command("vf", &["add", "@couchcd:lavfi=[cropdetect=limit=24/255:round=2:reset=0]"]);
+    std::thread::sleep(std::time::Duration::from_millis(1800));
+    let get = |k: &str| -> Option<i64> {
+        for path in [format!("vf-metadata/couchcd/by-key/lavfi.cropdetect.{k}"), format!("vf-metadata/couchcd/lavfi.cropdetect.{k}")] {
+            if let Ok(v) = mpv.get_property::<String>(&path) {
+                if let Ok(n) = v.trim().parse::<i64>() {
+                    return Some(n);
+                }
+            }
+        }
+        None
+    };
+    let found = (get("w"), get("h"), get("x"), get("y"));
+    let _ = mpv.command("vf", &["remove", "@couchcd"]);
+    if !current() {
+        return;
+    }
+    let (Some(w), Some(h), Some(x), Some(y)) = found else { return };
+    // only bars: a sliver isn't worth it, and more than a quarter isn't bars
+    let cut_w = vw - w;
+    let cut_h = vh - h;
+    if w <= 0 || h <= 0 || (cut_w < vw / 50 && cut_h < vh / 50) || cut_w > vw / 4 || cut_h > vh / 4 {
+        return;
+    }
+    let _ = mpv.command("vf", &["add", &format!("@couchcrop:lavfi=[crop={w}:{h}:{x}:{y}]")]);
 }

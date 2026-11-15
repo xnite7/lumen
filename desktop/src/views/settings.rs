@@ -58,7 +58,7 @@ fn rows(tab: Tab) -> Vec<R> {
             Choice("largest file", "streams.maxSizeGb", vec![(json!(0.0), "any"), (json!(5.0), "5 GB"), (json!(10.0), "10 GB"), (json!(20.0), "20 GB"), (json!(40.0), "40 GB")]),
         ],
         Tab::Video => vec![
-            Choice("picture", "playback.aspect", vec![(json!("fit"), "fit"), (json!("fill"), "fill"), (json!("stretch"), "stretch")]),
+            Choice("picture", "playback.aspect", vec![(json!("fit"), "fit"), (json!("fill"), "fill"), (json!("crop"), "no black bars"), (json!("stretch"), "stretch")]),
             Switch("HDR passthrough", "send HDR straight to an HDR screen", "playback.hdrPassthrough"),
             Switch("debanding", "smooths colour bands in dark scenes", "playback.deband"),
             Switch("smooth motion", "frame interpolation (needs a good GPU)", "playback.interpolation"),

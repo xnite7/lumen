@@ -48,6 +48,9 @@ mod imp {
                 if max {
                     let _ = ShowWindow(h, SW_RESTORE);
                 }
+                // full screen (a borderless window covering the monitor) counts as big too
+                let style = windows::Win32::UI::WindowsAndMessaging::GetWindowLongW(h, windows::Win32::UI::WindowsAndMessaging::GWL_STYLE) as u32;
+                let _ = style;
                 let mon = MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST);
                 let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
                 let _ = GetMonitorInfoW(mon, &mut mi);
@@ -75,8 +78,37 @@ pub fn toggle(cx: &mut gpui::App) {
     // which can't land while couch is in the middle of an update
     match crate::mini::main_hwnd() {
         0 => {}
-        h => cx.defer(move |_| imp::set(h, on)),
+        h => {
+            cx.defer(move |_| imp::set(h, on));
+            // the picture follows the window once it has settled at its new size
+            // (Windows resizes in steps; one late fit missed it until a full-screen round trip)
+            cx.spawn(async move |cx| {
+                for ms in [40u64, 120, 300, 700] {
+                    crate::timer::after(std::time::Duration::from_millis(ms)).await;
+                    let _ = cx.update(|cx| {
+                        cx.refresh_windows();
+                        let s = cx.windows().first().and_then(|w| w.update(cx, |_, w, _| w.scale_factor()).ok()).unwrap_or(1.);
+                        crate::mini::fit(s);
+                    });
+                }
+            })
+            .detach();
+        }
     }
     #[cfg(not(target_os = "windows"))]
     let _ = cx;
+}
+
+/// From the player: full screen steps down first (a full-screen window can't shrink into the corner).
+pub fn toggle_in(window: &mut gpui::Window, cx: &mut gpui::App) {
+    if !is_on() && window.is_fullscreen() {
+        window.toggle_fullscreen();
+        cx.spawn(async move |cx| {
+            crate::timer::after(std::time::Duration::from_millis(280)).await;
+            let _ = cx.update(|cx| toggle(cx));
+        })
+        .detach();
+    } else {
+        toggle(cx);
+    }
 }

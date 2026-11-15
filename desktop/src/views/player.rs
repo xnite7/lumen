@@ -44,6 +44,8 @@ pub struct PlayerView {
     vol_pinned: bool,
     /// when "next" started being pointed at (its card fades in)
     next_since: Option<Instant>,
+    /// the scrub bar's place on screen last frame (left edge, width)
+    scrub_at: std::rc::Rc<std::cell::Cell<(f32, f32)>>,
     vol_x: std::rc::Rc<std::cell::Cell<f32>>,
     aspect: &'static str,
     /// the season the episodes menu is showing (None: the one playing)
@@ -110,7 +112,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_pinned: false, next_since: None, vol_x: Default::default(), aspect: "fit", ep_season: None, signal: None }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), vol_x: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
     }
 
     pub fn poke(&mut self, cx: &mut Context<Self>) {
@@ -365,9 +367,14 @@ impl PlayerView {
 
     fn want_still(&mut self, t: f64, cx: &mut Context<Self>) -> Option<std::sync::Arc<gpui::Image>> {
         let k = (t / 10.).floor() as i64;
+        // not there yet: the nearest one that is (never an empty box)
+        let nearest = |stills: &std::collections::HashMap<i64, Option<std::sync::Arc<gpui::Image>>>| {
+            stills.iter().filter_map(|(kk, v)| v.as_ref().map(|i| ((kk - k).abs(), i.clone()))).min_by_key(|x| x.0).map(|x| x.1)
+        };
         if let Some(v) = self.stills.get(&k) {
-            return v.clone();
+            return v.clone().or_else(|| nearest(&self.stills));
         }
+        let near = nearest(&self.stills);
         self.stills.insert(k, None);
         cx.spawn(async move |this, cx| {
             let r = api_still(k as f64 * 10. + 5.).await;
@@ -377,10 +384,10 @@ impl PlayerView {
             });
         })
         .detach();
-        None
+        near
     }
 
-    fn menu_panel(&self, m: Menu, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn menu_panel(&self, m: Menu, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         let p = self.pb.read(cx);
         let row_f = |id: SharedString, label: String, on: bool, flag: Option<String>| {
             div()
@@ -388,76 +395,93 @@ impl PlayerView {
                 .flex()
                 .items_center()
                 .gap(px(10.))
-                .px(px(14.))
-                .h(px(42.))
+                .px(px(12.))
+                .h(px(40.))
                 .rounded(px(10.))
                 .cursor_pointer()
-                .text_size(px(16.))
+                .text_size(px(15.))
                 .font_weight(if on { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM })
                 .hover(|s| s.bg(theme::white(0.1)))
-                .child(div().w(px(18.)).children(on.then(|| icon("check", 18.))))
-                .children(flag.map(|u| img(u).h(px(18.)).flex_none().object_fit(ObjectFit::Contain)))
-                .child(label)
+                .child(div().w(px(18.)).flex_none().children(on.then(|| icon("check", 18.))))
+                .children(flag.map(|u| img(u).h(px(16.)).flex_none().object_fit(ObjectFit::Contain)))
+                .child(div().min_w_0().truncate().child(label))
         };
-        let row = |id: SharedString, label: String, on: bool| row_f(id, label, on, None);
+        let head = |t: &str| div().px(px(12.)).pt(px(6.)).pb(px(6.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child(t.to_string());
 
-        let (title, rows): (&str, Vec<gpui::AnyElement>) = match m {
+        let (width, body): (f32, gpui::AnyElement) = match m {
+            // audio and subtitles, side by side
             Menu::Audio | Menu::Subs => {
-                let kind = if m == Menu::Audio { "audio" } else { "sub" };
-                let list: Vec<serde_json::Value> = p.tracks.iter().filter(|t| t["type"] == kind).cloned().collect();
-                let mut rows: Vec<gpui::AnyElement> = vec![];
-                if m == Menu::Subs {
-                    let off = !list.iter().any(|t| t["selected"].as_bool() == Some(true));
-                    let pb = self.pb.clone();
-                    rows.push(row("sub-off".into(), "Off".into(), off).on_click(move |_, _, cx| pb.read(cx).cmd("sid", json!({ "value": "no" }))).into_any_element());
-                }
-                for (i, (t, label)) in named(&list).into_iter().enumerate() {
-                    let on = t["selected"].as_bool() == Some(true);
-                    let id = t["id"].as_i64().unwrap_or(0);
-                    let pb = self.pb.clone();
-                    let cmd = if m == Menu::Audio { "aid" } else { "sid" };
-                    let flag = crate::ui::badges::flag(t["lang"].as_str().unwrap_or(""));
-                    rows.push(row_f(SharedString::from(format!("{kind}-{i}")), label, on, flag).on_click(move |_, _, cx| pb.read(cx).cmd(cmd, json!({ "value": id }))).into_any_element());
-                }
-                // subtitles early or late? nudge them
-                if m == Menu::Subs && list.iter().any(|t| t["selected"].as_bool() == Some(true)) {
-                    let d = p.state.sub_delay;
-                    let nudge = |id: &'static str, label: &'static str, by: f64| {
+                let col = |kind: &'static str| -> Vec<gpui::AnyElement> {
+                    let list: Vec<serde_json::Value> = p.tracks.iter().filter(|t| t["type"] == kind).cloned().collect();
+                    let cmd = if kind == "audio" { "aid" } else { "sid" };
+                    let mut rows: Vec<gpui::AnyElement> = vec![];
+                    if kind == "sub" {
+                        let off = !list.iter().any(|t| t["selected"].as_bool() == Some(true));
                         let pb = self.pb.clone();
-                        div()
-                            .id(id)
-                            .px(px(12.))
-                            .h(px(30.))
-                            .flex()
-                            .items_center()
-                            .rounded_full()
-                            .bg(theme::white(0.1))
-                            .hover(|s| s.bg(theme::white(0.18)))
-                            .cursor_pointer()
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(label)
-                            .on_click(move |_, _, cx| {
-                                let now = pb.read(cx).state.sub_delay;
-                                pb.read(cx).cmd("sub-delay", json!({ "value": ((now + by) * 10.).round() / 10. }));
-                            })
-                    };
-                    rows.push(
-                        div()
-                            .mt(px(6.))
-                            .px(px(14.))
-                            .py(px(8.))
-                            .flex()
-                            .items_center()
-                            .gap(px(8.))
-                            .child(div().flex_1().text_size(px(13.)).text_color(theme::label3()).child(format!("out of sync? {}{:.1} s", if d > 0. { "+" } else { "" }, d)))
-                            .child(nudge("sd-minus", "−0.1", -0.1))
-                            .child(nudge("sd-plus", "+0.1", 0.1))
-                            .into_any_element(),
-                    );
-                }
-                (if m == Menu::Audio { "audio" } else { "subtitles" }, rows)
+                        rows.push(row_f("sub-off".into(), "Off".into(), off, None).on_click(move |_, _, cx| pb.read(cx).cmd("sid", json!({ "value": "no" }))).into_any_element());
+                    }
+                    for (i, (t, label)) in named(&list).into_iter().enumerate() {
+                        let on = t["selected"].as_bool() == Some(true);
+                        let id = t["id"].as_i64().unwrap_or(0);
+                        let pb = self.pb.clone();
+                        let flag = crate::ui::badges::flag(t["lang"].as_str().unwrap_or(""));
+                        rows.push(row_f(SharedString::from(format!("{kind}-{i}")), label, on, flag).on_click(move |_, _, cx| pb.read(cx).cmd(cmd, json!({ "value": id }))).into_any_element());
+                    }
+                    if list.is_empty() && kind == "audio" {
+                        rows.push(div().px(px(12.)).py(px(8.)).text_size(px(14.)).text_color(theme::label3()).child("just the one").into_any_element());
+                    }
+                    rows
+                };
+                let subs_on = p.tracks.iter().any(|t| t["type"] == "sub" && t["selected"].as_bool() == Some(true));
+                let d = p.state.sub_delay;
+                let nudge = |id: &'static str, label: &'static str, by: f64| {
+                    let pb = self.pb.clone();
+                    div()
+                        .id(id)
+                        .px(px(12.))
+                        .h(px(28.))
+                        .flex()
+                        .items_center()
+                        .rounded_full()
+                        .bg(theme::white(0.1))
+                        .hover(|s| s.bg(theme::white(0.18)))
+                        .cursor_pointer()
+                        .text_size(px(13.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(label)
+                        .on_click(move |_, _, cx| {
+                            let now = pb.read(cx).state.sub_delay;
+                            pb.read(cx).cmd("sub-delay", json!({ "value": ((now + by) * 10.).round() / 10. }));
+                        })
+                };
+                let left = div().id("pm-audio").flex_1().min_w_0().max_h(px(420.)).overflow_y_scroll().flex().flex_col().child(head("audio")).children(col("audio"));
+                let right = div()
+                    .id("pm-subs")
+                    .flex_1()
+                    .min_w_0()
+                    .max_h(px(420.))
+                    .overflow_y_scroll()
+                    .flex()
+                    .flex_col()
+                    .child(head("subtitles"))
+                    .children(col("sub"))
+                    .when(subs_on, |c| {
+                        c.child(
+                            div()
+                                .mt(px(6.))
+                                .px(px(12.))
+                                .py(px(8.))
+                                .flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .child(div().flex_1().text_size(px(12.)).text_color(theme::label3()).child(format!("sync {}{:.1} s", if d > 0. { "+" } else { "" }, d)))
+                                .child(nudge("sd-minus", "−0.1", -0.1))
+                                .child(nudge("sd-plus", "+0.1", 0.1)),
+                        )
+                    });
+                (580., div().flex().gap(px(6.)).child(left).child(div().w(px(1.)).my(px(8.)).bg(theme::white(0.08))).child(right).into_any_element())
             }
+            // episodes: their pictures, a season at a time
             Menu::Episodes => {
                 let Some(f) = p.full.clone() else { return div().into_any_element() };
                 let playing = playback::ordered(&f).into_iter().find(|v| v["id"].as_str() == Some(p.video_id.as_str())).and_then(|v| v["season"].as_i64()).unwrap_or(1);
@@ -466,18 +490,20 @@ impl PlayerView {
                 seasons.sort();
                 seasons.dedup();
                 let meta = p.meta.clone();
+                let bg = meta.as_ref().and_then(|m| m.background.clone()).map(|u| sized(&u, "w300"));
                 let picker = (seasons.len() > 1).then(|| {
                     div()
                         .id("ep-seasons")
-                        .px(px(8.))
+                        .px(px(6.))
                         .pb(px(8.))
                         .flex()
-                        .flex_wrap()
                         .gap(px(6.))
+                        .overflow_x_scroll()
                         .children(seasons.iter().map(|n| {
                             let n = *n;
                             div()
                                 .id(("ep-s", n as usize))
+                                .flex_none()
                                 .px(px(12.))
                                 .h(px(30.))
                                 .flex()
@@ -495,79 +521,175 @@ impl PlayerView {
                                 }))
                                 .child(if n == 0 { "specials".to_string() } else { format!("season {n}") })
                         }))
+                });
+                let rows = playback::ordered(&f).into_iter().filter(|v| v["season"].as_i64() == Some(cur)).map(|v| {
+                    let id = v["id"].as_str().unwrap_or("").to_string();
+                    let on = id == p.video_id;
+                    let num = v["episode"].as_i64().or(v["number"].as_i64()).unwrap_or(0);
+                    let name = playback::episode_name(&v);
+                    let over = v["overview"].as_str().or(v["description"].as_str()).unwrap_or("").to_string();
+                    let imdb = crate::api::imdb_episode(&id);
+                    let still = v["thumbnail"].as_str().map(String::from).or(imdb.clone()).or(bg.clone());
+                    let alt = imdb.clone().or(bg.clone());
+                    let m = meta.clone();
+                    let i2 = id.clone();
+                    div()
+                        .id(SharedString::from(format!("ep-{id}")))
+                        .flex()
+                        .gap(px(12.))
+                        .p(px(6.))
+                        .rounded(px(12.))
+                        .cursor_pointer()
+                        .when(on, |d| d.bg(theme::white(0.1)))
+                        .hover(|s| s.bg(theme::white(0.08)))
+                        .on_click(move |_, _, cx| {
+                            if let Some(m) = m.clone() {
+                                crate::Nav::play_episode(&m, i2.clone(), cx);
+                            }
+                        })
+                        .child(
+                            div()
+                                .relative()
+                                .w(px(128.))
+                                .h(px(72.))
+                                .flex_none()
+                                .rounded(px(8.))
+                                .overflow_hidden()
+                                .bg(theme::white(0.06))
+                                .children(still.map(|u| {
+                                    let alt = alt.clone().filter(|a| a != &u);
+                                    img(u).size_full().object_fit(ObjectFit::Cover).with_fallback(move || match alt.clone() {
+                                        Some(a) => img(a).size_full().object_fit(ObjectFit::Cover).into_any_element(),
+                                        None => div().into_any_element(),
+                                    })
+                                }))
+                                .when(on, |d| d.child(div().absolute().size_full().flex().items_center().justify_center().bg(theme::black(0.4)).child(icon_fill("play", 22.)))),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .flex()
+                                .flex_col()
+                                .justify_center()
+                                .gap(px(2.))
+                                .child(div().w_full().truncate().text_size(px(15.)).font_weight(FontWeight::SEMIBOLD).child(format!("{num}. {name}")))
+                                .children((!over.is_empty()).then(|| div().w_full().text_size(px(12.)).line_height(px(16.)).text_color(theme::label3()).line_clamp(2).child(over))),
+                        )
                         .into_any_element()
                 });
-                let rows: Vec<gpui::AnyElement> = picker.into_iter().chain(playback::ordered(&f)
-                    .into_iter()
-                    .filter(|v| v["season"].as_i64() == Some(cur))
-                    .map(|v| {
-                        let id = v["id"].as_str().unwrap_or("").to_string();
-                        let on = id == p.video_id;
-                        let label = format!("{}. {}", v["episode"].as_i64().or(v["number"].as_i64()).unwrap_or(0), playback::episode_name(&v));
-                        let m = meta.clone();
-                        row(SharedString::from(format!("ep-{id}")), label, on)
-                            .on_click(move |_, _, cx| {
-                                if let Some(m) = m.clone() {
-                                    crate::Nav::play_episode(&m, id.clone(), cx);
-                                }
-                            })
-                            .into_any_element()
-                    }))
-                    .collect();
-                ("episodes", rows)
+                (
+                    460.,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .child(head("episodes"))
+                        .children(picker)
+                        .child(div().id("ep-list").max_h(px(440.)).overflow_y_scroll().flex().flex_col().gap(px(2.)).children(rows))
+                        .into_any_element(),
+                )
             }
+            // speed, the sleep timer and the picture
             Menu::Speed => {
-                let cur = p.state.speed;
-                let rows = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
-                    .into_iter()
-                    .map(|v| {
-                        let pb = self.pb.clone();
-                        row(SharedString::from(format!("sp-{v}")), if v == 1.0 { "normal".into() } else { format!("{v}x") }, (snap(cur) - v).abs() < 0.01)
-                            .on_click(move |_, _, cx| {
-                                if may("speed", None, cx) {
-                                    pb.read(cx).cmd("speed", json!({ "value": v }))
-                                }
-                            })
-                            .into_any_element()
-                    })
-                    .collect();
-                let mut rows: Vec<gpui::AnyElement> = rows;
-                rows.push(div().px(px(14.)).pt(px(12.)).pb(px(4.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child("sleep timer").into_any_element());
-                let sleep = p.sleep;
-                for (label, v) in [("off", 0i64), ("end of this episode", -1), ("15 min", 15), ("30 min", 30), ("60 min", 60)] {
-                    let pb = self.pb.clone();
-                    let on = match (sleep, v) {
-                        (None, 0) => true,
-                        (Some(playback::Sleep::Episode), -1) => true,
-                        (Some(playback::Sleep::At(_, m)), x) => m == x,
-                        _ => false,
-                    };
-                    rows.push(
-                        row(SharedString::from(format!("sl-{v}")), label.into(), on)
-                            .on_click(move |_, _, cx| pb.update(cx, |p, cx| p.set_sleep(v, cx)))
-                            .into_any_element(),
-                    );
+                const SPEEDS: [f64; 7] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+                let cur = snap(p.state.speed);
+                let si = SPEEDS.iter().position(|v| (v - cur).abs() < 0.01).unwrap_or(2);
+                let series = p.meta.as_ref().map_or(false, |m| m.kind == "series");
+                let mut sleeps: Vec<(i64, &str)> = vec![(0, "off")];
+                if series {
+                    sleeps.push((-1, "ep"));
                 }
-                rows.push(div().px(px(14.)).pt(px(12.)).pb(px(4.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child("picture").into_any_element());
-                for (label, v) in [("fit", "fit"), ("fill the screen", "fill"), ("stretch", "stretch")] {
-                    rows.push(
-                        row(SharedString::from(format!("as-{v}")), label.into(), self.aspect == v)
-                            .on_click(cx.listener(move |me, _, _, cx| {
-                                me.aspect = v;
-                                me.pb.read(cx).cmd("aspect", json!({ "value": v }));
-                                cx.notify();
-                            }))
-                            .into_any_element(),
-                    );
-                }
-                ("speed", rows)
+                sleeps.extend([(15, "15"), (30, "30"), (45, "45"), (60, "60"), (90, "90"), (120, "120")]);
+                let sl_now = match p.sleep {
+                    None => 0,
+                    Some(playback::Sleep::Episode) => -1,
+                    Some(playback::Sleep::At(_, m)) => m,
+                };
+                let sl_i = sleeps.iter().position(|s| s.0 == sl_now).unwrap_or(0);
+                let sl_text = match p.sleep {
+                    None => "off".to_string(),
+                    Some(playback::Sleep::Episode) => "after this episode".to_string(),
+                    Some(playback::Sleep::At(at, _)) => format!("pauses in {} min", (at.saturating_duration_since(Instant::now()).as_secs_f64() / 60.).ceil() as i64),
+                };
+
+                let speed = self.stops(
+                    "sp",
+                    SPEEDS.iter().map(|v| if v.fract() == 0. || *v == 0.5 || *v == 1.5 { format!("{v}") } else { String::new() }).collect(),
+                    si,
+                    std::rc::Rc::new(|v: &mut Self, i: usize, cx: &mut Context<Self>| {
+                        if may("speed", None, cx) {
+                            v.pb.read(cx).cmd("speed", json!({ "value": SPEEDS[i] }));
+                        }
+                    }),
+                    window,
+                    cx,
+                );
+                let vals: Vec<i64> = sleeps.iter().map(|s| s.0).collect();
+                let sleep = self.stops(
+                    "sl",
+                    sleeps.iter().map(|s| s.1.to_string()).collect(),
+                    sl_i,
+                    std::rc::Rc::new(move |v: &mut Self, i: usize, cx: &mut Context<Self>| {
+                        let n = vals[i];
+                        v.pb.update(cx, |p, cx| p.set_sleep(n, cx));
+                    }),
+                    window,
+                    cx,
+                );
+                let label = |t: &str, val: String| div().px(px(4.)).flex().justify_between().items_baseline().child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child(t.to_string())).child(div().text_size(px(17.)).font_weight(FontWeight::BLACK).child(val));
+                let picture = div().flex().gap(px(8.)).children([("fit", "fit"), ("fill", "fill"), ("crop", "no bars"), ("stretch", "stretch")].into_iter().map(|(k, t)| {
+                    let on = self.aspect == k;
+                    div()
+                        .id(SharedString::from(format!("as-{k}")))
+                        .flex_1()
+                        .py(px(10.))
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .gap(px(8.))
+                        .rounded(px(12.))
+                        .cursor_pointer()
+                        .when(on, |d| d.bg(theme::white(0.16)).border_1().border_color(theme::white(0.3)))
+                        .when(!on, |d| d.bg(theme::white(0.05)).hover(|s| s.bg(theme::white(0.1))))
+                        .on_click(cx.listener(move |me, _, _, cx| {
+                            me.aspect = k;
+                            me.pb.read(cx).cmd("aspect", json!({ "value": k }));
+                            cx.notify();
+                        }))
+                        .child(aspect_icon(k, on))
+                        .child(div().text_size(px(12.)).font_weight(FontWeight::SEMIBOLD).text_color(if on { theme::text().into() } else { theme::label2() }).child(t))
+                }));
+                (
+                    360.,
+                    div()
+                        .px(px(8.))
+                        .py(px(6.))
+                        .flex()
+                        .flex_col()
+                        .gap(px(8.))
+                        .child(label("speed", if (cur - 1.).abs() < 0.01 { "normal".into() } else { speed_label(cur) }))
+                        .child(speed)
+                        .child(div().h(px(1.)).my(px(6.)).bg(theme::white(0.08)))
+                        .child(label("sleep timer", sl_text))
+                        .child(sleep)
+                        .child(div().h(px(1.)).my(px(6.)).bg(theme::white(0.08)))
+                        .child(label("picture", String::new()))
+                        .child(picture)
+                        .into_any_element(),
+                )
             }
             Menu::Sources => {
                 // every stream found, best first; the one playing is ticked
+                // (not AIOStreams' 🦆 ones)
                 let cur = p.stream.as_ref().map(playback::stream_key).unwrap_or_default();
+                let duck = |s: &serde_json::Value| {
+                    let text = [&s["name"], &s["title"], &s["description"], &s["_addonName"]].iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(" ");
+                    text.contains('🦆') || text.to_lowercase().contains("aiostreams")
+                };
                 let rows = p
                     .all
                     .iter()
+                    .filter(|s| !duck(s))
                     .take(40)
                     .enumerate()
                     .map(|(i, s)| {
@@ -595,7 +717,7 @@ impl PlayerView {
                             .flex()
                             .items_center()
                             .gap(px(10.))
-                            .px(px(14.))
+                            .px(px(12.))
                             .py(px(8.))
                             .rounded(px(10.))
                             .cursor_pointer()
@@ -603,10 +725,11 @@ impl PlayerView {
                             .child(div().w(px(18.)).flex_none().children(on.then(|| icon("check", 18.))))
                             .child(
                                 div()
+                                    .flex_1()
                                     .min_w_0()
                                     .flex()
                                     .flex_col()
-                                    .child(div().text_size(px(15.)).font_weight(if on { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM }).child(bits.join(" · ")))
+                                    .child(div().truncate().text_size(px(15.)).font_weight(if on { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM }).child(bits.join(" · ")))
                                     .child(div().text_size(px(12.)).text_color(theme::label3()).truncate().child(from)),
                             )
                             .on_click(move |_, _, cx| {
@@ -616,27 +739,96 @@ impl PlayerView {
                             })
                             .into_any_element()
                     })
-                    .collect();
-                ("streams", rows)
+                    .collect::<Vec<_>>();
+                (340., div().id("src-list").max_h(px(460.)).overflow_y_scroll().flex().flex_col().child(head("streams")).children(rows).into_any_element())
             }
         };
         div()
             .id("pl-menu")
+            .occlude()
             .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .absolute()
             .right(px(theme::GUTTER))
-            .bottom(px(136.))
-            .w(px(320.))
-            .max_h(px(520.))
-            .overflow_y_scroll()
+            .bottom(px(100.))
+            .w(px(width))
             .p(px(8.))
             .rounded(px(22.))
-            .bg(gpui::rgba(0x151114f0))
+            .bg(gpui::rgba(0x151114f2))
             .border_1()
             .border_color(theme::white(0.10))
+            .shadow(vec![gpui::BoxShadow { color: theme::black(0.5), offset: gpui::point(px(0.), px(14.)), blur_radius: px(40.), spread_radius: px(0.), inset: false }])
             .on_click(|_, _, cx| cx.stop_propagation())
-            .child(div().px(px(14.)).py(px(8.)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child(title))
-            .children(rows)
+            .child(body)
+            .into_any_element()
+    }
+
+    /// A row of stops to slide along (speed, the sleep timer): click or drag.
+    fn stops(
+        &self,
+        key: &'static str,
+        labels: Vec<String>,
+        at: usize,
+        set: std::rc::Rc<dyn Fn(&mut Self, usize, &mut Context<Self>)>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        const W: f32 = 300.;
+        let n = labels.len().max(2);
+        let step = W / (n - 1) as f32;
+        let origin: std::rc::Rc<std::cell::Cell<f32>> = Default::default();
+        let o2 = origin.clone();
+        let pick = move |x: f32| (((x).clamp(0., W)) / step).round() as usize;
+        let (s1, s2) = (set.clone(), set.clone());
+        let (oa, ob) = (origin.clone(), origin.clone());
+        let fx = at as f32 * step;
+        div()
+            .id(key)
+            .relative()
+            .w(px(W + 20.))
+            .h(px(46.))
+            .px(px(10.))
+            .cursor_pointer()
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |v, e: &gpui::MouseDownEvent, _, cx| {
+                cx.stop_propagation();
+                let i = pick(f32::from(e.position.x) - oa.get());
+                s1(v, i, cx);
+                cx.notify();
+            }))
+            .on_mouse_move(cx.listener(move |v, e: &MouseMoveEvent, _, cx| {
+                if e.pressed_button == Some(gpui::MouseButton::Left) {
+                    let i = pick(f32::from(e.position.x) - ob.get());
+                    s2(v, i, cx);
+                    cx.notify();
+                }
+            }))
+            .child(
+                div()
+                    .absolute()
+                    .left(px(10.))
+                    .top(px(10.))
+                    .w(px(W))
+                    .h(px(6.))
+                    .rounded_full()
+                    .bg(theme::white(0.14))
+                    .child(gpui::canvas(move |b, _, _| o2.set(f32::from(b.origin.x)), |_, _, _, _| {}).absolute().size_full())
+                    .child(div().absolute().h_full().w(px(fx)).rounded_full().bg(theme::neon())),
+            )
+            // the stops, and their names under them
+            .children(labels.into_iter().enumerate().map(move |(i, l)| {
+                let x = 10. + i as f32 * step;
+                div()
+                    .absolute()
+                    .left(px(x - 20.))
+                    .top(px(8.))
+                    .w(px(40.))
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(div().size(px(10.)).rounded_full().bg(if i <= at { theme::neon().into() } else { theme::white(0.3) }))
+                    .child(div().text_size(px(11.)).font_weight(FontWeight::SEMIBOLD).text_color(if i == at { theme::text().into() } else { theme::label3() }).child(l))
+            }))
+            .child(div().absolute().left(px(10. + fx - 9.)).top(px(4.)).size(px(18.)).rounded_full().bg(theme::text()).shadow(vec![gpui::BoxShadow { color: theme::black(0.5), offset: gpui::point(px(0.), px(2.)), blur_radius: px(6.), spread_radius: px(0.), inset: false }]))
             .into_any_element()
     }
 }
@@ -669,7 +861,7 @@ impl Render for PlayerView {
             .on_mouse_move(cx.listener(|v, e: &MouseMoveEvent, _, cx| {
                 if v.drag {
                     if e.pressed_button == Some(gpui::MouseButton::Left) {
-                        v.hover_x = Some(f32::from(e.position.x) - theme::GUTTER);
+                        v.hover_x = Some(f32::from(e.position.x) - v.scrub_at.get().0);
                         cx.notify();
                     } else {
                         v.finish_drag(cx);
@@ -909,7 +1101,7 @@ impl Render for PlayerView {
         let is_series = p.meta.as_ref().map_or(false, |m| m.kind == "series");
         let near_end = st.duration > 300. && st.duration - st.pos < 45. && next.is_some();
         let has_streams = !p.all.is_empty();
-        let menu = self.menu.map(|m| self.menu_panel(m, cx));
+        let menu = self.menu.map(|m| self.menu_panel(m, window, cx));
         // skip intro / recap; at the credits (or the last bit): next episode
         let skip = match &segment {
             Some((k, end)) if k == "intro" || k == "recap" => {
@@ -941,7 +1133,7 @@ impl Render for PlayerView {
                 .absolute()
                 .right(px(theme::GUTTER))
                 // above the scrub bar, rising a little as it fades in
-                .bottom(px(140. + 10. * next_a))
+                .bottom(px(100. + 10. * next_a))
                 .opacity(next_a)
                 .w(px(340.))
                 .rounded(px(18.))
@@ -969,7 +1161,7 @@ impl Render for PlayerView {
                         .children((!over.is_empty()).then(|| div().text_size(px(13.)).line_height(px(18.)).text_color(theme::label2()).line_clamp(3).child(over))),
                 )
         });
-        let tw: f32 = f32::from(bar_w) - 92.;
+        let tw: f32 = self.scrub_at.get().1.max(100.);
         self.track_w = tw;
         let dragging = self.drag;
         let shown_frac = match (dragging, hover) {
@@ -1000,6 +1192,7 @@ impl Render for PlayerView {
         let vol_frac = (vol_now / vol_max).clamp(0., 1.) as f32;
         let vol_x = self.vol_x.clone();
         let now_line = [label.clone().unwrap_or_default(), ep.clone()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" · ");
+        let _ = &title;
         let top_logo = logo.clone();
         let top_title = title.clone();
         root
@@ -1076,33 +1269,79 @@ impl Render for PlayerView {
                     .w_full()
                     .h(px(210.))
                     .bg(linear_gradient(180., linear_color_stop(theme::black(0.0), 0.), linear_color_stop(theme::black(0.72), 1.)))
+                    // paused on an episode: which one, above the controls (the show's logo is up top)
+                    .when(paused && is_series && !now_line.is_empty(), |d| {
+                        d.child(
+                            div()
+                                .absolute()
+                                .left(px(g))
+                                .bottom(px(104.))
+                                .max_w(px(700.))
+                                .flex()
+                                .flex_col()
+                                .gap(px(4.))
+                                .children(label.clone().map(|l| div().text_size(px(15.)).font_weight(FontWeight::BLACK).text_color(theme::label2()).child(l.replace(' ', ":"))))
+                                .children((!ep.is_empty()).then(|| div().text_size(px(30.)).line_height(px(36.)).font_weight(FontWeight::BLACK).line_clamp(2).child(ep.clone()))),
+                        )
+                    })
                     .child(
-                        div()
-                            .id("pl-scrub")
+                        glass(div())
                             .absolute()
-                            .left(px(g))
-                            .bottom(px(98.))
-                            .w(px(tw))
-                            .h(px(26.))
+                            .left(px(g - 6.))
+                            .right(px(g - 6.))
+                            .bottom(px(24.))
+                            .h(px(62.))
+                            .px(px(9.))
+                            .occlude()
+                            .rounded_full()
                             .flex()
                             .items_center()
-                            .cursor_pointer()
-                            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |v, e: &gpui::MouseDownEvent, _, cx| {
-                                cx.stop_propagation();
-                                v.drag = true;
-                                v.hover_x = Some(f32::from(e.position.x) - g);
-                                cx.notify();
+                            .gap(px(2.))
+                            .child(bar_btn("pl-play", if paused { icon_fill("play", 28.) } else { icon_fill("pause", 28.) }, false).on_click(
+                                move |_, _, cx| {
+                                    let paused = pb3.read(cx).state.paused;
+                                    if may(if paused { "play" } else { "pause" }, None, cx) {
+                                        pb3.read(cx).cmd("pause", json!({ "value": !paused }));
+                                    }
+                                },
+                            ))
+                            .child(bar_btn("pl-back10", icon("replay10", 25.), false).on_click({
+                                let pb = self.pb.clone();
+                                move |_, _, cx| seek_by(&pb, -10., cx)
                             }))
-                            .on_mouse_move(cx.listener(move |v, e: &MouseMoveEvent, _, cx| {
-                                v.hover_x = Some(f32::from(e.position.x) - g);
-                                cx.notify();
+                            .child(bar_btn("pl-fwd10", icon("forward10", 25.), false).on_click({
+                                let pb = self.pb.clone();
+                                move |_, _, cx| seek_by(&pb, 10., cx)
                             }))
-                            .on_hover(cx.listener(|v, on: &bool, _, cx| {
-                                if !*on && !v.drag {
-                                    v.hover_x = None;
-                                    cx.notify();
-                                }
-                            }))
+                            // the time, the bar, the time left
+                            .child(div().ml(px(10.)).w(px(64.)).flex_none().flex().justify_end().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).child(clock(st.pos)))
+                            .child(
+                                div()
+                                    .id("pl-scrub")
+                                    .flex_1()
+                                    .min_w_0()
+                                    .mx(px(12.))
+                                    .h(px(40.))
+                                    .flex()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .child(gpui::canvas({ let at = self.scrub_at.clone(); move |b, _, _| at.set((f32::from(b.origin.x), f32::from(b.size.width))) }, |_, _, _, _| {}).absolute().size_full())
+                                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |v, e: &gpui::MouseDownEvent, _, cx| {
+                                        cx.stop_propagation();
+                                        v.drag = true;
+                                        v.hover_x = Some(f32::from(e.position.x) - v.scrub_at.get().0);
+                                        cx.notify();
+                                    }))
+                                    .on_mouse_move(cx.listener(move |v, e: &MouseMoveEvent, _, cx| {
+                                        v.hover_x = Some(f32::from(e.position.x) - v.scrub_at.get().0);
+                                        cx.notify();
+                                    }))
+                                    .on_hover(cx.listener(|v, on: &bool, _, cx| {
+                                        if !*on && !v.drag {
+                                            v.hover_x = None;
+                                            cx.notify();
+                                        }
+                                    }))
                             .child(
                                 div()
                                     .relative()
@@ -1140,64 +1379,9 @@ impl Render for PlayerView {
                                             }))
                                             .child(glass(div()).px(px(12.)).py(px(4.)).rounded_full().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).child(clock(t)))
                                     })),
-                            ),
-                    )
-                    // time left, at the end of the bar
-                    .child(
-                        div()
-                            .absolute()
-                            .right(px(g))
-                            .bottom(px(98.))
-                            .w(px(80.))
-                            .h(px(26.))
-                            .flex()
-                            .items_center()
-                            .justify_end()
-                            .text_size(px(15.))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(theme::label2())
-                            .child(if st.duration > 0. { format!("-{}", clock(st.duration - st.pos)) } else { String::new() }),
-                    )
-                    .child(
-                        glass(div())
-                            .absolute()
-                            .left(px(g - 6.))
-                            .right(px(g - 6.))
-                            .bottom(px(24.))
-                            .h(px(62.))
-                            .px(px(9.))
-                            .rounded_full()
-                            .flex()
-                            .items_center()
-                            .gap(px(2.))
-                            .child(bar_btn("pl-play", if paused { icon_fill("play", 28.) } else { icon_fill("pause", 28.) }, false).on_click(
-                                move |_, _, cx| {
-                                    let paused = pb3.read(cx).state.paused;
-                                    if may(if paused { "play" } else { "pause" }, None, cx) {
-                                        pb3.read(cx).cmd("pause", json!({ "value": !paused }));
-                                    }
-                                },
-                            ))
-                            .child(bar_btn("pl-back10", icon("replay10", 25.), false).on_click({
-                                let pb = self.pb.clone();
-                                move |_, _, cx| seek_by(&pb, -10., cx)
-                            }))
-                            .child(bar_btn("pl-fwd10", icon("forward10", 25.), false).on_click({
-                                let pb = self.pb.clone();
-                                move |_, _, cx| seek_by(&pb, 10., cx)
-                            }))
-                            // what's on, in words
-                            .child(
-                                div()
-                                    .ml(px(12.))
-                                    .flex_1()
-                                    .min_w_0()
-                                    .flex()
-                                    .flex_col()
-                                    .justify_center()
-                                    .child(div().text_size(px(15.)).font_weight(FontWeight::BLACK).truncate().child(title))
-                                    .children((!now_line.is_empty()).then(|| div().text_size(px(13.)).text_color(theme::label2()).truncate().child(now_line))),
                             )
+                            )
+                            .child(div().w(px(64.)).flex_none().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).child(if st.duration > 0. { format!("-{}", clock(st.duration - st.pos)) } else { String::new() }))
                             .children(next.map(|_| {
                                 let pb = self.pb.clone();
                                 bar_btn("pl-next", icon("next", 22.), false)
@@ -1298,11 +1482,7 @@ impl Render for PlayerView {
                                     r.update(cx, |r, cx| r.toggle(cx));
                                 }))
                             })
-                            .child(bar_btn("pl-subs", icon("subtitles", 23.), menu_on == Some(Menu::Subs)).on_click(cx.listener(|v, _, _, cx| {
-                                cx.stop_propagation();
-                                v.toggle_menu(Menu::Subs, cx);
-                            })))
-                            .child(bar_btn("pl-audio", icon("audio", 23.), menu_on == Some(Menu::Audio)).on_click(cx.listener(|v, _, _, cx| {
+                            .child(bar_btn("pl-audio", icon("subtitles", 23.), matches!(menu_on, Some(Menu::Audio | Menu::Subs))).on_click(cx.listener(|v, _, _, cx| {
                                 cx.stop_propagation();
                                 v.toggle_menu(Menu::Audio, cx);
                             })))
@@ -1329,7 +1509,7 @@ impl Render for PlayerView {
                                     v.toggle_menu(Menu::Speed, cx);
                                 })),
                             )
-                            .child(bar_btn("pl-pip", icon("pip", 22.), false).on_click(|_, _, cx| crate::pip::toggle(cx)))
+                            .child(bar_btn("pl-pip", icon("pip", 22.), false).on_click(|_, window, cx| crate::pip::toggle_in(window, cx)))
                             .child(bar_btn("pl-full", icon(if window.is_fullscreen() { "exitFullscreen" } else { "fullscreen" }, 22.), false).on_click(|_, window, _| window.toggle_fullscreen())),
                     ),
             )
@@ -1348,4 +1528,23 @@ fn snap(v: f64) -> f64 {
 fn speed_label(v: f64) -> String {
     let s = snap(v);
     format!("{}x", if s.fract() == 0. { format!("{s:.0}") } else { format!("{s}") })
+}
+
+/// a tiny picture of what each picture mode does
+fn aspect_icon(k: &str, on: bool) -> impl IntoElement {
+    let c: gpui::Hsla = if on { theme::text().into() } else { theme::white(0.6) };
+    let frame = div().relative().w(px(40.)).h(px(26.)).rounded(px(4.)).border_1().border_color(c).overflow_hidden();
+    match k {
+        // the whole picture, bars above and below
+        "fit" => frame.child(div().absolute().left_0().top(px(6.)).w_full().h(px(12.)).bg(c)),
+        // fills it, the sides cut
+        "fill" => frame.child(div().absolute().left(px(-8.)).top_0().w(px(54.)).h_full().bg(c)),
+        // the bars cut off, nothing else
+        "crop" => frame
+            .child(div().absolute().left_0().top(px(3.)).w_full().h(px(18.)).bg(c))
+            .child(div().absolute().left(px(3.)).top(px(1.)).w(px(32.)).h(px(1.)).bg(theme::black(0.6)))
+            .child(div().absolute().left(px(3.)).bottom(px(1.)).w(px(32.)).h(px(1.)).bg(theme::black(0.6))),
+        // pulled to the edges
+        _ => frame.p(px(3.)).child(div().size_full().rounded(px(2.)).bg(c)),
+    }
 }
