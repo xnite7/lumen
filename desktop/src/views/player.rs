@@ -458,7 +458,7 @@ fn mesh_with(c1: gpui::Hsla, c2: gpui::Hsla, third: Option<gpui::Hsla>, t: f32, 
 }
 
 /// two colours for the progress bar from a picture: its liveliest one, and a neighbour
-fn tint_of(bytes: &[u8]) -> Option<[gpui::Hsla; 2]> {
+pub fn tint_of(bytes: &[u8]) -> Option<[gpui::Hsla; 2]> {
     let im = image::load_from_memory(bytes).ok()?.to_rgba8();
     let small = image::imageops::resize(&im, 32, 32, image::imageops::FilterType::Triangle);
     let mut best: Option<(f32, gpui::Hsla)> = None;

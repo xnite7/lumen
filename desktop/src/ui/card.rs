@@ -97,7 +97,8 @@ pub fn card_with(
         .h(px(gh))
         .rounded(px(12.))
         .overflow_hidden()
-        .when(grow > 0.01, |d| d.shadow(vec![gpui::BoxShadow { color: theme::black(0.55 * grow), offset: gpui::point(px(0.), px(12. * grow)), blur_radius: px(30.), spread_radius: px(0.), inset: false }]))
+        // the shadow grows with it: from nothing, softly spreading and darkening
+        .when(grow > 0.001, |d| d.shadow(vec![gpui::BoxShadow { color: theme::black(0.5 * grow), offset: gpui::point(px(0.), px(3. + 11. * grow)), blur_radius: px(6. + 26. * grow), spread_radius: px(-4. * (1. - grow)), inset: false }]))
         // keeps the frames coming while it grows or shrinks
         .when(moving || (hov && grow < 1.), |d| d.child(gpui::canvas(|_, _, _| (), |_, _, w, _| w.request_animation_frame()).absolute().size_0()))
         // a GPU clip shows through this card: nothing of the card under it
@@ -217,26 +218,23 @@ pub fn card_with(
         // where its slot is on screen (for keeping the grown card in view)
         .child(gpui::canvas(move |b, _, _| SLOTS.with(|m| { m.borrow_mut().insert(skey.clone(), f32::from(b.origin.x)); }), |_, _, _, _| {}).absolute().size_full())
         .child(if grow > 0.001 { gpui::deferred(el).with_priority(1).into_any_element() } else { el }).into_any_element();
-    // under the picture: the progress bar, then "S1 E2" on the left and the
-    // time left on the right (a tab in `sub` splits the two)
-    // a square-ended white bar, 60% of the card's width
-    let bw = W * 0.6;
-    let bar = progress.map(|p| div().w(px(W)).flex().justify_center().child(div().w(px(bw)).h(px(4.)).bg(theme::white(0.18)).child(div().h_full().w(px(bw * p.clamp(0., 1.))).bg(gpui::white()))));
-    let line = sub.map(|t| {
-        let (l, r) = t.split_once('\t').map_or((t.clone(), String::new()), |(a, b)| (a.to_string(), b.to_string()));
-        div()
-            .w(px(W))
-            .flex()
-            .justify_between()
-            .gap(px(10.))
-            .text_size(px(13.))
-            .child(div().min_w_0().truncate().text_color(theme::label2()).child(l))
-            .child(div().flex_none().text_color(theme::label3()).child(r))
-    });
-    if bar.is_none() && line.is_none() {
+    // under the picture, on one line: "S1 E2", the progress, the time left
+    // (a tab in `sub` splits the two words; a long time drops its "left")
+    let (l, r) = sub.map(|t| t.split_once('\t').map_or((t.clone(), String::new()), |(a, b)| (a.to_string(), b.to_string()))).unwrap_or_default();
+    let r = if r.contains('h') { r.trim_end_matches(" left").to_string() } else { r };
+    if progress.is_none() && l.is_empty() && r.is_empty() {
         return el;
     }
-    div().flex_none().flex().flex_col().gap(px(8.)).child(el).children(bar).children(line).into_any_element()
+    let line = div()
+        .w(px(W))
+        .flex()
+        .items_center()
+        .gap(px(10.))
+        .text_size(px(13.))
+        .children((!l.is_empty()).then(|| div().flex_none().font_weight(gpui::FontWeight::SEMIBOLD).text_color(theme::label2()).child(l)))
+        .child(div().flex_1().h(px(4.)).rounded_full().bg(theme::white(0.18)).children(progress.map(|p| div().h_full().rounded_full().w(gpui::relative(p.clamp(0., 1.))).bg(gpui::white()))))
+        .children((!r.is_empty()).then(|| div().flex_none().text_color(theme::label3()).child(r)));
+    div().flex_none().flex().flex_col().gap(px(8.)).child(el).child(line).into_any_element()
 }
 
 fn title_text(name: &str) -> impl IntoElement {

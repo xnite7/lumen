@@ -65,7 +65,7 @@ pub fn scroller(key: impl ToString, inner: Stateful<Div>) -> AnyElement {
             .child(
                 div()
                     .id(gpui::SharedString::from(format!("{id}-{key}")))
-                    .size(px(44.))
+                    .size(px(54.))
                     .rounded_full()
                     .bg(theme::black(0.72))
                     .flex()
@@ -82,7 +82,7 @@ pub fn scroller(key: impl ToString, inner: Stateful<Div>) -> AnyElement {
                             window.refresh();
                         })
                     })
-                    .child(crate::ui::icon("chevron", 22.).when(left, |s| s.with_transformation(gpui::Transformation::rotate(gpui::radians(std::f32::consts::PI))))),
+                    .child(crate::ui::icon("chevronWide", 30.).when(left, |s| s.with_transformation(gpui::Transformation::rotate(gpui::radians(std::f32::consts::PI))))),
             )
     };
     div()

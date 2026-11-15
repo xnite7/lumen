@@ -82,12 +82,46 @@ fn decode_intro() {
         if !out.is_empty() {
             let _ = INTRO.set(out);
         }
+        let j = frames_of("brand/nav-jiggle.webp");
+        if !j.is_empty() {
+            let _ = JIGGLE.set(j);
+        }
         let w = frames_of("brand/couch-wobble.webp");
         if !w.is_empty() {
             let _ = WOBBLE.set(w);
         }
     });
 }
+
+/// the couch mark's jiggle (hovering it), on a loop: the frame `t` seconds in
+pub fn couch_jiggle_frame(t: f32) -> Option<std::sync::Arc<gpui::RenderImage>> {
+    frame_at(JIGGLE.get()?, t)
+}
+
+/// the intro's couch turning, on a loop (the trailer waits with it)
+pub fn couch_spin_frame(t: f32) -> Option<std::sync::Arc<gpui::RenderImage>> {
+    let fr = INTRO.get()?;
+    // a short rest on the last frame each turn
+    let total: f32 = fr.iter().map(|x| x.1).sum::<f32>() + 0.5;
+    frame_at(fr, t % total)
+}
+
+fn frame_at(fr: &[(std::sync::Arc<gpui::RenderImage>, f32)], t: f32) -> Option<std::sync::Arc<gpui::RenderImage>> {
+    let total: f32 = fr.iter().map(|x| x.1).sum();
+    if total <= 0. {
+        return None;
+    }
+    let t = t % total;
+    let mut acc = 0.;
+    fr.iter().find(|x| {
+        acc += x.1;
+        acc > t
+    })
+    .or(fr.last())
+    .map(|x| x.0.clone())
+}
+
+static JIGGLE: std::sync::OnceLock<Vec<(std::sync::Arc<gpui::RenderImage>, f32)>> = std::sync::OnceLock::new();
 
 /// The loading couch, on a loop: the frame for this moment (None while it decodes).
 pub fn couch_loading_frame() -> Option<std::sync::Arc<gpui::RenderImage>> {
@@ -320,6 +354,8 @@ pub struct Root {
     movies: Option<Entity<views::home::Home>>,
     toast: Option<String>,
     mark: Arc<Image>,
+    /// the pointer on the couch mark up top (it jiggles)
+    mark_hover: Option<std::time::Instant>,
     player: Entity<views::player::PlayerView>,
     detail: Option<Entity<views::detail::Detail>>,
     search: Option<Entity<views::search::Search>>,
@@ -360,7 +396,7 @@ const TABS: &[(&str, fn() -> Route)] = &[
 ];
 
 impl Root {
-    fn nav_bar(&self, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn nav_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let route = self.route.clone();
         div()
             .absolute()
@@ -382,15 +418,32 @@ impl Root {
                     .bg(gpui::linear_gradient(180., gpui::linear_color_stop(theme::black(0.94 * k), 0.58), gpui::linear_color_stop(theme::black(0.0), 1.)))
             })
             .child(div().absolute().top_0().left_0().size_full().window_control_area(WindowControlArea::Drag))
-            .child(
+            .child({
+                // the couch mark (281×160 canvas; the couch itself starts 39px in)
+                let (mw, mh) = (281. * 0.27, 160. * 0.27);
+                let jig = self.mark_hover.and_then(|t| couch_jiggle_frame(t.elapsed().as_secs_f32()));
                 div()
+                    .id("nav-mark")
+                    .occlude()
                     .absolute()
-                    .left(px(theme::GUTTER))
-                    .top(px(18.))
-                    .child(img(self.mark.clone()).w(px(52.)).h(px(40.))),
-            )
+                    .left(px(theme::GUTTER - 39. * 0.27))
+                    .top(px(22.))
+                    .w(px(mw))
+                    .h(px(mh))
+                    .cursor_pointer()
+                    .on_hover(cx.listener(|r, on: &bool, _, cx| {
+                        r.mark_hover = on.then(std::time::Instant::now);
+                        cx.notify();
+                    }))
+                    .on_click(|_, _, cx| Nav::go(Route::Home, cx))
+                    .when(jig.is_some(), |d| d.child(gpui::canvas(|_, _, _| (), |_, _, w, _| w.request_animation_frame()).absolute().size_0()))
+                    .child(match jig {
+                        Some(f) => img(gpui::ImageSource::Render(f)).size_full().object_fit(gpui::ObjectFit::Contain).into_any_element(),
+                        None => img("brand/nav-mark.png").size_full().object_fit(gpui::ObjectFit::Contain).into_any_element(),
+                    })
+            })
             .child(
-                div().absolute().top(px(18.)).left_0().w_full().flex().justify_center().child(
+                div().absolute().top(px(22.)).left_0().w_full().flex().justify_center().child(
                     div()
                         .flex()
                         .items_center()
@@ -438,7 +491,7 @@ impl Root {
                     .occlude()
                     .absolute()
                     .right(px(theme::GUTTER + 108.))
-                    .top(px(20.))
+                    .top(px(24.))
                     .cursor_pointer()
                     .on_click({
                         let id = self.me["id"].as_str().map(String::from);
@@ -1096,7 +1149,7 @@ impl Render for Root {
             .font_family(theme::FONT)
             .text_color(theme::text())
             .child(page)
-            .when(!playing && self.route != Route::SignIn, |d| d.child(self.nav_bar(cx)))
+            .when(!playing && self.route != Route::SignIn && !views::detail::theater_on(), |d| d.child(gpui::deferred(self.nav_bar(cx)).with_priority(2)))
             .when(self.route == Route::SignIn, |d| d.child(window_controls()))
             .children(fps.map(|n| div().absolute().bottom(px(12.)).left(px(12.)).px(px(10.)).py(px(4.)).rounded(px(8.)).bg(theme::black(0.7)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(if n >= 130 { gpui::rgb(0x7ee08a) } else if n >= 90 { gpui::rgb(0xf4c76a) } else { gpui::rgb(0xff6b6b) }).child(format!("{n} fps"))))
             // while playing: a strip along the top moves the window (it never pauses the film)
@@ -1105,15 +1158,15 @@ impl Render for Root {
             .when(playing && !pip::is_on() && !(window.is_fullscreen() && self.player.read(cx).chrome_hidden()), |d| d.child(window_controls()))
             .child(self.together_cards(cx))
             .when(!playing && self.route != Route::SignIn, |d| d.child(self.planner.clone()).child(self.invite.clone()))
-            .when(self.menu.read(cx).open.is_some(), |d| d.child(self.menu.clone()))
-            .when(self.addto.read(cx).meta.is_some(), |d| d.child(self.addto.clone()))
+            .when(self.menu.read(cx).open.is_some(), |d| d.child(gpui::deferred(self.menu.clone()).with_priority(3)))
+            .when(self.addto.read(cx).meta.is_some(), |d| d.child(gpui::deferred(self.addto.clone()).with_priority(3)))
             .when(self.wrapped.read(cx).open, |d| d.child(self.wrapped.clone()))
             .when(!mini::is_on(), |d| {
                 MINI_AT.with(|m| *m.borrow_mut() = None);
                 d
             })
-            .when(mini::is_on(), |d| d.child(self.mini_bar(window, cx)))
-            .children(if playing { None } else { update::card(cx) })
+            .when(mini::is_on(), |d| d.child(gpui::deferred(self.mini_bar(window, cx)).with_priority(2)))
+            .children(if playing { None } else { update::card(cx).map(|c| gpui::deferred(c).with_priority(2)) })
             .children(ui::zoom::overlay(window, cx))
             .children(self.intro(window))
             .children(self.toast.clone().map(|t| {
@@ -1382,6 +1435,7 @@ fn main() {
                             movies: None,
                             toast: None,
                             mark,
+                            mark_hover: None,
                             player: cx.new(views::player::PlayerView::new),
                             detail: None,
                             search: None,

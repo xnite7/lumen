@@ -37,6 +37,8 @@ pub struct Detail {
     /// more like this, with real (IMDb) ids so they get logos, clips, your marks
     recs: Option<Vec<Meta>>,
     recs_asked: bool,
+    /// the title logo's colour (favourite, rating)
+    tint: Option<gpui::Hsla>,
     /// when the rest of the page arrived (it eases in rather than popping)
     shown: Option<std::time::Instant>,
 }
@@ -61,7 +63,12 @@ pub fn library_changed() {
     LIB_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 thread_local! {
+    /// a trailer is filling the page (the top bar steps away)
+    static THEATER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static TOP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+pub fn theater_on() -> bool {
+    THEATER.with(|t| t.get())
 }
 /// the next title page opens at its top
 pub fn to_top() {
@@ -170,9 +177,27 @@ impl Detail {
             });
         })
         .detach();
+        // the logo's colour, for the heart and the rating
+        if let Some(src) = base.logo.clone().or(base.background.clone()) {
+            cx.spawn(async move |this, cx| {
+                let t = couch::rt::spawn(async move {
+                    let core = couch::state::get().core.clone();
+                    let (b, _) = couch::images::load(&core, &sized(&src, "w500")).await.ok()?;
+                    crate::views::player::tint_of(&b)
+                })
+                .await
+                .ok()
+                .flatten();
+                let _ = this.update(cx, |d, cx| {
+                    d.tint = t.map(|t| t[0]);
+                    cx.notify();
+                });
+            })
+            .detach();
+        }
         let review_text = cx.new(|cx| crate::ui::input::TextInput::new("what did you think? (emoji welcome)", cx));
         cx.subscribe(&review_text, |d: &mut Self, _, _: &crate::ui::input::Submitted, cx| d.post_review(cx)).detach();
-        let mut me = Self { theater: None, base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, rate_box: Default::default(), lib_seen: LIB_GEN.load(std::sync::atomic::Ordering::Relaxed), favs: None, trailer: None, studio: None, reviews: vec![], writing: false, review_text, scroll: ScrollHandle::new(), shown: None, recs: None, recs_asked: false };
+        let mut me = Self { theater: None, base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, rate_box: Default::default(), lib_seen: LIB_GEN.load(std::sync::atomic::Ordering::Relaxed), favs: None, trailer: None, studio: None, reviews: vec![], writing: false, review_text, scroll: ScrollHandle::new(), shown: None, recs: None, recs_asked: false, tint: None };
         if let Some(l) = ready {
             me.fill(l);
             // fresh copy in the background (your progress, ratings, reviews may have moved)
@@ -374,6 +399,7 @@ impl Detail {
             _ => "masterpiece",
         };
         let previewing = self.hover_star > 0 && Some(self.hover_star) != self.rating;
+        let accent: gpui::Hsla = self.tint.unwrap_or(theme::lamp().into());
         let (kind, id, name) = (m.kind.clone(), self.lid(), m.name.clone());
         let title = json!({ "id": m.id, "type": m.kind, "name": m.name, "poster": m.poster, "background": m.background, "logo": m.logo });
         div()
@@ -394,7 +420,7 @@ impl Detail {
                     .child(
                         div().absolute().top_0().left_0().size_full().flex().gap(px(3.)).children((1..=10u8).map(|i| {
                             let lit = i <= shown;
-                            div().flex_1().h_full().rounded(px(6.)).bg(if lit { theme::lamp().into() } else { theme::white(0.09) })
+                            div().flex_1().h_full().rounded(px(6.)).bg(if lit { accent } else { theme::white(0.09) })
                             .when(lit && previewing, |d| d.opacity(0.6))
                         })),
                     )
@@ -412,12 +438,18 @@ impl Detail {
                             cx.notify();
                         }
                     }))
-                    .on_mouse_up(gpui::MouseButton::Left, cx.listener(move |d, e: &gpui::MouseUpEvent, _, cx| {
+                    .on_mouse_up(gpui::MouseButton::Left, cx.listener(move |d, e: &gpui::MouseUpEvent, window, cx| {
                         let n = pick(f32::from(e.position.x), at2.get());
                         // the same score again takes it off
                         let v = if d.rating == Some(n) { None } else { Some(n) };
                         d.rating = v;
                         d.hover_star = 0;
+                        // rated: a few words about it?
+                        if v.is_some() {
+                            d.writing = true;
+                            let f = gpui::Focusable::focus_handle(d.review_text.read(cx), cx);
+                            window.focus(&f, cx);
+                        }
                         cx.notify();
                         let (kind, id, name, title) = (kind.clone(), id.clone(), name.clone(), title.clone());
                         cx.spawn(async move |_, cx| {
@@ -443,7 +475,7 @@ impl Detail {
                     .items_end()
                     .gap(px(6.))
                     .when(shown > 0, |d| {
-                        d.child(div().text_size(px(22.)).line_height(px(22.)).font_weight(FontWeight::BLACK).text_color(theme::lamp()).child(format!("{shown}")))
+                        d.child(div().text_size(px(22.)).line_height(px(22.)).font_weight(FontWeight::BLACK).text_color(accent).child(format!("{shown}")))
                             .child(div().text_size(px(13.)).text_color(theme::label2()).child(format!("/10 · {word}")))
                     }),
             )
@@ -451,37 +483,27 @@ impl Detail {
 }
 
 fn act(id: &'static str, ic: impl IntoElement, label: &str) -> gpui::Stateful<gpui::Div> {
+    // the same family as Play: a rounded square, a quiet fill, the word under it
     div()
         .id(id)
         .flex()
         .flex_col()
         .items_center()
         .gap(px(7.))
-        // narrow, so two-word labels sit on two lines under the button
         .w(px(66.))
         .cursor_pointer()
+        .group("act")
         .child(
-            // liquid glass: a lit rim, light pooling at the top, a soft shadow under it
             div()
-                .relative()
-                .size(px(52.))
-                .rounded_full()
+                .size(px(54.))
+                .rounded(px(14.))
                 .flex()
                 .items_center()
                 .justify_center()
-                .bg(gpui::linear_gradient(170., gpui::linear_color_stop(theme::white(0.30), 0.), gpui::linear_color_stop(theme::white(0.08), 1.)))
+                .bg(theme::white(0.12))
                 .border_1()
-                .border_color(theme::white(0.32))
-                .shadow(vec![
-                    gpui::BoxShadow { color: theme::black(0.45), offset: gpui::point(px(0.), px(8.)), blur_radius: px(22.), spread_radius: px(0.), inset: false },
-                    gpui::BoxShadow { color: theme::white(0.10), offset: gpui::point(px(0.), px(0.)), blur_radius: px(14.), spread_radius: px(0.), inset: false },
-                ])
-                .hover(|s| {
-                    s.bg(gpui::linear_gradient(170., gpui::linear_color_stop(theme::white(0.42), 0.), gpui::linear_color_stop(theme::white(0.14), 1.)))
-                        .border_color(theme::white(0.5))
-                })
-                // the shine across the top
-                .child(div().absolute().top(px(3.)).left(px(11.)).w(px(28.)).h(px(12.)).rounded_full().bg(gpui::linear_gradient(180., gpui::linear_color_stop(theme::white(0.35), 0.), gpui::linear_color_stop(theme::white(0.0), 1.))))
+                .border_color(theme::white(0.08))
+                .group_hover("act", |s| s.bg(theme::white(0.2)))
                 .child(ic),
         )
         .child(div().w_full().text_center().text_size(px(12.5)).line_height(px(15.)).font_weight(FontWeight::MEDIUM).text_color(theme::label2()).child(label.to_string()))
@@ -639,6 +661,7 @@ impl Render for Detail {
             None => 0.,
         };
         let th_on = matches!(self.theater, Some((_, true)));
+        THEATER.with(|t| t.set(th_on));
         // opened from a card: the words wait for the picture to land
         let ca = crate::ui::zoom::content_alpha(window);
         // the card's logo is flying into this one: this one waits
@@ -701,30 +724,44 @@ impl Render for Detail {
             // the shade and the melt come in with the picture, and then simply stay
             .child(div().absolute().top_0().left_0().w_full().h(art_h).opacity((1. - th) * grow).bg(linear_gradient(90., linear_color_stop(theme::black(0.85), 0.), linear_color_stop(theme::black(0.0), 0.7))))
             .child(div().absolute().left_0().top(art_h - vh * 0.5).w_full().h(vh * 0.5).opacity((1. - th * 0.85) * grow).child(crate::ui::ambient::melt()))
-            // watching the trailer: ^ brings the page back
+            // watching the trailer: while it loads the couch turns; a hint at the
+            // bottom says how to get back (scroll down, or click it)
             .when(th_on, |d| {
                 let o = towner.clone();
-                d.child(
-                    div().absolute().bottom(px(26.)).left_0().w_full().flex().justify_center().opacity(th).child(
+                let waiting = tframe.is_none();
+                let spin = waiting.then(|| crate::couch_spin_frame(self.theater.map_or(0., |t| t.0.elapsed().as_secs_f32()))).flatten();
+                if waiting {
+                    window.request_animation_frame();
+                }
+                d.when(waiting, |d| {
+                    d.child(
+                        div().absolute().top_0().left_0().w_full().h(art_h).flex().items_center().justify_center().opacity(th).child(
+                            div().w(px(150.)).h(px(135.)).children(spin.map(|f| img(gpui::ImageSource::Render(f)).size_full().object_fit(ObjectFit::Contain))),
+                        ),
+                    )
+                })
+                .child(
+                    div().absolute().bottom(px(22.)).left_0().w_full().flex().justify_center().opacity(th).child(
                         div()
                             .id("d-back-up")
-                            .size(px(50.))
-                            .rounded_full()
                             .flex()
+                            .flex_col()
                             .items_center()
-                            .justify_center()
+                            .gap(px(4.))
+                            .px(px(16.))
+                            .py(px(8.))
+                            .rounded(px(14.))
                             .cursor_pointer()
-                            .bg(gpui::linear_gradient(170., gpui::linear_color_stop(theme::white(0.28), 0.), gpui::linear_color_stop(theme::white(0.08), 1.)))
-                            .border_1()
-                            .border_color(theme::white(0.3))
-                            .hover(|s| s.bg(theme::white(0.3)))
+                            .text_color(theme::white(0.8))
+                            .hover(|s| s.bg(theme::white(0.08)).text_color(theme::text()))
                             .on_click(cx.listener(move |me, _, _, cx| {
                                 let o = o.clone();
                                 crate::ui::video::get(cx).update(cx, |x, cx| x.stop(&o, cx));
                                 me.theater = Some((std::time::Instant::now(), false));
                                 cx.notify();
                             }))
-                            .child(icon("chevronUp", 24.)),
+                            .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).child("scroll down to exit"))
+                            .child(icon("chevronDown", 22.)),
                     ),
                 )
             })
@@ -864,7 +901,7 @@ impl Render for Detail {
                                 let base = m.id.split(':').next().unwrap_or("").to_string();
                                 let fav = self.favs.as_ref().map_or(false, |f| f.iter().any(|x| x["id"].as_str() == Some(base.as_str())));
                                 let r = json!({ "id": base, "type": m.kind, "name": m.name, "poster": m.poster, "background": m.background, "logo": m.logo });
-                                act("d-fav", if fav { icon_fill("heart", 21.).text_color(theme::neon_soft()) } else { icon("heart", 21.) }, "Favourite").on_click(cx.listener(move |d, _, _, cx| {
+                                act("d-fav", if fav { icon_fill("heart", 21.).text_color(self.tint.unwrap_or(theme::neon_soft().into())) } else { icon("heart", 21.) }, "Favourite").on_click(cx.listener(move |d, _, _, cx| {
                                     let mut list = d.favs.clone().unwrap_or_default();
                                     let id = r["id"].clone();
                                     let now = list.iter().any(|x| x["id"] == id);
@@ -926,7 +963,6 @@ impl Render for Detail {
                         })
                     })
                     .when(seen_it, |d| {
-                        let has_mine = self.reviews.iter().any(|r| r["who"].as_str() == Some(self.me_id().as_str()) && r["text"].as_str().map_or(false, |t| !t.is_empty()));
                         d.child(
                             div()
                                 .relative()
@@ -936,31 +972,6 @@ impl Render for Detail {
                                 .items_center()
                                 .gap(px(16.))
                                 .child(self.stars(&m, cx))
-                                .child(
-                                    div()
-                                        .id("d-review")
-                                        .flex()
-                                        .items_center()
-                                        .gap(px(6.))
-                                        .px(px(12.))
-                                        .h(px(32.))
-                                        .rounded_full()
-                                        .bg(theme::white(0.1))
-                                        .text_size(px(13.))
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .cursor_pointer()
-                                        .hover(|s| s.bg(theme::white(0.18)))
-                                        .on_click(cx.listener(|d, _, window, cx| {
-                                            d.writing = !d.writing;
-                                            if d.writing {
-                                                let f = gpui::Focusable::focus_handle(d.review_text.read(cx), cx);
-                                                window.focus(&f, cx);
-                                            }
-                                            cx.notify();
-                                        }))
-                                        .child(icon("pencil", 15.))
-                                        .child(if has_mine { "edit your review" } else { "write a review" }),
-                                ),
                         )
                         .when(self.writing, |d| {
                             d.child(
@@ -1119,7 +1130,10 @@ impl Render for Detail {
                                     let seen = watched.contains(&vid);
                                     let future = !released(v, &today);
                                     let p = self.progress(Some(&vid));
-                                    let left = self.left(Some(&vid));
+                                    // under 10% to go: it's as good as watched
+                                    let nearly = p >= 0.9;
+                                    let p = if nearly { 0. } else { p };
+                                    let left = if nearly { None } else { self.left(Some(&vid)) };
                                     let imdb = api::imdb_episode(&vid);
                                     let thumb = v["thumbnail"].as_str().map(|s| s.to_string()).or(imdb.clone()).or(back_art.clone()).map(|u| crate::net::fit(&u, 300.));
                                     let alt = imdb.or(back_art.clone()).map(|u| crate::net::fit(&u, 300.));
@@ -1165,6 +1179,8 @@ impl Render for Detail {
                                                         .text_color(theme::white(0.92))
                                                         .child(n.to_string()),
                                                 )
+                                                // watched: a soft shade from the top right corner
+                                                .when(seen, |d| d.child(div().absolute().top_0().left_0().size_full().bg(linear_gradient(225., linear_color_stop(theme::black(0.55), 0.), linear_color_stop(theme::black(0.0), 0.6)))))
                                                 // where you stopped: how much is left
                                                 .children(left.map(|l| {
                                                     div()

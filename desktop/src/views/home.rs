@@ -433,13 +433,19 @@ impl Render for Home {
                     (Some(p), Some(d)) if d > 0. => Some((p / d).clamp(0., 1.) as f32),
                     _ => None,
                 };
-                let (se, ep_title) = crate::ui::split_episode(w["episode"].as_str().unwrap_or(""));
+                let (se, _ep_title) = crate::ui::split_episode(w["episode"].as_str().unwrap_or(""));
                 let people: Vec<(Option<String>, String)> = who.iter().map(|p| (p["avatar"].as_str().map(String::from), p["name"].as_str().unwrap_or("someone").to_string())).collect();
                 let key = format!("live-{i}");
+                let paused = mb["paused"].as_bool() == Some(true);
+                let (host, host_name) = (mb["id"].as_str().unwrap_or("").to_string(), mb["name"].as_str().unwrap_or("them").to_string());
+                let mm = m.clone();
                 div()
+                    .id(SharedString::from(format!("live-wrap-{i}")))
+                    .group(SharedString::from(format!("live-g-{i}")))
                     .relative()
                     .flex_none()
-                    .child(card::card_with(SharedString::from(key.clone()), &m, frac, ep_title.or(Some(String::new())), None, |_, _, cx| Nav::go(crate::Route::Couch, cx)))
+                    // a click on it: the title's page (join is the button)
+                    .child(card::card_with(SharedString::from(key.clone()), &m, frac, None, None, move |_, _, cx| Nav::detail(&mm, cx)))
                     .child(
                         div()
                             .absolute()
@@ -447,8 +453,37 @@ impl Render for Home {
                             .left_0()
                             .w(px(card::W))
                             .h(px(card::H))
+                            // paused over there: a small pause mark (playing needs no mark)
+                            .when(paused, |d| d.child(div().absolute().top(px(10.)).left(px(10.)).size(px(28.)).rounded_full().bg(theme::black(0.6)).flex().items_center().justify_center().child(crate::ui::icon_fill("pause", 14.))))
                             .children(se.map(|t| div().absolute().top(px(10.)).right(px(10.)).child(crate::ui::ep_badge(t))))
-                            .child(div().absolute().bottom(px(10.)).right(px(10.)).child(crate::ui::faces(&key, people, 30.))),
+                            .child(div().absolute().bottom(px(10.)).right(px(10.)).child(crate::ui::faces(&key, people, 30.)))
+                            // pointing at it: join them
+                            .child(
+                                div().absolute().size_full().flex().items_center().justify_center().opacity(0.).group_hover(SharedString::from(format!("live-g-{i}")), |s| s.opacity(1.)).child(
+                                    div()
+                                        .id(SharedString::from(format!("live-join-{i}")))
+                                        .occlude()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(8.))
+                                        .px(px(18.))
+                                        .h(px(40.))
+                                        .rounded(px(12.))
+                                        .bg(theme::text())
+                                        .text_color(gpui::rgb(0x000000))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .cursor_pointer()
+                                        .hover(|s| s.opacity(0.88))
+                                        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                        .on_click(move |_, _, cx| {
+                                            cx.stop_propagation();
+                                            let (h, n) = (host.clone(), host_name.clone());
+                                            crate::together::get(cx).update(cx, |t, cx| t.ask_to_join(h, n, cx));
+                                        })
+                                        .child(crate::ui::icon("couch", 18.).text_color(gpui::rgb(0x000000)))
+                                        .child("join"),
+                                ),
+                            ),
                     )
             });
             // on the couch leads the page, above continue watching
@@ -457,7 +492,20 @@ impl Render for Home {
                     .flex()
                     .flex_col()
                     .gap(px(12.))
-                    .child(div().px(px(theme::GUTTER)).flex().items_center().gap(px(10.)).child(div().text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).child("on the couch")).child(div().size(px(8.)).rounded_full().bg(theme::neon())).child(div().text_size(px(14.)).text_color(theme::label2()).child(format!("{} watching", self.live.len()))))
+                    .child(
+                        div().px(px(theme::GUTTER)).flex().child(
+                            div()
+                                .id("live-head")
+                                .flex()
+                                .items_center()
+                                .gap(px(6.))
+                                .cursor_pointer()
+                                .hover(|s| s.opacity(0.8))
+                                .on_click(|_, _, cx| Nav::go(crate::Route::Couch, cx))
+                                .child(div().text_size(px(21.)).font_weight(FontWeight::SEMIBOLD).child("on the couch"))
+                                .child(crate::ui::icon("chevronWide", 20.).text_color(theme::label3())),
+                        ),
+                    )
                     .child(crate::ui::rows::scroller("row-live", div().id("row-live").overflow_x_scroll().flex().gap(px(10.)).px(px(theme::GUTTER)).children(cards)))
                     .into_any_element(),
             );
@@ -672,7 +720,7 @@ fn row_head(key: &str, title: &str, spec: Option<views_catalog::Spec>) -> gpui::
                         .ml(px(-6.))
                         .text_color(theme::label2())
                         .group_hover(group, |s| s.opacity(1.).ml(px(0.)))
-                        .child(crate::ui::icon("chevron", 16.)),
+                        .child(crate::ui::icon("chevronWide", 20.)),
                 ),
         )
         .into_any_element()
