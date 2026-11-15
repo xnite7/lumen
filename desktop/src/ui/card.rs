@@ -40,6 +40,9 @@ pub fn card_with(
     // no logo given: metahub's (and TMDB's behind it) by the IMDb id
     let logo = m.logo.clone().or_else(|| m.id.starts_with("tt").then(|| format!("https://images.metahub.space/logo/medium/{}/img", m.id.split(':').next().unwrap_or(&m.id)))).map(|u| crate::net::logo(&sized(&u, "w500"), 170.));
     let zkey = id.to_string();
+    let lkey = zkey.clone();
+    // seen it already: the card steps back a little (not while it previews)
+    let watched = clip.is_none() && progress.is_none() && crate::seen::status(&m.id).0;
     let (zid, zart) = (m.id.clone(), art.clone());
     let zk2 = zkey.clone();
     let el = div()
@@ -82,6 +85,21 @@ pub fn card_with(
             Some((p, a, _)) => crate::ui::video::layers(art.clone(), p, *a, 12.),
             None => art.clone().map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).into_any_element()).into_iter().collect(),
         })
+        .when(watched, |d| {
+            d.child(div().absolute().top_0().left_0().size_full().bg(theme::black(0.5))).child(
+                div()
+                    .absolute()
+                    .top(px(10.))
+                    .right(px(10.))
+                    .size(px(24.))
+                    .rounded_full()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .bg(theme::black(0.55))
+                    .child(crate::ui::icon("check", 14.).text_color(theme::white(0.85))),
+            )
+        })
         .child(
             div()
                 .absolute()
@@ -102,14 +120,20 @@ pub fn card_with(
                 .items_end()
                 .opacity(logo_a)
                 .child(match logo {
-                    Some(u) => img(u)
-                        .h(px(54.))
-                        .max_w(px(170.))
-                        .object_fit(ObjectFit::Contain)
-                        .with_fallback({
-                            let name = m.name.clone();
-                            move || title_text(&name).into_any_element()
-                        })
+                    // (remembered, so it can fly into the page's logo)
+                    Some(u) => div()
+                        .relative()
+                        .child(crate::ui::zoom::track_logo(lkey.clone(), u.clone()))
+                        .child(
+                            img(u)
+                                .h(px(54.))
+                                .max_w(px(170.))
+                                .object_fit(ObjectFit::Contain)
+                                .with_fallback({
+                                    let name = m.name.clone();
+                                    move || title_text(&name).into_any_element()
+                                }),
+                        )
                         .into_any_element(),
                     None => title_text(&m.name).into_any_element(),
                 }),

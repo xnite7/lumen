@@ -182,16 +182,23 @@ pub fn layer(window: &mut Window) -> impl IntoElement {
 /// of it toward the bottom, so there's no edge where the picture stops.
 /// Put it absolute, at the bottom of the picture, as tall as the melt.
 pub fn melt() -> impl IntoElement {
-    const STEPS: usize = 24;
+    // many thin strips, each on whole screen pixels: no seams (two strips
+    // overlapping by a pixel drew a darker line) and steps too small to see
+    const STEPS: usize = 72;
     let cur = S.with(|s| s.borrow().cur.clone());
     let strip = |i: usize| {
         let cur = cur.clone();
         canvas(
             |_, _, _| (),
             move |b, _, window, cx| {
-                // this strip's slice of the band
+                let sf = window.scale_factor();
+                let snap = |y: Pixels| px((f32::from(y) * sf).round() / sf);
                 let h = b.size.height / STEPS as f32;
-                let r = Bounds::new(gpui::point(b.origin.x, b.origin.y + h * i as f32), gpui::size(b.size.width, h + px(1.)));
+                let (y0, y1) = (snap(b.origin.y + h * i as f32), snap(b.origin.y + h * (i + 1) as f32));
+                if y1 <= y0 {
+                    return;
+                }
+                let r = Bounds::new(gpui::point(b.origin.x, y0), gpui::size(b.size.width, y1 - y0));
                 let area = AREA.with(|a| a.get()).unwrap_or(r);
                 // under the glow: the page's black
                 window.paint_quad(gpui::fill(r, gpui::black()));

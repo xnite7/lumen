@@ -42,14 +42,16 @@ impl Render for Menu {
         let (w, h) = (270., if self.in_cw { 345. } else { 300. });
         let x = f32::from(at.x).min(f32::from(vs.width) - w - 12.);
         let y = f32::from(at.y).min(f32::from(vs.height) - h - 12.);
+        let (seen, listed) = crate::seen::status(&m.id);
         let mut items: Vec<(&'static str, &'static str, Box<dyn Fn(&Meta, &mut gpui::App)>)> = vec![
             ("play", "play", Box::new(|m, cx| Nav::play(m, cx))),
             ("info", "open", Box::new(|m, cx| Nav::detail(m, cx))),
-            ("plus", "add to…", Box::new(|m, cx| Nav::add(m, cx))),
+            if listed { ("check", "added", Box::new(|m, cx| Nav::add(m, cx))) } else { ("plus", "add to…", Box::new(|m, cx| Nav::add(m, cx))) },
             (
-                "eye",
-                "mark watched",
-                Box::new(|m, cx| {
+                if seen { "eyeOff" } else { "eye" },
+                if seen { "unwatch" } else { "mark watched" },
+                Box::new(move |m, cx| {
+                    let on = !seen;
                     let (kind, id, name) = (m.kind.clone(), m.id.clone(), m.name.clone());
                     cx.spawn(async move |cx| {
                         let full = api::call::<Value>("meta_get", json!({ "kind": kind, "id": id, "hint": Value::Null })).await.unwrap_or_default();
@@ -61,9 +63,12 @@ impl Render for Menu {
                                 .filter_map(|v| v["id"].as_str().map(String::from))
                                 .collect()
                         });
-                        let r = api::call::<Value>("library_set_watched", json!({ "meta": full, "videoId": Value::Null, "watched": true, "allVideos": all })).await;
+                        let r = api::call::<Value>("library_set_watched", json!({ "meta": full, "videoId": Value::Null, "watched": on, "allVideos": all })).await;
+                        crate::views::detail::library_changed();
+                        let _ = cx.update(|cx| cx.refresh_windows());
                         let _ = cx.update(|cx| Nav::toast(match r {
-                            Ok(_) => format!("marked {name} watched"),
+                            Ok(_) if on => format!("marked {name} watched"),
+                            Ok(_) => format!("{name}: unwatched"),
                             Err(e) => e,
                         }, cx));
                     })

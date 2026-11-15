@@ -21,6 +21,7 @@ mod notify;
 mod timer;
 mod ui;
 mod views;
+mod seen;
 
 thread_local! {
     static FPS_ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -223,6 +224,8 @@ impl Nav {
     pub fn detail(m: &Meta, cx: &mut App) {
         // from a card: its picture grows into the page
         ui::zoom::open(m, m.background.clone().or(m.poster.clone()).map(|u| crate::net::fit(&api::sized(&u, "original"), ui::view_w())));
+        // a title always opens at its top, even one you'd scrolled down before
+        views::detail::to_top();
         Self::go(Route::Detail(m.clone()), cx);
     }
     pub fn play(m: &Meta, cx: &mut App) {
@@ -888,7 +891,8 @@ impl Render for Root {
         // above when going back) instead of snapping
         const TURN: f32 = 0.32;
         let (e, dy) = match self.turned {
-            Some((at, back)) if !playing && at.elapsed().as_secs_f32() < TURN => {
+            // opening from a card: the picture is the motion, the page holds still
+            Some((at, back)) if !playing && at.elapsed().as_secs_f32() < TURN && !(ui::zoom::is_opening() && !back) => {
                 let t = at.elapsed().as_secs_f32() / TURN;
                 let e = 1. - (1. - t).powi(3);
                 window.request_animation_frame();

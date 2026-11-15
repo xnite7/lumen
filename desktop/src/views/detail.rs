@@ -34,6 +34,9 @@ pub struct Detail {
     writing: bool,
     review_text: gpui::Entity<crate::ui::input::TextInput>,
     scroll: ScrollHandle,
+    /// more like this, with real (IMDb) ids so they get logos, clips, your marks
+    recs: Option<Vec<Meta>>,
+    recs_asked: bool,
     /// when the rest of the page arrived (it eases in rather than popping)
     shown: Option<std::time::Instant>,
 }
@@ -56,6 +59,16 @@ pub struct Loaded {
 static LIB_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub fn library_changed() {
     LIB_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+thread_local! {
+    static TOP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+/// the next title page opens at its top
+pub fn to_top() {
+    TOP.with(|t| t.set(true));
+}
+pub fn lib_gen() -> u64 {
+    LIB_GEN.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 thread_local! {
@@ -159,7 +172,7 @@ impl Detail {
         .detach();
         let review_text = cx.new(|cx| crate::ui::input::TextInput::new("what did you think? (emoji welcome)", cx));
         cx.subscribe(&review_text, |d: &mut Self, _, _: &crate::ui::input::Submitted, cx| d.post_review(cx)).detach();
-        let mut me = Self { theater: None, base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, rate_box: Default::default(), lib_seen: LIB_GEN.load(std::sync::atomic::Ordering::Relaxed), favs: None, trailer: None, studio: None, reviews: vec![], writing: false, review_text, scroll: ScrollHandle::new(), shown: None };
+        let mut me = Self { theater: None, base, full: None, extra: None, item: None, season: None, rating: None, hover_star: 0, rate_box: Default::default(), lib_seen: LIB_GEN.load(std::sync::atomic::Ordering::Relaxed), favs: None, trailer: None, studio: None, reviews: vec![], writing: false, review_text, scroll: ScrollHandle::new(), shown: None, recs: None, recs_asked: false };
         if let Some(l) = ready {
             me.fill(l);
             // fresh copy in the background (your progress, ratings, reviews may have moved)
@@ -417,8 +430,9 @@ fn act(id: &'static str, ic: impl IntoElement, label: &str) -> gpui::Stateful<gp
         .flex()
         .flex_col()
         .items_center()
-        .gap(px(6.))
-        .w(px(96.))
+        .gap(px(7.))
+        // narrow, so two-word labels sit on two lines under the button
+        .w(px(66.))
         .cursor_pointer()
         .child(
             // liquid glass: a lit rim, light pooling at the top, a soft shadow under it
@@ -444,12 +458,51 @@ fn act(id: &'static str, ic: impl IntoElement, label: &str) -> gpui::Stateful<gp
                 .child(div().absolute().top(px(3.)).left(px(11.)).w(px(28.)).h(px(12.)).rounded_full().bg(gpui::linear_gradient(180., gpui::linear_color_stop(theme::white(0.35), 0.), gpui::linear_color_stop(theme::white(0.0), 1.))))
                 .child(ic),
         )
-        .child(div().w_full().text_center().whitespace_nowrap().text_size(px(13.)).font_weight(FontWeight::MEDIUM).text_color(theme::label2()).child(label.to_string()))
+        .child(div().w_full().text_center().text_size(px(12.5)).line_height(px(15.)).font_weight(FontWeight::MEDIUM).text_color(theme::label2()).child(label.to_string()))
 }
 
 impl Render for Detail {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if TOP.with(|t| t.replace(false)) {
+            self.scroll.set_offset(gpui::point(px(0.), px(0.)));
+            crate::ui::smooth::reset("detail");
+        }
+        // more like this: TMDB's ids turned into the real ones, all at once
+        if !self.recs_asked {
+            if let Some(list) = self.extra.as_ref().and_then(|e| e["recommendations"].as_array()).filter(|a| !a.is_empty()) {
+                self.recs_asked = true;
+                let list: Vec<Meta> = list.iter().filter_map(|r| serde_json::from_value(r.clone()).ok()).collect();
+                cx.spawn(async move |this, cx| {
+                    let out = futures::future::join_all(list.into_iter().map(|r| async move {
+                        if !r.id.starts_with("tmdb:") {
+                            return r;
+                        }
+                        match api::call::<Value>("tmdb_resolve", json!({ "kind": r.kind, "id": r.id })).await {
+                            Ok(v) if v["id"].as_str().map_or(false, |i| i.starts_with("tt")) => {
+                                let mut m = r.clone();
+                                m.id = v["id"].as_str().unwrap_or(&r.id).to_string();
+                                m.kind = v["type"].as_str().unwrap_or(&r.kind).to_string();
+                                m
+                            }
+                            _ => r,
+                        }
+                    }))
+                    .await;
+                    let _ = this.update(cx, |d, cx| {
+                        d.recs = Some(out);
+                        cx.notify();
+                    });
+                })
+                .detach();
+            }
+        }
         let vh = window.viewport_size().height;
+        let vw = window.viewport_size().width;
+        // opened from a card: its picture (and logo) fly into place, the rest follows
+        let op = crate::ui::zoom::opening(window);
+        let grow = op.as_ref().map_or(1., |o| o.k);
+        let rz: Vec<(f32, f32)> = (0..8).map(|i| crate::ui::zoom::rise(window, i)).collect();
+        let art_h = vh * 0.92;
         let m = self.meta();
         let g = theme::GUTTER;
         let art = m.background.clone().or(m.poster.clone()).map(|u| crate::net::fit(&sized(&u, "original"), crate::ui::view_w()));
@@ -562,6 +615,31 @@ impl Render for Detail {
         let th_on = matches!(self.theater, Some((_, true)));
         // opened from a card: the words wait for the picture to land
         let ca = crate::ui::zoom::content_alpha(window);
+        // the card's logo is flying into this one: this one waits
+        let flying_logo = op.as_ref().map_or(false, |o| o.logo.is_some() && logo.is_some());
+        let kw: Vec<String> = ex["keywords"].as_array().into_iter().flatten().filter_map(|k| k.as_str().map(String::from).or(k["name"].as_str().map(String::from))).take(8).collect();
+        // the mood goes on the right, across from the words, when the window is wide enough
+        let mood_right = f32::from(vw) > 1180.;
+        let fly = match (&op, flying_logo) {
+            (Some(o), true) => o.logo.clone().zip(o.target).map(|((from, small), to)| {
+                // the page's logo box: as tall as it gets, as wide as this logo's shape
+                let aspect = f32::from(from.size.width) / f32::from(from.size.height).max(1.);
+                let tw = (160. * aspect).min(480.);
+                let k = o.k;
+                let lerp = |a: f32, b: f32| a + (b - a) * k;
+                let (x, y) = (lerp(f32::from(from.origin.x), f32::from(to.origin.x)), lerp(f32::from(from.origin.y), f32::from(to.origin.y)));
+                let (w, h) = (lerp(f32::from(from.size.width), tw), lerp(f32::from(from.size.height), 160.));
+                div()
+                    .absolute()
+                    .left(px(x))
+                    .top(px(y))
+                    .w(px(w))
+                    .h(px(h))
+                    .child(img(small).absolute().size_full().object_fit(ObjectFit::Contain))
+                    .children(logo.clone().map(|u| img(u).absolute().size_full().object_fit(ObjectFit::Contain)))
+            }),
+            _ => None,
+        };
         let hero = div()
             .relative()
             .w_full()
@@ -571,12 +649,31 @@ impl Render for Detail {
             .flex_col()
             .justify_end()
             // the art, and the trailer over it once it's playing
-            .children(match &tframe {
-                Some((p, a)) => crate::ui::video::layers(art.clone(), p, *a, 0.),
-                None => art.clone().map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).into_any_element()).into_iter().collect(),
-            })
-            .child(div().absolute().top_0().left_0().size_full().opacity(1. - th).bg(linear_gradient(90., linear_color_stop(theme::black(0.85), 0.), linear_color_stop(theme::black(0.0), 0.7))))
-            .child(div().absolute().left_0().bottom_0().w_full().h(vh * 0.5).opacity(1. - th * 0.85).child(crate::ui::ambient::melt()))
+            // (a fixed height: the page growing taller never zooms the picture)
+            .child(div().absolute().top_0().left_0().w_full().h(art_h).children(match (&op, &tframe) {
+                // still flying in from the card
+                (Some(o), _) if o.t < crate::ui::zoom::DUR => {
+                    let k = o.k;
+                    let lerp = |a: gpui::Pixels, b: gpui::Pixels| a + (b - a) * k;
+                    let big_a = ((k - 0.15) / 0.55).clamp(0., 1.);
+                    vec![div()
+                        .absolute()
+                        .left(lerp(o.from.origin.x, px(0.)))
+                        .top(lerp(o.from.origin.y, px(0.)))
+                        .w(lerp(o.from.size.width, vw))
+                        .h(lerp(o.from.size.height, art_h))
+                        .rounded(px(o.radius * (1. - k)))
+                        .overflow_hidden()
+                        .children(o.small.clone().map(|u| img(u).absolute().size_full().object_fit(ObjectFit::Cover).opacity(1. - big_a)))
+                        .children(o.big.clone().or(art.clone()).map(|u| img(u).absolute().size_full().object_fit(ObjectFit::Cover).opacity(big_a)))
+                        .into_any_element()]
+                }
+                (_, Some((p, a))) => crate::ui::video::layers(art.clone(), p, *a, 0.),
+                _ => art.clone().map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).into_any_element()).into_iter().collect(),
+            }))
+            // the shade and the melt come in with the picture, and then simply stay
+            .child(div().absolute().top_0().left_0().w_full().h(art_h).opacity((1. - th) * grow).bg(linear_gradient(90., linear_color_stop(theme::black(0.85), 0.), linear_color_stop(theme::black(0.0), 0.7))))
+            .child(div().absolute().left_0().top(art_h - vh * 0.5).w_full().h(vh * 0.5).opacity((1. - th * 0.85) * grow).child(crate::ui::ambient::melt()))
             // watching the trailer: ^ brings the page back
             .when(th_on, |d| {
                 let o = towner.clone();
@@ -609,7 +706,7 @@ impl Render for Detail {
                 // block makes the billboard taller rather than climbing up into it
                 div()
                     .relative()
-                    .opacity((1. - th) * ca)
+                    .opacity(1. - th)
                     .ml(px(g))
                     .pt(vh * 0.4)
                     .pb(px(22.))
@@ -622,6 +719,9 @@ impl Render for Detail {
                         let n2 = cname.clone();
                         div()
                             .id("d-studio")
+                            .relative()
+                            .top(px(rz[1].1 * 2.6))
+                            .opacity(rz[1].0)
                             .flex()
                             .h(px(34.))
                             .items_center()
@@ -634,27 +734,38 @@ impl Render for Detail {
                                 _ => div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::white(0.85)).child(cname.to_uppercase()).into_any_element(),
                             })
                     }))
-                    .child(match logo {
-                        Some(u) => img(u)
-                            .h(px(160.))
-                            .max_w(px(480.))
-                            .object_fit(ObjectFit::Contain)
-                            .with_fallback(move || big_name(&name))
-                            .into_any_element(),
-                        None => big_name(&m.name),
-                    })
-                    .child(div().flex().gap(px(10.)).text_size(px(16.)).font_weight(FontWeight::MEDIUM).children(facts.into_iter().enumerate().flat_map(|(i, f)| {
+                    .child(
+                        div()
+                            .relative()
+                            .flex()
+                            .opacity(if flying_logo { 0. } else if op.is_some() { rz[0].0 } else { 1. })
+                            .child(crate::ui::zoom::track_target())
+                            .child(match logo.clone() {
+                                Some(u) => img(u)
+                                    .h(px(160.))
+                                    .max_w(px(480.))
+                                    .object_fit(ObjectFit::Contain)
+                                    .with_fallback(move || big_name(&name))
+                                    .into_any_element(),
+                                None => big_name(&m.name),
+                            }),
+                    )
+                    .child(div().relative().top(px(rz[2].1)).opacity(rz[2].0).flex().gap(px(10.)).text_size(px(16.)).font_weight(FontWeight::MEDIUM).children(facts.into_iter().enumerate().flat_map(|(i, f)| {
                         let dot = (i > 0).then(|| div().text_color(theme::label3()).child("·").into_any_element());
                         dot.into_iter().chain(std::iter::once(div().child(f).into_any_element()))
                     })))
                     .child(
                         div()
+                            .relative()
+                            .top(px(rz[3].1))
+                            .opacity(rz[3].0)
                             .flex()
                             .items_start()
-                            .gap(px(18.))
+                            .gap(px(8.))
                             .child(
                                 div()
                                     .id("d-play")
+                                    .mr(px(8.))
                                     .flex()
                                     .items_center()
                                     .gap(px(8.))
@@ -678,6 +789,45 @@ impl Render for Detail {
                                     .child(plabel)
                                     .children((!psub.is_empty()).then(|| div().text_size(px(15.)).font_weight(FontWeight::MEDIUM).opacity(0.6).child(psub))),
                             )
+                            .child(act("d-seen", icon(if all_seen { "checkCircle" } else { "eye" }, 22.), if all_seen { "Watched" } else { "Mark watched" }).on_click(
+                                cx.listener(move |d, _, _, cx| {
+                                    let Some(f) = d.full.clone() else { return };
+                                    // a show: every released episode at once, on or off
+                                    let on = !all_seen;
+                                    let today = chrono_now();
+                                    let all: Option<Vec<String>> = (f["type"] == "series").then(|| {
+                                        playback::ordered(&f)
+                                            .iter()
+                                            .filter(|v| v["season"].as_i64().unwrap_or(0) > 0 && released(v, &today))
+                                            .filter_map(|v| v["id"].as_str().map(|s| s.to_string()))
+                                            .collect()
+                                    });
+                                    // show it straight away; the library's answer follows
+                                    if let Some(i) = d.item.as_mut() {
+                                        i["state"]["flaggedWatched"] = json!(if on { 1 } else { 0 });
+                                        i["state"]["timesWatched"] = json!(if on { 1 } else { 0 });
+                                        if let Some(a) = &all {
+                                            i["state"]["watchedIds"] = json!(if on { a.clone() } else { vec![] });
+                                        }
+                                    }
+                                    cx.notify();
+                                    cx.spawn(async move |this, cx| {
+                                        let r = api::call::<Value>("library_set_watched", json!({ "meta": f, "videoId": Value::Null, "watched": on, "allVideos": all })).await;
+                                        let _ = this.update(cx, |d, cx| {
+                                            match r {
+                                                Ok(item) if !item.is_null() => {
+                                                    d.item = Some(item);
+                                                    cx.notify();
+                                                }
+                                                _ => d.refresh_item(cx),
+                                            }
+                                            Nav::toast(if on { "marked watched".into() } else { "marked unwatched".into() }, cx);
+                                        });
+                                        crate::views::detail::library_changed();
+                                    })
+                                    .detach();
+                                }),
+                            ))
                             .child(act("d-list", icon(if owned { "check" } else { "plus" }, 22.), "My List").on_click({
                                 // My List, your couch lists, or a new one
                                 let m = m.clone();
@@ -722,10 +872,6 @@ impl Render for Detail {
                                     cx.notify();
                                 })))
                             })
-                            .child(act("d-party", icon("couch", 22.), "Watch party").on_click({
-                                let m = m.clone();
-                                move |_, _, cx| Nav::plan_party(&m, cx)
-                            }))
                             .child(act("d-share", icon("share", 22.), "Share").on_click({
                                 let m = m.clone();
                                 move |_, _, cx| {
@@ -734,53 +880,18 @@ impl Render for Detail {
                                     Nav::toast("link copied. paste it anywhere".into(), cx);
                                 }
                             }))
-                            .child(act("d-seen", icon(if all_seen { "checkCircle" } else { "eye" }, 22.), if all_seen { "Watched" } else { "Mark watched" }).on_click(
-                                cx.listener(move |d, _, _, cx| {
-                                    let Some(f) = d.full.clone() else { return };
-                                    // a show: every released episode at once, on or off
-                                    let on = !all_seen;
-                                    let today = chrono_now();
-                                    let all: Option<Vec<String>> = (f["type"] == "series").then(|| {
-                                        playback::ordered(&f)
-                                            .iter()
-                                            .filter(|v| v["season"].as_i64().unwrap_or(0) > 0 && released(v, &today))
-                                            .filter_map(|v| v["id"].as_str().map(|s| s.to_string()))
-                                            .collect()
-                                    });
-                                    // show it straight away; the library's answer follows
-                                    if let Some(i) = d.item.as_mut() {
-                                        i["state"]["flaggedWatched"] = json!(if on { 1 } else { 0 });
-                                        i["state"]["timesWatched"] = json!(if on { 1 } else { 0 });
-                                        if let Some(a) = &all {
-                                            i["state"]["watchedIds"] = json!(if on { a.clone() } else { vec![] });
-                                        }
-                                    }
-                                    cx.notify();
-                                    cx.spawn(async move |this, cx| {
-                                        let r = api::call::<Value>("library_set_watched", json!({ "meta": f, "videoId": Value::Null, "watched": on, "allVideos": all })).await;
-                                        let _ = this.update(cx, |d, cx| {
-                                            match r {
-                                                Ok(item) if !item.is_null() => {
-                                                    d.item = Some(item);
-                                                    cx.notify();
-                                                }
-                                                _ => d.refresh_item(cx),
-                                            }
-                                            Nav::toast(if on { "marked watched".into() } else { "marked unwatched".into() }, cx);
-                                        });
-                                        crate::views::detail::library_changed();
-                                    })
-                                    .detach();
-                                }),
-                            )),
+                            .child(act("d-party", icon("couch", 22.), "Watch party").on_click({
+                                let m = m.clone();
+                                move |_, _, cx| Nav::plan_party(&m, cx)
+                            }))
                     )
-                    .children(ex["tagline"].as_str().map(|t| div().text_size(px(17.)).italic().text_color(theme::label2()).child(t.to_string())))
+                    .children(ex["tagline"].as_str().map(|t| div().relative().top(px(rz[4].1)).opacity(rz[4].0).text_size(px(17.)).italic().text_color(theme::label2()).child(t.to_string())))
                     .children(m.description.clone().or(ex["overview"].as_str().map(|s| s.to_string())).map(|d| {
-                        div().max_w(px(600.)).text_size(px(17.)).line_height(px(25.)).line_clamp(4).text_ellipsis().text_color(theme::white(0.88)).child(d)
+                        div().relative().top(px(rz[5].1)).opacity(rz[5].0).max_w(px(600.)).text_size(px(17.)).line_height(px(25.)).line_clamp(4).text_ellipsis().text_color(theme::white(0.88)).child(d)
                     }))
-                    // the mood (TMDB keywords), as quiet chips
+                    // the mood (TMDB keywords), as quiet chips (here only in a narrow window)
                     .children({
-                        let kw: Vec<String> = ex["keywords"].as_array().into_iter().flatten().filter_map(|k| k.as_str().map(String::from).or(k["name"].as_str().map(String::from))).take(8).collect();
+                        let kw: Vec<String> = if mood_right { vec![] } else { kw.clone() };
                         (!kw.is_empty()).then(|| {
                             div().flex().flex_wrap().gap(px(6.)).max_w(px(620.)).children(kw.into_iter().map(|k| {
                                 div().px(px(10.)).py(px(3.)).rounded_full().bg(theme::white(0.08)).text_size(px(13.)).text_color(theme::label2()).child(k)
@@ -791,6 +902,9 @@ impl Render for Detail {
                         let has_mine = self.reviews.iter().any(|r| r["who"].as_str() == Some(self.me_id().as_str()) && r["text"].as_str().map_or(false, |t| !t.is_empty()));
                         d.child(
                             div()
+                                .relative()
+                                .top(px(rz[6].1))
+                                .opacity(rz[6].0)
                                 .flex()
                                 .items_center()
                                 .gap(px(16.))
@@ -847,7 +961,26 @@ impl Render for Detail {
                             )
                         })
                     }),
-            );
+            )
+            .when(mood_right && !kw.is_empty(), |d| {
+                d.child(
+                    div()
+                        .absolute()
+                        .right(px(g))
+                        .bottom(px(30. - rz[5].1))
+                        .w(px(340.))
+                        .opacity((1. - th) * rz[5].0)
+                        .flex()
+                        .flex_col()
+                        .items_end()
+                        .gap(px(10.))
+                        .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child("the mood"))
+                        .child(div().flex().flex_wrap().justify_end().gap(px(6.)).children(kw.iter().map(|k| {
+                            div().px(px(10.)).py(px(3.)).rounded_full().bg(theme::white(0.08)).text_size(px(13.)).text_color(theme::label2()).child(k.clone())
+                        }))),
+                )
+            })
+            .children(fly);
 
         let page = div().id("detail").size_full().overflow_y_scroll().track_scroll(&self.scroll)
             .child(crate::ui::smooth::wheel(&self.scroll, "detail")).child(hero);
@@ -1096,7 +1229,23 @@ impl Render for Detail {
 
         // -------------------------------------------------------- more like it
         if let Some(recs) = ex["recommendations"].as_array().filter(|c| !c.is_empty()) {
-            let recs: Vec<Meta> = recs.iter().filter_map(|r| serde_json::from_value(r.clone()).ok()).collect();
+            let recs: Vec<Meta> = self.recs.clone().unwrap_or_else(|| recs.iter().filter_map(|r| serde_json::from_value(r.clone()).ok()).collect());
+            // the one previewing under the pointer
+            let owner = vid.read(cx).owner.clone();
+            let clip = if owner.starts_with("card:") {
+                let o = owner.clone();
+                vid.update(cx, |x, _| {
+                    let f = x.frame(&o, window)?;
+                    let t = x.since.map_or(0., |t| t.elapsed().as_secs_f32());
+                    Some((f, (t / 0.5).min(1.), t))
+                })
+            } else {
+                None
+            };
+            if clip.as_ref().map_or(false, |c| c.2 < 3.) {
+                window.request_animation_frame();
+            }
+            let cowner = owner.trim_start_matches("card:").to_string();
             rest = rest.child(
                 div()
                     .flex()
@@ -1106,7 +1255,8 @@ impl Render for Detail {
                     .child(div().px(px(g)).text_size(px(24.)).font_weight(FontWeight::BLACK).child("more like this"))
                     .child(crate::ui::rows::scroller("recs", div().id("recs").overflow_x_scroll().flex().gap(px(10.)).px(px(g)).children(recs.into_iter().enumerate().map(|(i, r)| {
                         let rr = r.clone();
-                        card::card(SharedString::from(format!("rec-{i}")), &r, move |_, _, cx| open_rec(&rr, cx))
+                        let c = if r.id == cowner { clip.clone() } else { None };
+                        card::card_preview(SharedString::from(format!("rec-{i}")), &r, c, move |_, _, cx| open_rec(&rr, cx))
                     })))),
             );
         }

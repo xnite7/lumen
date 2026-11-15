@@ -510,7 +510,8 @@ impl Render for Home {
                                 let (p, sub) = r.extra.get(i).cloned().unwrap_or((None, None));
                                 if r.key == "cw" {
                                     // straight back in where you left off
-                                    card::card_with(SharedString::from(format!("c-{ri}-{i}")), m, p, sub, None, move |_, _, cx| Nav::play(&mm, cx))
+                                    let clip = if m.id == card_owner { card_clip.clone() } else { None };
+                                    card::card_with(SharedString::from(format!("c-{ri}-{i}")), m, p, sub, Some(clip), move |_, _, cx| Nav::play(&mm, cx))
                                 } else {
                                     let clip = if m.id == card_owner { card_clip.clone() } else { None };
                                     card::card_preview(SharedString::from(format!("c-{ri}-{i}")), m, clip, move |_, _, cx| Nav::detail(&mm, cx))

@@ -44,6 +44,12 @@ pub fn glide_to(key: &'static str, y: f32) {
     TARGET.with(|m| m.borrow_mut().insert(key, y.max(0.)));
 }
 
+/// Forget any glide in progress (a page opening fresh at its top).
+pub fn reset(key: &'static str) {
+    TARGET.with(|m| m.borrow_mut().remove(key));
+    LAST.with(|l| l.borrow_mut().remove(key));
+}
+
 pub fn set_overlay(on: bool) {
     OVERLAY.with(|o| o.set(on));
 }
