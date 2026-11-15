@@ -103,7 +103,11 @@ pub fn init(cx: &mut App) {
                     let pos = s.pos;
                     if let Some((kind, end)) = p.segment_at(pos) {
                         let set = couch::state::get().core.settings();
-                        let auto = (kind == "intro" && set.playback.auto_skip_intro) || (kind == "recap" && set.playback.auto_skip_recap);
+                        // intros: never in films, never the first episode of a season
+                        // (you hear it once), every episode after that to the season's end
+                        let ep = p.video_id.rsplit(':').next().and_then(|e| e.parse::<i64>().ok());
+                        let later_ep = p.meta.as_ref().map_or(false, |m| m.kind == "series") && p.video_id.split(':').count() >= 3 && ep.map_or(false, |e| e >= 2);
+                        let auto = (kind == "intro" && later_ep) || (kind == "recap" && set.playback.auto_skip_recap);
                         let key = format!("{kind}{}", end as i64);
                         if auto && !p.skipped.contains(&key) {
                             p.skipped.push(key);

@@ -50,26 +50,56 @@ fn bring_to_front() {
 /// the intro's frames (and how long each shows), decoded off the main thread at launch
 static INTRO: std::sync::OnceLock<Vec<(std::sync::Arc<gpui::RenderImage>, f32)>> = std::sync::OnceLock::new();
 
+/// the loading couch (the old app's wobble), for the player
+static WOBBLE: std::sync::OnceLock<Vec<(std::sync::Arc<gpui::RenderImage>, f32)>> = std::sync::OnceLock::new();
+
+fn frames_of(path: &str) -> Vec<(std::sync::Arc<gpui::RenderImage>, f32)> {
+    use image::AnimationDecoder;
+    let Some(b) = assets::bytes(path) else { return vec![] };
+    let Ok(mut d) = image::codecs::webp::WebPDecoder::new(std::io::Cursor::new(b)) else { return vec![] };
+    let _ = d.set_background_color(image::Rgba([0, 0, 0, 0]));
+    let mut out = vec![];
+    for f in d.into_frames().flatten() {
+        let (n, dn) = f.delay().numer_denom_ms();
+        let secs = (n as f32 / dn.max(1) as f32 / 1000.).max(0.016);
+        let mut f = f;
+        for px in f.buffer_mut().chunks_exact_mut(4) {
+            px.swap(0, 2);
+        }
+        out.push((std::sync::Arc::new(gpui::RenderImage::new(vec![f])), secs));
+    }
+    out
+}
+
 fn decode_intro() {
     std::thread::spawn(|| {
-        use image::AnimationDecoder;
-        let Some(b) = assets::bytes("brand/intro.webp") else { return };
-        let Ok(mut d) = image::codecs::webp::WebPDecoder::new(std::io::Cursor::new(b)) else { return };
-        let _ = d.set_background_color(image::Rgba([0, 0, 0, 0]));
-        let mut out = vec![];
-        for f in d.into_frames().flatten() {
-            let (n, dn) = f.delay().numer_denom_ms();
-            let secs = (n as f32 / dn.max(1) as f32 / 1000.).max(0.016);
-            let mut f = f;
-            for px in f.buffer_mut().chunks_exact_mut(4) {
-                px.swap(0, 2);
-            }
-            out.push((std::sync::Arc::new(gpui::RenderImage::new(vec![f])), secs));
-        }
+        let out = frames_of("brand/intro.webp");
         if !out.is_empty() {
             let _ = INTRO.set(out);
         }
+        let w = frames_of("brand/couch-wobble.webp");
+        if !w.is_empty() {
+            let _ = WOBBLE.set(w);
+        }
     });
+}
+
+/// The loading couch, on a loop: the frame for this moment (None while it decodes).
+pub fn couch_loading_frame() -> Option<std::sync::Arc<gpui::RenderImage>> {
+    static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let fr = WOBBLE.get()?;
+    let total: f32 = fr.iter().map(|x| x.1).sum();
+    if total <= 0. {
+        return None;
+    }
+    let t = T0.get_or_init(std::time::Instant::now).elapsed().as_secs_f32() % total;
+    let mut acc = 0.;
+    fr.iter().find(|x| {
+        acc += x.1;
+        acc > t
+    })
+    .or(fr.last())
+    .map(|x| x.0.clone())
 }
 
 /// The intro's sound (a soft turn, a landing, a whoosh into the app). Off with "intro sound" in settings.
@@ -84,25 +114,6 @@ fn play_intro_sound() {
             let _ = PlaySoundW(windows::core::PCWSTR(b.as_ptr() as *const u16), None, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
         }
     }
-}
-
-/// The couch turning, on a loop (the intro's frames): the frame for this moment, or None while they decode.
-pub fn couch_spin_frame() -> Option<std::sync::Arc<gpui::RenderImage>> {
-    static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    let fr = INTRO.get()?;
-    let total: f32 = fr.iter().map(|x| x.1).sum();
-    if total <= 0. {
-        return None;
-    }
-    // a short rest on the last frame each turn
-    let t = (T0.get_or_init(std::time::Instant::now).elapsed().as_secs_f32()) % (total + 0.5);
-    let mut acc = 0.;
-    fr.iter().find(|x| {
-        acc += x.1;
-        acc > t
-    })
-    .or(fr.last())
-    .map(|x| x.0.clone())
 }
 
 use api::Meta;

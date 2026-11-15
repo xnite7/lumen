@@ -1098,7 +1098,7 @@ impl Render for PlayerView {
                         // the couch, turning
                         .when(p.error.is_empty(), |d| {
                             window.request_animation_frame();
-                            d.child(div().w(px(150.)).h(px(135.)).children(crate::couch_spin_frame().map(|f| img(gpui::ImageSource::Render(f)).size_full().object_fit(ObjectFit::Contain))))
+                            d.child(div().w(px(150.)).h(px(135.)).children(crate::couch_loading_frame().map(|f| img(gpui::ImageSource::Render(f)).size_full().object_fit(ObjectFit::Contain))))
                         })
                         .child(
                             div()

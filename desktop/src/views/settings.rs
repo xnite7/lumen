@@ -46,7 +46,6 @@ fn rows(tab: Tab) -> Vec<R> {
         Tab::Playing => vec![
             Switch("couch picks the stream", "the best one your connection can keep up with", "streams.autoplayBest"),
             Switch("next episode by itself", "", "playback.autoplayNext"),
-            Switch("skip intros", "", "playback.autoSkipIntro"),
             Switch("skip recaps", "", "playback.autoSkipRecap"),
             Switch("skip credits", "", "playback.autoSkipCredits"),
             Switch("hide cam recordings", "never pick a cinema camera rip", "streams.hideCam"),
