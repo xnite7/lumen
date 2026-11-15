@@ -62,7 +62,11 @@ pub fn card_with(
         (from * (1. - x * x * (3. - 2. * x)), x < 1. && from > 0.)
     };
     let s = 1. + 0.07 * grow;
-    let (gw, gh) = (W * s, H * s);
+    // on whole screen pixels, growing two at a time (one each side): edges that
+    // land between pixels got rounded differently every frame and shivered
+    let sf = crate::ui::scale().max(1.);
+    let even = |v: f32, base: f32| base + (((v - base) * sf / 2.).round() * 2.) / sf;
+    let (gw, gh) = (even(W * s, W), even(H * s, H));
     // grown, it keeps clear of the window's edges (and comes fully into view
     // when it was half off the side)
     let dx = if grow > 0. {
@@ -72,7 +76,7 @@ pub fn card_with(
             let left = sx - (gw - W) / 2.;
             let right = left + gw;
             let want = if left < margin { margin - left } else if right > vw - margin { vw - margin - right } else { 0. };
-            want * grow
+            ((want * grow) * sf).round() / sf
         })
     } else {
         0.
