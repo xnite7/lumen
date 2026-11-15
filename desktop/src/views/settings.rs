@@ -354,10 +354,9 @@ impl Settings {
             .h(px(250.))
             .rounded(px(18.))
             .overflow_hidden()
-            // a bright sky over a dark street: easy to see what reads on both
-            .bg(gpui::linear_gradient(180., gpui::linear_color_stop(gpui::rgb(0xe9b98a), 0.), gpui::linear_color_stop(gpui::rgb(0x3a2a3c), 0.62)))
-            .child(div().absolute().left_0().bottom_0().w_full().h(px(110.)).bg(gpui::linear_gradient(180., gpui::linear_color_stop(gpui::rgba(0x1b141c00), 0.), gpui::linear_color_stop(gpui::rgb(0x120d13), 1.))))
-            .child(div().absolute().top(px(28.)).right(px(60.)).size(px(70.)).rounded_full().bg(gpui::rgb(0xfff1d2)))
+            // a bright, busy picture: what reads on this reads on anything
+            .bg(gpui::rgb(0x2a1a0c))
+            .child(gpui::img("brand/sub-preview.jpg").absolute().top_0().left_0().size_full().object_fit(gpui::ObjectFit::Cover))
             .child(
                 div()
                     .absolute()
