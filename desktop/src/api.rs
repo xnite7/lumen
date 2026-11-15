@@ -46,6 +46,9 @@ pub struct Meta {
     pub imdb_rating: Option<Value>,
     pub genres: Option<Vec<String>>,
     pub runtime: Option<Value>,
+    /// the title's own language ("ja"), when the source says
+    #[serde(alias = "original_language", alias = "originalLanguage")]
+    pub lang: Option<String>,
 }
 
 impl Meta {

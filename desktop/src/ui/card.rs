@@ -138,6 +138,10 @@ pub fn card_with(
             Some((p, a, _)) => crate::ui::video::layers(art.clone(), p, *a, 12.),
             None => art.clone().map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).into_any_element()).into_iter().collect(),
         })
+        // not in English: its country's flag, top right
+        .children(crate::seen::flag_for(&m.id, m.lang.as_deref()).filter(|_| !watched).map(|f| {
+            div().absolute().top(px(10.)).right(px(10.)).w(px(24.)).h(px(17.)).rounded(px(4.)).overflow_hidden().border_1().border_color(theme::black(0.3)).child(img(f).size_full().object_fit(ObjectFit::Cover))
+        }))
         .when(watched, |d| {
             d.child(div().absolute().top_0().left_0().size_full().bg(theme::black(0.5))).child(
                 div()
@@ -246,6 +250,7 @@ fn title_text(name: &str) -> impl IntoElement {
 pub fn poster(id: SharedString, m: &Meta, w: f32, on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> AnyElement {
     let art = m.poster.clone().map(|u| crate::net::fit(&sized(&u, "w342"), w));
     let name = m.name.clone();
+    let flag = crate::seen::flag_for(&m.id, m.lang.as_deref());
     let menu_meta = m.clone();
     let pre = m.clone();
     let zkey = id.to_string();
@@ -280,5 +285,6 @@ pub fn poster(id: SharedString, m: &Meta, w: f32, on_click: impl Fn(&gpui::Click
         })
         .child(div().absolute().top_0().left_0().size_full().p(px(10.)).flex().items_end().child(title_text(&name)))
         .children(art.map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover)))
+        .children(flag.map(|f| div().absolute().top(px(8.)).right(px(8.)).w(px(22.)).h(px(15.)).rounded(px(3.)).overflow_hidden().child(img(f).size_full().object_fit(ObjectFit::Cover))))
         .into_any_element()
 }

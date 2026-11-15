@@ -221,6 +221,9 @@ impl Detail {
     }
 
     fn fill(&mut self, l: Loaded) {
+        if let Some(lang) = l.extra.as_ref().and_then(|e| e["originalLanguage"].as_str()) {
+            crate::seen::set_lang(&self.base.id, lang);
+        }
         self.full = l.full;
         self.extra = l.extra;
         self.item = l.item.filter(|v| !v.is_null());

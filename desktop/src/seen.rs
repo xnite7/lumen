@@ -35,3 +35,60 @@ pub fn status(id: &str) -> (bool, bool) {
         (watched, listed)
     })
 }
+
+thread_local! {
+    /// titles' own languages, learned as their pages load
+    static LANG: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
+pub fn set_lang(id: &str, lang: &str) {
+    LANG.with(|l| {
+        l.borrow_mut().insert(base(id).to_string(), lang.to_string());
+    });
+}
+
+/// a small flag for a title that isn't in English (from its language)
+pub fn flag_for(id: &str, lang: Option<&str>) -> Option<String> {
+    let l = lang.map(String::from).or_else(|| LANG.with(|m| m.borrow().get(base(id)).cloned()))?;
+    let cc = match l.as_str() {
+        "en" | "" => return None,
+        "ja" => "jp",
+        "ko" => "kr",
+        "zh" | "cn" => "cn",
+        "hi" | "ta" | "te" | "ml" | "kn" | "bn" | "mr" | "pa" | "gu" => "in",
+        "es" => "es",
+        "fr" => "fr",
+        "de" => "de",
+        "it" => "it",
+        "pt" => "br",
+        "ru" => "ru",
+        "tr" => "tr",
+        "ar" => "ae",
+        "sv" => "se",
+        "da" => "dk",
+        "no" | "nb" | "nn" => "no",
+        "fi" => "fi",
+        "pl" => "pl",
+        "nl" => "nl",
+        "th" => "th",
+        "id" => "id",
+        "ms" => "my",
+        "tl" => "ph",
+        "vi" => "vn",
+        "fa" => "ir",
+        "he" => "il",
+        "el" => "gr",
+        "cs" => "cz",
+        "hu" => "hu",
+        "ro" => "ro",
+        "uk" => "ua",
+        "is" => "is",
+        "et" => "ee",
+        "sr" => "rs",
+        "hr" => "hr",
+        "ur" => "pk",
+        "cy" => "gb",
+        _ => return None,
+    };
+    Some(format!("https://flagcdn.com/w40/{cc}.png"))
+}
