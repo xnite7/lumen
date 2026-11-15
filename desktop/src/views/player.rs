@@ -613,7 +613,7 @@ fn bar_btn(id: &'static str, child: impl IntoElement, on: bool) -> gpui::Statefu
                     if x < 1. {
                         window.request_animation_frame();
                     }
-                    let e = 1. - (1. - x).powi(3);
+                    let e = crate::motion::out3(x);
                     let a = if over { e } else { 1. - e };
                     if a > 0.001 {
                         let r = b.size.width / 2.;
@@ -1451,7 +1451,7 @@ impl Render for PlayerView {
             1. - (1. - x).powi(5)
         } else {
             let x = (ct / 0.6).min(1.);
-            1. - if x < 0.5 { 4. * x * x * x } else { 1. - (-2. * x + 2.).powi(3) / 2. }
+            1. - crate::motion::in_out3(x)
         };
         if ct < 0.62 {
             window.request_animation_frame();
@@ -1469,7 +1469,7 @@ impl Render for PlayerView {
         let ein = |d: f32, dur: f32| 1. - (1. - ((pt - d) / dur).clamp(0., 1.)).powi(5);
         let eout = |d: f32, dur: f32| {
             let x = ((pt - d) / dur).clamp(0., 1.);
-            1. - if x < 0.5 { 4. * x * x * x } else { 1. - (-2. * x + 2.).powi(3) / 2. }
+            1. - crate::motion::in_out3(x)
         };
         // (shade, S:E, title, logo, the top logo stepping away)
         let (pv_shade, pv_label, pv_title, pv_logo, pv_top) = if self.pause_on {
@@ -1624,7 +1624,7 @@ impl Render for PlayerView {
             if x < 1. {
                 window.request_animation_frame();
             }
-            1. - (1. - x).powi(3)
+            crate::motion::out3(x)
         });
         let next_card = self.next_hover.then(|| self.pb.read(cx).next_video()).flatten().map(|n| {
             let imdb = crate::api::imdb_episode(n["id"].as_str().unwrap_or(""));

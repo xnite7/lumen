@@ -170,7 +170,7 @@ pub fn rise(window: &mut Window, i: usize) -> (f32, f32) {
     }
     window.request_animation_frame();
     let x = ((t - DUR * 0.7 - i as f32 * 0.06) / 0.38).clamp(0., 1.);
-    let e = 1. - (1. - x).powi(3);
+    let e = crate::motion::out3(x);
     (e, (1. - e) * 18.)
 }
 
