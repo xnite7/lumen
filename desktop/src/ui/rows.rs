@@ -23,12 +23,14 @@ thread_local! {
     static TARGET: RefCell<HashMap<String, (f32, Instant)>> = RefCell::new(HashMap::new());
     static DRAG: RefCell<Option<Drag>> = const { RefCell::new(None) };
     /// the press that just ended was a drag: it isn't a click on a card
-    static DRAGGED: Cell<bool> = const { Cell::new(false) };
+    /// (when a drag last ended: only the click that very press makes is ignored;
+    /// a stale flag used to swallow the next click on any page without rows)
+    static DRAGGED: Cell<Option<Instant>> = const { Cell::new(None) };
 }
 
 /// Was the last press a drag? (cards ignore the click then)
 pub fn dragged() -> bool {
-    DRAGGED.with(|d| d.get())
+    DRAGGED.with(|d| d.get()).map_or(false, |t| t.elapsed().as_millis() < 250)
 }
 
 fn handle(key: &str) -> ScrollHandle {
@@ -92,7 +94,7 @@ pub fn scroller(key: impl ToString, inner: Stateful<Div>) -> AnyElement {
             inner
                 .track_scroll(&h)
                 .on_mouse_down(MouseButton::Left, move |e: &MouseDownEvent, _, _| {
-                    DRAGGED.with(|d| d.set(false));
+                    DRAGGED.with(|d| d.set(None));
                     TARGET.with(|t| t.borrow_mut().remove(&k1));
                     let x = f32::from(e.position.x);
                     DRAG.with(|d| *d.borrow_mut() = Some(Drag { key: k1.clone(), start_x: x, start_off: pos(&h1).0, last_x: x, last_t: Instant::now(), vel: 0., moved: false }));
@@ -163,7 +165,7 @@ pub fn scroller(key: impl ToString, inner: Stateful<Div>) -> AnyElement {
                             if d.as_ref().map_or(false, |g| g.key == key) {
                                 let g = d.take().unwrap();
                                 if g.moved {
-                                    DRAGGED.with(|x| x.set(true));
+                                    DRAGGED.with(|x| x.set(Some(Instant::now())));
                                     let cur = -g.start_off + 0.; // unused
                                     let _ = cur;
                                     let fresh = g.last_t.elapsed().as_secs_f32() < 0.08;

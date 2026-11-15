@@ -154,6 +154,9 @@ impl Home {
             // continue watching first (Home only)
             if scope != "all" {
             } else if let Ok(items) = api::call::<Vec<Value>>("continue_watching", json!({})).await {
+                // plus the next episode of shows you finished an episode of, in
+                // the order you watched them
+                let items = with_next_up(items).await;
                 let mut metas: Vec<Meta> = vec![];
                 let mut extra = vec![];
                 for v in items {
@@ -181,6 +184,7 @@ impl Home {
                         m if m >= 60 => format!("{}h {}m left", m / 60, m % 60),
                         m => format!("{m}m left"),
                     });
+                    let left = if v["_next"].as_bool() == Some(true) { Some("up next".to_string()) } else { left };
                     let sub = (!ep.is_empty() || left.is_some()).then(|| format!("{ep}\t{}", left.unwrap_or_default()));
                     metas.push(m);
                     extra.push((p, sub));
@@ -997,4 +1001,55 @@ async fn because_you_watched() -> Vec<Row> {
         }
     }
     rows
+}
+
+
+/// Continue watching, with "up next" added: for each show whose last episode
+/// you finished (recently), the next one that's out and unwatched, placed by
+/// when you watched. (Shows a half-watched episode is already in the row for.)
+async fn with_next_up(items: Vec<Value>) -> Vec<Value> {
+    let have: std::collections::HashSet<String> = items.iter().filter_map(|i| i["_id"].as_str().or(i["id"].as_str()).map(|x| x.split(':').next().unwrap_or(x).to_string())).collect();
+    let lib = api::call::<Vec<Value>>("library_list", json!({})).await.unwrap_or_default();
+    let th = couch::state::get().core.settings().playback.watched_threshold as f64 / 100.;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+    let cands: Vec<Value> = lib
+        .into_iter()
+        .filter(|i| i["type"] == "series" && i["removed"].as_bool() != Some(true) && i["state"]["dismissed"].as_bool() != Some(true))
+        .filter(|i| i["_id"].as_str().map_or(false, |id| !have.contains(id)))
+        .filter(|i| i["state"]["video_id"].as_str().map_or(false, |v| v.split(':').count() == 3))
+        .filter(|i| {
+            // finished the episode it was on (back at 0, or past the watched mark)
+            let (d, t) = (i["state"]["duration"].as_f64().unwrap_or(0.), i["state"]["timeOffset"].as_f64().unwrap_or(0.));
+            t <= 0. || (d > 0. && t >= d * th)
+        })
+        // watched in the last two months
+        .filter(|i| now - couch::library::parse_iso(i["state"]["lastWatched"].as_str().unwrap_or("")) < 60 * 86_400_000)
+        .collect();
+    let today = couch::integrations::tmdb::today_str();
+    let found = futures::future::join_all(cands.into_iter().take(12).map(|i| {
+        let today = today.clone();
+        async move {
+            let id = i["_id"].as_str()?.to_string();
+            let full = api::call::<Value>("meta_get", json!({ "kind": "series", "id": id, "hint": Value::Null })).await.ok()?;
+            let eps = crate::playback::ordered(&full);
+            let cur = i["state"]["video_id"].as_str()?;
+            let at = eps.iter().position(|v| v["id"].as_str() == Some(cur))?;
+            let seen: Vec<String> = i["state"]["watchedIds"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+            let next = eps[at + 1..].iter().find(|v| {
+                v["season"].as_i64().unwrap_or(0) > 0
+                    && v["id"].as_str().map_or(false, |x| !seen.iter().any(|s| s == x))
+                    && v["released"].as_str().filter(|r| !r.is_empty()).map_or(false, |r| &r[..r.len().min(10)] <= today.as_str())
+            })?;
+            let mut e = i.clone();
+            e["state"]["video_id"] = next["id"].clone();
+            e["state"]["timeOffset"] = json!(0);
+            e["state"]["duration"] = json!(0);
+            e["_next"] = json!(true);
+            Some(e)
+        }
+    }))
+    .await;
+    let mut all: Vec<Value> = items.into_iter().chain(found.into_iter().flatten()).collect();
+    all.sort_by_key(|i| -couch::library::parse_iso(i["state"]["lastWatched"].as_str().unwrap_or("")));
+    all
 }
