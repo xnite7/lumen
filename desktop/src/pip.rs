@@ -3,6 +3,22 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static ON: AtomicBool = AtomicBool::new(false);
+/// the film's shape (width / height), for resizing the little window
+static ASPECT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// how wide the little window may get (logical px)
+const MAX_W: f32 = 960.;
+
+pub fn set_aspect(a: f32) {
+    if a.is_finite() && a > 0.3 && a < 4. {
+        ASPECT.store(a.to_bits(), Ordering::Relaxed);
+    }
+}
+pub fn aspect() -> f32 {
+    match f32::from_bits(ASPECT.load(Ordering::Relaxed)) {
+        a if a > 0.3 => a,
+        _ => 16. / 9.,
+    }
+}
 
 pub fn is_on() -> bool {
     ON.load(Ordering::Relaxed)
@@ -25,10 +41,51 @@ mod imp {
         if msg == windows::Win32::UI::WindowsAndMessaging::WM_GETMINMAXINFO && super::is_on() {
             let mi = lp.0 as *mut windows::Win32::UI::WindowsAndMessaging::MINMAXINFO;
             if !mi.is_null() {
+                let scale = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(h) } as f32 / 96.;
                 unsafe {
-                    (*mi).ptMinTrackSize.x = 200;
-                    (*mi).ptMinTrackSize.y = 112;
+                    (*mi).ptMinTrackSize.x = (260. * scale) as i32;
+                    (*mi).ptMinTrackSize.y = (146. * scale) as i32;
+                    // and never bigger than this: it stays a little picture
+                    (*mi).ptMaxTrackSize.x = (super::MAX_W * scale) as i32;
+                    (*mi).ptMaxTrackSize.y = (super::MAX_W * scale) as i32;
                 }
+            }
+        }
+        // dragging an edge: the film's shape holds (like holding Shift)
+        if msg == windows::Win32::UI::WindowsAndMessaging::WM_SIZING && super::is_on() {
+            let rc = lp.0 as *mut RECT;
+            if !rc.is_null() {
+                let a = super::aspect();
+                let scale = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(h) } as f32 / 96.;
+                unsafe {
+                    let r = &mut *rc;
+                    let (w, hh) = ((r.right - r.left) as f32, (r.bottom - r.top) as f32);
+                    // which edge moved: top/bottom drive the width, the rest drive the height
+                    const WMSZ_TOP: usize = 3;
+                    const WMSZ_BOTTOM: usize = 6;
+                    let by_height = wp.0 == WMSZ_TOP || wp.0 == WMSZ_BOTTOM;
+                    let max_w = super::MAX_W * scale;
+                    let (mut nw, mut nh) = if by_height { (hh * a, hh) } else { (w, w / a) };
+                    if nw > max_w {
+                        nw = max_w;
+                        nh = max_w / a;
+                    }
+                    let (nw, nh) = (nw.round() as i32, nh.round() as i32);
+                    // keep the corner opposite the one being dragged in place
+                    const WMSZ_LEFT: usize = 1;
+                    const WMSZ_TOPLEFT: usize = 4;
+                    const WMSZ_TOPRIGHT: usize = 5;
+                    const WMSZ_BOTTOMLEFT: usize = 7;
+                    match wp.0 {
+                        WMSZ_LEFT | WMSZ_TOPLEFT | WMSZ_BOTTOMLEFT => r.left = r.right - nw,
+                        _ => r.right = r.left + nw,
+                    }
+                    match wp.0 {
+                        WMSZ_TOP | WMSZ_TOPLEFT | WMSZ_TOPRIGHT => r.top = r.bottom - nh,
+                        _ => r.bottom = r.top + nh,
+                    }
+                }
+                return windows::Win32::Foundation::LRESULT(1);
             }
         }
         r
@@ -116,7 +173,7 @@ mod imp {
                 let wa = mi.rcWork;
                 // 480×270 logical, scaled for the screen
                 let scale = windows::Win32::UI::HiDpi::GetDpiForWindow(h) as f32 / 96.;
-                let (w, hgt) = ((480. * scale) as i32, (270. * scale) as i32);
+                let (w, hgt) = ((480. * scale) as i32, (480. / super::aspect() * scale) as i32);
                 let m = (24. * scale) as i32;
                 // it shrinks into the corner instead of jumping there
                 let _ = SetWindowPos(h, Some(HWND_TOPMOST), r.left, r.top, r.right - r.left, r.bottom - r.top, SWP_SHOWWINDOW | SWP_NOACTIVATE);

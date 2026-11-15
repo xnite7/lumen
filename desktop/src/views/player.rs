@@ -1184,6 +1184,10 @@ impl Render for PlayerView {
         let g = theme::GUTTER;
         let bar_w: Pixels = vw - px(g * 2.);
         let st = p.state.clone();
+        // the film's shape, for the picture-in-picture window's resizing
+        if st.dw > 0. && st.dh > 0. {
+            crate::pip::set_aspect((st.dw / st.dh) as f32);
+        }
         let frac = if st.duration > 0. { (st.pos / st.duration).clamp(0., 1.) as f32 } else { 0. };
         let ahead = if st.duration > 0. { ((st.pos + st.cache_ahead) / st.duration).clamp(0., 1.) as f32 } else { 0. };
         let title = p.meta.as_ref().map(|m| m.name.clone()).unwrap_or_default();
@@ -1428,7 +1432,7 @@ impl Render for PlayerView {
             let ss = couch::state::get().core.settings().subtitles.clone();
             let vh = f32::from(window.viewport_size().height);
             // above the controls while they show; otherwise where settings put them
-            let lift = if f32::from(vw) < 640. { 14. } else if shown { 160f32.max(vh * ss.bottom_offset / 100.) } else { vh * ss.bottom_offset / 100. };
+            let lift = if crate::pip::is_on() || f32::from(vw) < 640. { 14. } else if shown { 160f32.max(vh * ss.bottom_offset / 100.) } else { vh * ss.bottom_offset / 100. };
             root = root.child(div().absolute().left_0().w_full().bottom(px(lift)).flex().justify_center().child(sub_block(&p.sub, f32::from(vw), &ss)));
         }
 
@@ -1544,7 +1548,8 @@ impl Render for PlayerView {
         }
 
         // small window (picture in picture): just play/pause, ±10, a thin bar, and back to big
-        if f32::from(vw) < 640. {
+        // picture in picture (any size it's dragged to), or just a tiny window
+        if crate::pip::is_on() || f32::from(vw) < 640. {
             let paused = st.paused;
             let (pa, pb, pc) = (self.pb.clone(), self.pb.clone(), self.pb.clone());
             return root
