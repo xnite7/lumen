@@ -132,6 +132,26 @@ mod imp {
     }
 }
 
+/// Is the pointer over couch's window? (PiP shows its controls only then)
+pub fn cursor_inside() -> bool {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows::Win32::Foundation::{HWND, POINT, RECT};
+        use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetWindowRect};
+        let h = crate::mini::main_hwnd();
+        if h == 0 {
+            return true;
+        }
+        let (mut p, mut r) = (POINT::default(), RECT::default());
+        if GetCursorPos(&mut p).is_err() || GetWindowRect(HWND(h as *mut _), &mut r).is_err() {
+            return true;
+        }
+        return p.x >= r.left && p.x < r.right && p.y >= r.top && p.y < r.bottom;
+    }
+    #[allow(unreachable_code)]
+    true
+}
+
 pub fn toggle(cx: &mut gpui::App) {
     let on = !is_on();
     ON.store(on, Ordering::Relaxed);

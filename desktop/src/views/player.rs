@@ -95,6 +95,8 @@ impl PlayerView {
                 let on_bar = vh > 0. && my >= 0. && (my > vh - 130. || my < 110.);
                 let busy = v.vol_open || v.vol_pinned || v.next_hover || v.hover_x.is_some() || v.drag;
                 let show = paused || v.menu.is_some() || on_bar || busy || v.last_move.elapsed() < Duration::from_millis(3200) || v.pb.read(cx).loading;
+                // the little picture-in-picture window: controls only while the pointer is on it
+                let show = if crate::pip::is_on() { crate::pip::cursor_inside() && !v.pb.read(cx).loading } else { show };
                 if show != v.shown {
                     v.shown = show;
                     // the pointer goes away with the controls (back on the next move)

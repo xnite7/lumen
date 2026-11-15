@@ -847,13 +847,20 @@ impl Render for Detail {
                                     .hover(|s| s.opacity(0.88))
                                     .on_click({
                                         let m = m.clone();
-                                        move |_, _, cx| match &pvideo {
+                                        let again = plabel == "Rewatch";
+                                        move |_, _, cx| {
+                                            // "Rewatch" is your say-so: Simkl may log this as a rewatch (if that's on)
+                                            if again {
+                                                let _ = couch::state::get().core.db.set("simkl_rewatch_for", &m.id.split(':').next().unwrap_or("").to_string());
+                                            }
+                                            match &pvideo {
                                             Some(v) => Nav::play_episode(&m, v["id"].as_str().unwrap_or("").to_string(), cx),
                                             None => Nav::play(&m, cx),
+                                            }
                                         }
                                     })
                                     .child(icon_fill("play", 20.).text_color(gpui::rgb(0x000000)))
-                                    .child(plabel)
+                                    .child(plabel.clone())
                                     .children((!psub.is_empty()).then(|| div().text_size(px(15.)).font_weight(FontWeight::MEDIUM).opacity(0.6).child(psub))),
                             )
                             .child(act("d-seen", icon(if all_seen { "checkCircle" } else { "eye" }, 22.), if all_seen { "Watched" } else { "Mark watched" }).on_click(

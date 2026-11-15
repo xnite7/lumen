@@ -88,6 +88,7 @@ fn rows(tab: Tab) -> Vec<R> {
             Switch("mark what I watch on Simkl", "as you finish things", "integrations.simklScrobble"),
             Switch("keep my watchlist in sync", "", "integrations.simklSyncWatchlist"),
             Switch("ticks on Simkl count as watched here", "", "integrations.simklMirrorWatched"),
+            Switch("log rewatches", "Simkl Pro / VIP: pressing Rewatch on a title counts it again", "integrations.simklRewatches"),
         ],
         Tab::Network => vec![
             Switch("private DNS", "look up addresses over HTTPS (gets past blocks)", "network.doh"),

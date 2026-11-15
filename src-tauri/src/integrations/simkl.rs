@@ -443,10 +443,15 @@ pub async fn scrobble(core: &Core, action: &str, meta: &Value, video_id: &str, p
     }
     body["progress"] = json!(((progress * 100.0).clamp(0.0, 100.0) * 100.0).round() / 100.0);
     let mut path = format!("/scrobble/{action}?min_progress={}", th.clamp(50, 100));
-    if action == "stop" && paid(core) && progress * 100.0 >= th as f64 {
+    // Simkl's rules: off unless the user turned it on, only on a stop at or past
+    // 80%, and only when they asked for it ("Rewatch" on the title), never
+    // guessed from playback; never on start
+    if action == "stop" && s.simkl_rewatches && paid(core) && progress * 100.0 >= (th as f64).max(80.) {
         let imdb = video_id.split(':').next().unwrap_or(video_id);
-        if super::simkl_sync::entry(core, imdb).map_or(false, |e| e["status"] == "completed") {
+        let asked = core.db.get::<String>("simkl_rewatch_for").map_or(false, |x| x == imdb);
+        if asked && super::simkl_sync::entry(core, imdb).map_or(false, |e| e["status"] == "completed") {
             path.push_str("&allow_rewatch=yes");
+            let _ = core.db.set("simkl_rewatch_for", &String::new());
         }
     }
     post(core, &path, body).await
