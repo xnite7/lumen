@@ -752,7 +752,27 @@ impl Render for Settings {
                 Tab::Lights => body.extend(self.lights(&cur, cx)),
                 Tab::Storage => body.extend(self.storage(cx)),
                 Tab::About => body.extend(self.about(cx)),
-                t => body.push(group(self.plain(t, "", &cur, cx)).into_any_element()),
+                t => {
+                    let mut rows = self.plain(t, "", &cur, cx);
+                    if t == Tab::Video {
+                        let on = couch::state::get().core.db.get::<bool>("gpui_immersive").unwrap_or(true);
+                        rows.insert(
+                            1,
+                            line(0)
+                                .id("immersive")
+                                .cursor_pointer()
+                                .hover(|s| s.bg(theme::white(0.03)))
+                                .on_click(cx.listener(move |_, _, _, cx| {
+                                    let _ = couch::state::get().core.db.set("gpui_immersive", &!on);
+                                    cx.notify();
+                                }))
+                                .child(label("immersive light", "the film's colours glow softly in the black bars"))
+                                .child(toggle(on))
+                                .into_any_element(),
+                        );
+                    }
+                    body.push(group(rows).into_any_element())
+                }
             }
         } else {
             let mut any = false;

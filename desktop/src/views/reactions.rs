@@ -1,7 +1,8 @@
 //! Teleparty-style reactions while watching together: tap an emoji and it
 //! floats up the side of everyone's screen with your name on it.
 use crate::{api, theme, ui::emoji};
-use gpui::{div, prelude::*, px, Context, FontWeight, Window};
+use crate::ui::input::{Submitted, TextInput};
+use gpui::{div, prelude::*, px, Context, Focusable, FontWeight, Window};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -19,6 +20,11 @@ struct Fly {
 
 pub struct Reactions {
     pub open: bool,
+    /// who's on this couch right now (from the room)
+    pub people: Vec<Value>,
+    /// your own row of emojis (Settings keeps it; + adds, right-click removes)
+    mine: Vec<String>,
+    adding: Option<gpui::Entity<TextInput>>,
     flying: Vec<Fly>,
     since: u64,
     seen: HashSet<u64>,
@@ -46,9 +52,11 @@ impl Reactions {
                 };
                 if r != last_room {
                     last_room = r.clone();
-                    let _ = this.update(cx, |v, _| {
+                    let _ = this.update(cx, |v, cx| {
                         v.since = 0;
                         v.seen.clear();
+                        v.people.clear();
+                        cx.notify();
                     });
                 }
                 if let Some(r) = r {
@@ -56,7 +64,12 @@ impl Reactions {
                     let res = api::call::<Value>("crew_social", json!({ "method": "GET", "path": format!("/v1/react/{r}?since={since}"), "body": Value::Null })).await;
                     if let Ok(res) = res {
                         let list = res["reactions"].as_array().cloned().unwrap_or_default();
+                        let people = res["people"].as_array().cloned().unwrap_or_default();
                         let _ = this.update(cx, |v, cx| {
+                            if v.people != people {
+                                v.people = people;
+                                cx.notify();
+                            }
                             let mut fresh = vec![];
                             for x in &list {
                                 let n = x["n"].as_u64().unwrap_or(0);
@@ -84,11 +97,13 @@ impl Reactions {
             }
         })
         .detach();
-        Self { open: false, flying: vec![], since: 0, seen: HashSet::new(), last_busy: Instant::now() - Duration::from_secs(60), opened_at: Instant::now() }
+        let mine = couch::state::get().core.db.get::<Vec<String>>("gpui_reactions").filter(|l| !l.is_empty()).unwrap_or_else(|| EMOJI.iter().map(|e| e.to_string()).collect());
+        Self { open: false, people: vec![], mine, adding: None, flying: vec![], since: 0, seen: HashSet::new(), last_busy: Instant::now() - Duration::from_secs(60), opened_at: Instant::now() }
     }
 
     fn launch(&mut self, emoji: String, name: String, mine: bool, cx: &mut Context<Self>) {
-        let x = rand::random::<f32>() * 60.;
+        // anywhere along the bottom (not just one side)
+        let x = 0.08 + rand::random::<f32>() * 0.84;
         self.flying.push(Fly { emoji, name, x, born: Instant::now(), mine });
         if self.flying.len() > 24 {
             self.flying.remove(0);
@@ -102,9 +117,36 @@ impl Reactions {
         cx.notify();
     }
 
-    fn send(&mut self, e: &'static str, cx: &mut Context<Self>) {
+    fn save(&self) {
+        let _ = couch::state::get().core.db.set("gpui_reactions", &self.mine);
+    }
+
+    fn add(&mut self, cx: &mut Context<Self>) {
+        let input = cx.new(|cx| TextInput::new("paste an emoji (win + .)", cx));
+        cx.subscribe(&input, |v, i, _: &Submitted, cx| {
+            let t = i.read(cx).content.trim().to_string();
+            // keep the emoji characters only
+            let e: String = t.chars().filter(|c| !c.is_alphanumeric() && !c.is_whitespace() && !c.is_ascii_punctuation()).collect();
+            if !e.is_empty() && e.chars().count() <= 8 && !v.mine.contains(&e) {
+                v.mine.push(e);
+                if v.mine.len() > 16 {
+                    v.mine.remove(0);
+                }
+                v.save();
+            }
+            v.adding = None;
+            v.opened_at = Instant::now();
+            cx.notify();
+        })
+        .detach();
+        self.adding = Some(input);
+        self.opened_at = Instant::now();
+        cx.notify();
+    }
+
+    fn send(&mut self, e: String, cx: &mut Context<Self>) {
         let Some(r) = room(cx) else { return };
-        self.launch(e.to_string(), "you".into(), true, cx);
+        self.launch(e.clone(), "you".into(), true, cx);
         self.opened_at = Instant::now();
         self.last_busy = Instant::now();
         cx.spawn(async move |_, _| {
@@ -118,7 +160,7 @@ impl Render for Reactions {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.flying.retain(|f| f.born.elapsed().as_secs_f32() < LIFE);
         // the tray folds itself away after a few quiet seconds
-        if self.open && self.opened_at.elapsed() > Duration::from_secs(5) {
+        if self.open && self.adding.is_none() && self.opened_at.elapsed() > Duration::from_secs(5) {
             self.open = false;
         }
         if !self.flying.is_empty() {
@@ -131,17 +173,19 @@ impl Render for Reactions {
             .detach();
         }
         let h = f32::from(window.viewport_size().height);
+        let vw = f32::from(window.viewport_size().width);
         let flies = self.flying.iter().map(|f| {
             let t = f.born.elapsed().as_secs_f32() / LIFE;
             // rises with a little ease, sways, fades at the end
             let rise = 1. - (1. - t).powf(1.6);
-            let y = 150. + rise * (h * 0.62);
-            let sway = (t * 9.).sin() * 10.;
+            // from the bottom of the screen up to the top
+            let y = 60. + rise * (h - 140.);
+            let sway = (t * 9. + f.x * 20.).sin() * 14.;
             let op = if t < 0.08 { t / 0.08 } else if t > 0.7 { ((1. - t) / 0.3).max(0.) } else { 1. };
             let scale = if t < 0.12 { 0.6 + t / 0.12 * 0.5 } else { 1.1 - (t - 0.12).min(0.2) * 0.5 };
             div()
                 .absolute()
-                .right(px(40. + f.x + sway))
+                .left(px(f.x * vw + sway - 23.))
                 .bottom(px(y))
                 .opacity(op)
                 .flex()
@@ -171,7 +215,8 @@ impl Render for Reactions {
                 .rounded_full()
                 .bg(theme::black(0.72))
                 .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                .children(EMOJI.iter().enumerate().map(|(i, e)| {
+                .children(self.mine.clone().into_iter().enumerate().map(|(i, e)| {
+                    let e2 = e.clone();
                     div()
                         .id(("react", i))
                         .size(px(48.))
@@ -183,11 +228,47 @@ impl Render for Reactions {
                         .hover(|s| s.bg(theme::white(0.14)))
                         .on_click(cx.listener(move |v, _, _, cx| {
                             cx.stop_propagation();
-                            v.send(e, cx)
+                            v.send(e.clone(), cx)
                         }))
-                        .child(emoji::emoji(e, 34.))
+                        // right-click: take it off your row
+                        .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |v, _, _, cx| {
+                            cx.stop_propagation();
+                            if v.mine.len() > 1 {
+                                v.mine.retain(|x| x != &e2);
+                                v.save();
+                                v.opened_at = Instant::now();
+                                cx.notify();
+                            }
+                        }))
+                        .child(emoji::emoji(&e2_view(&i, &self.mine), 34.))
                 }))
+                .child(match self.adding.clone() {
+                    Some(inp) => div().w(px(200.)).h(px(40.)).px(px(12.)).flex().items_center().rounded_full().bg(theme::white(0.1)).text_size(px(15.)).child(inp).into_any_element(),
+                    None => div()
+                        .id("react-add")
+                        .size(px(48.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded_full()
+                        .cursor_pointer()
+                        .bg(theme::white(0.08))
+                        .hover(|s| s.bg(theme::white(0.16)))
+                        .on_click(cx.listener(|v, _, window, cx| {
+                            cx.stop_propagation();
+                            v.add(cx);
+                            if let Some(i) = &v.adding {
+                                window.focus(&i.focus_handle(cx), cx);
+                            }
+                        }))
+                        .child(crate::ui::icon("plus", 20.))
+                        .into_any_element(),
+                })
         });
         div().absolute().top_0().left_0().size_full().children(flies).children(tray)
     }
+}
+
+fn e2_view(i: &usize, mine: &[String]) -> String {
+    mine.get(*i).cloned().unwrap_or_default()
 }

@@ -147,8 +147,17 @@ pub fn ep_badge(t: String) -> impl IntoElement {
         .child(t)
 }
 
+/// faces at the top of the screen: their names show under them
+pub fn faces_below(key: &str, people: Vec<(Option<String>, String)>, size: f32) -> impl IntoElement {
+    faces_at(key, people, size, false)
+}
+
 /// The faces of who's watching, overlapping in a row; pointing at one shows the name.
 pub fn faces(key: &str, people: Vec<(Option<String>, String)>, size: f32) -> impl IntoElement {
+    faces_at(key, people, size, true)
+}
+
+fn faces_at(key: &str, people: Vec<(Option<String>, String)>, size: f32, above: bool) -> impl IntoElement {
     let key = key.to_string();
     gpui::div().flex().flex_row_reverse().children(people.into_iter().enumerate().map(move |(i, (pic, name))| {
         let group = gpui::SharedString::from(format!("face-{key}-{i}"));
@@ -178,7 +187,8 @@ pub fn faces(key: &str, people: Vec<(Option<String>, String)>, size: f32) -> imp
             .child(
                 gpui::div()
                     .absolute()
-                    .bottom(px(size + 6.))
+                    .when(above, |d| d.bottom(px(size + 6.)))
+                    .when(!above, |d| d.top(px(size + 6.)))
                     .right(px(-8.))
                     .px(px(10.))
                     .py(px(4.))

@@ -934,7 +934,8 @@ impl Render for Root {
             .children(fps.map(|n| div().absolute().bottom(px(12.)).left(px(12.)).px(px(10.)).py(px(4.)).rounded(px(8.)).bg(theme::black(0.7)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(if n >= 130 { gpui::rgb(0x7ee08a) } else if n >= 90 { gpui::rgb(0xf4c76a) } else { gpui::rgb(0xff6b6b) }).child(format!("{n} fps"))))
             // while playing: a strip along the top moves the window (it never pauses the film)
             .when(playing && !pip::is_on(), |d| d.child(div().absolute().top_0().left_0().right(px(150.)).h(px(24.)).window_control_area(WindowControlArea::Drag)))
-            .when(playing && !pip::is_on(), |d| d.child(window_controls()))
+            // full screen with the controls tucked away: nothing but the film
+            .when(playing && !pip::is_on() && !(window.is_fullscreen() && self.player.read(cx).chrome_hidden()), |d| d.child(window_controls()))
             .child(self.together_cards(cx))
             .when(!playing && self.route != Route::SignIn, |d| d.child(self.planner.clone()).child(self.invite.clone()))
             .when(self.menu.read(cx).open.is_some(), |d| d.child(self.menu.clone()))

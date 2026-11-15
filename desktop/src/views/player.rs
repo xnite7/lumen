@@ -46,6 +46,15 @@ pub struct PlayerView {
     next_since: Option<Instant>,
     /// the scrub bar's place on screen last frame (left edge, width)
     scrub_at: std::rc::Rc<std::cell::Cell<(f32, f32)>>,
+    /// the controls: showing or not, and since when (they slide in and out)
+    chrome_on: bool,
+    chrome_at: Instant,
+    /// the progress bar's colours, from the title's logo (or its picture): (for which url, two colours)
+    tint: Option<(String, [gpui::Hsla; 2])>,
+    /// immersive light: the picture, soft, glowing in the black bars (latest, the one before, when it changed)
+    glow: Option<std::sync::Arc<gpui::Image>>,
+    glow_prev: Option<std::sync::Arc<gpui::Image>>,
+    glow_at: Instant,
     vol_x: std::rc::Rc<std::cell::Cell<f32>>,
     aspect: &'static str,
     /// the season the episodes menu is showing (None: the one playing)
@@ -110,9 +119,36 @@ impl PlayerView {
             };
         })
         .detach();
+        // immersive light: every couple of seconds, a small still of what's on screen
+        cx.spawn(async move |this, cx| loop {
+            crate::timer::after(Duration::from_millis(1800)).await;
+            let Ok(want) = this.update(cx, |v, cx| {
+                let p = v.pb.read(cx);
+                let on = couch::state::get().core.db.get::<bool>("gpui_immersive").unwrap_or(true);
+                (on && p.open && !p.loading && p.state.duration > 0.).then_some(p.state.pos)
+            }) else {
+                break;
+            };
+            let Some(pos) = want else { continue };
+            let Some(pic) = api_still(pos + 0.5).await else { continue };
+            // soften it off the main thread
+            let soft = couch::rt::spawn_blocking(move || soft_light(&pic)).await.ok().flatten();
+            let Some(soft) = soft else { continue };
+            let _ = this.update(cx, |v, cx| {
+                v.glow_prev = v.glow.replace(soft);
+                v.glow_at = Instant::now();
+                cx.notify();
+            });
+        })
+        .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), vol_x: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
+    }
+
+    /// the controls are tucked away (the film alone on screen)
+    pub fn chrome_hidden(&self) -> bool {
+        !self.chrome_on
     }
 
     pub fn poke(&mut self, cx: &mut Context<Self>) {
@@ -190,6 +226,49 @@ fn denied_sign(cx: &mut Context<PlayerView>, window: &mut Window) -> Option<gpui
             .child(div().px(px(16.)).py(px(8.)).rounded_full().bg(theme::black(0.62)).text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child(words))
             .into_any_element(),
     )
+}
+
+/// a still of the film, made soft and dim for the light around the picture
+fn soft_light(pic: &std::sync::Arc<gpui::Image>) -> Option<std::sync::Arc<gpui::Image>> {
+    let im = image::load_from_memory(&pic.bytes).ok()?;
+    let small = image::imageops::resize(&im.to_rgba8(), 40, 24, image::imageops::FilterType::Triangle);
+    let mut soft = image::imageops::blur(&small, 2.6);
+    for p in soft.pixels_mut() {
+        let (r, g, b) = (p[0] as f32, p[1] as f32, p[2] as f32);
+        let l = 0.299 * r + 0.587 * g + 0.114 * b;
+        let sat = |c: f32| ((l + (c - l) * 1.25) * 0.62).clamp(0., 255.);
+        p[0] = sat(r) as u8;
+        p[1] = sat(g) as u8;
+        p[2] = sat(b) as u8;
+        p[3] = 255;
+    }
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(soft).write_to(&mut out, image::ImageFormat::Png).ok()?;
+    Some(std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
+}
+
+/// two colours for the progress bar from a picture: its liveliest one, and a neighbour
+fn tint_of(bytes: &[u8]) -> Option<[gpui::Hsla; 2]> {
+    let im = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let small = image::imageops::resize(&im, 32, 32, image::imageops::FilterType::Triangle);
+    let mut best: Option<(f32, gpui::Hsla)> = None;
+    for p in small.pixels() {
+        if p[3] < 160 {
+            continue;
+        }
+        let c: gpui::Hsla = gpui::Rgba { r: p[0] as f32 / 255., g: p[1] as f32 / 255., b: p[2] as f32 / 255., a: 1. }.into();
+        let score = c.s * (1. - (c.l - 0.55).abs() * 1.6);
+        if best.map_or(true, |b| score > b.0) {
+            best = Some((score, c));
+        }
+    }
+    let (score, c) = best?;
+    if score < 0.18 {
+        return None;
+    }
+    let a = gpui::hsla(c.h, c.s.max(0.55), c.l.clamp(0.5, 0.65), 1.);
+    let b = gpui::hsla((c.h + 0.09) % 1., (c.s * 0.9).max(0.5), (c.l + 0.08).clamp(0.55, 0.75), 1.);
+    Some([a, b])
 }
 
 async fn api_still(t: f64) -> Option<std::sync::Arc<gpui::Image>> {
@@ -924,6 +1003,74 @@ impl Render for PlayerView {
                 cx.notify();
             }));
 
+        // the progress bar takes its colours from the title's logo (or its picture)
+        let tint_src = p.meta.as_ref().and_then(|m| m.logo.clone().or(m.background.clone()));
+        if let Some(src) = tint_src.filter(|u| self.tint.as_ref().map_or(true, |t| &t.0 != u)) {
+            self.tint = Some((src.clone(), [theme::neon().into(), theme::neon().into()]));
+            let back = p.meta.as_ref().and_then(|m| m.background.clone());
+            cx.spawn(async move |this, cx| {
+                let found = couch::rt::spawn(async move {
+                    let core = couch::state::get().core.clone();
+                    for u in [Some(src.clone()), back].into_iter().flatten() {
+                        if let Ok((b, _)) = couch::images::load(&core, &sized(&u, "w500")).await {
+                            if let Some(t) = tint_of(&b) {
+                                return Some((src.clone(), t));
+                            }
+                        }
+                    }
+                    None
+                })
+                .await
+                .ok()
+                .flatten();
+                if let Some((k, t)) = found {
+                    let _ = this.update(cx, |v, cx| {
+                        if v.tint.as_ref().map_or(false, |x| x.0 == k) {
+                            v.tint = Some((k, t));
+                            cx.notify();
+                        }
+                    });
+                }
+            })
+            .detach();
+        }
+        // immersive light: the picture's own colours, softly, in the black bars around it
+        if !starting && st.dw > 0. && st.dh > 0. && matches!(self.aspect, "fit" | "crop") && couch::state::get().core.db.get::<bool>("gpui_immersive").unwrap_or(true) {
+            if let Some(cur) = self.glow.clone() {
+                let vs = window.viewport_size();
+                let (ww, wh) = (f32::from(vs.width), f32::from(vs.height));
+                let a = (st.dw / st.dh) as f32;
+                let fade = (self.glow_at.elapsed().as_secs_f32() / 1.2).min(1.);
+                if fade < 1. {
+                    window.request_animation_frame();
+                }
+                let bars: Vec<gpui::Bounds<Pixels>> = if ww / wh > a + 0.01 {
+                    let pw = (ww - wh * a) / 2.;
+                    if pw < 6. { vec![] } else { vec![gpui::Bounds::new(gpui::point(px(0.), px(0.)), gpui::size(px(pw + 1.), px(wh))), gpui::Bounds::new(gpui::point(px(ww - pw - 1.), px(0.)), gpui::size(px(pw + 1.), px(wh)))] }
+                } else {
+                    let ph = (wh - ww / a) / 2.;
+                    if ph < 6. { vec![] } else { vec![gpui::Bounds::new(gpui::point(px(0.), px(0.)), gpui::size(px(ww), px(ph + 1.))), gpui::Bounds::new(gpui::point(px(0.), px(wh - ph - 1.)), gpui::size(px(ww), px(ph + 1.)))] }
+                };
+                if !bars.is_empty() {
+                    let layer = |pic: std::sync::Arc<gpui::Image>, bars: Vec<gpui::Bounds<Pixels>>| {
+                        gpui::canvas(
+                            |_, _, _| (),
+                            move |b, _, window, cx| {
+                                let Some(data) = pic.clone().use_render_image(window, cx) else { return };
+                                for r in &bars {
+                                    let _ = window.paint_image(*r, b, gpui::Corners::default(), data.clone(), 0, false);
+                                }
+                            },
+                        )
+                        .absolute()
+                        .size_full()
+                    };
+                    root = root
+                        .children(self.glow_prev.clone().filter(|_| fade < 1.).map(|p| div().absolute().top_0().left_0().size_full().opacity(1. - fade).child(layer(p, bars.clone()))))
+                        .child(div().absolute().top_0().left_0().size_full().opacity(fade).child(layer(cur, bars)));
+                }
+            }
+        }
         // while it starts: the title's art under a dim, the logo, a line
         if starting || !p.error.is_empty() {
             root = root
@@ -1015,7 +1162,7 @@ impl Render for PlayerView {
                         .font_weight(FontWeight::SEMIBOLD)
                         .line_height(px(40.))
                         .text_color(gpui::rgb(0xffffff))
-                        .child(p.sub.clone()),
+                        .child(styled_sub(&p.sub)),
                 ),
             );
         }
@@ -1046,7 +1193,23 @@ impl Render for PlayerView {
             .detach();
         }
         let root = root.child(self.reactions.clone()).children(denied_sign(cx, window));
-        if !shown {
+        // the controls slide in and out
+        if shown != self.chrome_on {
+            self.chrome_on = shown;
+            self.chrome_at = Instant::now();
+        }
+        let ct = self.chrome_at.elapsed().as_secs_f32();
+        let ca = if self.chrome_on {
+            let x = (ct / 0.22).min(1.);
+            1. - (1. - x).powi(3)
+        } else {
+            let x = (ct / 0.32).min(1.);
+            1. - x * x
+        };
+        if ct < 0.35 {
+            window.request_animation_frame();
+        }
+        if ca <= 0.001 {
             return root;
         }
 
@@ -1162,6 +1325,9 @@ impl Render for PlayerView {
                 )
         });
         let tw: f32 = self.scrub_at.get().1.max(100.);
+        // a narrow window: fewer buttons, so the progress bar keeps its room
+        let narrow1 = f32::from(vw) < 1180.;
+        let narrow2 = f32::from(vw) < 940.;
         self.track_w = tw;
         let dragging = self.drag;
         let shown_frac = match (dragging, hover) {
@@ -1200,7 +1366,8 @@ impl Render for PlayerView {
             .child(
                 div()
                     .absolute()
-                    .top_0()
+                    .top(px(-(1. - ca) * 18.))
+                    .opacity(ca)
                     .left_0()
                     .w_full()
                     .h(px(150.))
@@ -1252,19 +1419,26 @@ impl Render for PlayerView {
                 let height = p.tracks.iter().find(|t| t["type"] == "video" && t["selected"] == true).and_then(|t| t["height"].as_i64()).unwrap_or(0);
                 let codec = p.tracks.iter().find(|t| t["type"] == "audio" && t["selected"] == true).and_then(|t| t["codec"].as_str()).unwrap_or("").to_string();
                 let c = p.stream.as_ref().map(|s| s["_couch"].clone()).unwrap_or_default();
+                // who's watching with you, under the badges
+                let people: Vec<(Option<String>, String)> = self.reactions.read(cx).people.iter().map(|x| (x["avatar"].as_str().map(String::from), x["name"].as_str().unwrap_or("someone").to_string())).collect();
                 div()
                     .absolute()
-                    .top(px(40.))
+                    .top(px(50. - (1. - ca) * 18.))
+                    .opacity(ca)
                     .right(px(g))
                     .flex()
-                    .gap(px(8.))
-                    .children(crate::ui::badges::format(&c, height, &codec).into_iter().map(|b| img(b.src).h(px(24.)).flex_none().object_fit(ObjectFit::Contain)))
+                    .flex_col()
+                    .items_end()
+                    .gap(px(12.))
+                    .child(div().flex().gap(px(8.)).children(crate::ui::badges::format(&c, height, &codec).into_iter().map(|b| img(b.src).h(px(24.)).flex_none().object_fit(ObjectFit::Contain))))
+                    .when(people.len() > 1, |d| d.child(crate::ui::faces_below("party", people, 30.)))
             })
             // bottom: the scrub bar, then one glass bar with everything on it
             .child(
                 div()
                     .absolute()
-                    .bottom_0()
+                    .bottom(px(-(1. - ca) * 26.))
+                    .opacity(ca)
                     .left_0()
                     .w_full()
                     .h(px(210.))
@@ -1351,7 +1525,27 @@ impl Render for PlayerView {
                                     .bg(theme::white(0.2))
                                     .child(div().absolute().top_0().left_0().h_full().w(px(tw * ahead)).rounded_full().bg(theme::white(0.3)))
                                     .children(segs.into_iter().map(|(a, w)| div().absolute().top_0().h_full().left(px(tw * a)).w(px((tw * w).max(2.))).rounded_full().bg(theme::white(0.45))))
-                                    .child(div().absolute().top_0().left_0().h_full().w(px(tw * shown_frac)).rounded_full().bg(theme::neon()))
+                                    .child({
+                                        // the title's colours, drifting through each other
+                                        let [c1, c2] = self.tint.as_ref().map(|t| t.1).unwrap_or([theme::neon().into(), theme::neon().into()]);
+                                        let t = self.chrome_at.elapsed().as_secs_f32() + st.pos as f32;
+                                        let ang = 90. + (t * 0.9).sin() * 70.;
+                                        let mix = 0.5 + 0.5 * (t * 0.6).sin();
+                                        if ca > 0. && !paused {
+                                            window.request_animation_frame();
+                                        }
+                                        div()
+                                            .absolute()
+                                            .top_0()
+                                            .left_0()
+                                            .h_full()
+                                            .w(px(tw * shown_frac))
+                                            .rounded_full()
+                                            .overflow_hidden()
+                                            .bg(linear_gradient(ang, linear_color_stop(c1, 0.), linear_color_stop(c2, 1.)))
+                                            .child(div().absolute().size_full().opacity(mix).bg(linear_gradient(ang + 140., linear_color_stop(c2, 0.), linear_color_stop(c1, 0.8))))
+                                            .shadow(vec![gpui::BoxShadow { color: c1.opacity(0.55), offset: gpui::point(px(0.), px(0.)), blur_radius: px(10.), spread_radius: px(0.), inset: false }])
+                                    })
                                     .child(
                                         div()
                                             .absolute()
@@ -1382,7 +1576,7 @@ impl Render for PlayerView {
                             )
                             )
                             .child(div().w(px(64.)).flex_none().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).child(if st.duration > 0. { format!("-{}", clock(st.duration - st.pos)) } else { String::new() }))
-                            .children(next.map(|_| {
+                            .children(next.clone().filter(|_| !narrow2).map(|_| {
                                 let pb = self.pb.clone();
                                 bar_btn("pl-next", icon("next", 22.), false)
                                     .on_click(move |_, _, cx| {
@@ -1475,7 +1669,7 @@ impl Render for PlayerView {
                                         )
                                     }),
                             )
-                            .when(super::reactions::room(cx).is_some(), |d| {
+                            .when(super::reactions::room(cx).is_some() && self.reactions.read(cx).people.len() > 1 && !narrow2, |d| {
                                 let r = self.reactions.clone();
                                 d.child(bar_btn("pl-react", crate::ui::emoji::emoji("😂", 24.), false).on_click(move |_, _, cx| {
                                     cx.stop_propagation();
@@ -1486,13 +1680,13 @@ impl Render for PlayerView {
                                 cx.stop_propagation();
                                 v.toggle_menu(Menu::Audio, cx);
                             })))
-                            .when(is_series, |d| {
+                            .when(is_series && !narrow2, |d| {
                                 d.child(bar_btn("pl-eps", icon("stack", 23.), menu_on == Some(Menu::Episodes)).on_click(cx.listener(|v, _, _, cx| {
                                     cx.stop_propagation();
                                     v.toggle_menu(Menu::Episodes, cx);
                                 })))
                             })
-                            .when(has_streams, |d| {
+                            .when(has_streams && !narrow1, |d| {
                                 d.child(bar_btn("pl-src", icon("link", 21.), menu_on == Some(Menu::Sources)).on_click(cx.listener(|v, _, _, cx| {
                                     cx.stop_propagation();
                                     v.toggle_menu(Menu::Sources, cx);
@@ -1509,7 +1703,7 @@ impl Render for PlayerView {
                                     v.toggle_menu(Menu::Speed, cx);
                                 })),
                             )
-                            .child(bar_btn("pl-pip", icon("pip", 22.), false).on_click(|_, window, cx| crate::pip::toggle_in(window, cx)))
+                            .when(!narrow1, |d| d.child(bar_btn("pl-pip", icon("pip", 22.), false).on_click(|_, window, cx| crate::pip::toggle_in(window, cx))))
                             .child(bar_btn("pl-full", icon(if window.is_fullscreen() { "exitFullscreen" } else { "fullscreen" }, 22.), false).on_click(|_, window, _| window.toggle_fullscreen())),
                     ),
             )
@@ -1547,4 +1741,41 @@ fn aspect_icon(k: &str, on: bool) -> impl IntoElement {
         // pulled to the edges
         _ => frame.p(px(3.)).child(div().size_full().rounded(px(2.)).bg(c)),
     }
+}
+
+/// A subtitle with its asides set apart: "[steven]" (who's speaking, or a
+/// sound) quieter and in small letters, "(whispering)" quieter and slanted,
+/// ♪ lyrics slanted.
+fn styled_sub(text: &str) -> gpui::StyledText {
+    let mut marks: Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> = vec![];
+    let aside = gpui::HighlightStyle { color: Some(gpui::hsla(0., 0., 0.78, 1.)), font_weight: Some(FontWeight::MEDIUM), ..Default::default() };
+    let slant = gpui::HighlightStyle { color: Some(gpui::hsla(0., 0., 0.78, 1.)), font_style: Some(gpui::FontStyle::Italic), font_weight: Some(FontWeight::MEDIUM), ..Default::default() };
+    for (open, close, style) in [('[', ']', aside), ('(', ')', slant)] {
+        let mut from = None;
+        for (i, c) in text.char_indices() {
+            if c == open {
+                from = Some(i);
+            } else if c == close {
+                if let Some(a) = from.take() {
+                    marks.push((a..i + c.len_utf8(), style));
+                }
+            }
+        }
+    }
+    // a sung line, ♪ to ♪ (or the rest of the line)
+    for line in text.split('\n') {
+        if line.contains('♪') || line.contains('♫') {
+            let start = line.as_ptr() as usize - text.as_ptr() as usize;
+            marks.push((start..start + line.len(), gpui::HighlightStyle { font_style: Some(gpui::FontStyle::Italic), ..Default::default() }));
+        }
+    }
+    marks.sort_by_key(|m| m.0.start);
+    // overlapping marks: keep the first
+    let mut clean: Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> = vec![];
+    for m in marks {
+        if clean.last().map_or(true, |l| m.0.start >= l.0.end) {
+            clean.push(m);
+        }
+    }
+    gpui::StyledText::new(text.to_string()).with_highlights(clean)
 }

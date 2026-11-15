@@ -29,6 +29,9 @@ pub struct State {
     pub sid: String,
     pub ended: bool,
     pub sub_delay: f64,
+    /// the picture's shown size (after crops), for fitting it in the window
+    pub dw: f64,
+    pub dh: f64,
 }
 
 #[derive(Default)]
@@ -86,6 +89,8 @@ pub fn init(cx: &mut App) {
                     sid: v["sid"].as_str().map(|s| s.to_string()).unwrap_or_else(|| v["sid"].to_string()),
                     ended: v["ended"].as_bool().unwrap_or(false),
                     sub_delay: v["subDelay"].as_f64().unwrap_or(0.),
+                    dw: v["video"]["dw"].as_f64().unwrap_or(0.),
+                    dh: v["video"]["dh"].as_f64().unwrap_or(0.),
                 };
                 let _ = this.update(cx, |p, cx| {
                     if p.loading && (s.duration <= 0. || s.buffering) {
@@ -213,7 +218,31 @@ fn clean_cue(t: &str) -> String {
             _ => {}
         }
     }
-    out.trim().to_string()
+    fix_mojibake(out.trim())
+}
+
+/// Text that was UTF-8 but read as Windows-1252 ("â™ª" for ♪, "Ã©" for é):
+/// put it back together. Anything that doesn't decode cleanly is left alone.
+pub fn fix_mojibake(s: &str) -> String {
+    if !s.chars().any(|c| matches!(c, 'Ã' | 'â' | 'Â' | 'ð' | 'Ø' | 'Ù' | 'Ð' | 'Ñ')) {
+        return s.to_string();
+    }
+    const HIGH: [(char, u8); 27] = [
+        ('€', 0x80), ('‚', 0x82), ('ƒ', 0x83), ('„', 0x84), ('…', 0x85), ('†', 0x86), ('‡', 0x87), ('ˆ', 0x88), ('‰', 0x89), ('Š', 0x8A), ('‹', 0x8B), ('Œ', 0x8C), ('Ž', 0x8E),
+        ('‘', 0x91), ('’', 0x92), ('“', 0x93), ('”', 0x94), ('•', 0x95), ('–', 0x96), ('—', 0x97), ('˜', 0x98), ('™', 0x99), ('š', 0x9A), ('›', 0x9B), ('œ', 0x9C), ('ž', 0x9E), ('Ÿ', 0x9F),
+    ];
+    let mut bytes = Vec::with_capacity(s.len());
+    for c in s.chars() {
+        let u = c as u32;
+        if u < 0x100 {
+            bytes.push(u as u8);
+        } else if let Some((_, b)) = HIGH.iter().find(|(h, _)| *h == c) {
+            bytes.push(*b);
+        } else {
+            return s.to_string();
+        }
+    }
+    String::from_utf8(bytes).unwrap_or_else(|_| s.to_string())
 }
 
 /// Episodes in watching order (season 0 extras last).
