@@ -31,6 +31,10 @@ pub struct PlayerView {
     stills: std::collections::HashMap<i64, Option<std::sync::Arc<gpui::Image>>>,
     vol_hud: Option<Instant>,
     last_move: Instant,
+    /// where the pointer is (height), and the window's height
+    mouse_y: f32,
+    mouse_now: f32,
+    view_h: f32,
     shown: bool,
     hover_x: Option<f32>,
     reactions: Entity<super::reactions::Reactions>,
@@ -86,7 +90,11 @@ impl PlayerView {
             crate::timer::after(Duration::from_millis(400)).await;
             let Ok(()) = this.update(cx, |v, cx| {
                 let paused = v.pb.read(cx).state.paused;
-                let show = paused || v.menu.is_some() || v.last_move.elapsed() < Duration::from_millis(2800) || v.pb.read(cx).loading;
+                // resting on the controls (top or bottom bar, an open slider) keeps them up
+                let (my, vh) = (v.mouse_y, v.view_h);
+                let on_bar = vh > 0. && my >= 0. && (my > vh - 130. || my < 110.);
+                let busy = v.vol_open || v.vol_pinned || v.next_hover || v.hover_x.is_some() || v.drag;
+                let show = paused || v.menu.is_some() || on_bar || busy || v.last_move.elapsed() < Duration::from_millis(3200) || v.pb.read(cx).loading;
                 if show != v.shown {
                     v.shown = show;
                     // the pointer goes away with the controls (back on the next move)
@@ -157,7 +165,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -167,6 +175,7 @@ impl PlayerView {
 
     pub fn poke(&mut self, cx: &mut Context<Self>) {
         self.last_move = Instant::now();
+        self.mouse_y = self.mouse_now;
         if !self.shown {
             self.shown = true;
             cx.notify();
@@ -1044,6 +1053,7 @@ impl Render for PlayerView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let p = self.pb.read(cx);
         let vw = window.viewport_size().width;
+        self.view_h = f32::from(window.viewport_size().height);
         let g = theme::GUTTER;
         let bar_w: Pixels = vw - px(g * 2.);
         let st = p.state.clone();
@@ -1067,6 +1077,7 @@ impl Render for PlayerView {
             .size_full()
             .relative()
             .on_mouse_move(cx.listener(|v, e: &MouseMoveEvent, _, cx| {
+                v.mouse_now = f32::from(e.position.y);
                 if v.drag {
                     if e.pressed_button == Some(gpui::MouseButton::Left) {
                         v.hover_x = Some(f32::from(e.position.x) - v.scrub_at.get().0);
