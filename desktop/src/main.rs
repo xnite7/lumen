@@ -317,6 +317,15 @@ impl Nav {
             }
         });
     }
+    /// your month on the couch, as a card to share
+    pub fn month(cx: &mut App) {
+        cx.defer(|cx| {
+            if let Some(r) = Self::root(cx) {
+                let m = r.read(cx).month.clone();
+                m.update(cx, |m, cx| m.show(cx));
+            }
+        });
+    }
     /// your year on the couch
     pub fn wrapped(cx: &mut App) {
         cx.defer(|cx| {
@@ -374,6 +383,7 @@ pub struct Root {
     invite: Entity<views::invite::Invite>,
     pub planner: Entity<views::planner::Planner>,
     pub wrapped: Entity<views::wrapped::Wrapped>,
+    pub month: Entity<views::month::Month>,
     pub addto: Entity<views::addto::AddTo>,
     pub menu: Entity<views::menu::Menu>,
     me: serde_json::Value,
@@ -550,6 +560,13 @@ impl Root {
         if k == "escape" && self.addto.read(cx).meta.is_some() {
             self.addto.update(cx, |a, cx| {
                 a.meta = None;
+                cx.notify();
+            });
+            return;
+        }
+        if k == "escape" && self.month.read(cx).open {
+            self.month.update(cx, |m, cx| {
+                m.open = false;
                 cx.notify();
             });
             return;
@@ -1146,6 +1163,7 @@ impl Render for Root {
             .when(self.menu.read(cx).open.is_some(), |d| d.child(gpui::deferred(self.menu.clone()).with_priority(3)))
             .when(self.addto.read(cx).meta.is_some(), |d| d.child(gpui::deferred(self.addto.clone()).with_priority(3)))
             .when(self.wrapped.read(cx).open, |d| d.child(self.wrapped.clone()))
+            .when(self.month.read(cx).open, |d| d.child(gpui::deferred(self.month.clone()).with_priority(4)))
             .when(!mini::is_on(), |d| {
                 MINI_AT.with(|m| *m.borrow_mut() = None);
                 d
@@ -1470,6 +1488,7 @@ fn main() {
                             invite: cx.new(views::invite::Invite::new),
                             planner: cx.new(views::planner::Planner::new),
                             wrapped: cx.new(views::wrapped::Wrapped::new),
+                            month: cx.new(views::month::Month::new),
                             addto,
                             menu,
                             me: me.clone(),

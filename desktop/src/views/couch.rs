@@ -100,7 +100,13 @@ impl Render for Couch {
                     .items_center()
                     .justify_between()
                     .child(div().text_size(px(40.)).font_weight(FontWeight::BLACK).child("couch"))
-                    .children(crate::views::wrapped::season_year().map(|y| btn("wrapped-open".into(), &format!("your {y} wrapped ✨"), true).on_click(|_, _, cx| Nav::wrapped(cx)))),
+                    .child(
+                        div()
+                            .flex()
+                            .gap(px(8.))
+                            .child(btn("month-open".into(), "your month", false).on_click(|_, _, cx| Nav::month(cx)))
+                            .children(crate::views::wrapped::season_year().map(|y| btn("wrapped-open".into(), &format!("your {y} wrapped ✨"), true).on_click(|_, _, cx| Nav::wrapped(cx)))),
+                    ),
             )
             .child(div().flex_none().text_size(px(16.)).text_color(theme::label2()).child("see what your friends from the server are watching right now."));
         match self.setup {

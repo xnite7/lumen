@@ -1,6 +1,7 @@
 pub mod home;
 pub mod crewx;
 pub mod wrapped;
+pub mod month;
 pub mod studio;
 pub mod member;
 pub mod planner;
