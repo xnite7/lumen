@@ -81,37 +81,13 @@ impl Tile {
     }
 }
 
-/// up to five tiles: three from the crew, one you're in the middle of, one
-/// from your plan to watch
+/// up to five tiles, all your own: what you're in the middle of (up to three),
+/// then from your plan to watch
 async fn content() -> Vec<String> {
+    // only your own titles (no faces, nothing from the crew)
     let mut out: Vec<Tile> = vec![];
-    let feed = api::call::<Value>("crew_social", json!({ "method": "GET", "path": "/v1/activity", "body": Value::Null })).await.unwrap_or_default();
-    let mut seen = std::collections::HashSet::new();
-    for a in feed["feed"].as_array().into_iter().flatten() {
-        let t = &a["title"];
-        if !seen.insert(t["id"].as_str().unwrap_or("").to_string()) {
-            continue;
-        }
-        let who = a["name"].as_str().unwrap_or("someone");
-        let (verb, sub) = match (a["kind"].as_str(), a["rating"].as_i64(), a["text"].as_str().filter(|t| !t.is_empty())) {
-            (_, r, Some(text)) => ("reviewed", format!("{}“{text}”", r.map(|r| format!("★ {r}/10 · ")).unwrap_or_default())),
-            (_, Some(r), None) => ("rated", format!("★ {r}/10")),
-            (Some("finished"), _, _) => ("finished", "all the way through".to_string()),
-            _ => ("watched", String::new()),
-        };
-        out.push(Tile {
-            art: pic(t["background"].as_str(), "w300").or_else(|| pic(t["poster"].as_str(), "w342")),
-            peek: a["avatar"].as_str().map(String::from),
-            top: format!("{who} {verb}"),
-            title: t["name"].as_str().unwrap_or("").to_string(),
-            sub,
-        });
-        if out.len() == 3 {
-            break;
-        }
-    }
     if let Ok(cw) = api::call::<Vec<Value>>("continue_watching", json!({})).await {
-        if let Some(v) = cw.first() {
+        for v in cw.iter().take(3) {
             let vid = v["state"]["video_id"].as_str().unwrap_or("");
             let p: Vec<&str> = vid.split(':').collect();
             out.push(Tile {
@@ -128,9 +104,9 @@ async fn content() -> Vec<String> {
     if let Some(c) = cats.iter().find(|c| c["id"] == "simkl-plantowatch").cloned() {
         if let Ok(items) = api::call::<Vec<Value>>("catalog_fetch", json!({ "catalog": c, "extra": [] })).await {
             let n = items.len();
-            if n > 0 {
-                let i = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()) / 1200) as usize % n;
-                let v = &items[i];
+            let k = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()) / 1200) as usize;
+            for step in 0..n.min(2) {
+                let v = &items[(k + step * (n / 2).max(1)) % n];
                 out.push(Tile {
                     art: pic(v["background"].as_str(), "w300").or_else(|| pic(v["poster"].as_str(), "w342")),
                     peek: None,
