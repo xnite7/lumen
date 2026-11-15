@@ -40,6 +40,9 @@ fn glow(bytes: &[u8]) -> Option<Arc<gpui::Image>> {
         p[2] = (sat(b) * k) as u8;
         p[3] = 255;
     }
+    // smooth it up to many more rows here: stretched over the window, each of
+    // 27 rows showed as its own band (the stripes)
+    let soft = image::imageops::resize(&soft, 192, 432, image::imageops::FilterType::CatmullRom);
     let mut out = std::io::Cursor::new(Vec::new());
     image::DynamicImage::ImageRgba8(soft).write_to(&mut out, image::ImageFormat::Png).ok()?;
     Some(Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
@@ -175,6 +178,57 @@ pub fn layer(window: &mut Window) -> impl IntoElement {
         .size_full()
         .children(prev.filter(|_| t < 1.).map(|p| div().absolute().size_full().opacity(1. - e).child(piece(p))))
         .children(cur.map(|c| div().absolute().size_full().opacity(e).child(piece(c))))
+        // fine grain over the glow: a dark, soft gradient on an 8-bit screen
+        // shows steps (stripes); a whisper of noise at screen pixels hides them
+        .child(grain())
+}
+
+/// a 256×256 tile of faint light and dark specks, made once
+fn grain_tile() -> Option<Arc<gpui::Image>> {
+    static T: std::sync::OnceLock<Option<Arc<gpui::Image>>> = std::sync::OnceLock::new();
+    T.get_or_init(|| {
+        const N: u32 = 256;
+        let mut im = image::RgbaImage::new(N, N);
+        let mut v: u32 = 0x9E3779B9;
+        for p in im.pixels_mut() {
+            v ^= v << 13;
+            v ^= v >> 17;
+            v ^= v << 5;
+            let r = v & 0xff;
+            // half light, half dark, barely there
+            *p = if r < 128 { image::Rgba([255, 255, 255, 3 + (r % 3) as u8]) } else { image::Rgba([0, 0, 0, 4 + (r % 3) as u8]) };
+        }
+        let mut out = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(im).write_to(&mut out, image::ImageFormat::Png).ok()?;
+        Some(Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
+    })
+    .clone()
+}
+
+/// the grain, tiled at one screen pixel per speck
+fn grain() -> impl IntoElement {
+    canvas(
+        |_, _, _| (),
+        |bounds, _, window, cx| {
+            let Some(tile) = grain_tile() else { return };
+            let Some(data) = tile.use_render_image(window, cx) else { return };
+            let s = 256. / window.scale_factor();
+            let (x0, y0) = (f32::from(bounds.origin.x), f32::from(bounds.origin.y));
+            let (w, h) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+            let mut y = 0.;
+            while y < h {
+                let mut x = 0.;
+                while x < w {
+                    let b = Bounds::new(gpui::point(px(x0 + x), px(y0 + y)), gpui::size(px(s), px(s)));
+                    let _ = window.paint_image(b, b, Corners::default(), data.clone(), 0, false);
+                    x += s;
+                }
+                y += s;
+            }
+        },
+    )
+    .absolute()
+    .size_full()
 }
 
 /// The bottom of a big picture (a billboard, a title's backdrop) melting into
