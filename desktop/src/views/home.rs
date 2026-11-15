@@ -281,6 +281,10 @@ impl Home {
             if scope == "all" {
                 let byw = because_you_watched().await;
                 let _ = this.update(cx, |v, cx| {
+                    // these replace the engine's "more like …" rows (the same picks, twice otherwise)
+                    if !byw.is_empty() {
+                        v.rows.retain(|r| !r.key.contains("/couch-morelike/"));
+                    }
                     // a little way down: after the first couple of regular rows
                     let lead = v.rows.iter().take_while(|r| matches!(r.key.as_str(), "cw" | "follow" | "crewpicks")).count();
                     for (k, r) in byw.into_iter().enumerate() {
