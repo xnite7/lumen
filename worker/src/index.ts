@@ -122,10 +122,24 @@ async function updates(url: URL, env: Env): Promise<Response> {
 // /v1/gpui/latest -> { version, size } ; /v1/gpui/file -> the zip.
 async function gpui(url: URL, env: Env): Promise<Response> {
   if (!env.GH_TOKEN) return json({ error: "no builds yet" }, 404);
-  const rels = await gh(env, "/releases?per_page=20");
+  const rels = await gh(env, "/releases?per_page=100");
   if (!rels.ok) return json({ error: "no builds yet" }, 404);
   const list: any[] = await rels.json();
-  const rel = list.find((r) => String(r.tag_name).startsWith("gpui-"));
+  // GitHub lists tags as text (gpui-0.9.99 before gpui-0.9.106) and drafts
+  // first: pick the highest published version that has its zip
+  const ver = (t: string) => t.slice(5).split(".").map((n) => parseInt(n, 10) || 0);
+  const newer = (a: number[], b: number[]) => {
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0);
+    }
+    return false;
+  };
+  let rel: any = null;
+  for (const r of list) {
+    const tag = String(r.tag_name);
+    if (r.draft || !tag.startsWith("gpui-") || !r.assets?.some((a: any) => a.name === "couch-gpui.zip")) continue;
+    if (!rel || newer(ver(tag), ver(String(rel.tag_name)))) rel = r;
+  }
   const zip = rel?.assets?.find((a: any) => a.name === "couch-gpui.zip");
   if (!rel || !zip) return json({ error: "no builds yet" }, 404);
   if (url.pathname === "/v1/gpui/file") {
