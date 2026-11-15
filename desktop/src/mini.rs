@@ -210,6 +210,15 @@ mod imp {
             } else {
                 let _ = SetWindowPos(hw(v), Some(HWND_BOTTOM), 0, 0, r.right.max(1), r.bottom.max(1), SWP_NOACTIVATE);
             }
+            // mpv's own window inside the host doesn't always notice the host
+            // changed size (it caught up on the next focus change): size it too
+            let mut hr = RECT::default();
+            let _ = GetClientRect(hw(v), &mut hr);
+            let mut child = FindWindowExW(Some(hw(v)), None, None, None).unwrap_or_default();
+            while !child.is_invalid() {
+                let _ = SetWindowPos(child, None, 0, 0, hr.right.max(1), hr.bottom.max(1), SWP_NOACTIVATE | SWP_NOZORDER | SWP_ASYNCWINDOWPOS);
+                child = FindWindowExW(Some(hw(v)), Some(child), None, None).unwrap_or_default();
+            }
         }
         couch::player::refit_video(Some(v));
     }

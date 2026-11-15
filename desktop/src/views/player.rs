@@ -64,6 +64,8 @@ pub struct PlayerView {
     glow_prev: Option<std::sync::Arc<gpui::Image>>,
     glow_at: Instant,
     vol_x: std::rc::Rc<std::cell::Cell<f32>>,
+    /// for the bar's living colours
+    born: Instant,
     /// the menus' lists, for gliding scroll (audio, subs, episodes, streams)
     ms: [gpui::ScrollHandle; 4],
     aspect: &'static str,
@@ -153,7 +155,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -255,6 +257,65 @@ fn soft_light(pic: &std::sync::Arc<gpui::Image>) -> Option<std::sync::Arc<gpui::
     let mut out = std::io::Cursor::new(Vec::new());
     image::DynamicImage::ImageRgba8(soft).write_to(&mut out, image::ImageFormat::Png).ok()?;
     Some(std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
+}
+
+/// The progress fill: the title's colours as a living mesh, waves of them
+/// drifting through each other, film grain over it, a few sparks riding along.
+fn mesh(c1: gpui::Hsla, c2: gpui::Hsla, t: f32) -> impl IntoElement {
+    gpui::canvas(
+        |_, _, _| (),
+        move |b, _, window, _| {
+            let (x0, y0) = (f32::from(b.origin.x), f32::from(b.origin.y));
+            let (w, h) = (f32::from(b.size.width), f32::from(b.size.height));
+            if w < 1. || h < 1. {
+                return;
+            }
+            let a = c1.to_rgb();
+            let bb = c2.to_rgb();
+            // a third, deeper shade between them
+            let c3 = gpui::hsla((c1.h + 0.94) % 1., c1.s, (c1.l * 0.7).max(0.3), 1.).to_rgb();
+            let mixc = |p: &gpui::Rgba, q: &gpui::Rgba, k: f32| gpui::Rgba { r: p.r + (q.r - p.r) * k, g: p.g + (q.g - p.g) * k, b: p.b + (q.b - p.b) * k, a: 1. };
+            // grain changes at 24 fps, like film
+            let frame = (t * 24.) as u32;
+            let hash = |x: u32, y: u32| {
+                let mut v = x.wrapping_mul(374761393) ^ y.wrapping_mul(668265263) ^ frame.wrapping_mul(2246822519);
+                v = (v ^ (v >> 13)).wrapping_mul(1274126177);
+                ((v ^ (v >> 16)) & 1023) as f32 / 1023.
+            };
+            let cw = 3.;
+            let rows = if h >= 6. { 2 } else { 1 };
+            let rh = h / rows as f32;
+            let cols = (w / cw).ceil() as u32;
+            for i in 0..cols {
+                let x = i as f32 * cw;
+                for r in 0..rows {
+                    let y = r as f32 * rh;
+                    // two slow waves across the bar, a third that breathes
+                    let u = 0.5 + 0.5 * (x * 0.011 + t * 1.1 + y * 0.4).sin() * (x * 0.0037 - t * 0.55).cos();
+                    let v = 0.5 + 0.5 * (x * 0.006 - t * 0.8 + 1.7 + y * 0.3).sin();
+                    let mut c = mixc(&mixc(&a, &bb, u), &c3, v * 0.45);
+                    let g = (hash(i, r as u32) - 0.5) * 0.16;
+                    c.r = (c.r + g).clamp(0., 1.);
+                    c.g = (c.g + g).clamp(0., 1.);
+                    c.b = (c.b + g).clamp(0., 1.);
+                    let cell = gpui::Bounds::new(gpui::point(px(x0 + x), px(y0 + y)), gpui::size(px(cw.min(w - x) + 0.5), px(rh + 0.5)));
+                    window.paint_quad(gpui::fill(cell, c));
+                }
+            }
+            // sparks: a few soft lights riding the waves
+            for k in 0..12u32 {
+                let sp = 0.035 + (k as f32 * 0.37).fract() * 0.06;
+                let px_ = ((k as f32 * 0.618 + t * sp).fract()) * w;
+                let life = 0.5 + 0.5 * (t * (1.3 + k as f32 * 0.21) + k as f32).sin();
+                let sz = (h * 0.55).clamp(1.5, 3.);
+                let py = y0 + h / 2. - sz / 2. + (t * 2. + k as f32).sin() * h * 0.2;
+                let spark = gpui::Bounds::new(gpui::point(px(x0 + px_), px(py)), gpui::size(px(sz), px(sz)));
+                window.paint_quad(gpui::fill(spark, gpui::hsla(0., 0., 1., 0.25 + 0.5 * life * life)).corner_radii(px(sz / 2.)));
+            }
+        },
+    )
+    .absolute()
+    .size_full()
 }
 
 /// two colours for the progress bar from a picture: its liveliest one, and a neighbour
@@ -395,8 +456,41 @@ fn bar_btn(id: &'static str, child: impl IntoElement, on: bool) -> gpui::Statefu
         .rounded_full()
         .cursor_pointer()
         .when(on, |d| d.bg(theme::white(0.16)))
-        .hover(|s| s.bg(theme::white(0.14)))
+        // the hover light fades in and out instead of switching
+        .child(
+            gpui::canvas(
+                |_, _, _| (),
+                move |b, _, window, _| {
+                    let over = b.contains(&window.mouse_position());
+                    let since = HOVER.with(|m| {
+                        let mut m = m.borrow_mut();
+                        let e = m.entry(id).or_insert((false, Instant::now() - Duration::from_secs(5)));
+                        if e.0 != over {
+                            *e = (over, Instant::now());
+                        }
+                        e.1
+                    });
+                    let x = (since.elapsed().as_secs_f32() / 0.2).min(1.);
+                    if x < 1. {
+                        window.request_animation_frame();
+                    }
+                    let e = 1. - (1. - x).powi(3);
+                    let a = if over { e } else { 1. - e };
+                    if a > 0.001 {
+                        let r = b.size.width / 2.;
+                        window.paint_quad(gpui::fill(b, theme::white(0.15 * a)).corner_radii(r));
+                    }
+                },
+            )
+            .absolute()
+            .size_full(),
+        )
         .child(child)
+}
+
+thread_local! {
+    /// each control-bar button: is the pointer on it, since when
+    static HOVER: std::cell::RefCell<std::collections::HashMap<&'static str, (bool, Instant)>> = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 /// ±seconds, by the watch-together rules
@@ -1161,9 +1255,10 @@ impl Render for PlayerView {
         }
 
         // subtitles, drawn by couch
+        let sub_px = (f32::from(vw) * 0.0158).clamp(13., 30.);
         if !p.sub.is_empty() {
             root = root.child(
-                div().absolute().left_0().w_full().bottom(px(if shown { 160. } else { 64. })).flex().justify_center().child(
+                div().absolute().left_0().w_full().bottom(px(if f32::from(vw) < 640. { 14. } else if shown { 160. } else { 64. })).flex().justify_center().child(
                     div()
                         .max_w(px(1100.))
                         .px(px(16.))
@@ -1173,9 +1268,10 @@ impl Render for PlayerView {
                         .text_center()
                         // subtitles in Figtree (open, easy to read at a glance)
                         .font_family("Figtree")
-                        .text_size(px(30.))
+                        // sized to the window: small in picture-in-picture, 30 on a big screen
+                        .text_size(px(sub_px))
                         .font_weight(FontWeight::SEMIBOLD)
-                        .line_height(px(40.))
+                        .line_height(px(sub_px * 1.33))
                         .text_color(gpui::rgb(0xffffff))
                         .child(styled_sub(&p.sub)),
                 ),
@@ -1323,7 +1419,15 @@ impl Render for PlayerView {
                         }))
                         .child(round_btn("pip-f10", icon("forward10", 26.), 46.).on_click(move |_, _, cx| seek_by(&pb, 10., cx))),
                 )
-                .child(div().absolute().left(px(10.)).right(px(10.)).bottom(px(10.)).h(px(4.)).rounded_full().bg(theme::white(0.25)).child(div().h_full().rounded_full().w((vw - px(20.)) * frac).bg(theme::neon())));
+                                .child({
+                    let [c1, c2] = self.tint.as_ref().map(|t| t.1).unwrap_or([theme::neon().into(), theme::neon().into()]);
+                    if !paused {
+                        window.request_animation_frame();
+                    }
+                    div().absolute().left(px(10.)).right(px(10.)).bottom(px(10.)).h(px(4.)).rounded_full().bg(theme::white(0.25)).child(
+                        div().relative().h_full().rounded_full().overflow_hidden().w((vw - px(20.)) * frac).child(mesh(c1, c2, self.born.elapsed().as_secs_f32())),
+                    )
+                });
         }
 
         let paused = st.paused;
@@ -1610,9 +1714,7 @@ impl Render for PlayerView {
                                     .child({
                                         // the title's colours, drifting through each other
                                         let [c1, c2] = self.tint.as_ref().map(|t| t.1).unwrap_or([theme::neon().into(), theme::neon().into()]);
-                                        let t = self.chrome_at.elapsed().as_secs_f32() + st.pos as f32;
-                                        let ang = 90. + (t * 0.9).sin() * 70.;
-                                        let mix = 0.5 + 0.5 * (t * 0.6).sin();
+                                        let t = self.born.elapsed().as_secs_f32();
                                         if ca > 0. && !paused {
                                             window.request_animation_frame();
                                         }
@@ -1624,8 +1726,7 @@ impl Render for PlayerView {
                                             .w(px(tw * shown_frac))
                                             .rounded_full()
                                             .overflow_hidden()
-                                            .bg(linear_gradient(ang, linear_color_stop(c1, 0.), linear_color_stop(c2, 1.)))
-                                            .child(div().absolute().size_full().opacity(mix).bg(linear_gradient(ang + 140., linear_color_stop(c2, 0.), linear_color_stop(c1, 0.8))))
+                                            .child(mesh(c1, c2, t))
                                             .shadow(vec![gpui::BoxShadow { color: c1.opacity(0.55), offset: gpui::point(px(0.), px(0.)), blur_radius: px(10.), spread_radius: px(0.), inset: false }])
                                     })
                                     .child(

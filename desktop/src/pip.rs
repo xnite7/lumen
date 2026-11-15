@@ -34,6 +34,22 @@ mod imp {
         r
     }
 
+    /// one pixel wider and back: a real resize, end to end
+    pub fn wiggle(hwnd: isize) {
+        use windows::Win32::UI::WindowsAndMessaging::{SWP_NOMOVE, SWP_NOZORDER};
+        let h = HWND(hwnd as *mut _);
+        unsafe {
+            if IsZoomed(h).as_bool() {
+                return;
+            }
+            let mut r = RECT::default();
+            let _ = GetWindowRect(h, &mut r);
+            let (w, hh) = (r.right - r.left, r.bottom - r.top);
+            let _ = SetWindowPos(h, None, 0, 0, w + 1, hh, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+            let _ = SetWindowPos(h, None, 0, 0, w, hh, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
+
     pub fn set(hwnd: isize, on: bool) {
         let h = HWND(hwnd as *mut _);
         unsafe {
@@ -83,9 +99,14 @@ pub fn toggle(cx: &mut gpui::App) {
             // the picture follows the window once it has settled at its new size
             // (Windows resizes in steps; one late fit missed it until a full-screen round trip)
             cx.spawn(async move |cx| {
-                for ms in [40u64, 120, 300, 700] {
+                for (k, ms) in [40u64, 120, 300, 700].into_iter().enumerate() {
                     crate::timer::after(std::time::Duration::from_millis(ms)).await;
                     let _ = cx.update(|cx| {
+                        // once it has settled: a 1px wiggle makes everything (couch's
+                        // drawing, mpv's window) take the new size, like a focus change did
+                        if k == 2 {
+                            imp::wiggle(h);
+                        }
                         cx.refresh_windows();
                         let s = cx.windows().first().and_then(|w| w.update(cx, |_, w, _| w.scale_factor()).ok()).unwrap_or(1.);
                         crate::mini::fit(s);

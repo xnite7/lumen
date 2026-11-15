@@ -642,7 +642,8 @@ impl Render for Detail {
         // opened from a card: the words wait for the picture to land
         let ca = crate::ui::zoom::content_alpha(window);
         // the card's logo is flying into this one: this one waits
-        let flying_logo = op.as_ref().map_or(false, |o| o.logo.is_some() && logo.is_some());
+        // (the card's logo doesn't fly in: a card's and a page's logos aren't always the same picture)
+        let flying_logo = false;
         let kw: Vec<String> = ex["keywords"].as_array().into_iter().flatten().filter_map(|k| k.as_str().map(String::from).or(k["name"].as_str().map(String::from))).take(8).collect();
         // the mood goes on the right, across from the words, when the window is wide enough
         let mood_right = f32::from(vw) > 1180.;
