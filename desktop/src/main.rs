@@ -1003,6 +1003,18 @@ impl Render for Root {
             })
         });
         ON_PLAYER.store(self.route == Route::Player, std::sync::atomic::Ordering::Relaxed);
+        // full screen is for the film: leaving the player (back, or to the corner)
+        // brings the window back, with its buttons
+        if self.route != Route::Player && window.is_fullscreen() && !pip::is_on() {
+            // (once: Windows takes a moment to report it changed)
+            thread_local! {
+                static LEFT: std::cell::Cell<Option<std::time::Instant>> = const { std::cell::Cell::new(None) };
+            }
+            if LEFT.with(|l| l.get()).map_or(true, |t| t.elapsed().as_millis() > 1500) {
+                LEFT.with(|l| l.set(Some(std::time::Instant::now())));
+                window.toggle_fullscreen();
+            }
+        }
         let scope = match self.route {
             Route::Home => "all",
             Route::Shows => "series",
