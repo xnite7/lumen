@@ -1618,7 +1618,7 @@ impl Render for PlayerView {
                             )
                             .child(div().opacity(1. - pv_top).relative().top(px(-pv_top * 14.))
                                 // a soft dark pool behind the logo, so it reads over a bright picture
-                                .child(div().absolute().top(px(6.)).bottom(px(6.)).left(px(10.)).right(px(10.)).rounded_full().shadow(vec![gpui::BoxShadow { color: theme::black(0.55), offset: gpui::point(px(0.), px(2.)), blur_radius: px(34.), spread_radius: px(14.), inset: false }]))
+                                .child(div().absolute().top(px(6.)).bottom(px(6.)).left(px(10.)).right(px(10.)).rounded_full().shadow(vec![gpui::BoxShadow { color: theme::black(0.28), offset: gpui::point(px(0.), px(2.)), blur_radius: px(30.), spread_radius: px(6.), inset: false }]))
                                 .child(match top_logo {
                                 Some(u) => {
                                     let t = top_title.clone();
@@ -1657,7 +1657,7 @@ impl Render for PlayerView {
                             .flex()
                             .gap(px(10.))
                             // a soft dark pool under them, so they read on a bright picture
-                            .when(!bs.is_empty(), |d| d.child(div().absolute().top(px(4.)).bottom(px(4.)).left(px(6.)).right(px(6.)).rounded_full().shadow(vec![gpui::BoxShadow { color: theme::black(0.5), offset: gpui::point(px(0.), px(2.)), blur_radius: px(26.), spread_radius: px(10.), inset: false }])))
+                            .when(!bs.is_empty(), |d| d.child(div().absolute().top(px(4.)).bottom(px(4.)).left(px(6.)).right(px(6.)).rounded_full().shadow(vec![gpui::BoxShadow { color: theme::black(0.25), offset: gpui::point(px(0.), px(2.)), blur_radius: px(22.), spread_radius: px(4.), inset: false }])))
                             .children(bs.into_iter().map(|b| img(b.src).h(px(32.)).flex_none().object_fit(ObjectFit::Contain)))
                     })
                     .when(people.len() > 1, |d| d.child(crate::ui::faces_below("party", people, 30.)))
