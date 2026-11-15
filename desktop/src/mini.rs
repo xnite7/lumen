@@ -11,11 +11,15 @@ static MAIN: AtomicIsize = AtomicIsize::new(0);
 static ON: AtomicBool = AtomicBool::new(false);
 /// the popup was clicked: back to full size
 pub static CLICKED: AtomicBool = AtomicBool::new(false);
+/// its ✕ was clicked: stop the film
+pub static CLOSE: AtomicBool = AtomicBool::new(false);
 
 /// logical size and margin of the mini picture
 pub const W: f32 = 400.;
 pub const H: f32 = 225.;
 pub const M: f32 = 24.;
+/// room under the picture for the controls (couch draws them there)
+pub const BAR: f32 = 92.;
 
 pub fn is_on() -> bool {
     ON.load(Ordering::Relaxed)
@@ -63,10 +67,80 @@ mod imp {
                 CLICKED.store(true, Ordering::Relaxed);
                 LRESULT(0)
             }
+            // the pointer on the picture: the ✕ shows (until it leaves)
+            WM_MOUSEMOVE => {
+                let x = XBTN.load(Ordering::Relaxed);
+                if x != 0 {
+                    unsafe {
+                        let _ = ShowWindow(hw(x), SW_SHOWNOACTIVATE);
+                        let _ = SetWindowPos(hw(x), Some(HWND_TOP), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                        let mut t = windows::Win32::UI::Input::KeyboardAndMouse::TRACKMOUSEEVENT {
+                            cbSize: std::mem::size_of::<windows::Win32::UI::Input::KeyboardAndMouse::TRACKMOUSEEVENT>() as u32,
+                            dwFlags: windows::Win32::UI::Input::KeyboardAndMouse::TME_LEAVE,
+                            hwndTrack: h,
+                            dwHoverTime: 0,
+                        };
+                        let _ = windows::Win32::UI::Input::KeyboardAndMouse::TrackMouseEvent(&mut t);
+                    }
+                }
+                LRESULT(0)
+            }
+            // left the picture (not onto the ✕): it hides
+            0x02A3 /* WM_MOUSELEAVE */ => {
+                let x = XBTN.load(Ordering::Relaxed);
+                if x != 0 {
+                    unsafe {
+                        let mut pt = POINT::default();
+                        let _ = windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt);
+                        let mut r = RECT::default();
+                        let _ = GetWindowRect(hw(x), &mut r);
+                        let on_x = pt.x >= r.left && pt.x < r.right && pt.y >= r.top && pt.y < r.bottom;
+                        if !on_x {
+                            let _ = ShowWindow(hw(x), SW_HIDE);
+                        }
+                    }
+                }
+                LRESULT(0)
+            }
             WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE as isize),
             _ => unsafe { DefWindowProcW(h, msg, wp, lp) },
         }
     }
+
+    /// the ✕ over the picture: a dark circle with a cross, drawn by Windows
+    unsafe extern "system" fn x_proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+        use windows::Win32::Graphics::Gdi::*;
+        match msg {
+            WM_PAINT => unsafe {
+                let mut ps = PAINTSTRUCT::default();
+                let dc = BeginPaint(h, &mut ps);
+                let mut r = RECT::default();
+                let _ = GetClientRect(h, &mut r);
+                let bg = CreateSolidBrush(windows::Win32::Foundation::COLORREF(0x00181818));
+                let _ = FillRect(dc, &r, bg);
+                let _ = DeleteObject(bg.into());
+                let pen = CreatePen(PS_SOLID, ((r.right as f32) / 14.).max(2.) as i32, windows::Win32::Foundation::COLORREF(0x00ffffff));
+                let old = SelectObject(dc, pen.into());
+                let (a, b) = (r.right * 34 / 100, r.right * 66 / 100);
+                let _ = MoveToEx(dc, a, a, None);
+                let _ = LineTo(dc, b, b);
+                let _ = MoveToEx(dc, b, a, None);
+                let _ = LineTo(dc, a, b);
+                SelectObject(dc, old);
+                let _ = DeleteObject(pen.into());
+                let _ = EndPaint(h, &ps);
+                LRESULT(0)
+            },
+            WM_LBUTTONUP => {
+                CLOSE.store(true, Ordering::Relaxed);
+                LRESULT(0)
+            }
+            WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE as isize),
+            _ => unsafe { DefWindowProcW(h, msg, wp, lp) },
+        }
+    }
+
+    static XBTN: AtomicIsize = AtomicIsize::new(0);
 
     unsafe extern "system" fn host_proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
         unsafe { DefWindowProcW(h, msg, wp, lp) }
@@ -143,6 +217,12 @@ mod imp {
             );
             if let Ok(p) = p {
                 POPUP.store(p.0 as isize, Ordering::Relaxed);
+                // the ✕, round, over the picture's top right (shown on hover)
+                let xc = WNDCLASSW { lpfnWndProc: Some(x_proc), hInstance: inst.into(), lpszClassName: w!("couch-mini-x"), hCursor: LoadCursorW(None, IDC_HAND).unwrap_or_default(), ..Default::default() };
+                RegisterClassW(&xc);
+                if let Ok(x) = CreateWindowExW(WINDOW_EX_STYLE(0), w!("couch-mini-x"), w!(""), WS_CHILD | WS_CLIPSIBLINGS, 0, 0, 30, 30, Some(p), None, Some(inst.into()), None) {
+                    XBTN.store(x.0 as isize, Ordering::Relaxed);
+                }
                 // rounded corners (Windows 11)
                 let pref: u32 = 2; // DWMWCP_ROUND
                 let _ = windows::Win32::Graphics::Dwm::DwmSetWindowAttribute(p, windows::Win32::Graphics::Dwm::DWMWA_WINDOW_CORNER_PREFERENCE, &pref as *const u32 as *const _, 4);
@@ -203,10 +283,25 @@ mod imp {
             let _ = GetClientRect(hw(main), &mut r);
             if ON.load(Ordering::Relaxed) && pop != 0 {
                 let (w, h, m) = ((W * scale) as i32, (H * scale) as i32, (M * scale) as i32);
-                let mut pt = POINT { x: r.right - w - m, y: r.bottom - h - m };
+                let bar = (BAR * scale) as i32;
+                let mut pt = POINT { x: r.right - w - m, y: r.bottom - h - m - bar };
                 let _ = ClientToScreen(hw(main), &mut pt);
                 let _ = SetWindowPos(hw(pop), None, pt.x, pt.y, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
                 let _ = SetWindowPos(hw(v), None, 0, 0, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
+                let x = XBTN.load(Ordering::Relaxed);
+                if x != 0 {
+                    let xs = (30. * scale) as i32;
+                    let pad = (10. * scale) as i32;
+                    let _ = SetWindowPos(hw(x), Some(HWND_TOP), w - xs - pad, pad, xs, xs, SWP_NOACTIVATE);
+                    // round
+                    let rg = windows::Win32::Graphics::Gdi::CreateEllipticRgn(0, 0, xs + 1, xs + 1);
+                    let _ = windows::Win32::Graphics::Gdi::SetWindowRgn(hw(x), Some(rg), true);
+                }
+                // the picture's own window doesn't draw over its siblings (the ✕)
+                let st = GetWindowLongW(hw(v), GWL_STYLE) as u32;
+                if st & WS_CLIPSIBLINGS.0 == 0 {
+                    let _ = SetWindowLongW(hw(v), GWL_STYLE, (st | WS_CLIPSIBLINGS.0) as i32);
+                }
             } else {
                 let _ = SetWindowPos(hw(v), Some(HWND_BOTTOM), 0, 0, r.right.max(1), r.bottom.max(1), SWP_NOACTIVATE);
             }

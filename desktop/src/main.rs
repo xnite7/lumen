@@ -751,7 +751,7 @@ impl Root {
                 .active(|s| s.bg(theme::white(0.22)))
                 .child(ic)
         };
-        let (p1, p2, p3, p4, p5) = (pb.clone(), pb.clone(), pb.clone(), pb.clone(), pb.clone());
+        let (p1, p3, p4, p5) = (pb.clone(), pb.clone(), pb.clone(), pb.clone());
         let seek = move |pb: &Entity<playback::Playback>, by: f64, cx: &mut App| {
             let st = pb.read(cx).state.clone();
             let to = (st.pos + by).clamp(0., st.duration.max(0.));
@@ -767,7 +767,9 @@ impl Root {
         div()
             .absolute()
             .right(px(mini::M))
-            .bottom(px(mini::M + mini::H + 10. - (1. - a) * 16.))
+            // under the picture (the picture sits above it, see mini::BAR)
+            .bottom(px(mini::M - (1. - a) * 16.))
+            .h(px(mini::BAR - 8.))
             .opacity(a)
             .w(px(mini::W))
             .rounded(px(18.))
@@ -784,88 +786,16 @@ impl Root {
             .shadow(vec![gpui::BoxShadow { color: theme::black(0.55), offset: gpui::point(px(0.), px(14.)), blur_radius: px(36.), spread_radius: px(0.), inset: false }])
             .flex()
             .flex_col()
+            .justify_center()
+            .gap(px(8.))
+            .px(px(14.))
             .child(
-                // what's on: the logo (or the name), the episode under it
-                div()
-                    .px(px(14.))
-                    .pt(px(12.))
-                    .pb(px(6.))
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .gap(px(3.))
-                            .child(match logo {
-                                Some(u) => {
-                                    let t = title.clone();
-                                    div().h(px(30.)).flex().items_center().child(
-                                        img(u).h(px(30.)).max_w(px(200.)).object_fit(gpui::ObjectFit::Contain).with_fallback(move || {
-                                            div().text_size(px(16.)).font_weight(FontWeight::BLACK).line_clamp(1).child(t.clone()).into_any_element()
-                                        }),
-                                    )
-                                    .into_any_element()
-                                }
-                                None => div().text_size(px(16.)).font_weight(FontWeight::BLACK).line_clamp(1).text_ellipsis().child(title.clone()).into_any_element(),
-                            })
-                            .children((!line.is_empty()).then(|| div().text_size(px(12.5)).font_weight(FontWeight::MEDIUM).text_color(theme::label2()).line_clamp(1).text_ellipsis().child(line))),
-                    )
-                    .child(b("mini-big", ui::icon("expand", 17.), 32.).on_click(|_, _, cx| Nav::expand(cx)))
-                    .child(b("mini-close", ui::icon("close", 17.), 32.).on_click(move |_, _, cx| p2.update(cx, |p, cx| p.close(cx)))),
-            )
-            .child(
-                // the controls, centred, the times either side
-                div()
-                    .px(px(14.))
-                    .pb(px(6.))
-                    .flex()
-                    .items_center()
-                    .child(div().w(px(110.)).text_size(px(11.5)).text_color(theme::label3()).child(times))
-                    .child(
-                        div()
-                            .flex_1()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .gap(px(10.))
-                            .child(b("mini-b10", ui::icon("replay10", 20.), 36.).on_click(move |_, _, cx| seek(&p3, -10., cx)))
-                            .child(
-                                div()
-                                    .id("mini-play")
-                                    .size(px(44.))
-                                    .rounded_full()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .cursor_pointer()
-                                    .bg(theme::text())
-                                    .hover(|s| s.opacity(0.88))
-                                    .active(|s| s.opacity(0.75))
-                                    .child(if paused { ui::icon_fill("play", 20.) } else { ui::icon_fill("pause", 20.) }.text_color(gpui::rgb(0x000000)))
-                                    .on_click(move |_, _, cx| {
-                                        let paused = p1.read(cx).state.paused;
-                                        if views::player::may(if paused { "play" } else { "pause" }, None, cx) {
-                                            p1.read(cx).cmd("pause", json!({ "value": !paused }));
-                                        }
-                                    }),
-                            )
-                            .child(b("mini-f10", ui::icon("forward10", 20.), 36.).on_click(move |_, _, cx| seek(&p4, 10., cx))),
-                    )
-                    .child(div().w(px(110.))),
-            )
-            .child(
-                // the progress: a click anywhere on it jumps there
+                // the progress first: a click anywhere on it jumps there
                 div()
                     .id("mini-track")
-                    .h(px(14.))
-                    .px(px(14.))
-                    .pb(px(8.))
+                    .h(px(12.))
                     .flex()
-                    .items_end()
+                    .items_center()
                     .cursor_pointer()
                     .on_mouse_down(gpui::MouseButton::Left, move |e, _, cx| {
                         let x = (f32::from(e.position.x) - left_edge - 14.) / (mini::W - 28.);
@@ -882,6 +812,52 @@ impl Root {
                             div().relative().h_full().rounded_full().overflow_hidden().w(px((mini::W - 28.) * frac)).child(views::player::bar_fill(views::player::bar_style(), theme::neon().into(), theme::neon_soft().into(), t0)),
                         ),
                     ),
+            )
+            .child(
+                // what's on (left), the controls (middle), the time (right)
+                div()
+                    .flex()
+                    .items_center()
+                    .child(
+                        div().w(px(120.)).min_w_0().flex().flex_col().children(match logo {
+                            Some(u) => {
+                                let t = title.clone();
+                                Some(img(u).h(px(20.)).max_w(px(120.)).object_fit(gpui::ObjectFit::Contain).with_fallback(move || div().text_size(px(13.)).font_weight(FontWeight::BLACK).line_clamp(1).child(t.clone()).into_any_element()).into_any_element())
+                            }
+                            None => Some(div().text_size(px(13.)).font_weight(FontWeight::BLACK).line_clamp(1).text_ellipsis().child(title.clone()).into_any_element()),
+                        }).children((!line.is_empty()).then(|| div().text_size(px(11.)).text_color(theme::label3()).line_clamp(1).text_ellipsis().child(line))),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .gap(px(6.))
+                            .child(b("mini-b10", ui::icon("replay10", 18.), 32.).on_click(move |_, _, cx| seek(&p3, -10., cx)))
+                            .child(
+                                div()
+                                    .id("mini-play")
+                                    .size(px(34.))
+                                    .rounded_full()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .cursor_pointer()
+                                    .bg(theme::text())
+                                    .hover(|s| s.opacity(0.88))
+                                    .active(|s| s.opacity(0.75))
+                                    .child(if paused { ui::icon_fill("play", 15.) } else { ui::icon_fill("pause", 15.) }.text_color(gpui::rgb(0x000000)))
+                                    .on_click(move |_, _, cx| {
+                                        let paused = p1.read(cx).state.paused;
+                                        if views::player::may(if paused { "play" } else { "pause" }, None, cx) {
+                                            p1.read(cx).cmd("pause", json!({ "value": !paused }));
+                                        }
+                                    }),
+                            )
+                            .child(b("mini-f10", ui::icon("forward10", 18.), 32.).on_click(move |_, _, cx| seek(&p4, 10., cx))),
+                    )
+                    .child(div().w(px(120.)).flex().justify_end().text_size(px(11.5)).text_color(theme::label3()).child(times)),
             )
     }
 
@@ -1425,6 +1401,10 @@ fn main() {
                             // (not inside an update of Root: Nav updates Root itself)
                             if mini::CLICKED.swap(false, std::sync::atomic::Ordering::Relaxed) {
                                 let _ = cx.update(|cx| Nav::expand(cx));
+                            }
+                            if mini::CLOSE.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                                mini::CLICKED.store(false, std::sync::atomic::Ordering::Relaxed);
+                                let _ = cx.update(|cx| playback::get(cx).update(cx, |p, cx| p.close(cx)));
                             }
                         })
                         .detach();
