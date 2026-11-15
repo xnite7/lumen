@@ -99,7 +99,7 @@ fn face_png(bytes: &[u8], w: u32) -> Option<Vec<u8>> {
     let side = im.width().min(im.height()).max(1);
     let sq = im.crop_imm((im.width() - side) / 2, (im.height() - side) / 2, side, side);
     let w = w.clamp(8, 512);
-    let mut px = sq.resize_exact(w, w, image::imageops::FilterType::Lanczos3).to_rgba8();
+    let mut px = sq.resize_exact(w, w, image::imageops::FilterType::CatmullRom).to_rgba8();
     let r = w as f32 / 2.;
     // a soft rim: the outer ~14% of the radius fades to nothing
     let feather = (r * 0.14).max(1.5);
@@ -168,7 +168,7 @@ fn shrink(bytes: &[u8], w: u32, k: char) -> Option<Vec<u8>> {
     }
     if im.width() > w + w / 8 {
         let h = ((im.height() as u64 * w as u64) / im.width() as u64).max(1) as u32;
-        im = im.resize_exact(w, h, image::imageops::FilterType::Lanczos3);
+        im = im.resize_exact(w, h, image::imageops::FilterType::CatmullRom);
         changed = true;
     }
     if !changed {

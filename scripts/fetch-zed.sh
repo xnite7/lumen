@@ -17,6 +17,14 @@ if ! grep -q COUCH_TEXT_CONTRAST "$R"; then
     "$R"
   grep -q COUCH_TEXT_CONTRAST "$R" || { echo "couch text patch did not apply" >&2; exit 1; }
 fi
+# softer text: COUCH_TEXT_SOFT turns off DirectWrite's grid fitting (glyphs are
+# not snapped to whole pixels, so edges fade like a browser's instead of
+# looking etched)
+D="$DIR/crates/gpui_windows/src/direct_write.rs"
+if ! grep -q COUCH_TEXT_SOFT "$D"; then
+  sed -i 's|^        let rendering_mode = match rendering_mode {|        if std::env::var("COUCH_TEXT_SOFT").is_ok() { grid_fit_mode = DWRITE_GRID_FIT_MODE_DISABLED; }\n        let rendering_mode = match rendering_mode {|' "$D"
+  grep -q COUCH_TEXT_SOFT "$D" || { echo "couch soft text patch did not apply" >&2; exit 1; }
+fi
 # (no package identity in the .exe: couch is now a full MSIX package, and an
 # old sparse-package line left in a cached copy is taken out)
 M="$DIR/crates/gpui/resources/windows/gpui.manifest.xml"

@@ -1281,6 +1281,8 @@ fn main() {
         // smooth text: no DirectWrite contrast boost, so glyph edges fade like a browser's
         if theme::text_mode() == "smooth" {
             unsafe { std::env::set_var("COUCH_TEXT_CONTRAST", "0") };
+            // and not snapped to whole pixels: soft, even edges
+            unsafe { std::env::set_var("COUCH_TEXT_SOFT", "1") };
         }
 
         let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
