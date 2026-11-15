@@ -22,6 +22,7 @@ mod timer;
 mod ui;
 mod views;
 mod seen;
+mod tour;
 
 thread_local! {
     static FPS_ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -380,6 +381,8 @@ pub struct Root {
     last_size: gpui::Size<gpui::Pixels>,
     /// the launch intro: when it started (None once it's done)
     splash: Option<std::time::Instant>,
+    /// the first-time tour's step (None: not showing)
+    tour: Option<usize>,
     /// when the intro's animation started playing
     intro_play: Option<std::time::Instant>,
     /// when the page last changed, and whether that was a step back (pages ease in)
@@ -445,6 +448,8 @@ impl Root {
             .child(
                 div().absolute().top(px(22.)).left_0().w_full().flex().justify_center().child(
                     div()
+                        .relative()
+                        .child(tour::spot("tabs"))
                         .flex()
                         .items_center()
                         .gap(px(4.))
@@ -481,6 +486,7 @@ impl Root {
                                 .when(on, |d| d.bg(theme::white(0.16)))
                                 .when(!on, |d| d.hover(|s| s.text_color(theme::text())))
                                 .on_click(move |_, _, cx| Nav::go(target.clone(), cx))
+                                .when(*label == "Couch", |d| d.relative().child(tour::spot("couch")))
                                 .child(*label)
                         })),
                 ),
@@ -502,6 +508,8 @@ impl Root {
                     })
                     .size(px(36.))
                     .rounded_full()
+                    .relative()
+                    .child(tour::spot("me"))
                     .when(self.me["avatar"].as_str().is_none(), |d| d.bg(theme::neon()))
                     .flex()
                     .items_center()
@@ -1169,6 +1177,26 @@ impl Render for Root {
             .children(if playing { None } else { update::card(cx).map(|c| gpui::deferred(c).with_priority(2)) })
             .children(ui::zoom::overlay(window, cx))
             .children(self.intro(window))
+            .children({
+                // the first time on Home (signed in, intro over): the tour
+                if self.tour.is_none() && self.splash.is_none() && self.route == Route::Home && !playing && !tour::done() {
+                    self.tour = Some(0);
+                }
+                let vs = window.viewport_size();
+                self.tour.filter(|_| self.route == Route::Home && !playing).map(|i| {
+                    let me = cx.entity().downgrade();
+                    gpui::deferred(tour::view(i, f32::from(vs.width), f32::from(vs.height), move |next, cx| {
+                        if next.is_none() {
+                            tour::finish();
+                        }
+                        let _ = me.update(cx, |r, cx| {
+                            r.tour = next;
+                            cx.notify();
+                        });
+                    }))
+                    .with_priority(5)
+                })
+            })
             .children(self.toast.clone().map(|t| {
                 div().absolute().bottom(px(28.)).left_0().w_full().flex().justify_center().child(
                     div()
@@ -1459,6 +1487,7 @@ fn main() {
                             focus,
                             last_size: gpui::Size::default(),
                             splash: Some(std::time::Instant::now()),
+                            tour: None,
                             intro_play: None,
                             turned: None,
                         }

@@ -840,6 +840,8 @@ impl Render for Settings {
                         let now = crate::views::player::bar_style();
                         // the samples move like the real thing
                         let t = self.opened.elapsed().as_secs_f32();
+                        // samples in the colours of the title you looked at last
+                        let tc: [gpui::Hsla; 2] = crate::views::player::last_tint().unwrap_or([theme::neon().into(), theme::neon_soft().into()]);
                         window.request_animation_frame();
                         rows.insert(
                             1,
@@ -847,7 +849,6 @@ impl Render for Settings {
                                 .child(label("progress bar", "how the bar under the film fills"))
                                 .child(div().flex().flex_wrap().justify_end().max_w(px(560.)).gap(px(8.)).children(crate::views::player::BAR_STYLES.iter().map(|&(k, l, _)| {
                                     let on = now == k;
-                                    let n = theme::neon();
                                     div()
                                         .id(SharedString::from(format!("bar-{k}")))
                                         .w(px(126.))
@@ -864,8 +865,18 @@ impl Render for Settings {
                                             let _ = couch::state::get().core.db.set("gpui_bar_style", &k.to_string());
                                             cx.notify();
                                         }))
-                                        .child(div().w_full().h(px(5.)).rounded_full().bg(theme::white(0.15)).child(div().relative().h_full().w(px(80.)).rounded_full().overflow_hidden().child(crate::views::player::bar_fill(k, n.into(), theme::neon_soft().into(), t))))
-                                        .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(if on { theme::text() } else { theme::label2() }).child(l))
+                                        .child(div().w_full().h(px(5.)).rounded_full().bg(theme::white(0.15)).child(div().relative().h_full().w(px(80.)).rounded_full().overflow_hidden().child(crate::views::player::bar_fill(k, tc[0], tc[1], t))))
+                                        .child(
+                                            div()
+                                                .flex()
+                                                .items_center()
+                                                .justify_between()
+                                                .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(if on { theme::text() } else { theme::label2() }).child(l))
+                                                // these follow what's on: a small mark says so
+                                                .when(crate::views::player::bar_dynamic(k), |d| {
+                                                    d.child(div().px(px(6.)).h(px(17.)).flex().items_center().rounded_full().bg(theme::white(0.1)).text_size(px(10.)).font_weight(FontWeight::BOLD).text_color(tc[0]).child("✦ adapts"))
+                                                }),
+                                        )
                                 })))
                                 .into_any_element(),
                         );

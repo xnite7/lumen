@@ -189,6 +189,9 @@ impl Detail {
                 .ok()
                 .flatten();
                 let _ = this.update(cx, |d, cx| {
+                    if let Some(t) = t {
+                        crate::views::player::set_last_tint(t);
+                    }
                     d.tint = t.map(|t| t[0]);
                     cx.notify();
                 });

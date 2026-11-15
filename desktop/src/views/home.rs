@@ -107,6 +107,23 @@ impl Home {
                         v.hero = Some(pick.clone());
                         if v.scope == "all" {
                             crate::ui::ambient::set_home(&pick, cx);
+                            // its logo's colours (settings' bar samples use them)
+                            if let Some(src) = pick.logo.clone() {
+                                cx.spawn(async move |_, _| {
+                                    let t = couch::rt::spawn(async move {
+                                        let core = couch::state::get().core.clone();
+                                        let (b, _) = couch::images::load(&core, &crate::api::sized(&src, "w500")).await.ok()?;
+                                        crate::views::player::tint_of(&b)
+                                    })
+                                    .await
+                                    .ok()
+                                    .flatten();
+                                    if let Some(t) = t {
+                                        crate::views::player::set_last_tint(t);
+                                    }
+                                })
+                                .detach();
+                            }
                         }
                         crate::views::detail::prefetch(&pick, cx);
                         cx.notify();

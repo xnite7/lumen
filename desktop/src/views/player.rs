@@ -272,8 +272,8 @@ fn soft_light(pic: &std::sync::Arc<gpui::Image>) -> Option<std::sync::Arc<gpui::
 
 /// The progress bar styles: (key, name in settings, moves?)
 pub const BAR_STYLES: [(&str, &str, bool); 12] = [
-    ("mesh", "living colours", true),
-    ("chameleon", "title colours", false),
+    ("mesh", "shimmer", true),
+    ("chameleon", "chameleon", false),
     ("white", "plain white", false),
     ("steel", "steel", true),
     ("pulse", "pulse", true),
@@ -285,6 +285,22 @@ pub const BAR_STYLES: [(&str, &str, bool); 12] = [
     ("blocks", "blocks", false),
     ("rainbow", "rainbow", true),
 ];
+
+/// these two take the colours of what you're watching
+pub fn bar_dynamic(style: &str) -> bool {
+    matches!(style, "mesh" | "chameleon")
+}
+
+thread_local! {
+    /// the colours of the last title logo looked at (settings' samples use them)
+    static LAST_TINT: std::cell::Cell<Option<[gpui::Hsla; 2]>> = const { std::cell::Cell::new(None) };
+}
+pub fn set_last_tint(t: [gpui::Hsla; 2]) {
+    LAST_TINT.with(|c| c.set(Some(t)));
+}
+pub fn last_tint() -> Option<[gpui::Hsla; 2]> {
+    LAST_TINT.with(|c| c.get())
+}
 
 /// Which progress bar is picked in settings (living colours unless chosen).
 pub fn bar_style() -> &'static str {
@@ -1285,6 +1301,7 @@ impl Render for PlayerView {
                 if let Some((k, t)) = found {
                     let _ = this.update(cx, |v, cx| {
                         if v.tint.as_ref().map_or(false, |x| x.0 == k) {
+                            set_last_tint(t);
                             v.tint = Some((k, t));
                             cx.notify();
                         }
