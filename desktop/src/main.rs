@@ -1405,7 +1405,15 @@ fn main() {
                         cx.observe_window_bounds(window, |_, window, cx| {
                             let s = window.scale_factor();
                             cx.defer(move |_| mini::fit(s));
-                            views::player::window_moved();
+                            // only a real move or resize: coming back to the window
+                            // also reports its bounds, and that click must still count
+                            thread_local! {
+                                static LAST: std::cell::Cell<Option<gpui::Bounds<gpui::Pixels>>> = const { std::cell::Cell::new(None) };
+                            }
+                            let b = window.bounds();
+                            if LAST.with(|l| l.replace(Some(b))).map_or(false, |o| o != b) {
+                                views::player::window_moved();
+                            }
                         })
                         .detach();
                         // a click on the mini picture: full size again

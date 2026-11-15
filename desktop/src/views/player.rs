@@ -1839,7 +1839,7 @@ impl Render for PlayerView {
                                 move |_, _, cx| seek_by(&pb, 10., cx)
                             }))
                             // the time, the bar, the time left
-                            .child(div().ml(px(10.)).w(px(64.)).flex_none().flex().justify_end().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).child(clock(st.pos)))
+                            .child(div().ml(px(10.)).w(px(64.)).flex_none().flex().justify_end().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::white(0.5)).child(clock(st.pos)))
                             .child(
                                 div()
                                     .id("pl-scrub")
@@ -1924,7 +1924,7 @@ impl Render for PlayerView {
                                     })),
                             )
                             )
-                            .child(div().w(px(64.)).flex_none().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label2()).child(if st.duration > 0. { format!("-{}", clock(st.duration - st.pos)) } else { String::new() }))
+                            .child(div().w(px(64.)).flex_none().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::white(0.5)).child(if st.duration > 0. { format!("-{}", clock(st.duration - st.pos)) } else { String::new() }))
                             .children(next.clone().filter(|_| !narrow2).map(|_| {
                                 let pb = self.pb.clone();
                                 bar_btn("pl-next", icon("next", 22.), false)
