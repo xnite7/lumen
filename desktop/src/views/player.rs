@@ -1600,7 +1600,10 @@ impl Render for PlayerView {
                                     })
                                     .child(icon("back", 24.)),
                             )
-                            .child(div().opacity(1. - pv_top).relative().top(px(-pv_top * 14.)).child(match top_logo {
+                            .child(div().opacity(1. - pv_top).relative().top(px(-pv_top * 14.))
+                                // a soft dark pool behind the logo, so it reads over a bright picture
+                                .child(div().absolute().top(px(6.)).bottom(px(6.)).left(px(10.)).right(px(10.)).rounded_full().shadow(vec![gpui::BoxShadow { color: theme::black(0.55), offset: gpui::point(px(0.), px(2.)), blur_radius: px(34.), spread_radius: px(14.), inset: false }]))
+                                .child(match top_logo {
                                 Some(u) => {
                                     let t = top_title.clone();
                                     img(u)
