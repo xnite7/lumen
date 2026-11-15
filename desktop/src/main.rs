@@ -107,7 +107,7 @@ pub fn couch_loading_frame() -> Option<std::sync::Arc<gpui::RenderImage>> {
     .map(|x| x.0.clone())
 }
 
-/// The intro's sound (a soft turn, a landing, a whoosh into the app). Off with "intro sound" in settings.
+/// The intro's sound (a warm swell that lands with the couch, air rushing round you into the app, a deep tail). Off with "intro sound" in settings.
 fn play_intro_sound() {
     if !couch::state::get().core.db.get::<bool>("gpui_intro_sound").unwrap_or(true) {
         return;
