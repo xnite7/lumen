@@ -699,6 +699,10 @@ impl Root {
             }
         };
         let left_edge = f32::from(window.viewport_size().width) - mini::M - mini::W;
+        let t0 = MINI_AT.with(|m| m.borrow().map_or(0., |t| t.elapsed().as_secs_f32()));
+        if !paused && views::player::bar_style() == "mesh" {
+            window.request_animation_frame();
+        }
         div()
             .absolute()
             .right(px(mini::M))
@@ -707,6 +711,12 @@ impl Root {
             .w(px(mini::W))
             .rounded(px(18.))
             .overflow_hidden()
+            // clicks on it stay on it (nothing behind it gets them)
+            .id("mini-card")
+            .occlude()
+            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(gpui::MouseButton::Right, |_, _, cx| cx.stop_propagation())
+            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
             .bg(gpui::linear_gradient(180., gpui::linear_color_stop(gpui::rgba(0x1d181cf2), 0.), gpui::linear_color_stop(gpui::rgba(0x0e0b0df2), 1.)))
             .border_1()
             .border_color(theme::white(0.10))
@@ -808,7 +818,7 @@ impl Root {
                     })
                     .child(
                         div().w_full().h(px(4.)).rounded_full().bg(theme::white(0.16)).child(
-                            div().h_full().rounded_full().w(px((mini::W - 28.) * frac)).bg(gpui::linear_gradient(90., gpui::linear_color_stop(theme::neon(), 0.), gpui::linear_color_stop(theme::neon_soft(), 1.))),
+                            div().relative().h_full().rounded_full().overflow_hidden().w(px((mini::W - 28.) * frac)).child(views::player::bar_fill(views::player::bar_style(), theme::neon().into(), theme::neon_soft().into(), t0)),
                         ),
                     ),
             )

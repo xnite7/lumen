@@ -261,6 +261,25 @@ fn soft_light(pic: &std::sync::Arc<gpui::Image>) -> Option<std::sync::Arc<gpui::
     Some(std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
 }
 
+/// Which progress bar: "mesh" (the title's colours, moving), "chameleon"
+/// (the title's colours, still) or "white".
+pub fn bar_style() -> &'static str {
+    match couch::state::get().core.db.get::<String>("gpui_bar_style").as_deref() {
+        Some("chameleon") => "chameleon",
+        Some("white") => "white",
+        _ => "mesh",
+    }
+}
+
+/// the progress bar's fill, filling its parent
+pub fn bar_fill(style: &str, c1: gpui::Hsla, c2: gpui::Hsla, t: f32) -> gpui::AnyElement {
+    match style {
+        "white" => div().absolute().size_full().bg(gpui::white()).into_any_element(),
+        "chameleon" => div().absolute().size_full().bg(linear_gradient(90., linear_color_stop(c1, 0.), linear_color_stop(c2, 1.))).into_any_element(),
+        _ => mesh(c1, c2, t).into_any_element(),
+    }
+}
+
 /// The progress fill: the title's colours as a living mesh, waves of them
 /// drifting through each other, film grain over it, a few sparks riding along.
 fn mesh(c1: gpui::Hsla, c2: gpui::Hsla, t: f32) -> impl IntoElement {
@@ -1364,10 +1383,10 @@ impl Render for PlayerView {
                         .gap(px(6.))
                         .when(has_ep, |d| {
                             d.children(label.clone().map(|l| {
-                                div().relative().top(rise(pv_label)).opacity(pv_label).text_size(px(30.)).font_weight(FontWeight::BLACK).text_color(theme::white(0.72)).child(l.replace(' ', ":"))
+                                div().relative().top(rise(pv_label)).opacity(pv_label).text_size(px(28.)).line_height(px(38.)).font_weight(FontWeight::BLACK).text_color(theme::white(0.72)).child(l.replace(' ', ":"))
                             }))
                             .children((!ep.is_empty()).then(|| {
-                                div().relative().top(rise(pv_title)).opacity(pv_title).text_size(px(68.)).line_height(px(74.)).font_weight(FontWeight::BLACK).line_clamp(2).child(ep.clone())
+                                div().relative().top(rise(pv_title)).opacity(pv_title).text_size(px(54.)).line_height(px(66.)).pb(px(4.)).font_weight(FontWeight::BLACK).line_clamp(2).child(ep.clone())
                             }))
                         })
                         .child(div().relative().top(rise(pv_logo)).opacity(pv_logo).mt(px(if has_ep { 18. } else { 0. })).child(match big_logo {
@@ -1417,11 +1436,12 @@ impl Render for PlayerView {
                 )
                                 .child({
                     let [c1, c2] = self.tint.as_ref().map(|t| t.1).unwrap_or([theme::neon().into(), theme::neon().into()]);
-                    if !paused {
+                    let style = bar_style();
+                    if !paused && style == "mesh" {
                         window.request_animation_frame();
                     }
                     div().absolute().left(px(10.)).right(px(10.)).bottom(px(10.)).h(px(4.)).rounded_full().bg(theme::white(0.25)).child(
-                        div().relative().h_full().rounded_full().overflow_hidden().w((vw - px(20.)) * frac).child(mesh(c1, c2, self.born.elapsed().as_secs_f32())),
+                        div().relative().h_full().rounded_full().overflow_hidden().w((vw - px(20.)) * frac).child(bar_fill(style, c1, c2, self.born.elapsed().as_secs_f32())),
                     )
                 });
         }
@@ -1720,10 +1740,11 @@ impl Render for PlayerView {
                                     .child(div().absolute().top_0().left_0().h_full().w(px(tw * ahead)).rounded_full().bg(theme::white(0.3)))
                                     .children(segs.into_iter().map(|(a, w)| div().absolute().top_0().h_full().left(px(tw * a)).w(px((tw * w).max(2.))).rounded_full().bg(theme::white(0.45))))
                                     .child({
-                                        // the title's colours, drifting through each other
+                                        // the fill, in the style picked in settings
                                         let [c1, c2] = self.tint.as_ref().map(|t| t.1).unwrap_or([theme::neon().into(), theme::neon().into()]);
+                                        let style = bar_style();
                                         let t = self.born.elapsed().as_secs_f32();
-                                        if ca > 0. && !paused {
+                                        if ca > 0. && !paused && style == "mesh" {
                                             window.request_animation_frame();
                                         }
                                         div()
@@ -1734,8 +1755,8 @@ impl Render for PlayerView {
                                             .w(px(tw * shown_frac))
                                             .rounded_full()
                                             .overflow_hidden()
-                                            .child(mesh(c1, c2, t))
-                                            .shadow(vec![gpui::BoxShadow { color: c1.opacity(0.55), offset: gpui::point(px(0.), px(0.)), blur_radius: px(10.), spread_radius: px(0.), inset: false }])
+                                            .child(bar_fill(style, c1, c2, t))
+                                            .when(style != "white", |d| d.shadow(vec![gpui::BoxShadow { color: c1.opacity(0.55), offset: gpui::point(px(0.), px(0.)), blur_radius: px(10.), spread_radius: px(0.), inset: false }]))
                                     })
                                     .child(
                                         div()

@@ -835,6 +835,33 @@ impl Render for Settings {
                 t => {
                     let mut rows = self.plain(t, "", &cur, cx);
                     if t == Tab::Video {
+                        let now = crate::views::player::bar_style();
+                        rows.insert(
+                            1,
+                            line(0)
+                                .child(label("progress bar", "how the bar under the film fills"))
+                                .child(div().flex().gap(px(4.)).p(px(3.)).rounded_full().bg(theme::white(0.08)).children([("mesh", "living colours"), ("chameleon", "title colours"), ("white", "plain white")].into_iter().map(|(k, l)| {
+                                    let on = now == k;
+                                    div()
+                                        .id(SharedString::from(format!("bar-{k}")))
+                                        .px(px(12.))
+                                        .h(px(30.))
+                                        .flex()
+                                        .items_center()
+                                        .rounded_full()
+                                        .text_size(px(14.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .cursor_pointer()
+                                        .when(on, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))
+                                        .when(!on, |d| d.hover(|s| s.bg(theme::white(0.1))))
+                                        .on_click(cx.listener(move |_, _, _, cx| {
+                                            let _ = couch::state::get().core.db.set("gpui_bar_style", &k.to_string());
+                                            cx.notify();
+                                        }))
+                                        .child(l)
+                                })))
+                                .into_any_element(),
+                        );
                         let on = couch::state::get().core.db.get::<bool>("gpui_immersive").unwrap_or(true);
                         rows.insert(
                             1,
