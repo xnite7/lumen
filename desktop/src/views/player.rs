@@ -1523,7 +1523,7 @@ impl Render for PlayerView {
                                 div().relative().top(rise(pv_label)).opacity(pv_label).text_size(px(28.)).line_height(px(38.)).font_weight(FontWeight::BLACK).text_color(theme::white(0.72)).child(l.replace(' ', ":"))
                             }))
                             .children((!ep.is_empty()).then(|| {
-                                div().relative().top(rise(pv_title)).opacity(pv_title).text_size(px(54.)).line_height(px(66.)).pb(px(4.)).font_weight(FontWeight::BLACK).line_clamp(2).child(ep.clone())
+                                div().relative().top(rise(pv_title)).opacity(pv_title).text_size(px(44.)).line_height(px(54.)).pb(px(4.)).font_weight(FontWeight::BLACK).line_clamp(2).child(ep.clone())
                             }))
                         })
                         .child(div().relative().top(rise(pv_logo)).opacity(pv_logo).mt(px(if has_ep { 18. } else { 0. })).child(match big_logo {
