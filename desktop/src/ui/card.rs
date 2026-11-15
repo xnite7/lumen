@@ -7,6 +7,11 @@ use gpui::{div, img, linear_color_stop, linear_gradient, prelude::*, px, AnyElem
 pub const W: f32 = 300.0;
 pub const H: f32 = 169.0;
 
+thread_local! {
+    /// each card: is the pointer on it, since when (it grows while you rest on it)
+    static GROW: std::cell::RefCell<std::collections::HashMap<String, (bool, std::time::Instant)>> = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
 pub fn card(id: SharedString, m: &Meta, on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut gpui::App) + 'static) -> AnyElement {
     card_with(id, m, None, None, None, on_click)
 }
@@ -41,6 +46,15 @@ pub fn card_with(
     let logo = m.logo.clone().or_else(|| m.id.starts_with("tt").then(|| format!("https://images.metahub.space/logo/medium/{}/img", m.id.split(':').next().unwrap_or(&m.id)))).map(|u| crate::net::logo(&sized(&u, "w500"), 170.));
     let zkey = id.to_string();
     let lkey = zkey.clone();
+    // resting on it: the card grows a little, over its neighbours
+    let hkey = zkey.clone();
+    let (hov, since) = GROW.with(|g| g.borrow().get(&zkey).copied()).unwrap_or((false, std::time::Instant::now() - std::time::Duration::from_secs(5)));
+    let x = (since.elapsed().as_secs_f32() / if hov { 0.28 } else { 0.22 }).min(1.);
+    let moving = x < 1.;
+    // in: quick then soft; out: an even ease
+    let grow = if hov { 1. - (1. - x).powi(3) } else { 1. - x * x * (3. - 2. * x) };
+    let s = 1. + 0.07 * grow;
+    let (gw, gh) = (W * s, H * s);
     // seen it already: the card steps back a little (not while it previews)
     let watched = clip.is_none() && progress.is_none() && crate::seen::status(&m.id).0;
     let (zid, zart) = (m.id.clone(), art.clone());
@@ -49,12 +63,16 @@ pub fn card_with(
         .id(id)
         .on_mouse_down(gpui::MouseButton::Left, move |_, _, _| crate::ui::zoom::pressed(&zid, &zk2, zart.clone(), 12.))
         .child(crate::ui::zoom::track(zkey))
-        .flex_none()
-        .w(px(W))
-        .h(px(H))
+        .absolute()
+        .left(px(-(gw - W) / 2.))
+        .top(px(-(gh - H) / 2.))
+        .w(px(gw))
+        .h(px(gh))
         .rounded(px(12.))
         .overflow_hidden()
-        .relative()
+        .when(grow > 0.01, |d| d.shadow(vec![gpui::BoxShadow { color: theme::black(0.55 * grow), offset: gpui::point(px(0.), px(12. * grow)), blur_radius: px(30.), spread_radius: px(0.), inset: false }]))
+        // keeps the frames coming while it grows or shrinks
+        .when(moving, |d| d.child(gpui::canvas(|_, _, _| (), |_, _, w, _| w.request_animation_frame()).absolute().size_0()))
         // a GPU clip shows through this card: nothing of the card under it
         .when(!matches!(clip, Some((crate::ui::video::Pic::Native, _, _))), |d| d.bg(theme::surface2()))
         .cursor_pointer()
@@ -72,6 +90,10 @@ pub fn card_with(
         .on_hover({
             let previews = preview.is_some();
             move |on, _, cx| {
+                GROW.with(|g| {
+                    g.borrow_mut().insert(hkey.clone(), (*on, std::time::Instant::now()));
+                });
+                cx.refresh_windows();
                 if *on {
                     crate::views::detail::prefetch(&hover_meta, cx);
                     crate::ui::ambient::hover(&hover_meta, cx);
@@ -155,6 +177,9 @@ pub fn card_with(
                 .child(div().opacity(0.).group_hover("snd-zone", |s| s.opacity(1.)).child(crate::ui::video::sound_button("card:".into(), 34.)))
         }))
         .into_any_element();
+    // its slot in the row stays the same size; the card itself is drawn over
+    // the neighbours (deferred) while it's grown
+    let el = div().relative().flex_none().w(px(W)).h(px(H)).child(if grow > 0.001 { gpui::deferred(el).with_priority(1).into_any_element() } else { el }).into_any_element();
     // under the picture: the progress bar, then "S1 E2" on the left and the
     // time left on the right (a tab in `sub` splits the two)
     // a square-ended white bar, 60% of the card's width

@@ -37,7 +37,8 @@ pub struct Video {
 
 /// One sound switch for the billboard and the previews: on (sound) unless
 /// you turned it off, and it stays how you left it, next time too.
-const MUTED_KEY: &str = "gpui_clips_muted";
+// (a new key: clips start with sound again for everyone, then remember your choice)
+const MUTED_KEY: &str = "gpui_clips_muted_v2";
 static MUTED: std::sync::OnceLock<std::sync::atomic::AtomicBool> = std::sync::OnceLock::new();
 
 fn muted_flag() -> &'static std::sync::atomic::AtomicBool {
@@ -83,6 +84,35 @@ pub fn sound_button(owner: String, size: f32) -> impl IntoElement {
             toggle_sound(&owner, cx)
         })
         .child(crate::ui::icon(if muted { "mute" } else { "volume" }, size * 0.48))
+}
+
+thread_local! {
+    /// which home page is on screen ("all", "movie", "series"), or "" for any other page
+    static SCOPE: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+}
+
+/// The page on screen changed: a billboard from another page stops.
+pub fn set_home_scope(scope: &str, cx: &mut App) {
+    let changed = SCOPE.with(|s| {
+        let mut s = s.borrow_mut();
+        if *s == scope {
+            return false;
+        }
+        *s = scope.to_string();
+        true
+    });
+    if changed {
+        let keep = format!("hero:{scope}:");
+        let v = get(cx);
+        let o = v.read(cx).owner.clone();
+        if o.starts_with("hero:") && !o.starts_with(&keep) {
+            v.update(cx, |v, cx| v.stop(&o, cx));
+        }
+    }
+}
+
+fn home_scope() -> String {
+    SCOPE.with(|s| s.borrow().clone())
 }
 
 pub struct VideoHandle(pub Entity<Video>);
@@ -214,6 +244,10 @@ impl Video {
     }
 
     fn play_with(&mut self, owner: &str, url: &str, looping: bool, cx: &mut Context<Self>) {
+        // the billboard only plays while its page is the one on screen
+        if owner.starts_with("hero:") && !owner.starts_with(&format!("hero:{}:", home_scope())) {
+            return;
+        }
         let muted = is_muted(owner);
         self.once = !looping;
         self.paused = false;
@@ -474,8 +508,8 @@ pub fn hover(m: &crate::api::Meta, on: bool, cx: &mut App) {
         return;
     }
     cx.set_global(Pending(owner.clone()));
-    // a quarter of the hover delay setting: previews start quickly here
-    let delay = (couch::state::get().core.settings().general.hover_delay_ms / 4).max(100) as u64;
+    // rest on it a moment (passing over a row doesn't set every card off)
+    let delay = (couch::state::get().core.settings().general.hover_delay_ms / 2).clamp(450, 900) as u64;
     let (id, name, year, kind) = (m.id.clone(), m.name.clone(), m.year(), m.kind.clone());
     cx.spawn(async move |cx| {
         crate::timer::after(std::time::Duration::from_millis(delay)).await;

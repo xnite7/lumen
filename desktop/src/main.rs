@@ -938,6 +938,13 @@ impl Render for Root {
             })
         });
         ON_PLAYER.store(self.route == Route::Player, std::sync::atomic::Ordering::Relaxed);
+        let scope = match self.route {
+            Route::Home => "all",
+            Route::Shows => "series",
+            Route::Movies => "movie",
+            _ => "",
+        };
+        cx.defer(move |cx| ui::video::set_home_scope(scope, cx));
         ui::set_scale(window.scale_factor(), f32::from(window.viewport_size().width));
         // nothing has the keyboard (the box that had it is gone): couch takes it,
         // so Esc and the other keys keep working

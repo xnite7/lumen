@@ -16,6 +16,9 @@ pub struct Clip {
     /// bumped per `play`, so a late "ready" for an old file is ignored
     gen: AtomicU64,
     on_ready: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
+    /// the file has started (its first picture decoded); "ready" waits until
+    /// it's actually moving, so nothing fades over a frozen or black frame
+    armed: AtomicBool,
 }
 
 impl Clip {
@@ -49,26 +52,32 @@ impl Clip {
             Ok(())
         })
         .map_err(|e| format!("{e:?}"))?;
-        let me = Arc::new(Self { mpv: Arc::new(mpv), wid, ready: AtomicBool::new(false), gen: AtomicU64::new(0), on_ready: Mutex::new(None) });
+        let me = Arc::new(Self { mpv: Arc::new(mpv), wid, ready: AtomicBool::new(false), gen: AtomicU64::new(0), on_ready: Mutex::new(None), armed: AtomicBool::new(false) });
         let w = Arc::downgrade(&me);
         let mpv = me.mpv.clone();
         std::thread::Builder::new()
             .name("couch-clip".into())
             .spawn(move || loop {
-                let ev = mpv.wait_event(0.5);
+                let armed = w.upgrade().map_or(false, |m| m.armed.load(Ordering::Relaxed) && !m.ready.load(Ordering::Relaxed));
+                let ev = mpv.wait_event(if armed { 0.05 } else { 0.5 });
                 let Some(me) = w.upgrade() else { break };
                 match ev {
-                    // the first picture of a file is up
-                    Some(Ok(Event::PlaybackRestart)) => {
-                        if !me.ready.swap(true, Ordering::Relaxed) {
-                            me.fit();
-                            if let Some(f) = me.on_ready.lock().as_ref() {
-                                f();
-                            }
-                        }
-                    }
+                    // a file has started (this one: a new load clears `armed` first)
+                    Some(Ok(Event::FileLoaded)) | Some(Ok(Event::PlaybackRestart)) => me.armed.store(true, Ordering::Relaxed),
                     Some(Ok(Event::Shutdown)) => break,
                     _ => {}
+                }
+                // ready once the picture is really moving: time is passing, not stuck loading
+                if me.armed.load(Ordering::Relaxed) && !me.ready.load(Ordering::Relaxed) {
+                    let t: f64 = me.mpv.get_property("time-pos").unwrap_or(0.0);
+                    let waiting: bool = me.mpv.get_property("paused-for-cache").unwrap_or(false);
+                    let w_: i64 = me.mpv.get_property("width").unwrap_or(0);
+                    if t > 0.25 && !waiting && w_ > 0 && !me.ready.swap(true, Ordering::Relaxed) {
+                        me.fit();
+                        if let Some(f) = me.on_ready.lock().as_ref() {
+                            f();
+                        }
+                    }
                 }
             })
             .map_err(|e| e.to_string())?;
@@ -88,14 +97,17 @@ impl Clip {
     pub fn play_with(&self, url: &str, muted: bool, looping: bool) {
         self.gen.fetch_add(1, Ordering::Relaxed);
         self.ready.store(false, Ordering::Relaxed);
+        self.armed.store(false, Ordering::Relaxed);
         let _ = self.mpv.set_property("loop-file", if looping { "inf" } else { "no" });
         let _ = self.mpv.set_property("mute", muted);
+        let _ = self.mpv.set_property("volume", 100i64);
         let _ = self.mpv.command("loadfile", &[url, "replace"]);
         let _ = self.mpv.set_property("pause", false);
     }
 
     pub fn stop(&self) {
         self.ready.store(false, Ordering::Relaxed);
+        self.armed.store(false, Ordering::Relaxed);
         let _ = self.mpv.command("stop", &[]);
     }
 
