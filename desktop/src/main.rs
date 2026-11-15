@@ -411,7 +411,8 @@ impl Root {
             // all the way at the top there's none (the picture shows clean)
             .child({
                 let k = (ui::smooth::scrolled() / 120.).clamp(0., 1.);
-                let k = k * k * (3. - 2. * k);
+                // a soft shade even at the top: the tabs stay readable over a bright picture
+                let k = 0.5 + 0.5 * (k * k * (3. - 2. * k));
                 div()
                     .absolute()
                     .top_0()
@@ -508,7 +509,7 @@ impl Root {
                     })
                     .size(px(36.))
                     .rounded_full()
-                    .relative()
+                    // (already placed absolutely: that holds the tour's marker too)
                     .child(tour::spot("me"))
                     .when(self.me["avatar"].as_str().is_none(), |d| d.bg(theme::neon()))
                     .flex()
