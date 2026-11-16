@@ -52,6 +52,8 @@ pub struct Playback {
     last_seek: std::cell::Cell<Option<std::time::Instant>>,
     pub state: State,
     pub tracks: Vec<Value>,
+    /// subtitles turned off: lines still arriving are ignored
+    pub subs_off: bool,
     pub sub: String,
     pub status: String,
     /// skip segments from TheIntroDB: { intro: [{start,end}], recap, credits }
@@ -146,7 +148,7 @@ pub fn init(cx: &mut App) {
         cx.spawn(async move |this, cx| {
             while let Some(v) = sub.next().await {
                 let _ = this.update(cx, |p, cx| {
-                    p.sub = clean_cue(v["text"].as_str().unwrap_or(""));
+                    p.sub = if p.subs_off { String::new() } else { clean_cue(v["text"].as_str().unwrap_or("")) };
                     cx.notify();
                 });
             }
@@ -431,6 +433,12 @@ impl Playback {
         for t in self.tracks.iter_mut().filter(|t| t["type"] == kind) {
             t["selected"] = json!(id.is_some() && t["id"].as_i64() == id);
         }
+        if kind != "audio" {
+            self.subs_off = id.is_none();
+            if self.subs_off {
+                self.sub.clear();
+            }
+        }
         let cmd = if kind == "audio" { "aid" } else { "sid" };
         self.cmd(cmd, match id {
             Some(i) => json!({ "value": i }),
@@ -607,6 +615,7 @@ pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f6
         p.meta = Some(base.clone());
         p.full = None;
         p.tracks.clear();
+        p.subs_off = false;
         p.sub.clear();
         cx.notify();
     });
