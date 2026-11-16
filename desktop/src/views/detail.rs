@@ -489,7 +489,7 @@ impl Detail {
 }
 
 fn act(id: &'static str, ic: impl IntoElement, label: &str) -> gpui::Stateful<gpui::Div> {
-    // the same family as Play: a rounded square, a quiet fill, the word under it
+    // round, a quiet fill, no outline, the word under it
     div()
         .id(id)
         .flex()
@@ -502,13 +502,11 @@ fn act(id: &'static str, ic: impl IntoElement, label: &str) -> gpui::Stateful<gp
         .child(
             div()
                 .size(px(54.))
-                .rounded(px(14.))
+                .rounded_full()
                 .flex()
                 .items_center()
                 .justify_center()
                 .bg(theme::white(0.12))
-                .border_1()
-                .border_color(theme::white(0.08))
                 .group_hover("act", |s| s.bg(theme::white(0.2)))
                 .child(ic),
         )
@@ -862,7 +860,7 @@ impl Render for Detail {
                                             }
                                         }
                                     })
-                                    .child(icon_fill("play", 20.).text_color(gpui::rgb(0x000000)))
+                                    .child(icon_fill("play", 26.).text_color(gpui::rgb(0x000000)))
                                     .child(plabel.clone())
                                     .children((!psub.is_empty()).then(|| div().text_size(px(15.)).font_weight(FontWeight::MEDIUM).opacity(0.6).child(psub))),
                             )

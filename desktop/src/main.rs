@@ -374,6 +374,8 @@ pub struct Root {
     couch: Option<Entity<views::couch::Couch>>,
     settings: Option<Entity<views::settings::Settings>>,
     signin: Option<Entity<views::signin::SignIn>>,
+    /// not (or no longer) allowed on the couch: the server said so
+    locked: bool,
     person: Option<Entity<views::person::Person>>,
     member: Option<Entity<views::member::Member>>,
     studio: Option<Entity<views::studio::Studio>>,
@@ -649,10 +651,18 @@ impl Root {
         let start = self.splash?;
         let t = start.elapsed().as_secs_f32();
         let frames = INTRO.get();
-        if self.intro_play.is_none() && t >= HOLD && (frames.is_some() || t > 3.) {
-            self.intro_play = Some(std::time::Instant::now());
-            // the sound starts with the turn
+        // the sound leads; the couch holds its first frame a beat longer so the
+        // drawing lands with the sound's landing
+        const LEAD: f32 = 0.4;
+        thread_local! {
+            static SOUNDED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+        }
+        if !SOUNDED.with(|x| x.get()) && t >= HOLD && (frames.is_some() || t > 3.) {
+            SOUNDED.with(|x| x.set(true));
             play_intro_sound();
+        }
+        if self.intro_play.is_none() && t >= HOLD + LEAD && (frames.is_some() || t > 3.) {
+            self.intro_play = Some(std::time::Instant::now());
         }
         let play: f32 = frames.map_or(0., |f| f.iter().map(|x| x.1).sum());
         let p = self.intro_play.map(|a| a.elapsed().as_secs_f32());
@@ -876,6 +886,71 @@ impl Root {
                             .child(b("mini-f10", ui::icon("forward10", 18.), 32.).on_click(move |_, _, cx| seek(&p4, 10., cx))),
                     )
                     .child(div().w(px(120.)).flex().justify_end().text_size(px(11.5)).text_color(theme::label3()).child(times)),
+            )
+    }
+
+    /// Not on the couch (no couch role in the midnite server): nothing else works.
+    fn lock_screen(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+        let btn = |id: &'static str, label: &'static str, strong: bool| {
+            div()
+                .id(id)
+                .px(px(20.))
+                .h(px(44.))
+                .flex()
+                .items_center()
+                .rounded(px(12.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .cursor_pointer()
+                .when(strong, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))
+                .when(!strong, |d| d.bg(theme::white(0.1)).hover(|s| s.bg(theme::white(0.16))))
+                .child(label)
+        };
+        div()
+            .id("locked")
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+            .occlude()
+            .bg(gpui::rgb(0x07050a))
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(px(14.))
+            .child(div().absolute().top_0().left_0().w_full().h(px(40.)).window_control_area(WindowControlArea::Drag))
+            .child(window_controls())
+            .child(img("brand/nav-mark.png").w(px(120.)).h(px(68.)).object_fit(gpui::ObjectFit::Contain).opacity(0.6))
+            .child(div().text_size(px(30.)).font_weight(FontWeight::BLACK).child("you're off the couch"))
+            .child(div().max_w(px(460.)).text_center().text_size(px(15.)).line_height(px(22.)).text_color(theme::label2()).child("couch is for the midnite crew. your account doesn't have the couch role in the server anymore. get it back, then check again."))
+            .child(
+                div()
+                    .mt(px(10.))
+                    .flex()
+                    .gap(px(10.))
+                    .child(btn("lock-again", "check again", true).on_click(cx.listener(|_, _, _, cx| {
+                        cx.spawn(async move |this, cx| {
+                            let m = api::call::<String>("discord_membership", json!({})).await.unwrap_or_default();
+                            let _ = this.update(cx, |r, cx| {
+                                if m == "member" {
+                                    r.locked = false;
+                                } else {
+                                    Nav::toast("still no couch role".into(), cx);
+                                }
+                                cx.notify();
+                            });
+                        })
+                        .detach();
+                    })))
+                    .child(btn("lock-other", "use another account", false).on_click(cx.listener(|r, _, _, cx| {
+                        r.locked = false;
+                        cx.spawn(async move |_, cx| {
+                            let _ = api::call::<serde_json::Value>("discord_logout", json!({})).await;
+                            let _ = cx.update(|cx| Nav::go(Route::SignIn, cx));
+                        })
+                        .detach();
+                        cx.notify();
+                    }))),
             )
     }
 
@@ -1184,6 +1259,7 @@ impl Render for Root {
             .children(if playing { None } else { update::card(cx).map(|c| gpui::deferred(c).with_priority(2)) })
             .children(ui::zoom::overlay(window, cx))
             .children(self.intro(window))
+            .when(self.locked, |d| d.child(gpui::deferred(self.lock_screen(cx)).with_priority(9)))
             .children({
                 // the first time on Home (signed in, intro over): the tour
                 if self.tour.is_none() && self.splash.is_none() && self.route == Route::Home && !playing && !tour::done() {
@@ -1423,6 +1499,38 @@ fn main() {
                             }
                         })
                         .detach();
+                        // still allowed in? (the role can be taken away any time): checked
+                        // soon after launch, then every minute
+                        cx.spawn(async move |this, cx| {
+                            crate::timer::after(std::time::Duration::from_secs(6)).await;
+                            loop {
+                                let m = api::call::<String>("discord_membership", json!({})).await.unwrap_or_else(|_| "unknown".into());
+                                let go_on = this
+                                    .update(cx, |r: &mut Root, cx| {
+                                        let was = r.locked;
+                                        match m.as_str() {
+                                            "outsider" => r.locked = true,
+                                            "member" => r.locked = false,
+                                            "signin" if r.route != Route::SignIn => {
+                                                r.locked = false;
+                                                Nav::go(Route::SignIn, cx);
+                                            }
+                                            _ => {}
+                                        }
+                                        if r.locked && !was {
+                                            // the film stops too
+                                            playback::get(cx).update(cx, |p, cx| p.close(cx));
+                                        }
+                                        cx.notify();
+                                    })
+                                    .is_ok();
+                                if !go_on {
+                                    break;
+                                }
+                                crate::timer::after(std::time::Duration::from_secs(60)).await;
+                            }
+                        })
+                        .detach();
                         // a click on the mini picture: full size again
                         cx.spawn(async move |this, cx| loop {
                             crate::timer::after(std::time::Duration::from_millis(150)).await;
@@ -1509,6 +1617,7 @@ fn main() {
                             splash: Some(std::time::Instant::now()),
                             tour: None,
                             intro_play: None,
+                            locked: false,
                             turned: None,
                         }
                     });
