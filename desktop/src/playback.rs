@@ -230,7 +230,7 @@ fn clean_cue(t: &str) -> String {
 /// Text that was UTF-8 but read as Windows-1252 ("â™ª" for ♪, "Ã©" for é):
 /// put it back together. Anything that doesn't decode cleanly is left alone.
 pub fn fix_mojibake(s: &str) -> String {
-    if !s.chars().any(|c| matches!(c, 'Ã' | 'â' | 'Â' | 'ð' | 'Ø' | 'Ù' | 'Ð' | 'Ñ')) {
+    if !s.chars().any(|c| ('\u{C0}'..='\u{FF}').contains(&c)) {
         return s.to_string();
     }
     const HIGH: [(char, u8); 27] = [
@@ -248,7 +248,22 @@ pub fn fix_mojibake(s: &str) -> String {
             return s.to_string();
         }
     }
-    String::from_utf8(bytes).unwrap_or_else(|_| s.to_string())
+    match String::from_utf8(bytes.clone()) {
+        Ok(t) => t,
+        // not UTF-8 either: Arabic in Windows-1256 read as Western ("ÇáÓáÇã"):
+        // mostly letters from the top half of the code page
+        Err(_) => {
+            let high = bytes.iter().filter(|b| **b >= 0xC0).count();
+            let letters = bytes.iter().filter(|b| b.is_ascii_alphabetic() || **b >= 0xC0).count();
+            if letters >= 4 && high * 10 >= letters * 8 {
+                let (t, _, bad) = encoding_rs::WINDOWS_1256.decode(&bytes);
+                if !bad {
+                    return t.into_owned();
+                }
+            }
+            s.to_string()
+        }
+    }
 }
 
 /// Episodes in watching order (season 0 extras last).
