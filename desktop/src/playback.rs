@@ -425,6 +425,20 @@ impl Playback {
         cx.defer(move |cx| quick_play(m, Some(id), None, cx));
     }
 
+    /// Pick an audio / subtitle track (None: subtitles off). The tick moves
+    /// right away; mpv doesn't always report the change back.
+    pub fn pick_track(&mut self, kind: &str, id: Option<i64>, cx: &mut Context<Self>) {
+        for t in self.tracks.iter_mut().filter(|t| t["type"] == kind) {
+            t["selected"] = json!(id.is_some() && t["id"].as_i64() == id);
+        }
+        let cmd = if kind == "audio" { "aid" } else { "sid" };
+        self.cmd(cmd, match id {
+            Some(i) => json!({ "value": i }),
+            None => json!({ "value": "no" }),
+        });
+        cx.notify();
+    }
+
     pub fn cmd(&self, name: &str, args: Value) {
         let name = name.to_string();
         if name == "seek" {

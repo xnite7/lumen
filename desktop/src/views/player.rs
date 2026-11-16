@@ -758,19 +758,18 @@ impl PlayerView {
             Menu::Audio | Menu::Subs => {
                 let col = |kind: &'static str| -> Vec<gpui::AnyElement> {
                     let list: Vec<serde_json::Value> = p.tracks.iter().filter(|t| t["type"] == kind).cloned().collect();
-                    let cmd = if kind == "audio" { "aid" } else { "sid" };
                     let mut rows: Vec<gpui::AnyElement> = vec![];
                     if kind == "sub" {
                         let off = !list.iter().any(|t| t["selected"].as_bool() == Some(true));
                         let pb = self.pb.clone();
-                        rows.push(row_f("sub-off".into(), "Off".into(), off, None).on_click(move |_, _, cx| pb.read(cx).cmd("sid", json!({ "value": "no" }))).into_any_element());
+                        rows.push(row_f("sub-off".into(), "Off".into(), off, None).on_click(move |_, _, cx| pb.update(cx, |p, cx| p.pick_track("sub", None, cx))).into_any_element());
                     }
                     for (i, (t, label)) in named(&list).into_iter().enumerate() {
                         let on = t["selected"].as_bool() == Some(true);
                         let id = t["id"].as_i64().unwrap_or(0);
                         let pb = self.pb.clone();
                         let flag = crate::ui::badges::flag(t["lang"].as_str().unwrap_or(""));
-                        rows.push(row_f(SharedString::from(format!("{kind}-{i}")), label, on, flag).on_click(move |_, _, cx| pb.read(cx).cmd(cmd, json!({ "value": id }))).into_any_element());
+                        rows.push(row_f(SharedString::from(format!("{kind}-{i}")), label, on, flag).on_click(move |_, _, cx| pb.update(cx, |p, cx| p.pick_track(kind, Some(id), cx))).into_any_element());
                     }
                     if list.is_empty() && kind == "audio" {
                         rows.push(div().px(px(12.)).py(px(8.)).text_size(px(14.)).text_color(theme::label3()).child("just the one").into_any_element());
