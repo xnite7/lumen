@@ -1484,7 +1484,8 @@ impl Render for PlayerView {
             window.request_animation_frame();
         }
         // paused: which episode, big, bottom left; each part rises in after the last
-        let want_pause = st.paused && !starting && self.pb.read(cx).error.is_empty() && self.menu.is_none();
+        // (not in picture-in-picture: too small for it)
+        let want_pause = st.paused && !starting && self.pb.read(cx).error.is_empty() && self.menu.is_none() && !crate::pip::is_on() && f32::from(vw) >= 640.;
         if want_pause != self.pause_on {
             self.pause_on = want_pause;
             self.pause_at = Instant::now();
