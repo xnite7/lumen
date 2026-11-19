@@ -57,6 +57,8 @@ pub struct Together {
     buf_since: Option<Instant>,
     buf_sent: bool,
     buf_clear: Option<Instant>,
+    /// files tried that weren't the host's (by length)
+    wrong_files: u32,
     /// asks I've seen (when) and the ones I waved off
     ask_seen: std::collections::HashMap<String, Instant>,
     ask_hidden: std::collections::HashSet<String>,
@@ -107,6 +109,8 @@ struct HostState {
     p: f64,
     pa: bool,
     st: bool,
+    /// the length of the host's file (0 = not known yet)
+    du: f64,
     got: Instant,
 }
 
@@ -272,6 +276,7 @@ impl Together {
             "k": "s", "v": p.video_id, "m": p.meta.as_ref().map(|m| m.id.clone()), "ty": p.meta.as_ref().map(|m| m.kind.clone()),
             "ti": p.meta.as_ref().map(|m| m.name.clone()), "p": pos, "pa": p.state.paused && !loading,
             "st": loading || (p.state.buffering && !p.state.paused), "sh": self.shared, "lag": rtt / 2. * 1000.,
+            "du": p.state.duration,
             "sk": (!loading).then(|| p.stream.as_ref().map(|s| playback::host_tag(s).to_string())).flatten(),
         })
     }
@@ -752,6 +757,7 @@ impl Together {
             p: d["p"].as_f64().or(d["now"].as_f64()).unwrap_or(0.),
             pa: d["pa"].as_bool().or(d["paused"].as_bool()).unwrap_or(false),
             st: d["st"].as_bool().or(d["stalled"].as_bool()).unwrap_or(false),
+            du: d["du"].as_f64().or(d["duration"].as_f64()).unwrap_or(0.),
             got: Instant::now(),
         });
         self.can_control = d["sh"].as_bool().or(d["shared"].as_bool()).unwrap_or(false);
@@ -853,6 +859,33 @@ impl Together {
         }
         if loading || self.switching || self.steered_at.map_or(false, |a| a.elapsed() < Duration::from_millis(1500)) {
             return;
+        }
+        // a different file from the host's (another film with the same name,
+        // another cut): its length gives it away. Try the next one.
+        if h.du > 0. && s.duration > 0. && (s.duration - h.du).abs() > 150. && h.v == video_id {
+            self.wrong_files += 1;
+            if self.wrong_files <= 8 {
+                let at = self.host_now() + self.seek_cost;
+                let tried = pbe.update(cx, |p, cx| p.not_this_file(Some(at.max(0.)), cx));
+                if tried {
+                    self.switching = true;
+                    cx.spawn(async move |this, cx| {
+                        crate::timer::after(Duration::from_secs(8)).await;
+                        let _ = this.update(cx, |t, _| {
+                            t.switching = false;
+                            t.seek_at = Some(Instant::now());
+                        });
+                    })
+                    .detach();
+                    return;
+                }
+            }
+            if self.wrong_files == 9 || self.wrong_files > 8 && self.wrong_files % 1000 == 0 {
+                let name = self.following.as_ref().map(|f| f.1.clone()).unwrap_or_default();
+                cx.defer(move |cx| Nav::toast(format!("couldn't find the same file {name} is playing. pick one from sources"), cx));
+            }
+        } else if s.duration > 0. && h.du > 0. {
+            self.wrong_files = 0;
         }
         // the host moved to another stream of the same thing: the same file as them
         if !h.sk.is_null() && !pbe.read(cx).on_host_stream(&h.sk) && self.sk_applied != h.sk {

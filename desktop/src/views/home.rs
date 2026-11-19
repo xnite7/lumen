@@ -152,49 +152,9 @@ impl Home {
         .detach();
         cx.spawn(async move |this, cx| {
             // continue watching first (Home only)
-            if scope != "all" {
-            } else if let Ok(items) = api::call::<Vec<Value>>("continue_watching", json!({})).await {
-                // plus the next episode of shows you finished an episode of, in
-                // the order you watched them
-                let items = with_next_up(items).await;
-                let mut metas: Vec<Meta> = vec![];
-                let mut extra = vec![];
-                for v in items {
-                    let m = Meta {
-                        id: v["_id"].as_str().or(v["id"].as_str()).unwrap_or("").into(),
-                        kind: v["type"].as_str().unwrap_or("").into(),
-                        name: v["name"].as_str().unwrap_or("").into(),
-                        poster: v["poster"].as_str().map(|s| s.into()),
-                        background: v["background"].as_str().map(|s| s.into()),
-                        logo: v["logo"].as_str().map(|s| s.into()),
-                        ..Default::default()
-                    };
-                    if m.id.is_empty() {
-                        continue;
-                    }
-                    let st = &v["state"];
-                    let d = st["duration"].as_f64().unwrap_or(0.);
-                    let p = (d > 0.).then(|| (st["timeOffset"].as_f64().unwrap_or(0.) / d) as f32);
-                    let vid = st["video_id"].as_str().unwrap_or("");
-                    let parts: Vec<&str> = vid.split(':').collect();
-                    let ep = if parts.len() == 3 { format!("S{} E{}", parts[1], parts[2]) } else { String::new() };
-                    // what's left, like "2h 43m left"
-                    let left = (d > 0.).then(|| ((d - st["timeOffset"].as_f64().unwrap_or(0.)).max(0.) / 60000.).round() as i64).map(|m| match m {
-                        0 => "almost done".to_string(),
-                        m if m >= 60 => format!("{}h {}m left", m / 60, m % 60),
-                        m => format!("{m}m left"),
-                    });
-                    let left = if v["_next"].as_bool() == Some(true) { Some("up next".to_string()) } else { left };
-                    let sub = (!ep.is_empty() || left.is_some()).then(|| format!("{ep}\t{}", left.unwrap_or_default()));
-                    metas.push(m);
-                    extra.push((p, sub));
-                }
-                if !metas.is_empty() {
-                    let _ = this.update(cx, |v, cx| {
-                        let spec = views_catalog::Spec { title: "continue watching".into(), fixed: Some(metas.clone()), ..Default::default() };
-                        v.rows.insert(0, Row { key: "cw".into(), title: "continue watching".into(), items: metas, extra, spec: Some(spec) });
-                        cx.notify();
-                    });
+            if scope == "all" {
+                if let Some((metas, extra)) = cw_row().await {
+                    let _ = this.update(cx, |v, cx| v.set_cw(metas, extra, cx));
                 }
             }
             // new from the actors, directors and studios you follow
@@ -1056,4 +1016,74 @@ async fn with_next_up(items: Vec<Value>) -> Vec<Value> {
     let mut all: Vec<Value> = items.into_iter().chain(found.into_iter().flatten()).collect();
     all.sort_by_key(|i| -couch::library::parse_iso(i["state"]["lastWatched"].as_str().unwrap_or("")));
     all
+}
+
+/// The continue-watching row: what you're in the middle of, plus up-next episodes.
+async fn cw_row() -> Option<(Vec<Meta>, Vec<(Option<f32>, Option<String>)>)> {
+    let items = api::call::<Vec<Value>>("continue_watching", json!({})).await.ok()?;
+                // plus the next episode of shows you finished an episode of, in
+                // the order you watched them
+                let items = with_next_up(items).await;
+                let mut metas: Vec<Meta> = vec![];
+                let mut extra = vec![];
+                for v in items {
+                    let m = Meta {
+                        id: v["_id"].as_str().or(v["id"].as_str()).unwrap_or("").into(),
+                        kind: v["type"].as_str().unwrap_or("").into(),
+                        name: v["name"].as_str().unwrap_or("").into(),
+                        poster: v["poster"].as_str().map(|s| s.into()),
+                        background: v["background"].as_str().map(|s| s.into()),
+                        logo: v["logo"].as_str().map(|s| s.into()),
+                        ..Default::default()
+                    };
+                    if m.id.is_empty() {
+                        continue;
+                    }
+                    let st = &v["state"];
+                    let d = st["duration"].as_f64().unwrap_or(0.);
+                    let p = (d > 0.).then(|| (st["timeOffset"].as_f64().unwrap_or(0.) / d) as f32);
+                    let vid = st["video_id"].as_str().unwrap_or("");
+                    let parts: Vec<&str> = vid.split(':').collect();
+                    let ep = if parts.len() == 3 { format!("S{} E{}", parts[1], parts[2]) } else { String::new() };
+                    // what's left, like "2h 43m left"
+                    let left = (d > 0.).then(|| ((d - st["timeOffset"].as_f64().unwrap_or(0.)).max(0.) / 60000.).round() as i64).map(|m| match m {
+                        0 => "almost done".to_string(),
+                        m if m >= 60 => format!("{}h {}m left", m / 60, m % 60),
+                        m => format!("{m}m left"),
+                    });
+                    let left = if v["_next"].as_bool() == Some(true) { Some("up next".to_string()) } else { left };
+                    let sub = (!ep.is_empty() || left.is_some()).then(|| format!("{ep}\t{}", left.unwrap_or_default()));
+                    metas.push(m);
+                    extra.push((p, sub));
+                }
+    Some((metas, extra))
+}
+
+impl Home {
+    fn set_cw(&mut self, metas: Vec<Meta>, extra: Vec<(Option<f32>, Option<String>)>, cx: &mut Context<Self>) {
+        self.rows.retain(|r| r.key != "cw");
+        if !metas.is_empty() {
+            let spec = views_catalog::Spec { title: "continue watching".into(), fixed: Some(metas.clone()), ..Default::default() };
+            self.rows.insert(0, Row { key: "cw".into(), title: "continue watching".into(), items: metas, extra, spec: Some(spec) });
+        }
+        cx.notify();
+    }
+    /// Back on Home (after watching something): the row shows where you stopped.
+    /// Once now, and again shortly (closing the player saves a moment later).
+    pub fn reload_cw(&mut self, cx: &mut Context<Self>) {
+        if self.scope != "all" {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            for wait in [0u64, 1500, 4000] {
+                crate::timer::after(std::time::Duration::from_millis(wait)).await;
+                if let Some((metas, extra)) = cw_row().await {
+                    if this.update(cx, |v, cx| v.set_cw(metas, extra, cx)).is_err() {
+                        break;
+                    }
+                }
+            }
+        })
+        .detach();
+    }
 }

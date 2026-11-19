@@ -103,6 +103,24 @@ jobs:
           }
           Remove-Item $pfx
           if (-not $signed) { exit 1 }
+      - name: Installer (couch-setup.exe)
+        # what the download page hands out: one file, double-click, done
+        shell: pwsh
+        env:
+          PFX: ${{ secrets.COUCH_SIGN_PFX }}
+          PFX_PASS: ${{ secrets.COUCH_SIGN_PASS }}
+        run: |
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { choco install innosetup -y --no-progress | Out-Null; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DVersion=$env:COUCH_VERSION" desktop/resources/setup.iss
+          if ($LASTEXITCODE) { exit 1 }
+          if ($env:PFX) {
+            $kit = Get-Item "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64" | Where-Object { Test-Path (Join-Path $_.FullName signtool.exe) } | Sort-Object { [version]$_.Parent.Name } -Descending | Select-Object -First 1
+            $pfx = Join-Path $env:RUNNER_TEMP sign2.pfx
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX))
+            & (Join-Path $kit.FullName signtool.exe) sign /fd SHA256 /f $pfx /p $env:PFX_PASS couch-setup.exe
+            Remove-Item $pfx
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: couch-gpui-windows
@@ -114,7 +132,9 @@ jobs:
         run: |
           Compress-Archive -Path dist/* -DestinationPath couch-gpui.zip -Force
           $notes = git log -1 --pretty=%s
+          # the zip stays: the app's own updater reads it
           $files = @("couch-gpui.zip")
+          if (Test-Path couch-setup.exe) { $files += @("couch-setup.exe") }
           if (Test-Path couch.msix) { $files += @("couch.msix", "couch.cer") }
           gh release create "gpui-$env:COUCH_VERSION" @files --repo "${{ github.repository }}" --prerelease --target "${{ github.sha }}" --title "couch (new) $env:COUCH_VERSION" --notes "$notes"
           # a fixed "couch" release that always holds the newest build, so this link never goes stale:

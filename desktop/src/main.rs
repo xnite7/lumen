@@ -215,6 +215,10 @@ impl Nav {
                     let v = ui::video::get(cx);
                     let owner = v.read(cx).owner.clone();
                     v.update(cx, |v, cx| v.stop(&owner, cx));
+                    // back home: continue watching shows where you just stopped
+                    if r.route == Route::Home {
+                        r.home.update(cx, |h, cx| h.reload_cw(cx));
+                    }
                     // lists are fresh every visit
                     if r.route == Route::Lists {
                         if let Some(l) = &r.library {
@@ -243,6 +247,9 @@ impl Nav {
                 r.update(cx, |r, cx| {
                     r.route = r.back.pop().unwrap_or(Route::Home);
                     r.turned = Some((std::time::Instant::now(), true));
+                    if r.route == Route::Home {
+                        r.home.update(cx, |h, cx| h.reload_cw(cx));
+                    }
                     cx.notify();
                 });
                 let route = r.read(cx).route.clone();

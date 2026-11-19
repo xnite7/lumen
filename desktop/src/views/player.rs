@@ -2192,7 +2192,7 @@ impl Render for PlayerView {
                                     v.toggle_menu(Menu::Episodes, cx);
                                 })))
                             })
-                            .when(has_streams && !narrow1 && !guest, |d| {
+                            .when(has_streams && !narrow1, |d| {
                                 d.child(bar_btn("pl-src", icon("link", 21.), menu_on == Some(Menu::Sources)).on_click(cx.listener(|v, _, _, cx| {
                                     cx.stop_propagation();
                                     v.toggle_menu(Menu::Sources, cx);

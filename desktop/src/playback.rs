@@ -487,6 +487,18 @@ impl Playback {
         true
     }
 
+    /// On someone's couch, this file isn't the one the host plays (its length
+    /// is way off: a different film by the same name, a cut, a sample): the next.
+    pub fn not_this_file(&mut self, at: Option<f64>, cx: &mut Context<Self>) -> bool {
+        if self.queue.is_empty() {
+            return false;
+        }
+        let next = self.queue.remove(0);
+        self.status = "that file didn't match the host's, trying another…".into();
+        self.start(next, at, cx);
+        true
+    }
+
     /// Switch to this stream (the sources menu), from where you are. The pick
     /// is remembered for this episode/film, and goes first next time.
     pub fn pick(&mut self, stream: Value, cx: &mut Context<Self>) {
