@@ -1,6 +1,6 @@
 // The client's one page. Layout only: the look gets designed later, so the
 // styles here are just structure (sections, grid, spacing) on plain colours.
-const ZIP = "https://github.com/xnite7/lumen/releases/download/couch/couch-gpui.zip";
+const ZIP = "https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe";
 
 export const DOWNLOAD_HTML = `<!doctype html>
 <html lang="en">
@@ -143,8 +143,8 @@ export const DOWNLOAD_HTML = `<!doctype html>
     <h2>install in a minute</h2>
     <p class="lead">couch keeps itself up to date after this.</p>
     <div class="steps">
-      <div class="step"><h3>download</h3><p>grab the zip with the button below.</p></div>
-      <div class="step"><h3>unzip &amp; open</h3><p>extract it anywhere and open couch.</p></div>
+      <div class="step"><h3>download</h3><p>grab couch-setup.exe with the button below.</p></div>
+      <div class="step"><h3>run it</h3><p>double-click it. no admin needed. couch opens when it's done. if windows says "protected your pc", hit more info → run anyway.</p></div>
       <div class="step"><h3>sign in with discord</h3><p>you'll need to be in the midnite server.</p></div>
     </div>
     <div class="req"><span>windows 10 / 11</span><span>64-bit</span><span>a discord account in midnite</span><span>an internet connection</span></div>

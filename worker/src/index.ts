@@ -249,7 +249,7 @@ type Member = {
 /** "can I join your couch?" */
 type Ask = { id: string; from: string; fromName: string; fromAvatar?: string; to: string; at: number; status: "pending" | "accepted" | "declined" | "ended"; metaId?: string; title?: string };
 /** a host's playback, followed by the guests they let in */
-type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; sk?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[]; shared?: boolean; cmds?: Cmd[]; stalled?: boolean; wsAt?: number; remote?: string[]; buf?: Record<string, number> };
+type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; sk?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[]; shared?: boolean; cmds?: Cmd[]; stalled?: boolean; wsAt?: number; remote?: string[]; buf?: Record<string, number>; du?: number };
 /** a guest steering the host's player (only when the host shares control) */
 type Cmd = { from: string; name: string; action: "pause" | "play" | "seek"; pos?: number; at: number };
 type React = { n: number; who: string; name: string; avatar?: string; emoji: string; at: number };
@@ -595,7 +595,7 @@ export class Crew {
     const r = this.rooms.get(hostId);
     const s = this.socks.get(hostId);
     if (!r || !s) return;
-    const base = { k: "s", v: r.videoId, m: r.metaId, ty: r.type, ti: r.title, sk: r.sk, p: this.roomNow(r), pa: r.paused, st: !!r.stalled };
+    const base = { k: "s", v: r.videoId, m: r.metaId, ty: r.type, ti: r.title, sk: r.sk, p: this.roomNow(r), pa: r.paused, st: !!r.stalled, du: r.du ?? 0 };
     for (const ws of only ? [only] : [...s.guests.keys()]) {
       const g = s.guests.get(ws) ?? "";
       // the remote: everyone (shared) or just the guests the host handed it to
@@ -715,6 +715,8 @@ export class Crew {
           paused: !!d.pa,
           stalled: !!d.st,
           shared: !!d.sh,
+          // the length of the host's file: guests check theirs is the same film
+          du: num(d.du) || room.du,
           // the host's own one-way delay, so "pos" lines up with the server clock
           at: Date.now() - Math.max(0, Math.min(1500, num(d.lag))),
           wsAt: Date.now(),
