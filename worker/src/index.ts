@@ -247,9 +247,9 @@ type Member = {
 };
 
 /** "can I join your couch?" */
-type Ask = { id: string; from: string; fromName: string; fromAvatar?: string; to: string; at: number; status: "pending" | "accepted" | "declined" | "ended" };
+type Ask = { id: string; from: string; fromName: string; fromAvatar?: string; to: string; at: number; status: "pending" | "accepted" | "declined" | "ended"; metaId?: string; title?: string };
 /** a host's playback, followed by the guests they let in */
-type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; sk?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[]; shared?: boolean; cmds?: Cmd[]; stalled?: boolean; wsAt?: number };
+type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; sk?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[]; shared?: boolean; cmds?: Cmd[]; stalled?: boolean; wsAt?: number; remote?: string[]; buf?: Record<string, number> };
 /** a guest steering the host's player (only when the host shares control) */
 type Cmd = { from: string; name: string; action: "pause" | "play" | "seek"; pos?: number; at: number };
 type React = { n: number; who: string; name: string; avatar?: string; emoji: string; at: number };
@@ -300,6 +300,31 @@ function safeEqual(a: string, b: string) {
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : undefined);
 const num = (v: unknown) => (typeof v === "number" && isFinite(v) ? v : 0);
 
+let INVITE: { url: string; at: number } | null = null;
+/** A permanent invite to the crew's server, made once by the bot and reused. */
+async function serverInvite(env: Env): Promise<Response> {
+  if (INVITE && Date.now() - INVITE.at < 6 * 3600_000) return json({ url: INVITE.url });
+  if (!env.GUILD_ID || !env.DISCORD_BOT_TOKEN) return json({ url: null });
+  const h = { authorization: `Bot ${env.DISCORD_BOT_TOKEN}`, "content-type": "application/json" };
+  try {
+    const g: any = await (await fetch(`https://discord.com/api/guilds/${env.GUILD_ID}`, { headers: h })).json();
+    let ch: string | undefined = g?.rules_channel_id || g?.system_channel_id;
+    if (!ch) {
+      const list: any = await (await fetch(`https://discord.com/api/guilds/${env.GUILD_ID}/channels`, { headers: h })).json();
+      ch = (Array.isArray(list) ? list : []).filter((c: any) => c?.type === 0).sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0))[0]?.id;
+    }
+    if (!ch) return json({ url: null });
+    // unique:false hands back the same permanent invite every time
+    const r = await fetch(`https://discord.com/api/channels/${ch}/invites`, { method: "POST", headers: h, body: JSON.stringify({ max_age: 0, max_uses: 0, unique: false }) });
+    const inv: any = await r.json();
+    if (!r.ok || !inv?.code) return json({ url: null, error: inv?.message ?? "the bot can't make invites" });
+    INVITE = { url: `https://discord.gg/${inv.code}`, at: Date.now() };
+    return json({ url: INVITE.url });
+  } catch {
+    return json({ url: null });
+  }
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
@@ -335,6 +360,9 @@ export default {
       return env.CREW.get(env.CREW.idFromName("midnite")).fetch(fwd);
     }
     // which country the app is in (for "Top 10 in UAE"); just the 2-letter code
+    // the server invite (permanent, made by couch's bot): for people who
+    // aren't in the server yet, so it's public
+    if (url.pathname === "/v1/invite") return serverInvite(env);
     if (url.pathname === "/geo") return json({ country: String((req as any).cf?.country ?? "").toLowerCase() });
     if (!url.pathname.startsWith("/v1/")) return json({ error: "not here" }, 404);
     if (req.method === "POST" && url.pathname === "/v1/auth") return auth(req, env);
@@ -567,14 +595,76 @@ export class Crew {
     const r = this.rooms.get(hostId);
     const s = this.socks.get(hostId);
     if (!r || !s) return;
-    const msg = JSON.stringify({ k: "s", v: r.videoId, m: r.metaId, ty: r.type, ti: r.title, sk: r.sk, p: this.roomNow(r), pa: r.paused, st: !!r.stalled, sh: !!r.shared });
-    for (const ws of only ? [only] : s.guests.keys()) {
+    const base = { k: "s", v: r.videoId, m: r.metaId, ty: r.type, ti: r.title, sk: r.sk, p: this.roomNow(r), pa: r.paused, st: !!r.stalled };
+    for (const ws of only ? [only] : [...s.guests.keys()]) {
+      const g = s.guests.get(ws) ?? "";
+      // the remote: everyone (shared) or just the guests the host handed it to
+      const msg = JSON.stringify({ ...base, sh: !!r.shared || !!r.remote?.includes(g) });
       try {
         ws.send(msg);
       } catch {
         s.guests.delete(ws);
       }
     }
+  }
+  /** one message to the host's player */
+  toHost(hostId: string, d: unknown) {
+    const s = this.socks.get(hostId);
+    try {
+      s?.host?.send(JSON.stringify(d));
+    } catch {}
+  }
+  /** one message to every guest (or one guest, by id) */
+  toGuests(hostId: string, d: unknown, only?: string) {
+    const s = this.socks.get(hostId);
+    if (!s) return;
+    const msg = JSON.stringify(d);
+    for (const [ws, g] of s.guests) {
+      if (only && g !== only) continue;
+      try {
+        ws.send(msg);
+      } catch {}
+    }
+  }
+  /** the host's list of who's on the couch: connected, buffering, remote */
+  roster(hostId: string) {
+    const r = this.rooms.get(hostId);
+    const s = this.socks.get(hostId);
+    if (!r || !s?.host) return;
+    const live = new Set(s.guests.values());
+    const now = Date.now();
+    const list = r.guests.map((id) => {
+      const m = this.members.get(id);
+      return { id, name: m?.name ?? "someone", avatar: m?.avatar, live: live.has(id), remote: !!r.shared || !!r.remote?.includes(id), buf: (r.buf?.[id] ?? 0) > now - 15_000 };
+    });
+    this.toHost(hostId, { k: "guests", list });
+  }
+  /** a guest is off the couch: the host hears it, their line closes */
+  dropGuest(hostId: string, g: string, kicked: boolean) {
+    const r = this.rooms.get(hostId);
+    if (!r) return;
+    const name = this.members.get(g)?.name ?? "someone";
+    r.guests = r.guests.filter((x) => x !== g);
+    r.remote = (r.remote ?? []).filter((x) => x !== g);
+    if (r.buf) delete r.buf[g];
+    if (kicked) this.toGuests(hostId, { k: "kicked" }, g);
+    const s = this.socks.get(hostId);
+    for (const [ws, id] of s?.guests ?? []) {
+      if (id !== g) continue;
+      s!.guests.delete(ws);
+      try {
+        ws.close(1000, kicked ? "kicked" : "left");
+      } catch {}
+    }
+    if (!kicked) this.toHost(hostId, { k: "left", g, name });
+    this.roster(hostId);
+  }
+  /** the host is done: guests hold where they are and choose */
+  endRoom(hostId: string) {
+    const name = this.members.get(hostId)?.name ?? "the host";
+    this.toGuests(hostId, { k: "hostleft", name });
+    this.rooms.delete(hostId);
+    for (const a of this.asks.values()) if (a.to === hostId && a.status === "pending") a.status = "ended";
   }
   /** a socket for watch together: host sends state, guests get it pushed */
   openLine(hostId: string, who: Who): Response {
@@ -591,9 +681,11 @@ export class Crew {
         s.host?.close(1000, "replaced");
       } catch {}
       s.host = server;
+      this.roster(hostId);
     } else {
       s.guests.set(server, who.id);
       this.pushRoom(hostId, server);
+      this.roster(hostId);
     }
     server.addEventListener("message", (ev: MessageEvent) => {
       let d: any;
@@ -630,11 +722,39 @@ export class Crew {
         this.pushRoom(hostId);
         return;
       }
+      if (isHost && (d?.k === "kick" || d?.k === "remote")) {
+        const room = this.rooms.get(hostId);
+        const g = typeof d.g === "string" ? d.g : "";
+        if (!room || !room.guests.includes(g)) return;
+        if (d.k === "kick") this.dropGuest(hostId, g, true);
+        else {
+          room.remote = (room.remote ?? []).filter((x) => x !== g);
+          if (d.on) room.remote.push(g);
+          this.pushRoom(hostId);
+          this.roster(hostId);
+        }
+        return;
+      }
+      // the host closed the player: guests stop on this frame and choose
+      if (isHost && d?.k === "bye") {
+        this.endRoom(hostId);
+        return;
+      }
+      // a guest's player is loading or buffering: the host waits for them
+      if (!isHost && d?.k === "buf") {
+        const room = this.rooms.get(hostId);
+        if (!room) return;
+        room.buf = room.buf ?? {};
+        if (d.on) room.buf[who.id] = Date.now();
+        else delete room.buf[who.id];
+        this.roster(hostId);
+        return;
+      }
       // a guest with the remote: straight to the host's player
       if (!isHost && d?.k === "cmd") {
         const room = this.rooms.get(hostId);
         const action = d.a === "pause" || d.a === "play" || d.a === "seek" ? d.a : null;
-        if (!room || !room.shared || !action) return;
+        if (!room || !(room.shared || room.remote?.includes(who.id)) || !action) return;
         const c: Cmd = { from: who.id, name: who.name, action, pos: action === "seek" ? num(d.p) : undefined, at: Date.now() };
         if (s.host) {
           try {
@@ -648,7 +768,10 @@ export class Crew {
     const gone = () => {
       if (isHost) {
         if (s.host === server) s.host = null;
-      } else s.guests.delete(server);
+      } else {
+        s.guests.delete(server);
+        this.roster(hostId);
+      }
       if (!s.host && !s.guests.size) this.socks.delete(hostId);
     };
     server.addEventListener("close", gone);
@@ -660,8 +783,32 @@ export class Crew {
   storage: DurableObjectStorage;
   reactN = 0;
   lastSeenWrite = new Map<string, number>();
-  constructor(state: DurableObjectState, _env: Env) {
+  env: Env;
+  constructor(state: DurableObjectState, env: Env) {
     this.storage = state.storage;
+    this.env = env;
+  }
+  /** Discord's own look for someone: banner and display-name style (an hour) */
+  looks = new Map<string, { v: any; at: number }>();
+  async discordLook(id: string): Promise<any> {
+    const c = this.looks.get(id);
+    if (c && Date.now() - c.at < 3600_000) return c.v;
+    if (!this.env.DISCORD_BOT_TOKEN) return null;
+    let v: any = null;
+    try {
+      const r = await fetch(`https://discord.com/api/users/${id}`, { headers: { authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}` } });
+      if (r.ok) {
+        const u: any = await r.json();
+        const st = u?.display_name_styles;
+        v = {
+          banner: u?.banner ? `https://cdn.discordapp.com/banners/${id}/${u.banner}.png?size=1024` : undefined,
+          bannerColor: typeof u?.accent_color === "number" ? "#" + u.accent_color.toString(16).padStart(6, "0") : undefined,
+          nameStyle: st ? { font: num(st.font_id), effect: num(st.effect_id), colors: (Array.isArray(st.colors) ? st.colors : []).slice(0, 2).map((c: number) => "#" + num(c).toString(16).padStart(6, "0")) } : undefined,
+        };
+      }
+    } catch {}
+    this.looks.set(id, { v, at: Date.now() });
+    return v;
   }
 
   /** keep the people index (who has a page) current. accent "" = clear it */
@@ -799,8 +946,10 @@ export class Crew {
         this.storage.get<Act[]>("feed"),
       ]);
       const person = people?.[id];
+      const look = await this.discordLook(id);
       return json({
         id,
+        look,
         name: person?.name,
         avatar: person?.avatar,
         profile: prof ?? null,
@@ -877,7 +1026,8 @@ export class Crew {
       if (!them?.watching) return json({ error: "they're not watching anything right now" }, 409);
       for (const a of this.asks.values()) if (a.from === from && a.to === to && a.status === "pending") return json({ id: a.id });
       const id = crypto.randomUUID();
-      this.asks.set(id, { id, from, fromName: me.name, fromAvatar: me.avatar, to, at: Date.now(), status: "pending" });
+      // the ask is for what they're on right now: a different title later can't take it
+      this.asks.set(id, { id, from, fromName: me.name, fromAvatar: me.avatar, to, at: Date.now(), status: "pending", metaId: str(them.watching.metaId, 100), title: str(them.watching.name, 200) ?? str(them.watching.title, 200) });
       return json({ id });
     }
     let m = p.match(/^\/v1\/inbox\/([A-Za-z0-9_-]{1,40})$/);
@@ -898,6 +1048,13 @@ export class Crew {
       }
       if (req.method === "POST") {
         if (who.id !== a.to) return json({ error: "not yours" }, 403);
+        if (a.status !== "pending") return json({ error: "that ask ran out", gone: true }, 409);
+        // the host has moved to another title since: this ask was for the old one
+        const nowOn = str(b?.metaId, 100) ?? str(this.members.get(a.to)?.watching?.metaId, 100);
+        if (b?.accept && a.metaId && nowOn && nowOn !== a.metaId) {
+          a.status = "ended";
+          return json({ error: "they asked while you were on something else", moved: true }, 409);
+        }
         a.status = b?.accept ? "accepted" : "declined";
         a.at = Date.now();
         if (a.status === "accepted") {
@@ -905,6 +1062,7 @@ export class Crew {
           const r = this.rooms.get(a.to) ?? { host: a.to, metaId: str(host?.watching?.metaId, 100) ?? "", type: str(host?.watching?.type, 20) ?? "", videoId: "", pos: host?.pos ?? 0, paused: !!host?.paused, at: Date.now(), guests: [] };
           if (!r.guests.includes(a.from)) r.guests.push(a.from);
           this.rooms.set(a.to, r);
+          this.roster(a.to);
         }
         return json({ ok: true });
       }
@@ -937,7 +1095,7 @@ export class Crew {
     if (m && req.method === "POST") {
       const r = this.rooms.get(m[1]);
       if (!r || !r.guests.includes(who.id)) return json({ error: "not in this room" }, 403);
-      if (!r.shared) return json({ error: "the host has the remote" }, 403);
+      if (!(r.shared || r.remote?.includes(who.id))) return json({ error: "the host has the remote" }, 403);
       const action = b?.action === "pause" || b?.action === "play" || b?.action === "seek" ? b.action : null;
       if (!action) return json({ error: "bad command" }, 400);
       r.cmds = [...(r.cmds ?? []).slice(-10), { from: who.id, name: who.name, action, pos: action === "seek" ? num(b.pos) : undefined, at: Date.now() }];
@@ -977,8 +1135,8 @@ export class Crew {
       }
       if (req.method === "DELETE") {
         // a guest leaves, or the host ends it
-        if (r && m[2] && m[2] === who.id) r.guests = r.guests.filter((g) => g !== who.id);
-        else if (m[1] === who.id) this.rooms.delete(m[1]);
+        if (r && m[2] && m[2] === who.id) this.dropGuest(m[1], who.id, false);
+        else if (m[1] === who.id && r) this.endRoom(m[1]);
         return json({ ok: true });
       }
     }
