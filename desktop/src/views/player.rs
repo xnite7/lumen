@@ -784,8 +784,9 @@ impl PlayerView {
     fn set_volume_at(&mut self, x: f32, cx: &mut Context<Self>) {
         let max = if couch::state::get().core.settings().playback.volume_boost { 130. } else { 100. };
         // (x is the pointer's height; vol_x the track's bottom)
-        let vol = (((self.vol_x.get() - x) / 130.).clamp(0., 1.) as f64 * max).round();
+        let vol = (((self.vol_x.get() - x) / 130.).clamp(0., 1.) as f64 * max * 10.).round() / 10.;
         self.vol_target = Some(vol);
+        self.vol_hud = Some(Instant::now());
         self.pb.read(cx).cmd("volume", json!({ "value": vol }));
         cx.notify();
     }
@@ -1425,24 +1426,35 @@ impl Render for PlayerView {
                 if v.menu.is_some() {
                     return;
                 }
-                // 10% a notch, however fast you spin (fast spins arrive as bigger steps)
-                let step = match e.delta {
-                    gpui::ScrollDelta::Lines(l) => l.y.signum() * l.y.abs().max(1.) * 10.,
-                    gpui::ScrollDelta::Pixels(p) => f32::from(p.y) / 40. * 10.,
+                // 5% a notch. A mouse wheel sends whole notches (sometimes as 3
+                // "lines" each, sometimes as 120 px): count notches, not their size,
+                // so one click of the wheel is never a jump to 0 or 100
+                let change = match e.delta {
+                    gpui::ScrollDelta::Lines(l) => {
+                        v.vol_acc = 0.;
+                        if l.y.abs() < 0.01 {
+                            return;
+                        }
+                        5. * l.y.signum() as f64
+                    }
+                    gpui::ScrollDelta::Pixels(p) => {
+                        // a touchpad: smooth, 5% per 60 px of travel
+                        v.vol_acc += f32::from(p.y) as f64 / 60.;
+                        if v.vol_acc.abs() < 1. {
+                            return;
+                        }
+                        let n = v.vol_acc.trunc();
+                        v.vol_acc -= n;
+                        5. * n.clamp(-2., 2.)
+                    }
                 };
                 let _ = w;
-                v.vol_acc += step as f64;
-                if v.vol_acc.abs() < 1. {
-                    return;
-                }
-                let change = v.vol_acc.trunc();
-                v.vol_acc -= change;
                 let p = v.pb.read(cx);
                 let max = if couch::state::get().core.settings().playback.volume_boost { 130. } else { 100. };
                 // build on the volume we last asked for (mpv's reply lags behind fast spins)
                 let base = v.vol_target.filter(|_| v.vol_hud.map_or(false, |t| t.elapsed() < Duration::from_millis(800))).unwrap_or(p.state.volume);
-                // on the tens, so it lands on 50, 60, 70…
-                let vol = (((base + change) / 10.).round() * 10.).clamp(0., max);
+                // on the fives, so it lands on 50, 55, 60…
+                let vol = (((base + change) / 5.).round() * 5.).clamp(0., max);
                 v.vol_target = Some(vol);
                 p.cmd("volume", json!({ "value": vol }));
                 v.vol_hud = Some(Instant::now());
@@ -1924,7 +1936,8 @@ impl Render for PlayerView {
             vec![]
         };
         let menu_on = self.menu;
-        let vol_now = self.vol_target.filter(|_| self.vol_open).unwrap_or(st.volume);
+        // what you asked for, while mpv catches up (no jumping back and forth)
+        let vol_now = self.vol_target.filter(|_| self.vol_open || self.vol_pinned || self.vol_hud.map_or(false, |t| t.elapsed() < Duration::from_millis(900))).unwrap_or(st.volume);
         let vol_max = if couch::state::get().core.settings().playback.volume_boost { 130. } else { 100. };
         let vol_frac = (vol_now / vol_max).clamp(0., 1.) as f32;
         let vol_x = self.vol_x.clone();

@@ -511,6 +511,35 @@ impl Playback {
     }
 
     pub fn cmd(&self, name: &str, args: Value) {
+        // volume: the newest value only, sent one after another. Each move of
+        // the slider used to fire its own request; they raced and arrived out
+        // of order, so the volume jumped back and forth
+        if name == "volume" {
+            static WANT: parking_lot::Mutex<(Option<f64>, bool)> = parking_lot::Mutex::new((None, false));
+            let mut w = WANT.lock();
+            w.0 = args["value"].as_f64();
+            if w.1 {
+                return;
+            }
+            w.1 = true;
+            drop(w);
+            couch::rt::spawn(async {
+                loop {
+                    let v = {
+                        let mut w = WANT.lock();
+                        match w.0.take() {
+                            Some(v) => v,
+                            None => {
+                                w.1 = false;
+                                break;
+                            }
+                        }
+                    };
+                    let _ = couch::dispatch::invoke("player_cmd", json!({ "cmd": "volume", "args": { "value": v } })).await;
+                }
+            });
+            return;
+        }
         let name = name.to_string();
         if name == "seek" {
             self.last_seek.set(Some(std::time::Instant::now()));
