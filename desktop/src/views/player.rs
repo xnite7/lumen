@@ -911,7 +911,8 @@ impl PlayerView {
     }
 
     fn want_still(&mut self, t: f64, cx: &mut Context<Self>) -> Option<std::sync::Arc<gpui::Image>> {
-        let k = (t / 10.).floor() as i64;
+        // (the stills are made per 2 s)
+        let k = (t / 2.).floor() as i64;
         // not there yet: the nearest one that is (never an empty box)
         let nearest = |stills: &std::collections::HashMap<i64, Option<std::sync::Arc<gpui::Image>>>| {
             stills.iter().filter_map(|(kk, v)| v.as_ref().map(|i| ((kk - k).abs(), i.clone()))).min_by_key(|x| x.0).map(|x| x.1)
@@ -922,9 +923,17 @@ impl PlayerView {
         let near = nearest(&self.stills);
         self.stills.insert(k, None);
         cx.spawn(async move |this, cx| {
-            let r = api_still(k as f64 * 10. + 5.).await;
+            let r = api_still(k as f64 * 2. + 1.).await;
             let _ = this.update(cx, |v, cx| {
-                v.stills.insert(k, r);
+                match r {
+                    Some(i) => {
+                        v.stills.insert(k, Some(i));
+                    }
+                    // skipped (you'd moved on) or not ready: asked again next time
+                    None => {
+                        v.stills.remove(&k);
+                    }
+                }
                 cx.notify();
             });
         })

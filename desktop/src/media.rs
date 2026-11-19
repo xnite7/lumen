@@ -69,6 +69,10 @@ pub fn start(cx: &mut App) {
                     };
                     Shown { open: p.open, paused: p.state.paused, title: m.as_ref().map(|m| m.name.clone()).unwrap_or_default(), sub, art: m.and_then(|m| m.background.or(m.poster)) }
                 });
+                // playing: Windows doesn't sleep or turn the screen off (paused or closed: it may)
+                if (now.open && !now.paused) != (last.open && !last.paused) {
+                    imp::stay_awake(now.open && !now.paused);
+                }
                 if now != last {
                     let n = now.clone();
                     let _ = cx.update(|cx| cx.defer(move |_| imp::show(&n)));
@@ -120,6 +124,14 @@ fn act(p: Press, cx: &mut App) {
 
 #[cfg(target_os = "windows")]
 mod imp {
+    /// keep the PC and the screen awake while something plays
+    pub fn stay_awake(on: bool) {
+        use windows::Win32::System::Power::{SetThreadExecutionState, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED};
+        unsafe {
+            let _ = SetThreadExecutionState(if on { ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED } else { ES_CONTINUOUS });
+        }
+    }
+
     use super::{send, Press, Shown};
     use parking_lot::Mutex;
     use windows::core::HSTRING;

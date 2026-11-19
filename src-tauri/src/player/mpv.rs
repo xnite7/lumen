@@ -80,7 +80,55 @@ pub struct Mpv {
     /// what's loaded (url, header fields, user agent), for seek thumbnails
     last: Mutex<Option<(String, String, String)>>,
     /// a second, picture-less mpv that only makes seek-bar thumbnails
-    thumbs: Mutex<Option<Arc<libmpv2::Mpv>>>,
+    thumbs: Mutex<Option<ThumbWorker>>,
+}
+
+/// the still-maker: its own mpv, and the film it has open
+struct ThumbWorker {
+    mpv: Arc<libmpv2::Mpv>,
+    url: String,
+}
+
+/// seek-bar stills are made per this many seconds
+const THUMB_STEP: f64 = 2.0;
+const THUMB_CAP: usize = 16 * 1024 * 1024;
+static THUMB_REQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// stills in memory: (film, step) → JPEG, oldest first, 16 MiB at most
+static THUMB_CACHE: parking_lot::Mutex<(std::collections::VecDeque<((String, u64), Vec<u8>)>, usize)> = parking_lot::Mutex::new((std::collections::VecDeque::new(), 0));
+
+fn thumb_cache_get(key: &str, bucket: u64) -> Option<Vec<u8>> {
+    let g = THUMB_CACHE.lock();
+    g.0.iter().find(|(k, _)| k.0 == key && k.1 == bucket).map(|(_, b)| b.clone())
+}
+fn thumb_cache_put(key: &str, bucket: u64, b: Vec<u8>) {
+    let mut g = THUMB_CACHE.lock();
+    g.1 += b.len();
+    g.0.push_back(((key.to_string(), bucket), b));
+    while g.1 > THUMB_CAP {
+        match g.0.pop_front() {
+            Some((_, old)) => g.1 -= old.len(),
+            None => break,
+        }
+    }
+}
+
+/// the newest JPEG the image output wrote, once it's finished writing
+fn wait_frame(dir: &std::path::Path, max: Duration) -> Option<std::path::PathBuf> {
+    let deadline = std::time::Instant::now() + max;
+    while std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(15));
+        let newest = std::fs::read_dir(dir).ok().and_then(|d| d.flatten().map(|e| e.path()).filter(|p| p.extension().map_or(false, |x| x == "jpg")).max());
+        if let Some(f) = newest {
+            // finished when its size stops changing
+            let a = std::fs::metadata(&f).map(|m| m.len()).unwrap_or(0);
+            std::thread::sleep(Duration::from_millis(12));
+            let b = std::fs::metadata(&f).map(|m| m.len()).unwrap_or(0);
+            if a == b && b > 0 {
+                return Some(f);
+            }
+        }
+    }
+    None
 }
 
 const OBSERVED: &[(&str, Format)] = &[
@@ -438,68 +486,104 @@ impl Mpv {
             }
         }
         *self.last.lock() = None;
-        if let Some(t) = self.thumbs.lock().clone() {
-            let _ = t.command("stop", &[]);
+        // the still-maker lets go of the film too (if it's busy, the next film
+        // replaces it anyway)
+        if let Some(mut g) = self.thumbs.try_lock() {
+            if let Some(w) = g.as_mut() {
+                let _ = w.mpv.command("stop", &[]);
+                w.url.clear();
+            }
         }
     }
 
-    /// A small still of the film at `t` seconds, for the seek bar. A second
-    /// mpv (no window, no sound) opens the same stream at that spot and
-    /// writes one frame as a JPEG; stills are kept per 10 s so going back
-    /// over the bar is instant. None when it can't (torrents, odd streams).
+    /// A small still of the film at `t` seconds, for the seek bar.
+    ///
+    /// A second mpv (no window, no sound) keeps the same film open the whole
+    /// time, paused; each still is an exact seek there, written out as a JPEG
+    /// by its image output. Stills live in memory (up to 16 MiB, oldest out
+    /// first), per 2 s, so going back over the bar is instant. A newer request
+    /// skips the ones still waiting: the bar never queues up behind itself.
     pub fn thumb(&self, t: f64) -> Option<Vec<u8>> {
         use sha2::{Digest, Sha256};
         let (url, fields, ua) = self.last.lock().clone()?;
-        let bucket = (t.max(0.0) / 10.0).floor() as u64;
         let key: String = Sha256::digest(url.as_bytes()).iter().take(8).map(|b| format!("{b:02x}")).collect();
-        let dir = self.core.cache_dir.join("thumbs").join(&key);
-        let file = dir.join(format!("{bucket}.jpg"));
-        if let Ok(b) = std::fs::read(&file) {
+        let bucket = (t.max(0.0) / THUMB_STEP).floor() as u64;
+        if let Some(b) = thumb_cache_get(&key, bucket) {
             return Some(b);
         }
-        let tmp = dir.join("_new");
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(&tmp).ok()?;
+        let ticket = THUMB_REQ.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
         // one at a time: holding the lock is what queues requests
         let mut slot = self.thumbs.lock();
-        if slot.is_none() {
-            let m = libmpv2::Mpv::with_initializer(|init| {
-                for (k, v) in [
-                    ("vo", "image"), ("vo-image-format", "jpg"), ("vo-image-jpeg-quality", "70"),
-                    ("ao", "null"), ("aid", "no"), ("sid", "no"), ("hwdec", "no"), ("hr-seek", "no"),
-                    ("vf", "scale=320:-2"), ("frames", "1"), ("idle", "yes"), ("ytdl", "no"), ("osc", "no"),
-                    ("input-default-bindings", "no"), ("cache", "no"), ("demuxer-readahead-secs", "0"),
-                    ("network-timeout", "8"), ("sub-auto", "no"), ("audio-display", "no"),
-                ] {
-                    let _ = init.set_property(k, v);
-                }
-                Ok(())
-            })
-            .ok()?;
-            *slot = Some(Arc::new(m));
+        // someone pointed somewhere newer meanwhile: theirs first (this one may
+        // well be cached by now)
+        if let Some(b) = thumb_cache_get(&key, bucket) {
+            return Some(b);
         }
-        let m = slot.clone()?;
-        let _ = m.set_property("vo-image-outdir", tmp.to_string_lossy().as_ref());
-        let _ = m.set_property("http-header-fields", fields.as_str());
-        let _ = m.set_property("user-agent", ua.as_str());
-        let _ = m.set_property("start", format!("{}", bucket * 10 + 2).as_str());
-        m.command("loadfile", &[url.as_str(), "replace"]).ok()?;
-        let deadline = std::time::Instant::now() + Duration::from_secs(6);
-        let mut found = None;
-        while std::time::Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(60));
-            if let Some(f) = std::fs::read_dir(&tmp).ok().and_then(|d| d.flatten().map(|e| e.path()).find(|p| p.extension().map_or(false, |x| x == "jpg"))) {
-                // let the writer finish
-                std::thread::sleep(Duration::from_millis(40));
-                found = Some(f);
-                break;
+        if THUMB_REQ.load(std::sync::atomic::Ordering::SeqCst) > ticket + 1 {
+            return None;
+        }
+        let dir = self.core.cache_dir.join("thumbs").join("live");
+        if slot.as_ref().map_or(true, |w| w.url != url) {
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).ok()?;
+            let m = match slot.take() {
+                Some(w) => w.mpv,
+                None => {
+                    let m = libmpv2::Mpv::with_initializer(|init| {
+                        for (k, v) in [
+                            ("vo", "image"), ("vo-image-format", "jpg"), ("vo-image-jpeg-quality", "72"),
+                            ("ao", "null"), ("aid", "no"), ("sid", "no"), ("hwdec", "auto-copy-safe"), ("hr-seek", "yes"),
+                            ("hr-seek-framedrop", "yes"), ("vd-lavc-skiploopfilter", "all"), ("vd-lavc-fast", "yes"),
+                            ("vf", "scale=360:-2"), ("idle", "yes"), ("keep-open", "always"), ("pause", "yes"), ("ytdl", "no"), ("osc", "no"),
+                            ("input-default-bindings", "no"), ("cache", "yes"), ("demuxer-max-bytes", "48MiB"), ("demuxer-readahead-secs", "1"),
+                            ("network-timeout", "8"), ("sub-auto", "no"), ("audio-display", "no"),
+                        ] {
+                            let _ = init.set_property(k, v);
+                        }
+                        Ok(())
+                    })
+                    .ok()?;
+                    Arc::new(m)
+                }
+            };
+            let _ = m.set_property("vo-image-outdir", dir.to_string_lossy().as_ref());
+            let _ = m.set_property("http-header-fields", fields.as_str());
+            let _ = m.set_property("user-agent", ua.as_str());
+            let _ = m.set_property("start", format!("{:.2}", bucket as f64 * THUMB_STEP + THUMB_STEP / 2.).as_str());
+            m.command("loadfile", &[url.as_str(), "replace"]).ok()?;
+            *slot = Some(ThumbWorker { mpv: m, url: url.clone() });
+            // the first frame (opening the file) is the still we want
+            let f = wait_frame(&dir, Duration::from_secs(10))?;
+            let bytes = std::fs::read(&f).ok()?;
+            let _ = std::fs::remove_file(&f);
+            if bytes.len() > 500 {
+                thumb_cache_put(&key, bucket, bytes.clone());
+                return Some(bytes);
+            }
+            return None;
+        }
+        let w = slot.as_ref()?;
+        // clear old frames, then an exact seek: a paused mpv draws (and writes) the new frame
+        if let Ok(d) = std::fs::read_dir(&dir) {
+            for e in d.flatten() {
+                let _ = std::fs::remove_file(e.path());
             }
         }
-        let _ = m.command("stop", &[]);
-        let f = found?;
+        let at = format!("{:.3}", bucket as f64 * THUMB_STEP + THUMB_STEP / 2.);
+        w.mpv.command("seek", &[at.as_str(), "absolute+exact"]).ok()?;
+        let f = wait_frame(&dir, Duration::from_secs(6))?;
         let bytes = std::fs::read(&f).ok()?;
-        let _ = std::fs::rename(&f, &file);
-        (bytes.len() > 500).then_some(bytes)
+        let _ = std::fs::remove_file(&f);
+        (bytes.len() > 500).then(|| {
+            thumb_cache_put(&key, bucket, bytes.clone());
+            bytes
+        })
+    }
+
+    /// Open the film in the still-maker as soon as it plays, so the first
+    /// point at the bar is already quick.
+    pub fn thumbs_warm(&self, pos: f64) {
+        let _ = self.thumb(pos);
     }
 
     pub fn state(&self) -> Value {

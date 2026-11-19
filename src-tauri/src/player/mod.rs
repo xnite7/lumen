@@ -179,6 +179,16 @@ impl Player {
                 this.core.emit("player://subtitles", subs);
             });
             session::spawn_tracker(self.clone());
+            // the seek-bar still-maker opens the film too, a few seconds in
+            // (after the picture's going), so the first point at the bar is quick
+            {
+                let this = self.clone();
+                let at = start.unwrap_or(0.0);
+                crate::rt::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    let _ = crate::rt::spawn_blocking(move || this.backend.thumbs_warm(at)).await;
+                });
+            }
             Ok(OpenResult { mode: "native", url: Some(play_url), yt_id: None, start_at: start, start_pct, headers: None })
         }
         #[cfg(not(desktop))]
