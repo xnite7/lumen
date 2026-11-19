@@ -159,7 +159,10 @@ pub fn faces(key: &str, people: Vec<(Option<String>, String)>, size: f32) -> imp
 
 fn faces_at(key: &str, people: Vec<(Option<String>, String)>, size: f32, above: bool) -> impl IntoElement {
     let key = key.to_string();
+    let n = people.len();
     gpui::div().flex().flex_row_reverse().children(people.into_iter().enumerate().map(move |(i, (pic, name))| {
+        // the one after this overlaps its left side: it's cut to make room (no outline)
+        let cut = i + 1 < n;
         let group = gpui::SharedString::from(format!("face-{key}-{i}"));
         let initial = name.chars().next().unwrap_or('?').to_uppercase().to_string();
         gpui::div()
@@ -170,17 +173,14 @@ fn faces_at(key: &str, people: Vec<(Option<String>, String)>, size: f32, above: 
             .size(px(size))
             .flex_none()
             .rounded_full()
-            .border_2()
-            .border_color(theme::black(0.55))
-            .shadow(lift())
-            .bg(theme::neon())
+            .when(pic.is_none(), |d| d.bg(theme::neon()))
             .flex()
             .items_center()
             .justify_center()
             .text_size(px(size * 0.42))
             .font_weight(gpui::FontWeight::BLACK)
             .child(match pic {
-                Some(u) => gpui::img(crate::net::face(&u, size)).size_full().rounded_full().into_any_element(),
+                Some(u) => gpui::img(if cut { crate::net::face_cut(&u, size) } else { crate::net::face(&u, size) }).size_full().into_any_element(),
                 None => gpui::div().child(initial).into_any_element(),
             })
             // the name, above it, while pointed at

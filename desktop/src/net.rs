@@ -85,6 +85,30 @@ fn tag(url: &str, w: f32, k: char) -> String {
     format!("{url}{}{FIT}{k}{px}", if url.contains('?') { '&' } else { '?' })
 }
 
+/// A face in a row of faces with the next one overlapping its left side: a
+/// crescent is cut out (with a little gap) so the next face sits in it.
+pub fn face_cut(url: &str, w: f32) -> String {
+    tag(url, w, 'c')
+}
+
+fn face_cut_png(bytes: &[u8], w: u32) -> Option<Vec<u8>> {
+    let png = face_png(bytes, w)?;
+    let mut px = image::load_from_memory(&png).ok()?.to_rgba8();
+    let r = px.width() as f32 / 2.;
+    // the next face: same size, its centre 0.72 of a width to the left
+    let (nx, ny) = (r - 0.72 * px.width() as f32, r);
+    let cut = r * 1.12;
+    let soft = (r * 0.06).max(1.);
+    for (x, y, p) in px.enumerate_pixels_mut() {
+        let d = ((x as f32 + 0.5 - nx).powi(2) + (y as f32 + 0.5 - ny).powi(2)).sqrt();
+        let t = ((d - cut) / soft).clamp(0., 1.);
+        p[3] = (p[3] as f32 * t * t * (3. - 2. * t)).round() as u8;
+    }
+    let mut out = Vec::new();
+    image::DynamicImage::ImageRgba8(px).write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png).ok()?;
+    Some(out)
+}
+
 /// (the real url, max width, what to do: 'f' fit, 't' trim a logo, 'a' a face)
 fn split_fit(url: &str) -> (String, Option<(u32, char)>) {
     let Some(i) = url.rfind(FIT) else { return (url.to_string(), None) };
@@ -118,6 +142,9 @@ fn face_png(bytes: &[u8], w: u32) -> Option<Vec<u8>> {
 fn shrink(bytes: &[u8], w: u32, k: char) -> Option<Vec<u8>> {
     if k == 'a' {
         return face_png(bytes, w);
+    }
+    if k == 'c' {
+        return face_cut_png(bytes, w);
     }
     let trim = k == 't';
     let mut im = image::load_from_memory(bytes).ok()?;

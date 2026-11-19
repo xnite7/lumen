@@ -474,10 +474,9 @@ impl Mpv {
                 let _ = mpv.set_property("panscan", 0.0f64);
             }
         }
-        if mode == "crop" {
-            let mpv = mpv.clone();
-            std::thread::spawn(move || crop_bars(&mpv, gen));
-        }
+        // ("crop", cutting black bars out of the picture itself, is gone: an old
+        // saved "crop" plays as "fit")
+        let _ = gen;
     }
 
     pub fn stop(&self) {
@@ -890,6 +889,7 @@ fn friendly(e: &libmpv2::Error) -> String {
 /// "crop": cut away black bars that are part of the picture itself (a 2.39:1
 /// film inside a 16:9 file), measured from the frames, never more. The picture
 /// is then fitted as usual, so nothing of the film is lost.
+#[allow(dead_code)]
 fn crop_bars(mpv: &libmpv2::Mpv, gen: u64) {
     let current = || CROP_GEN.load(std::sync::atomic::Ordering::Relaxed) == gen;
     // wait until it's really playing (we need its length)
@@ -951,7 +951,7 @@ fn crop_bars(mpv: &libmpv2::Mpv, gen: u64) {
 }
 
 
-/// The paused picture's blur: a golden-angle disc blur on the final image,
+/// The paused picture's blur: a golden-angle disc blur on the film's picture,
 /// strength (`couch_blur`, 0..1) changed live without recompiling.
 const PAUSE_BLUR: &str = r#"//!PARAM couch_blur
 //!TYPE DYNAMIC float
@@ -959,7 +959,7 @@ const PAUSE_BLUR: &str = r#"//!PARAM couch_blur
 //!MAXIMUM 1.0
 0.0
 
-//!HOOK OUTPUT
+//!HOOK MAIN
 //!BIND HOOKED
 //!DESC couch pause blur
 vec4 hook() {
@@ -969,7 +969,9 @@ vec4 hook() {
     // 0 at the bottom left corner, 1 at the top right
     float d = (HOOKED_pos.x + (1.0 - HOOKED_pos.y)) * 0.5;
     float w = 0.3 + 0.7 * (1.0 - smoothstep(0.1, 0.85, d));
-    float r = couch_blur * w * 26.0;
+    // (on the film itself, before it's scaled and before any black bars: the
+    // edges blur into themselves, never into black, so no dark rim)
+    float r = couch_blur * w * 26.0 * HOOKED_size.x / 1920.0;
     vec4 acc = c;
     float n = 1.0;
     for (int i = 1; i < 56; i++) {

@@ -183,7 +183,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, blur_sent: 0., ate_click: false }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, blur_sent: 0., ate_click: false }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -1234,7 +1234,7 @@ impl PlayerView {
                     cx,
                 );
                 let label = |t: &str, val: String| div().px(px(4.)).flex().justify_between().items_baseline().child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::label3()).child(t.to_string())).child(div().text_size(px(17.)).font_weight(FontWeight::BLACK).child(val));
-                let picture = div().flex().gap(px(8.)).children([("fit", "fit"), ("fill", "fill"), ("crop", "no bars"), ("stretch", "stretch")].into_iter().map(|(k, t)| {
+                let picture = div().flex().gap(px(8.)).children([("fit", "fit"), ("fill", "fill"), ("stretch", "stretch")].into_iter().map(|(k, t)| {
                     let on = self.aspect == k;
                     div()
                         .id(SharedString::from(format!("as-{k}")))
@@ -1272,6 +1272,35 @@ impl PlayerView {
                         .child(div().h(px(1.)).my(px(6.)).bg(theme::white(0.08)))
                         .child(label("picture", String::new()))
                         .child(picture)
+                        // immersive light: the film's colours glowing in the black bars
+                        .child({
+                            let on = couch::state::get().core.db.get::<bool>("gpui_immersive").unwrap_or(true);
+                            div()
+                                .id("pl-immersive")
+                                .mt(px(4.))
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .px(px(4.))
+                                .h(px(36.))
+                                .cursor_pointer()
+                                .on_click(cx.listener(move |_, _, _, cx| {
+                                    let _ = couch::state::get().core.db.set("gpui_immersive", &!on);
+                                    cx.notify();
+                                }))
+                                .child(div().flex().flex_col().child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).child("immersive light")).child(div().text_size(px(12.)).text_color(theme::label3()).child("the film's colours glow in the black bars")))
+                                .child(
+                                    div()
+                                        .w(px(38.))
+                                        .h(px(22.))
+                                        .rounded_full()
+                                        .p(px(2.))
+                                        .flex()
+                                        .when(on, |d| d.justify_end().bg(theme::text()))
+                                        .when(!on, |d| d.bg(theme::white(0.18)))
+                                        .child(div().size(px(18.)).rounded_full().bg(if on { gpui::rgb(0x000000) } else { gpui::rgb(0xffffff) })),
+                                )
+                        })
                         .into_any_element(),
                 )
             }
@@ -1681,7 +1710,7 @@ impl Render for PlayerView {
             .detach();
         }
         // immersive light: the picture's own colours, softly, in the black bars around it
-        if !starting && st.dw > 0. && st.dh > 0. && matches!(self.aspect, "fit" | "crop") && couch::state::get().core.db.get::<bool>("gpui_immersive").unwrap_or(true) {
+        if !starting && st.dw > 0. && st.dh > 0. && self.aspect == "fit" && couch::state::get().core.db.get::<bool>("gpui_immersive").unwrap_or(true) {
             if let Some(cur) = self.glow.clone() {
                 let vs = window.viewport_size();
                 let (ww, wh) = (f32::from(vs.width), f32::from(vs.height));
