@@ -15,6 +15,8 @@ pub mod depth3d;
 mod mpv;
 #[cfg(desktop)]
 pub mod subsync;
+#[cfg(desktop)]
+pub mod headphones;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod surface;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

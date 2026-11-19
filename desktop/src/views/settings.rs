@@ -931,7 +931,7 @@ impl Render for Settings {
                                                 .child(div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(if on { theme::text() } else { theme::label2() }).child(l))
                                                 // these follow what's on: a small mark says so
                                                 .when(crate::views::player::bar_dynamic(k), |d| {
-                                                    d.child(div().px(px(6.)).h(px(17.)).flex().items_center().rounded_full().bg(theme::white(0.1)).text_size(px(10.)).font_weight(FontWeight::BOLD).text_color(tc[0]).child("✦ adapts"))
+                                                    d.child(div().text_size(px(12.)).font_weight(FontWeight::BOLD).text_color(tc[0]).child("✦"))
                                                 }),
                                         )
                                 })))

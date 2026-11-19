@@ -74,6 +74,9 @@ jobs:
           Copy-Item $ff.FullName dist/
           $lic = Get-ChildItem ffmpeg-x -Recurse -Filter LICENSE.txt | Select-Object -First 1
           if ($lic) { Copy-Item $lic.FullName dist/ffmpeg-LICENSE.txt }
+          # headphone surround's room responses (SADIE II): their notice goes along
+          Copy-Item src-tauri/src/player/assets/SADIE-NOTICE.txt dist/
+          Copy-Item src-tauri/src/player/assets/SADIE-LICENSE.txt dist/
           # trailers (YouTube) play through yt-dlp
           Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile dist/yt-dlp.exe
       - name: Package (MSIX, signed)

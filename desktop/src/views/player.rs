@@ -230,6 +230,11 @@ pub fn may(action: &str, pos: Option<f64>, cx: &mut gpui::App) -> bool {
     sent
 }
 
+/// headphone surround (saved): 5.1 / 7.1 placed around your head
+pub fn headphones_on() -> bool {
+    couch::state::get().core.db.get::<bool>("gpui_headphones").unwrap_or(false)
+}
+
 /// night mode (saved): loud scenes tamed, dialogue lifted
 pub fn night_on() -> bool {
     couch::state::get().core.db.get::<bool>("gpui_night").unwrap_or(false)
@@ -2154,6 +2159,8 @@ impl Render for PlayerView {
         let vol_max = if couch::state::get().core.settings().playback.volume_boost { 130. } else { 100. };
         let vol_frac = (vol_now / vol_max).clamp(0., 1.) as f32;
         let vol_x = self.vol_x.clone();
+        // the sound playing has more than two channels (5.1, 7.1…): headphone surround is offered
+        let surround = self.pb.read(cx).tracks.iter().find(|t| t["type"] == "audio" && t["selected"] == true).and_then(|t| t["channels"].as_i64()).map_or(false, |c| c > 2);
         let _ = &title;
         let top_logo = logo.clone();
         let top_title = title.clone();
@@ -2536,6 +2543,42 @@ impl Render for PlayerView {
                                                                     cx.notify();
                                                                 }))
                                                                 .child(if on { icon_fill("moon", 18.).text_color(gpui::rgb(0x000000)) } else { icon("moon", 18.) })
+                                                        })
+                                                        // headphone surround: only for sound with more than two channels
+                                                        .when(surround, |d| {
+                                                            let on = headphones_on();
+                                                            d.child(
+                                                                div()
+                                                                    .id("pl-hp")
+                                                                    .size(px(36.))
+                                                                    .rounded_full()
+                                                                    .flex()
+                                                                    .items_center()
+                                                                    .justify_center()
+                                                                    .cursor_pointer()
+                                                                    .when(on, |d| d.bg(theme::text()))
+                                                                    .when(!on, |d| d.bg(theme::white(0.08)).hover(|s| s.bg(theme::white(0.16))))
+                                                                    .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                                                    .on_click(cx.listener(move |v, _, _, cx| {
+                                                                        cx.stop_propagation();
+                                                                        let on = !headphones_on();
+                                                                        let _ = couch::state::get().core.db.set("gpui_headphones", &on);
+                                                                        v.vol_hud = Some(Instant::now());
+                                                                        cx.spawn(async move |_, cx| {
+                                                                            let r = crate::api::call::<serde_json::Value>("player_cmd", json!({ "cmd": "headphones", "args": { "value": on } })).await;
+                                                                            let msg = match (on, r) {
+                                                                                (false, _) => "headphone surround off".to_string(),
+                                                                                (true, Ok(v)) if v["on"] == true => format!("headphone surround on: {} speakers around your head", v["speakers"].as_i64().unwrap_or(0)),
+                                                                                (true, Ok(_)) => "this one's stereo, nothing to place around you".to_string(),
+                                                                                (true, Err(e)) => format!("headphone surround didn't start: {e}"),
+                                                                            };
+                                                                            let _ = cx.update(|cx| crate::Nav::toast(msg, cx));
+                                                                        })
+                                                                        .detach();
+                                                                        cx.notify();
+                                                                    }))
+                                                                    .child(div().text_size(px(17.)).text_color(if on { gpui::rgb(0x000000) } else { gpui::rgb(0xffffff) }).child("🎧")),
+                                                            )
                                                         })
 ,
                                                 ),

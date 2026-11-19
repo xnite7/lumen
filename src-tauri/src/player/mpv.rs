@@ -393,6 +393,8 @@ impl Mpv {
         }
         // a new film starts clear (the last one may have been left paused, blurred)
         let _ = mpv.command("change-list", &["glsl-shader-opts", "add", "couch_blur=0"]);
+        // headphone surround is set up again for the new film's channels
+        let _ = mpv.command("af", &["remove", "@hp"]);
         mpv.command("loadfile", &[url, "replace"]).map_err(|e| AppError::msg(format!("mpv: {e}")))?;
         let _ = mpv.set_property("pause", false);
         Ok(())
@@ -715,6 +717,27 @@ impl Mpv {
                 let x = num("x").unwrap_or(0.0).clamp(-1.0, 1.0);
                 let k = num("strength").unwrap_or(1.0).clamp(0.0, 2.0);
                 mpv.set_property("glsl-shader-opts", format!("head={x:.3},strength={k:.2}").as_str())
+            }
+            // headphone surround: every speaker of a 5.1 / 7.1 mix placed around
+            // your head (measured room responses, SADIE II), mixed down for two ears
+            "headphones" => {
+                let on = a.get("value").and_then(|v| v.as_bool()).unwrap_or(false);
+                let _ = mpv.command("af", &["remove", "@hp"]);
+                if !on {
+                    return Ok(json!({ "on": false }));
+                }
+                let layout: String = mpv.get_property("audio-params/channels").unwrap_or_default();
+                let Some(map) = super::headphones::speakers(&layout) else {
+                    return Ok(json!({ "on": false, "why": "stereo" }));
+                };
+                let path = super::headphones::ir_file(&self.core.cache_dir, &map)?;
+                let p = path.to_string_lossy().replace('\\', "/").replace(':', "\\:");
+                // (the headphone filter turns everything down 3 dB per speaker; gain puts it back.
+                // the graph has its own [labels], so it goes in mpv's %length% quoting)
+                let g = format!("aresample=48000[main];amovie='{p}'[ir];[main][ir]headphone=map={}:hrir=multich:type=freq:gain={},alimiter=limit=0.97:level=false", map.join("|"), 3 * map.len());
+                let graph = format!("@hp:lavfi=graph=%{}%{g}", g.len());
+                mpv.command("af", &["add", &graph]).map_err(|e| AppError::msg(format!("mpv: {e}")))?;
+                return Ok(json!({ "on": true, "speakers": map.len() }));
             }
             // night mode: loud bits quieter, quiet bits (dialogue) louder, so
             // nobody's woken by an explosion. A compressor, then gentle levelling

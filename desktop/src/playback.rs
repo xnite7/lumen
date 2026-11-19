@@ -198,6 +198,13 @@ pub fn init(cx: &mut App) {
                         p.video_id.clone()
                     })
                     .unwrap_or_default();
+                // headphone surround: set up for this film's channels once its sound is going
+                if crate::views::player::headphones_on() {
+                    couch::rt::spawn(async {
+                        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                        let _ = couch::dispatch::invoke("player_cmd", json!({ "cmd": "headphones", "args": { "value": true } })).await;
+                    });
+                }
                 if vid.is_empty() || !couch::state::get().core.settings().integrations.tidb_enabled {
                     continue;
                 }
@@ -507,6 +514,13 @@ impl Playback {
             Some(i) => json!({ "value": i }),
             None => json!({ "value": "no" }),
         });
+        // another audio track may have other channels: headphone surround follows
+        if kind == "audio" && crate::views::player::headphones_on() {
+            couch::rt::spawn(async {
+                tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+                let _ = couch::dispatch::invoke("player_cmd", json!({ "cmd": "headphones", "args": { "value": true } })).await;
+            });
+        }
         cx.notify();
     }
 
