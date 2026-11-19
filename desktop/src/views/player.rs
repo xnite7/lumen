@@ -315,6 +315,13 @@ thread_local! {
 pub fn set_last_tint(t: [gpui::Hsla; 2]) {
     LAST_TINT.with(|c| c.set(Some(t)));
 }
+thread_local! {
+    /// the colours of what's playing now (the mini player's bar uses them too)
+    static PLAY_TINT: std::cell::Cell<Option<[gpui::Hsla; 2]>> = const { std::cell::Cell::new(None) };
+}
+pub fn play_tint() -> Option<[gpui::Hsla; 2]> {
+    PLAY_TINT.with(|c| c.get())
+}
 pub fn last_tint() -> Option<[gpui::Hsla; 2]> {
     LAST_TINT.with(|c| c.get())
 }
@@ -1485,6 +1492,7 @@ impl Render for PlayerView {
         let tint_src = p.meta.as_ref().and_then(|m| m.logo.clone().or(m.background.clone()));
         if let Some(src) = tint_src.filter(|u| self.tint.as_ref().map_or(true, |t| &t.0 != u)) {
             self.tint = Some((src.clone(), [theme::neon().into(), theme::neon().into()]));
+            PLAY_TINT.with(|c| c.set(None));
             let back = p.meta.as_ref().and_then(|m| m.background.clone());
             cx.spawn(async move |this, cx| {
                 let found = couch::rt::spawn(async move {
@@ -1505,6 +1513,7 @@ impl Render for PlayerView {
                     let _ = this.update(cx, |v, cx| {
                         if v.tint.as_ref().map_or(false, |x| x.0 == k) {
                             set_last_tint(t);
+                            PLAY_TINT.with(|c| c.set(Some(t)));
                             v.tint = Some((k, t));
                             cx.notify();
                         }

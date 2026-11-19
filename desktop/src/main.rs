@@ -844,7 +844,11 @@ impl Root {
                     })
                     .child(
                         div().w_full().h(px(4.)).rounded_full().bg(theme::white(0.16)).child(
-                            div().relative().h_full().rounded_full().overflow_hidden().w(px((mini::W - 28.) * frac)).child(views::player::bar_fill(views::player::bar_style(), theme::neon().into(), theme::neon_soft().into(), t0)),
+                            div().relative().h_full().rounded_full().overflow_hidden().w(px((mini::W - 28.) * frac)).child({
+                                // the colours of the film's logo, like the big player's bar
+                                let [c1, c2] = views::player::play_tint().unwrap_or([theme::neon().into(), theme::neon_soft().into()]);
+                                views::player::bar_fill(views::player::bar_style(), c1, c2, t0)
+                            }),
                         ),
                     ),
             )
