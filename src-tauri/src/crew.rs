@@ -121,7 +121,6 @@ fn who(core: &Core) -> (String, Option<String>) {
 /// Called from the player tracker on every tick: sends when something
 /// changed, otherwise a heartbeat every 45 s.
 pub fn playing(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f64, duration: f64, paused: bool) {
-    PLAY_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     host_tick(core, known, meta, video_id, pos, paused);
     let Some((url, code)) = server(core) else { return };
     // gatekeeper mode: you're on the couch, but what you're watching is yours
@@ -227,7 +226,8 @@ pub fn stopped(core: &Core) {
     *LAST.lock() = None;
     // the next episode is a stop too: the room only ends if nothing plays again
     // soon (guests ride along to the next one instead of being dropped)
-    if HOSTING.load(std::sync::atomic::Ordering::Relaxed) {
+    // (the computer app ends the room itself, when its player really closes)
+    if HOSTING.load(std::sync::atomic::Ordering::Relaxed) && !ENDS_ITSELF.load(std::sync::atomic::Ordering::Relaxed) {
         let g = PLAY_GEN.load(std::sync::atomic::Ordering::Relaxed);
         crate::rt::spawn(async move {
             tokio::time::sleep(Duration::from_secs(25)).await;
@@ -293,6 +293,16 @@ pub async fn server_invite(core: &Core) -> Option<String> {
     let u = v.get("url").and_then(|u| u.as_str()).filter(|u| u.starts_with("https://discord.gg/"))?.to_string();
     *CACHE.lock() = Some(u.clone());
     Some(u)
+}
+
+/// the app ends rooms itself (crew_end_room): a stop never ends one by itself
+pub static ENDS_ITSELF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Something is playing (called every tick, whatever's on): a stop followed
+/// by this isn't the end of the room. (It used to be counted only for titles
+/// Simkl knew, so the next episode of an unknown one ended the room 25 s in.)
+pub fn alive() {
+    PLAY_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// Host closed the player for real: end the room now (guests are told).

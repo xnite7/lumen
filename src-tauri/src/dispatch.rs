@@ -468,6 +468,8 @@ pub async fn invoke(cmd: &str, a: Value) -> Result<Value, String> {
             out(commands::crew_inbox(st).await.map_err(|e| e.to_string())?)
         }
         "crew_answer" => {
+            // (the computer app: it ends its rooms itself)
+            crate::crew::ENDS_ITSELF.store(true, std::sync::atomic::Ordering::Relaxed);
             let id: String = arg(&a, "id")?;
             let accept: bool = arg(&a, "accept")?;
             out(commands::crew_answer(st, id, accept).await.map_err(|e| e.to_string())?)

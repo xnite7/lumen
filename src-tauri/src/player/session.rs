@@ -112,6 +112,7 @@ pub fn spawn_tracker(player: Arc<Player>) {
             }
             let Some(s) = player.session().filter(|s| s.id == sid) else { break };
             let core = &player.core;
+            crate::crew::alive();
 
             // Simkl hears about real user actions only -- play and pause,
             // never buffering stalls, seeks or a timer (its guide: one call

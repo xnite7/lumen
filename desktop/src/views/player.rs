@@ -42,6 +42,8 @@ pub struct PlayerView {
     reactions: Entity<super::reactions::Reactions>,
     /// pointing at "next": show what it is
     next_hover: bool,
+    /// where the "next" button sits (its middle, x): the preview card rises above it
+    next_x: std::rc::Rc<std::cell::Cell<f32>>,
     /// the mouse-up that ended a 2× hold isn't a click on the film
     ate_click: bool,
     /// the pause blur last sent to mpv (0..1)
@@ -183,7 +185,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, blur_sent: 0., ate_click: false }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, blur_sent: 0., ate_click: false, next_x: Default::default() }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -885,6 +887,17 @@ fn round_btn(id: &'static str, child: impl IntoElement, size: f32) -> gpui::Stat
 impl PlayerView {
     fn toggle_menu(&mut self, m: Menu, cx: &mut Context<Self>) {
         self.menu = if self.menu == Some(m) { None } else { Some(m) };
+        // one thing open at a time: the volume slider and the reactions go
+        if self.menu.is_some() {
+            self.vol_pinned = false;
+            self.next_hover = false;
+            self.reactions.update(cx, |r, cx| {
+                if r.open {
+                    r.open = false;
+                    cx.notify();
+                }
+            });
+        }
         self.ep_season = None;
         cx.notify();
     }
@@ -977,43 +990,6 @@ impl PlayerView {
                         let off = !list.iter().any(|t| t["selected"].as_bool() == Some(true));
                         let pb = self.pb.clone();
                         rows.push(row_f("sub-off".into(), "Off".into(), off, None).on_click(move |_, _, cx| pb.update(cx, |p, cx| p.pick_track("sub", None, cx))).into_any_element());
-                        // auto-sync: listens to the film and lines the chosen subtitles up with it
-                        if !off {
-                            let busy = SYNCING.with(|c| c.get());
-                            rows.push(
-                                row_f("sub-sync".into(), if busy { "syncing… (listening to the film)".into() } else { "✦ auto sync".into() }, false, None)
-                                    .on_click(|_, _, cx| {
-                                        if SYNCING.with(|c| c.replace(true)) {
-                                            return;
-                                        }
-                                        cx.refresh_windows();
-                                        cx.spawn(async move |cx| {
-                                            let r = crate::api::call::<serde_json::Value>("subs_autosync", json!({})).await;
-                                            SYNCING.with(|c| c.set(false));
-                                            let msg = match r {
-                                                Ok(v) => {
-                                                    let off = v["offset"].as_f64().unwrap_or(0.);
-                                                    let ratio = v["ratio"].as_f64().unwrap_or(1.);
-                                                    if (ratio - 1.).abs() > 1e-4 {
-                                                        format!("subtitles synced (they were made for a different frame rate, {:+.1} s)", off)
-                                                    } else if off.abs() < 0.1 {
-                                                        "subtitles were already in sync".to_string()
-                                                    } else {
-                                                        format!("subtitles synced: moved {:.1} s {}", off.abs(), if off < 0. { "earlier" } else { "later" })
-                                                    }
-                                                }
-                                                Err(e) => e,
-                                            };
-                                            let _ = cx.update(|cx| {
-                                                crate::Nav::toast(msg, cx);
-                                                cx.refresh_windows();
-                                            });
-                                        })
-                                        .detach();
-                                    })
-                                    .into_any_element(),
-                            );
-                        }
                     }
                     for (i, (t, label)) in named(&list).into_iter().enumerate() {
                         let on = t["selected"].as_bool() == Some(true);
@@ -1049,34 +1025,100 @@ impl PlayerView {
                             pb.read(cx).cmd("sub-delay", json!({ "value": ((now + by) * 10.).round() / 10. }));
                         })
                 };
-                let left = div().id("pm-audio").flex_1().min_w_0().max_h(px(420.)).overflow_y_scroll().track_scroll(&self.ms[0]).child(crate::ui::smooth::wheel(&self.ms[0], "pm-audio")).flex().flex_col().child(head("audio")).children(col("audio"));
-                let right = div()
-                    .id("pm-subs")
-                    .flex_1()
-                    .min_w_0()
-                    .max_h(px(420.))
-                    .overflow_y_scroll()
-                    .track_scroll(&self.ms[1])
-                    .child(crate::ui::smooth::wheel(&self.ms[1], "pm-subs"))
+                let left = faded(div().id("pm-audio").max_h(px(380.)).overflow_y_scroll().track_scroll(&self.ms[0]).child(crate::ui::smooth::wheel(&self.ms[0], "pm-audio")).flex().flex_col().children(col("audio")), &self.ms[0]);
+                let right = faded(div().id("pm-subs").max_h(px(380.)).overflow_y_scroll().track_scroll(&self.ms[1]).child(crate::ui::smooth::wheel(&self.ms[1], "pm-subs")).flex().flex_col().children(col("sub")), &self.ms[1]);
+                // subtitle timing, kept at the bottom: the delay, nudges, and auto sync
+                let busy = SYNCING.with(|c| c.get());
+                let sync_btn = div()
+                    .id("sd-auto")
+                    .relative()
+                    .group("sd-auto")
+                    .size(px(28.))
                     .flex()
-                    .flex_col()
-                    .child(head("subtitles"))
-                    .children(col("sub"))
-                    .when(subs_on, |c| {
-                        c.child(
-                            div()
-                                .mt(px(6.))
-                                .px(px(12.))
-                                .py(px(8.))
-                                .flex()
-                                .items_center()
-                                .gap(px(6.))
-                                .child(div().flex_1().text_size(px(12.)).text_color(theme::label3()).child(format!("sync {}{:.1} s", if d > 0. { "+" } else { "" }, d)))
-                                .child(nudge("sd-minus", "−0.1", -0.1))
-                                .child(nudge("sd-plus", "+0.1", 0.1)),
-                        )
+                    .items_center()
+                    .justify_center()
+                    .rounded_full()
+                    .cursor_pointer()
+                    .bg(if busy { theme::white(0.22) } else { theme::white(0.1) })
+                    .hover(|s| s.bg(theme::white(0.18)))
+                    .child(icon(if busy { "sparkles-fill" } else { "sparkles" }, 16.))
+                    // pointing at it: what it does
+                    .child(
+                        div()
+                            .absolute()
+                            .bottom(px(36.))
+                            .right(px(-6.))
+                            .px(px(10.))
+                            .py(px(5.))
+                            .rounded(px(10.))
+                            .bg(gpui::rgba(0x0c090bf2))
+                            .border_1()
+                            .border_color(theme::white(0.12))
+                            .whitespace_nowrap()
+                            .text_size(px(12.))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .opacity(0.)
+                            .group_hover("sd-auto", |s| s.opacity(1.))
+                            .child(if busy { "syncing… listening to the film" } else { "auto sync: listens and lines the subtitles up" }),
+                    )
+                    .on_click(|_, _, cx| {
+                        if SYNCING.with(|c| c.replace(true)) {
+                            return;
+                        }
+                        cx.refresh_windows();
+                        cx.spawn(async move |cx| {
+                            let r = crate::api::call::<serde_json::Value>("subs_autosync", json!({})).await;
+                            SYNCING.with(|c| c.set(false));
+                            let msg = match r {
+                                Ok(v) => {
+                                    let off = v["offset"].as_f64().unwrap_or(0.);
+                                    let ratio = v["ratio"].as_f64().unwrap_or(1.);
+                                    if (ratio - 1.).abs() > 1e-4 {
+                                        format!("subtitles synced (they were made for a different frame rate, {:+.1} s)", off)
+                                    } else if off.abs() < 0.1 {
+                                        "subtitles were already in sync".to_string()
+                                    } else {
+                                        format!("subtitles synced: moved {:.1} s {}", off.abs(), if off < 0. { "earlier" } else { "later" })
+                                    }
+                                }
+                                Err(e) => e,
+                            };
+                            let _ = cx.update(|cx| {
+                                crate::Nav::toast(msg, cx);
+                                cx.refresh_windows();
+                            });
+                        })
+                        .detach();
                     });
-                (580., div().flex().gap(px(6.)).child(left).child(div().w(px(1.)).my(px(8.)).bg(theme::white(0.08))).child(right).into_any_element())
+                let timing = div()
+                    .mt(px(4.))
+                    .pt(px(8.))
+                    .px(px(8.))
+                    .border_t_1()
+                    .border_color(theme::white(0.08))
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .child(div().flex_1().text_size(px(12.)).text_color(theme::label3()).child(format!("subtitle timing {}{:.1} s", if d > 0. { "+" } else { "" }, d)))
+                    .child(nudge("sd-minus", "−0.1", -0.1))
+                    .child(nudge("sd-plus", "+0.1", 0.1))
+                    .child(sync_btn);
+                (
+                    470.,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .child(
+                            div()
+                                .flex()
+                                .gap(px(6.))
+                                .child(div().flex_1().min_w_0().flex().flex_col().child(head("audio")).child(left))
+                                .child(div().w(px(1.)).my(px(8.)).bg(theme::white(0.08)))
+                                .child(div().flex_1().min_w_0().flex().flex_col().child(head("subtitles")).child(right)),
+                        )
+                        .when(subs_on, |c| c.child(timing))
+                        .into_any_element(),
+                )
             }
             // episodes: their pictures, a season at a time
             Menu::Episodes => {
@@ -1119,9 +1161,21 @@ impl PlayerView {
                                 .child(if n == 0 { "specials".to_string() } else { format!("season {n}") })
                         }))
                 });
+                // what's been watched, and where you stopped (the one playing: live)
+                let lib = meta.as_ref().and_then(|m| couch::library::get(&couch::state::get().core, &m.id));
+                let seen_ids: Vec<String> = lib.as_ref().and_then(|i| serde_json::from_value(i["state"]["watchedIds"].clone()).ok()).unwrap_or_default();
+                let lib_at = lib.as_ref().map(|i| (i["state"]["video_id"].as_str().unwrap_or("").to_string(), i["state"]["timeOffset"].as_f64().unwrap_or(0.), i["state"]["duration"].as_f64().unwrap_or(0.)));
+                let live = (p.state.duration > 0.).then(|| (p.state.pos / p.state.duration).clamp(0., 1.));
                 let rows = playback::ordered(&f).into_iter().filter(|v| v["season"].as_i64() == Some(cur)).map(|v| {
                     let id = v["id"].as_str().unwrap_or("").to_string();
                     let on = id == p.video_id;
+                    let prog = if on {
+                        live.unwrap_or(0.)
+                    } else {
+                        lib_at.as_ref().filter(|l| l.0 == id && l.2 > 0.).map_or(0., |l| (l.1 / l.2).clamp(0., 1.))
+                    };
+                    // under 10% to go counts as watched
+                    let seen = seen_ids.contains(&id) || prog >= 0.9;
                     let num = v["episode"].as_i64().or(v["number"].as_i64()).unwrap_or(0);
                     let name = playback::episode_name(&v);
                     let over = v["overview"].as_str().or(v["description"].as_str()).unwrap_or("").to_string();
@@ -1160,6 +1214,15 @@ impl PlayerView {
                                         None => div().into_any_element(),
                                     })
                                 }))
+                                // watched: the soft shade from the top right, and a tick
+                                .when(seen && !on, |d| {
+                                    d.child(div().absolute().top_0().left_0().size_full().bg(linear_gradient(225., linear_color_stop(theme::black(0.6), 0.), linear_color_stop(theme::black(0.0), 0.65))))
+                                        .child(div().absolute().top(px(5.)).right(px(5.)).size(px(20.)).rounded_full().bg(theme::black(0.55)).flex().items_center().justify_center().child(icon("check", 12.)))
+                                })
+                                // started, not finished: how far, along the bottom
+                                .when(!seen && prog > 0.01, |d| {
+                                    d.child(div().absolute().left_0().bottom_0().w_full().h(px(3.)).bg(theme::white(0.25)).child(div().h_full().w(px(128. * prog as f32)).bg(gpui::white())))
+                                })
                                 .when(on, |d| d.child(div().absolute().size_full().flex().items_center().justify_center().bg(theme::black(0.4)).child(icon_fill("play", 22.)))),
                         )
                         .child(
@@ -1182,7 +1245,7 @@ impl PlayerView {
                         .flex_col()
                         .child(head("episodes"))
                         .children(picker)
-                        .child(div().id("ep-list").max_h(px(440.)).overflow_y_scroll().track_scroll(&self.ms[2]).child(crate::ui::smooth::wheel(&self.ms[2], "ep-list")).flex().flex_col().gap(px(2.)).children(rows))
+                        .child(faded(div().id("ep-list").max_h(px(440.)).overflow_y_scroll().track_scroll(&self.ms[2]).child(crate::ui::smooth::wheel(&self.ms[2], "ep-list")).flex().flex_col().gap(px(2.)).children(rows), &self.ms[2]))
                         .into_any_element(),
                 )
             }
@@ -1366,14 +1429,33 @@ impl PlayerView {
                             .into_any_element()
                     })
                     .collect::<Vec<_>>();
-                (340., div().id("src-list").max_h(px(460.)).overflow_y_scroll().track_scroll(&self.ms[3]).child(crate::ui::smooth::wheel(&self.ms[3], "src-list")).flex().flex_col().child(head("streams")).children(rows).into_any_element())
+                (340., div().flex().flex_col().child(head("streams")).child(faded(div().id("src-list").max_h(px(430.)).overflow_y_scroll().track_scroll(&self.ms[3]).child(crate::ui::smooth::wheel(&self.ms[3], "src-list")).flex().flex_col().children(rows), &self.ms[3])).into_any_element())
             }
             Menu::Couch => {
                 let t = crate::together::get(cx);
                 let tr = t.read(cx);
                 let shared = tr.shared;
                 let mut rows: Vec<gpui::AnyElement> = vec![];
-                for (i, g) in tr.roster.iter().enumerate() {
+                // the live list from the server; until it arrives, who the room says is here
+                let roster: Vec<crate::together::Guest> = if !tr.roster.is_empty() {
+                    tr.roster.clone()
+                } else {
+                    self.reactions
+                        .read(cx)
+                        .people
+                        .iter()
+                        .filter(|x| x["host"] != true)
+                        .map(|x| crate::together::Guest {
+                            id: x["id"].as_str().unwrap_or("").into(),
+                            name: x["name"].as_str().unwrap_or("someone").into(),
+                            avatar: x["avatar"].as_str().map(String::from),
+                            live: true,
+                            remote: shared,
+                            buf: false,
+                        })
+                        .collect()
+                };
+                for (i, g) in roster.iter().enumerate() {
                     let (t1, t2, id1, id2, remote) = (t.clone(), t.clone(), g.id.clone(), g.id.clone(), g.remote);
                     let status = if !g.live { "reconnecting…" } else if g.buf { "loading, you'll wait for them" } else if g.remote { "has the remote" } else { "watching" };
                     let dot = if !g.live { gpui::rgb(0x8a8a8a) } else if g.buf { gpui::rgb(0xffc83d) } else { gpui::rgb(0x3ddc84) };
@@ -2122,9 +2204,12 @@ impl Render for PlayerView {
             let imdb = crate::api::imdb_episode(n["id"].as_str().unwrap_or(""));
             let still = n["thumbnail"].as_str().map(String::from).or(imdb.clone());
             let over = n["overview"].as_str().or(n["description"].as_str()).unwrap_or("").to_string();
+            // above the "next" button (kept inside the window)
+            let w = f32::from(vw);
+            let x = (self.next_x.get() - 170.).clamp(theme::GUTTER, (w - 340. - theme::GUTTER).max(theme::GUTTER));
             div()
                 .absolute()
-                .right(px(theme::GUTTER))
+                .left(px(x))
                 // above the scrub bar, rising a little as it fades in
                 .bottom(px(100. + 10. * next_a))
                 .opacity(next_a)
@@ -2450,12 +2535,19 @@ impl Render for PlayerView {
                             .child(div().w(px(64.)).flex_none().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::white(0.5)).child(if st.duration > 0. { format!("-{}", clock(st.duration - st.pos)) } else { String::new() }))
                             .children(next.clone().filter(|_| !narrow2 && !guest).map(|_| {
                                 let pb = self.pb.clone();
+                                let nx = self.next_x.clone();
                                 bar_btn("pl-next", icon("next", 22.), false)
-                                    .on_click(move |_, _, cx| {
+                                    .relative()
+                                    .child(gpui::canvas(move |b, _, _| nx.set(f32::from(b.origin.x + b.size.width / 2.)), |_, _, _, _| {}).absolute().size_full())
+                                    .on_click(cx.listener(move |v, _, _, cx| {
+                                        // the preview goes with the click (it stayed up into the next episode)
+                                        v.next_hover = false;
+                                        v.next_since = None;
                                         if may("episode", None, cx) {
                                             pb.update(cx, |p, cx| p.play_next(cx))
                                         }
-                                    })
+                                        cx.notify();
+                                    }))
                                     .on_hover(cx.listener(|v, on: &bool, _, cx| {
                                         v.next_hover = *on;
                                         v.next_since = on.then(Instant::now);
@@ -2483,6 +2575,13 @@ impl Render for PlayerView {
                                             .on_click(cx.listener(|v, _, _, cx| {
                                                 cx.stop_propagation();
                                                 v.vol_pinned = !v.vol_pinned;
+                                                if v.vol_pinned {
+                                                    v.menu = None;
+                                                    v.reactions.update(cx, |r, cx| {
+                                                        r.open = false;
+                                                        cx.notify();
+                                                    });
+                                                }
                                                 v.vol_since = Some(Instant::now());
                                                 cx.notify();
                                             })),
@@ -2621,10 +2720,12 @@ impl Render for PlayerView {
                             )
                             .when(super::reactions::room(cx).is_some() && self.reactions.read(cx).people.len() > 1 && !narrow2, |d| {
                                 let r = self.reactions.clone();
-                                d.child(bar_btn("pl-react", crate::ui::emoji::emoji("😂", 24.), false).on_click(move |_, _, cx| {
+                                d.child(bar_btn("pl-react", crate::ui::emoji::emoji("😂", 24.), false).on_click(cx.listener(move |v, _, _, cx| {
                                     cx.stop_propagation();
+                                    v.menu = None;
+                                    v.vol_pinned = false;
                                     r.update(cx, |r, cx| r.toggle(cx));
-                                }))
+                                })))
                             })
                             .when(hosting, |d| {
                                 d.child(bar_btn("pl-couch", icon("couch", 23.), menu_on == Some(Menu::Couch)).on_click(cx.listener(|v, _, _, cx| {
@@ -2668,6 +2769,21 @@ impl Render for PlayerView {
             .children(next_card)
             .children(together_overlay(cx))
     }
+}
+
+/// A scrolling list with soft shadows at the edges that have more to see:
+/// at the bottom while there's more below, at the top once there's more above.
+fn faded(list: impl IntoElement, h: &gpui::ScrollHandle) -> gpui::Div {
+    let off = -f32::from(h.offset().y);
+    let max = f32::from(h.max_offset().y);
+    let bg = gpui::rgba(0x151114f2);
+    let clear = gpui::Rgba { a: 0., ..bg };
+    div()
+        .relative()
+        .min_h_0()
+        .child(list)
+        .when(off > 1., |d| d.child(div().absolute().top_0().left_0().w_full().h(px(34.)).rounded_t(px(12.)).bg(linear_gradient(180., linear_color_stop(bg, 0.), linear_color_stop(clear, 1.)))))
+        .when(max - off > 1., |d| d.child(div().absolute().bottom_0().left_0().w_full().h(px(34.)).rounded_b(px(12.)).bg(linear_gradient(180., linear_color_stop(clear, 0.), linear_color_stop(bg, 1.)))))
 }
 
 /// a guest's spot where the play buttons would be: whose remote it is
