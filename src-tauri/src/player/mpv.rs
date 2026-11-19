@@ -343,6 +343,8 @@ impl Mpv {
             st.duration = 0.0;
             st.sub_overlay = !s.playback.native_ass;
         }
+        // a new film starts clear (the last one may have been left paused, blurred)
+        let _ = mpv.command("change-list", &["glsl-shader-opts", "add", "couch_blur=0"]);
         mpv.command("loadfile", &[url, "replace"]).map_err(|e| AppError::msg(format!("mpv: {e}")))?;
         let _ = mpv.set_property("pause", false);
         Ok(())
@@ -595,6 +597,22 @@ impl Mpv {
                 let k = num("strength").unwrap_or(1.0).clamp(0.0, 2.0);
                 mpv.set_property("glsl-shader-opts", format!("head={x:.3},strength={k:.2}").as_str())
             }
+            // paused: the picture softly blurs, most at the bottom left (where the
+            // title sits), fading out toward the top right. 0 = off
+            "pause-blur" => {
+                let v = num("value").unwrap_or(0.0).clamp(0.0, 1.0);
+                let path = self.core.cache_dir.join("couch-pause-blur.glsl");
+                let p = path.to_string_lossy().to_string();
+                let on: Vec<String> = mpv.get_property::<String>("glsl-shaders").map(|l| l.split([';', ',']).map(String::from).collect()).unwrap_or_default();
+                if !on.iter().any(|x| x == &p) {
+                    if v <= 0.0 {
+                        return Ok(Value::Null);
+                    }
+                    std::fs::write(&path, PAUSE_BLUR).map_err(|e| AppError::msg(e.to_string()))?;
+                    let _ = mpv.command("change-list", &["glsl-shaders", "append", &p]);
+                }
+                mpv.command("change-list", &["glsl-shader-opts", "add", &format!("couch_blur={v:.3}")])
+            }
             "deband" => mpv.set_property("deband", a.get("value").and_then(|v| v.as_bool()).unwrap_or(true)),
             "chapters" => {
                 let n: i64 = mpv.get_property("chapter-list/count").unwrap_or(0);
@@ -778,3 +796,36 @@ fn crop_bars(mpv: &libmpv2::Mpv, gen: u64) {
     let (fw, fh) = (1.0 - l - r, 1.0 - t - b);
     let _ = mpv.command("vf", &["add", &format!("@couchcrop:lavfi=[crop=w=trunc(iw*{fw:.4}/2)*2:h=trunc(ih*{fh:.4}/2)*2:x=trunc(iw*{l:.4}):y=trunc(ih*{t:.4})]")]);
 }
+
+
+/// The paused picture's blur: a golden-angle disc blur on the final image,
+/// strength (`couch_blur`, 0..1) changed live without recompiling.
+const PAUSE_BLUR: &str = r#"//!PARAM couch_blur
+//!TYPE DYNAMIC float
+//!MINIMUM 0.0
+//!MAXIMUM 1.0
+0.0
+
+//!HOOK OUTPUT
+//!BIND HOOKED
+//!DESC couch pause blur
+vec4 hook() {
+    vec4 c = HOOKED_tex(HOOKED_pos);
+    if (couch_blur <= 0.001)
+        return c;
+    // 0 at the bottom left corner, 1 at the top right
+    float d = (HOOKED_pos.x + (1.0 - HOOKED_pos.y)) * 0.5;
+    float w = 0.3 + 0.7 * (1.0 - smoothstep(0.1, 0.85, d));
+    float r = couch_blur * w * 26.0;
+    vec4 acc = c;
+    float n = 1.0;
+    for (int i = 1; i < 56; i++) {
+        float fi = float(i);
+        float rr = sqrt(fi / 56.0) * r;
+        float a = fi * 2.39996323;
+        acc += HOOKED_tex(HOOKED_pos + vec2(cos(a), sin(a)) * rr * HOOKED_pt);
+        n += 1.0;
+    }
+    return acc / n;
+}
+"#;

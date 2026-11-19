@@ -42,6 +42,8 @@ pub struct PlayerView {
     reactions: Entity<super::reactions::Reactions>,
     /// pointing at "next": show what it is
     next_hover: bool,
+    /// the pause blur last sent to mpv (0..1)
+    blur_sent: f32,
     /// the credits countdown to the next episode: (that episode, when it began)
     countdown: Option<(String, Instant)>,
     /// you said no to it for this episode
@@ -104,7 +106,9 @@ impl PlayerView {
                 // (a pointer left lying at the bottom of the screen kept them up)
                 let idle = v.last_move.elapsed();
                 let held = (on_bar || busy) && idle < Duration::from_secs(10);
-                let show = paused || v.menu.is_some() || v.drag || v.vol_pinned || held || idle < Duration::from_millis(3200) || v.pb.read(cx).loading;
+                // paused and left alone a while: the controls go too (the title stays)
+                let paused_fresh = paused && (idle < Duration::from_secs(4) || held);
+                let show = paused_fresh || v.menu.is_some() || v.drag || v.vol_pinned || held || idle < Duration::from_millis(3200) || v.pb.read(cx).loading;
                 // the little picture-in-picture window: controls only while the pointer is on it
                 let show = if crate::pip::is_on() { crate::pip::cursor_inside() && !v.pb.read(cx).loading } else { show };
                 if show != v.shown {
@@ -177,7 +181,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, blur_sent: 0. }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -1678,6 +1682,14 @@ impl Render for PlayerView {
         } else {
             (eout(0.1, 0.6), eout(0.16, 0.45), eout(0.08, 0.45), eout(0., 0.45), eout(0.25, 0.45))
         };
+        // the picture blurs in with the shade (mpv draws it; steps of 5% are plenty)
+        {
+            let want = (pv_shade * 20.).round() / 20.;
+            if (want - self.blur_sent).abs() > 0.001 {
+                self.blur_sent = want;
+                self.pb.read(cx).cmd("pause-blur", json!({ "value": want }));
+            }
+        }
         if pv_shade > 0.001 {
             let has_ep = is_series_now && (label.is_some() || !ep.is_empty());
             let big_logo = logo.clone();
@@ -1693,6 +1705,8 @@ impl Render for PlayerView {
                         .opacity(pv_shade)
                         .bg(linear_gradient(40., linear_color_stop(theme::black(0.88), 0.), linear_color_stop(theme::black(0.0), 0.62))),
                 )
+                // left alone while paused (the controls gone): the lights go down a little more
+                .child(div().absolute().top_0().left_0().size_full().bg(theme::black(0.32)).opacity(pv_shade * (1. - ca)))
                 .child(
                     div()
                         .absolute()
@@ -1956,10 +1970,11 @@ impl Render for PlayerView {
                     .h(px(150.))
                     .bg(linear_gradient(180., linear_color_stop(theme::black(0.65), 0.), linear_color_stop(theme::black(0.0), 1.)))
                     .child(
+                        // centred on the same line as the 4K / HDR badges (top 50, 32 tall)
                         div()
                             .absolute()
                             .left(px(g))
-                            .top(px(28.))
+                            .top(px(42.))
                             .flex()
                             .items_center()
                             .gap(px(18.))
