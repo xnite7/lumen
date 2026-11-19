@@ -550,6 +550,20 @@ impl Root {
 
 impl Root {
     /// keys: space play/pause, arrows seek/volume, f full screen, esc back
+    fn key_up(&mut self, e: &gpui::KeyUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        if e.keystroke.key != "space" || self.route != Route::Player {
+            return;
+        }
+        // held: that was 2×, now over; a tap: play / pause
+        if !views::player::hold_end(cx) {
+            let pb = playback::get(cx);
+            let paused = pb.read(cx).state.paused;
+            if views::player::may(if paused { "play" } else { "pause" }, None, cx) {
+                pb.read(cx).cmd("pause", json!({ "value": !paused }));
+            }
+        }
+    }
+
     fn key(&mut self, e: &gpui::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let k = e.keystroke.key.as_str();
         // ctrl+shift+f: a frame-rate meter in the corner (how smooth is it here?)
@@ -604,7 +618,14 @@ impl Root {
                 "l" => Some(10.),
                 _ => None,
             };
-            if matches!(k, "space" | "k") {
+            // space: a tap plays / pauses, held it's 2× until let go (decided on release)
+            if k == "space" {
+                if !e.is_held {
+                    views::player::hold_begin(cx);
+                }
+                return;
+            }
+            if matches!(k, "k") {
                 if views::player::may(if paused { "play" } else { "pause" }, None, cx) {
                     pb.read(cx).cmd("pause", json!({ "value": !paused }));
                 }
@@ -1237,6 +1258,7 @@ impl Render for Root {
             .relative()
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::key))
+            .on_key_up(cx.listener(Self::key_up))
             // the mouse's back button: back a page (from the player: the film goes to the corner)
             .on_mouse_down(gpui::MouseButton::Navigate(gpui::NavigationDirection::Back), cx.listener(|r, _, _, cx| {
                 if r.wrapped.read(cx).open || r.menu.read(cx).open.is_some() || r.addto.read(cx).meta.is_some() {

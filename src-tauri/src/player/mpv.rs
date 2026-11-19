@@ -597,6 +597,17 @@ impl Mpv {
                 let k = num("strength").unwrap_or(1.0).clamp(0.0, 2.0);
                 mpv.set_property("glsl-shader-opts", format!("head={x:.3},strength={k:.2}").as_str())
             }
+            // night mode: loud bits quieter, quiet bits (dialogue) louder, so
+            // nobody's woken by an explosion. A compressor, then gentle levelling
+            "night" => {
+                let on = a.get("value").and_then(|v| v.as_bool()).unwrap_or(false);
+                let _ = mpv.command("af", &["remove", "@night"]);
+                if on {
+                    mpv.command("af", &["add", "@night:lavfi=[acompressor=threshold=-24dB:ratio=6:attack=5:release=200:makeup=6dB,dynaudnorm=f=250:g=15:m=8]"])
+                } else {
+                    Ok(())
+                }
+            }
             // paused: the picture softly blurs, most at the bottom left (where the
             // title sits), fading out toward the top right. 0 = off
             "pause-blur" => {

@@ -42,6 +42,8 @@ pub struct PlayerView {
     reactions: Entity<super::reactions::Reactions>,
     /// pointing at "next": show what it is
     next_hover: bool,
+    /// the mouse-up that ended a 2× hold isn't a click on the film
+    ate_click: bool,
     /// the pause blur last sent to mpv (0..1)
     blur_sent: f32,
     /// the credits countdown to the next episode: (that episode, when it began)
@@ -181,7 +183,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, blur_sent: 0. }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, blur_sent: 0., ate_click: false }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -226,6 +228,72 @@ pub fn may(action: &str, pos: Option<f64>, cx: &mut gpui::App) -> bool {
         t.update(cx, |t, cx| t.deny(action, cx));
     }
     sent
+}
+
+/// night mode (saved): loud scenes tamed, dialogue lifted
+pub fn night_on() -> bool {
+    couch::state::get().core.db.get::<bool>("gpui_night").unwrap_or(false)
+}
+
+thread_local! {
+    /// held down (space or the picture): 2× until let go. (the speed to go back to)
+    static BOOST: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
+    /// when the hold began, and how many presses so far (a newer press cancels an older wait)
+    static HOLD: std::cell::Cell<(Option<Instant>, u64)> = const { std::cell::Cell::new((None, 0)) };
+}
+
+/// Hold for 2×: on someone's couch (yours or theirs) speed belongs to sync, so not there.
+pub fn boost_start(cx: &mut gpui::App) -> bool {
+    if BOOST.with(|b| b.get()).is_some() {
+        return true;
+    }
+    let t = crate::together::get(cx);
+    if t.read(cx).following.is_some() || t.read(cx).hosting.is_some() {
+        return false;
+    }
+    let pb = crate::playback::get(cx);
+    let p = pb.read(cx);
+    if !p.open || p.loading || p.state.paused {
+        return false;
+    }
+    BOOST.with(|b| b.set(Some(p.state.speed.max(0.25))));
+    p.cmd("speed", json!({ "value": 2.0 }));
+    cx.refresh_windows();
+    true
+}
+/// Let go: back to the speed before. True if it was speeding.
+pub fn boost_end(cx: &mut gpui::App) -> bool {
+    let Some(prev) = BOOST.with(|b| b.take()) else { return false };
+    crate::playback::get(cx).read(cx).cmd("speed", json!({ "value": prev }));
+    cx.refresh_windows();
+    true
+}
+pub fn boosting() -> bool {
+    BOOST.with(|b| b.get()).is_some()
+}
+/// a press began (space or the picture): after 350 ms still held, 2×
+pub fn hold_begin(cx: &mut gpui::App) {
+    let n = HOLD.with(|h| {
+        let n = h.get().1 + 1;
+        h.set((Some(Instant::now()), n));
+        n
+    });
+    cx.spawn(async move |cx| {
+        crate::timer::after(Duration::from_millis(350)).await;
+        let still = HOLD.with(|h| h.get()) .1 == n && HOLD.with(|h| h.get()).0.is_some();
+        if still {
+            let _ = cx.update(|cx| boost_start(cx));
+        }
+    })
+    .detach();
+}
+/// the press let go: true when it was a hold (so it isn't also a click / pause)
+pub fn hold_end(cx: &mut gpui::App) -> bool {
+    HOLD.with(|h| {
+        let (_, n) = h.get();
+        h.set((None, n));
+    });
+    boost_end(cx)
 }
 
 /// the "guests can't …" sign over the player: the control crossed out, and why
@@ -1412,9 +1480,24 @@ impl Render for PlayerView {
                 }
                 v.poke(cx)
             }))
-            .on_mouse_up(gpui::MouseButton::Left, cx.listener(|v, _, _, cx| v.finish_drag(cx)))
+            // holding the picture down: 2× while held
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|v, _, _, cx| {
+                if !v.drag {
+                    hold_begin(cx);
+                }
+            }))
+            .on_mouse_up(gpui::MouseButton::Left, cx.listener(|v, _, _, cx| {
+                if hold_end(cx) {
+                    v.ate_click = true;
+                }
+                v.finish_drag(cx)
+            }))
             .on_click(cx.listener(|v, e: &gpui::ClickEvent, window, cx| {
                 if just_moved() {
+                    return;
+                }
+                // that was a hold for 2×, not a click
+                if std::mem::take(&mut v.ate_click) {
                     return;
                 }
                 if e.click_count() == 2 {
@@ -1668,6 +1751,27 @@ impl Render for PlayerView {
             .detach();
         }
         let mut root = root.child(self.reactions.clone()).children(denied_sign(cx, window));
+        // held for 2×: a small sign at the top
+        if boosting() {
+            root = root.child(
+                div().absolute().top(px(40.)).left_0().w_full().flex().justify_center().child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .h(px(40.))
+                        .px(px(16.))
+                        .rounded_full()
+                        .bg(gpui::rgba(0x151114d9))
+                        .border_1()
+                        .border_color(theme::white(0.1))
+                        .text_size(px(15.))
+                        .font_weight(FontWeight::BLACK)
+                        .child(icon("forward", 18.))
+                        .child("2×"),
+                ),
+            );
+        }
         // the controls slide in and out
         if shown != self.chrome_on {
             self.chrome_on = shown;
@@ -2337,6 +2441,32 @@ impl Render for PlayerView {
                                                                         .child(div().absolute().left(px(-5.)).bottom(px(SH * vol_frac - 8.)).size(px(16.)).rounded_full().bg(theme::text()).shadow(vec![gpui::BoxShadow { color: theme::black(0.4), offset: gpui::point(px(0.), px(2.)), blur_radius: px(6.), spread_radius: px(0.), inset: false }])),
                                                                 ),
                                                         )
+                                                        // night mode: evens the loud and the quiet out
+                                                        .child({
+                                                            let on = night_on();
+                                                            div()
+                                                                .id("pl-night")
+                                                                .size(px(36.))
+                                                                .rounded_full()
+                                                                .flex()
+                                                                .items_center()
+                                                                .justify_center()
+                                                                .cursor_pointer()
+                                                                .when(on, |d| d.bg(theme::text()))
+                                                                .when(!on, |d| d.bg(theme::white(0.08)).hover(|s| s.bg(theme::white(0.16))))
+                                                                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                                                .on_click(cx.listener(|v, _, _, cx| {
+                                                                    cx.stop_propagation();
+                                                                    let on = !night_on();
+                                                                    let _ = couch::state::get().core.db.set("gpui_night", &on);
+                                                                    v.pb.read(cx).cmd("night", json!({ "value": on }));
+                                                                    v.vol_hud = Some(Instant::now());
+                                                                    let msg = if on { "night mode on: explosions quieter, voices clearer" } else { "night mode off" };
+                                                                    cx.defer(move |cx| crate::Nav::toast(msg.into(), cx));
+                                                                    cx.notify();
+                                                                }))
+                                                                .child(if on { icon_fill("moon", 18.).text_color(gpui::rgb(0x000000)) } else { icon("moon", 18.) })
+                                                        })
 ,
                                                 ),
                                         )

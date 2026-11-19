@@ -680,7 +680,12 @@ impl Playback {
                         p.loading = false;
                         p.error = "this stream needs the old player. pick another one.".into();
                     }
-                    Ok(_) => {}
+                    Ok(_) => {
+                        // night mode stays on from film to film (and from last time)
+                        if crate::views::player::night_on() {
+                            p.cmd("night", json!({ "value": true }));
+                        }
+                    }
                     Err(e) => {
                         if !p.try_next(cx) {
                             p.loading = false;
