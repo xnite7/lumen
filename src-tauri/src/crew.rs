@@ -121,6 +121,7 @@ fn who(core: &Core) -> (String, Option<String>) {
 /// Called from the player tracker on every tick: sends when something
 /// changed, otherwise a heartbeat every 45 s.
 pub fn playing(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f64, duration: f64, paused: bool) {
+    PLAY_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     host_tick(core, known, meta, video_id, pos, paused);
     let Some((url, code)) = server(core) else { return };
     // gatekeeper mode: you're on the couch, but what you're watching is yours
@@ -224,10 +225,20 @@ fn send_frame(core: &Core, url: String, code: String) {
 /// Playback ended: leave the couch row.
 pub fn stopped(core: &Core) {
     *LAST.lock() = None;
-    SHARED.store(false, std::sync::atomic::Ordering::Relaxed);
-    if HOSTING.swap(false, std::sync::atomic::Ordering::Relaxed) {
-        let id = member_id(core);
-        let _ = send(core, reqwest::Method::DELETE, &format!("/v1/room/{id}"), None);
+    // the next episode is a stop too: the room only ends if nothing plays again
+    // soon (guests ride along to the next one instead of being dropped)
+    if HOSTING.load(std::sync::atomic::Ordering::Relaxed) {
+        let g = PLAY_GEN.load(std::sync::atomic::Ordering::Relaxed);
+        crate::rt::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(25)).await;
+            if PLAY_GEN.load(std::sync::atomic::Ordering::Relaxed) != g || !HOSTING.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
+            SHARED.store(false, std::sync::atomic::Ordering::Relaxed);
+            let core = crate::state::get().core.clone();
+            let id = member_id(&core);
+            let _ = send(&core, reqwest::Method::DELETE, &format!("/v1/room/{id}"), None);
+        });
     }
     let Some((url, code)) = server(core) else { return };
     let id = member_id(core);
@@ -268,6 +279,30 @@ static HOSTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::n
 /// the host lets everyone in the room pause / play / seek
 pub static SHARED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static LAST_ROOM: Mutex<Option<Instant>> = Mutex::new(None);
+/// bumped on every playing tick: a stop followed by more playing isn't an end
+static PLAY_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The crew server's permanent invite (public: for people not in it yet).
+pub async fn server_invite(core: &Core) -> Option<String> {
+    static CACHE: Mutex<Option<String>> = Mutex::new(None);
+    if let Some(u) = CACHE.lock().clone() {
+        return Some(u);
+    }
+    let r = core.http.client().get(format!("{}/v1/invite", CREW_URL.trim_end_matches('/'))).timeout(Duration::from_secs(8)).send().await.ok()?;
+    let v: Value = r.json().await.ok()?;
+    let u = v.get("url").and_then(|u| u.as_str()).filter(|u| u.starts_with("https://discord.gg/"))?.to_string();
+    *CACHE.lock() = Some(u.clone());
+    Some(u)
+}
+
+/// Host closed the player for real: end the room now (guests are told).
+pub fn end_room(core: &Core) {
+    if HOSTING.swap(false, std::sync::atomic::Ordering::Relaxed) {
+        SHARED.store(false, std::sync::atomic::Ordering::Relaxed);
+        let id = member_id(core);
+        let _ = send(core, reqwest::Method::DELETE, &format!("/v1/room/{id}"), None);
+    }
+}
 
 /// Fire-and-forget request to the crew server.
 fn send(core: &Core, method: reqwest::Method, path: &str, body: Option<Value>) -> Option<()> {

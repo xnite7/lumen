@@ -63,6 +63,11 @@ pub struct Playback {
     /// since loading began, mpv has shown it's on the new file (no length yet, or buffering):
     /// only then can a "ready" state end the loading screen (old states arrive late)
     fresh: bool,
+    /// bumped by every new play and every close: a load that finishes after
+    /// you've moved on to something else is dropped, not played
+    pub load_gen: u64,
+    /// where the current load will start (for watch together, while loading)
+    pub start_hint: Option<f64>,
 }
 
 pub struct PlaybackHandle(pub Entity<Playback>);
@@ -567,9 +572,19 @@ impl Playback {
             "background": meta["background"], "logo": meta["logo"], "runtime": meta["runtime"],
         });
         let req = json!({ "stream": stream, "meta": preview, "videoId": self.video_id, "startAt": start_at, "episodeTitle": (!self.episode_title.is_empty()).then(|| self.episode_title.clone()) });
+        let g = self.load_gen;
         cx.spawn(async move |this, cx| {
             let r = api::call::<Value>("player_open", json!({ "req": req })).await;
             let _ = this.update(cx, |p, cx| {
+                // moved on while it opened: this one mustn't play
+                if p.load_gen != g {
+                    if !p.open {
+                        couch::rt::spawn(async {
+                            let _ = couch::dispatch::invoke("player_stop", json!({})).await;
+                        });
+                    }
+                    return;
+                }
                 match r {
                     Ok(v) if v["mode"] == "external" => {
                         if let Some(u) = v["url"].as_str() {
@@ -597,6 +612,7 @@ impl Playback {
     }
 
     pub fn close(&mut self, cx: &mut Context<Self>) {
+        self.load_gen += 1;
         self.open = false;
         self.loading = false;
         self.error.clear();
@@ -619,11 +635,15 @@ pub fn quick_play(base: Meta, video_id: Option<String>, start_at: Option<f64>, c
 /// couch: the host's own stream, so you're both on the same file).
 pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f64>, prefer: Option<Value>, cx: &mut App) {
     let pb = get(cx);
-    pb.update(cx, |p, cx| {
+    let g = pb.update(cx, |p, cx| {
+        p.load_gen += 1;
         p.open = true;
         p.loading = true;
         p.fresh = false;
         p.stream = None;
+        p.start_hint = start_at;
+        // the episode is known now: watch together tells guests at once
+        p.video_id = video_id.clone().unwrap_or_default();
         p.state = State { volume: p.state.volume, muted: p.state.muted, speed: 1., ..Default::default() };
         p.error.clear();
         p.status = "finding the best stream for your connection…".into();
@@ -633,7 +653,9 @@ pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f6
         p.subs_off = false;
         p.sub.clear();
         cx.notify();
+        p.load_gen
     });
+    crate::ui::video::stop_all(cx);
     crate::Nav::go(crate::Route::Player, cx);
     let kind = base.kind.clone();
     pb.update(cx, |_, cx| {
@@ -706,7 +728,7 @@ pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f6
                 }
             }
             let _ = this.update(cx, |p, cx| {
-                if !p.open {
+                if !p.open || p.load_gen != g {
                     return;
                 }
                 p.full = Some(full);

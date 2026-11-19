@@ -122,6 +122,20 @@ pub fn get(cx: &App) -> Entity<Video> {
     cx.global::<VideoHandle>().0.clone()
 }
 
+/// The film is starting: no card or billboard clip keeps running behind it
+/// (it would show in a screen share, and keep using the network).
+pub fn stop_all(cx: &mut App) {
+    if !cx.has_global::<VideoHandle>() {
+        return;
+    }
+    get(cx).update(cx, |v, cx| {
+        let o = v.owner.clone();
+        if !o.is_empty() {
+            v.stop(&o, cx);
+        }
+    });
+}
+
 pub fn init(cx: &mut App) {
     let v = cx.new(|cx: &mut Context<Video>| {
         let (tx, mut rx) = futures::channel::mpsc::unbounded::<()>();

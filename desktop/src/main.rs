@@ -923,6 +923,7 @@ impl Root {
             .child(img("brand/nav-mark.png").w(px(120.)).h(px(68.)).object_fit(gpui::ObjectFit::Contain).opacity(0.6))
             .child(div().text_size(px(30.)).font_weight(FontWeight::BLACK).child("you're off the couch"))
             .child(div().max_w(px(460.)).text_center().text_size(px(15.)).line_height(px(22.)).text_color(theme::label2()).child("couch is for the midnite crew. your account doesn't have the couch role in the server anymore. get it back, then check again."))
+            .child(ui::join_discord("lock-join", "open the server"))
             .child(
                 div()
                     .mt(px(10.))
@@ -955,8 +956,13 @@ impl Root {
     }
 
     /// people asking to join my couch; my own ask while it waits
-    fn together_cards(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn together_cards(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let t = together::get(cx);
+        let asks = t.read(cx).asks_now(cx);
+        if !asks.is_empty() {
+            // the time-left line runs down; the card goes when it's out
+            window.request_animation_frame();
+        }
         let tr = t.read(cx);
         let card = || {
             div()
@@ -969,12 +975,16 @@ impl Root {
                 .bg(gpui::rgba(0x0c090bf2))
         };
         let mut col = div().absolute().top(px(70.)).right(px(theme::GUTTER)).flex().flex_col().gap(px(10.)).w(px(420.));
-        for (i, a) in tr.inbox.iter().enumerate() {
+        for (i, a) in asks.iter().enumerate() {
             let name = a["fromName"].as_str().unwrap_or("someone").to_string();
             let (a1, a2) = (a.clone(), a.clone());
             let (t1, t2) = (t.clone(), t.clone());
+            let left = tr.ask_left(a["id"].as_str().unwrap_or(""));
             col = col.child(
                 card()
+                    .relative()
+                    .overflow_hidden()
+                    .child(div().absolute().left_0().bottom_0().h(px(3.)).w(gpui::relative(left)).bg(theme::neon()))
                     .child(div().size(px(36.)).rounded(px(10.)).bg(theme::neon()).flex().items_center().justify_center().font_weight(FontWeight::BLACK).child(name.chars().next().unwrap_or('?').to_uppercase().to_string()))
                     .child(div().flex_1().flex().flex_col().child(div().font_weight(FontWeight::SEMIBOLD).child(name.clone())).child(div().text_size(px(13.)).text_color(theme::label2()).child("wants to join your couch")))
                     .child(
@@ -987,7 +997,11 @@ impl Root {
                             .items_center()
                             .justify_center()
                             .cursor_pointer()
-                            .on_click(move |_, _, cx| t1.update(cx, |t, cx| t.answer(a1.clone(), false, cx)))
+                            .on_click(move |_, _, cx| {
+                                // "not now": the card goes; no answer is sent, it just runs out
+                                let id = a1["id"].as_str().unwrap_or("").to_string();
+                                t1.update(cx, |t, cx| t.hide_ask(&id, cx))
+                            })
                             .child(icon("close", 16.)),
                     )
                     .child(
@@ -1245,7 +1259,7 @@ impl Render for Root {
             .when(playing && !pip::is_on(), |d| d.child(div().absolute().top_0().left_0().right(px(150.)).h(px(24.)).window_control_area(WindowControlArea::Drag)))
             // full screen with the controls tucked away: nothing but the film
             .when(playing && !pip::is_on() && !(window.is_fullscreen() && self.player.read(cx).chrome_hidden()), |d| d.child(window_controls()))
-            .child(self.together_cards(cx))
+            .child(self.together_cards(window, cx))
             .when(!playing && self.route != Route::SignIn, |d| d.child(self.planner.clone()).child(self.invite.clone()))
             .when(self.menu.read(cx).open.is_some(), |d| d.child(gpui::deferred(self.menu.clone()).with_priority(3)))
             .when(self.addto.read(cx).meta.is_some(), |d| d.child(gpui::deferred(self.addto.clone()).with_priority(3)))

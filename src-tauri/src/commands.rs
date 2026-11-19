@@ -1124,6 +1124,16 @@ pub async fn crew_room(s: S<'_>, host: String) -> AppResult<Value> {
 pub async fn crew_line(s: S<'_>, host: String) -> AppResult<String> {
     crate::crew::line_url(&s.core, &host).await
 }
+/// Host closed the player for real: guests are told right away.
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub fn crew_end_room(s: S<'_>) {
+    crate::crew::end_room(&s.core)
+}
+/// The Discord server's invite, for people who aren't in it yet.
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn crew_server_invite(s: S<'_>) -> Option<String> {
+    crate::crew::server_invite(&s.core).await
+}
 #[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_leave(s: S<'_>, host: String) -> AppResult<Value> {
     crate::crew::leave(&s.core, &host).await

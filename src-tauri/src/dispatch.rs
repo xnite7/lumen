@@ -479,6 +479,8 @@ pub async fn invoke(cmd: &str, a: Value) -> Result<Value, String> {
             let host: String = arg(&a, "host")?;
             out(commands::crew_line(st, host).await.map_err(|e| e.to_string())?)
         }
+        "crew_end_room" => out(commands::crew_end_room(st)),
+        "crew_server_invite" => out(commands::crew_server_invite(st).await),
         "crew_leave" => {
             let host: String = arg(&a, "host")?;
             out(commands::crew_leave(st, host).await.map_err(|e| e.to_string())?)

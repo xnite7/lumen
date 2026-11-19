@@ -460,6 +460,8 @@ impl Render for Home {
                 let paused = mb["paused"].as_bool() == Some(true);
                 let (host, host_name) = (mb["id"].as_str().unwrap_or("").to_string(), mb["name"].as_str().unwrap_or("them").to_string());
                 let mm = m.clone();
+                // I've asked to join this one: a yellow ring until they answer
+                let pending = crate::together::get(cx).read(cx).asking.as_ref().map_or(false, |a| a.1 == host);
                 div()
                     .id(SharedString::from(format!("live-wrap-{i}")))
                     .group(SharedString::from(format!("live-g-{i}")))
@@ -478,9 +480,10 @@ impl Render for Home {
                             .when(paused, |d| d.child(div().absolute().top(px(10.)).left(px(10.)).size(px(28.)).rounded_full().bg(theme::black(0.6)).flex().items_center().justify_center().child(crate::ui::icon_fill("pause", 14.))))
                             .children(se.map(|t| div().absolute().top(px(10.)).right(px(10.)).child(crate::ui::ep_badge(t))))
                             .child(div().absolute().bottom(px(10.)).right(px(10.)).child(crate::ui::faces(&key, people, 30.)))
-                            // pointing at it: join them
+                            .when(pending, |d| d.child(div().absolute().top_0().left_0().size_full().rounded(px(12.)).border_2().border_color(gpui::rgb(0xffc83d))))
+                            // pointing at it: join them (asked already: always shown, cancels)
                             .child(
-                                div().absolute().size_full().flex().items_center().justify_center().opacity(0.).group_hover(SharedString::from(format!("live-g-{i}")), |s| s.opacity(1.)).child(
+                                div().absolute().size_full().flex().items_center().justify_center().when(!pending, |d| d.opacity(0.).group_hover(SharedString::from(format!("live-g-{i}")), |s| s.opacity(1.))).child(
                                     div()
                                         .id(SharedString::from(format!("live-join-{i}")))
                                         .occlude()
@@ -496,13 +499,14 @@ impl Render for Home {
                                         .cursor_pointer()
                                         .hover(|s| s.opacity(0.88))
                                         .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                        .when(pending, |d| d.bg(gpui::rgb(0xffc83d)))
                                         .on_click(move |_, _, cx| {
                                             cx.stop_propagation();
                                             let (h, n) = (host.clone(), host_name.clone());
-                                            crate::together::get(cx).update(cx, |t, cx| t.ask_to_join(h, n, cx));
+                                            crate::together::get(cx).update(cx, |t, cx| if pending { t.cancel_ask(cx) } else { t.ask_to_join(h, n, cx) });
                                         })
                                         .child(crate::ui::icon("couch", 18.).text_color(gpui::rgb(0x000000)))
-                                        .child("join"),
+                                        .child(if pending { "asked · cancel" } else { "join" }),
                                 ),
                             ),
                     )

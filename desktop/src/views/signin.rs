@@ -200,6 +200,8 @@ impl Render for SignIn {
                     .child(if busy { "check Discord or your browser…" } else { "Sign in with Discord" }),
             )
             .children((!self.error.is_empty()).then(|| div().text_size(px(15.)).text_color(gpui::rgb(0xff8a8a)).child(self.error.clone())))
+            .child(div().mt(px(18.)).text_size(px(14.)).text_color(theme::label3()).child("not in the server yet?"))
+            .child(crate::ui::join_discord("signin-join", "join the Discord"))
             .into_any_element()
     }
 }

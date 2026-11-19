@@ -207,3 +207,38 @@ fn faces_at(key: &str, people: Vec<(Option<String>, String)>, size: f32, above: 
             )
     }))
 }
+
+
+/// "join the Discord": the crew server's invite (made by couch's bot), for
+/// anyone who isn't in the server yet and so can't get on the couch.
+pub fn join_discord(id: &'static str, label: &'static str) -> gpui::Stateful<gpui::Div> {
+    use gpui::prelude::*;
+    gpui::div()
+        .id(id)
+        .flex()
+        .items_center()
+        .gap(gpui::px(8.))
+        .h(gpui::px(44.))
+        .px(gpui::px(18.))
+        .rounded_full()
+        .bg(theme::white(0.1))
+        .border_1()
+        .border_color(gpui::rgba(0x5865f299))
+        .text_size(gpui::px(15.))
+        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .cursor_pointer()
+        .hover(|s| s.bg(gpui::rgba(0x5865f244)))
+        .child(icon("discord", 19.))
+        .child(label)
+        .on_click(|_, _, cx| {
+            cx.stop_propagation();
+            cx.spawn(async move |cx| {
+                let url = crate::api::call::<Option<String>>("crew_server_invite", serde_json::json!({})).await.ok().flatten();
+                let _ = cx.update(|cx| match url {
+                    Some(u) => cx.open_url(&u),
+                    None => crate::Nav::toast("couldn't get the server invite right now, try again in a bit".into(), cx),
+                });
+            })
+            .detach();
+        })
+}

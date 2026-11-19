@@ -19,6 +19,8 @@ pub enum Menu {
     Speed,
     Episodes,
     Sources,
+    /// host: who's on my couch (kick, hand over the remote)
+    Couch,
 }
 
 pub struct PlayerView {
@@ -1088,6 +1090,88 @@ impl PlayerView {
                     .collect::<Vec<_>>();
                 (340., div().id("src-list").max_h(px(460.)).overflow_y_scroll().track_scroll(&self.ms[3]).child(crate::ui::smooth::wheel(&self.ms[3], "src-list")).flex().flex_col().child(head("streams")).children(rows).into_any_element())
             }
+            Menu::Couch => {
+                let t = crate::together::get(cx);
+                let tr = t.read(cx);
+                let shared = tr.shared;
+                let mut rows: Vec<gpui::AnyElement> = vec![];
+                for (i, g) in tr.roster.iter().enumerate() {
+                    let (t1, t2, id1, id2, remote) = (t.clone(), t.clone(), g.id.clone(), g.id.clone(), g.remote);
+                    let status = if !g.live { "reconnecting…" } else if g.buf { "loading, you'll wait for them" } else if g.remote { "has the remote" } else { "watching" };
+                    let dot = if !g.live { gpui::rgb(0x8a8a8a) } else if g.buf { gpui::rgb(0xffc83d) } else { gpui::rgb(0x3ddc84) };
+                    rows.push(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(10.))
+                            .px(px(10.))
+                            .py(px(8.))
+                            .rounded(px(12.))
+                            .child(
+                                div().relative().size(px(36.)).flex_none()
+                                    .child(match &g.avatar {
+                                        Some(a) => img(a.clone()).size(px(36.)).rounded_full().into_any_element(),
+                                        None => div().size(px(36.)).rounded_full().bg(theme::neon()).flex().items_center().justify_center().font_weight(FontWeight::BLACK).child(g.name.chars().next().unwrap_or('?').to_uppercase().to_string()).into_any_element(),
+                                    })
+                                    .child(div().absolute().right(px(-1.)).bottom(px(-1.)).size(px(12.)).rounded_full().bg(dot).border_2().border_color(gpui::rgb(0x151114))),
+                            )
+                            .child(div().flex_1().min_w_0().flex().flex_col().child(div().truncate().text_size(px(15.)).font_weight(FontWeight::SEMIBOLD).child(g.name.clone())).child(div().text_size(px(12.)).text_color(theme::label3()).child(status)))
+                            .when(!shared, |d| {
+                                d.child(
+                                    div()
+                                        .id(SharedString::from(format!("cr-rm-{i}")))
+                                        .h(px(30.))
+                                        .px(px(11.))
+                                        .rounded_full()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(5.))
+                                        .cursor_pointer()
+                                        .text_size(px(13.))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .when(remote, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)))
+                                        .when(!remote, |d| d.bg(theme::white(0.1)).hover(|s| s.bg(theme::white(0.16))))
+                                        .child(if remote { "remote ✓" } else { "give remote" })
+                                        .on_click(move |_, _, cx| t1.update(cx, |t, cx| t.give_remote(&id1, !remote, cx))),
+                                )
+                            })
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("cr-kick-{i}")))
+                                    .size(px(30.))
+                                    .rounded_full()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .cursor_pointer()
+                                    .bg(theme::white(0.08))
+                                    .hover(|s| s.bg(gpui::rgba(0xff4d5a55)))
+                                    .child(icon("signout", 15.))
+                                    .on_click(move |_, _, cx| t2.update(cx, |t, cx| t.kick(&id2, cx))),
+                            )
+                            .into_any_element(),
+                    );
+                }
+                if rows.is_empty() {
+                    rows.push(div().px(px(12.)).py(px(10.)).text_size(px(14.)).text_color(theme::label2()).child("nobody's on your couch right now").into_any_element());
+                }
+                let t3 = t.clone();
+                let everyone = div()
+                    .id("cr-all")
+                    .mt(px(4.))
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .px(px(12.))
+                    .h(px(42.))
+                    .rounded(px(12.))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme::white(0.08)))
+                    .child(div().w(px(18.)).flex_none().children(shared.then(|| icon("check", 18.))))
+                    .child(div().text_size(px(15.)).font_weight(FontWeight::MEDIUM).child("everyone gets the remote"))
+                    .on_click(move |_, _, cx| t3.update(cx, |t, cx| t.set_shared(!shared, cx)));
+                (360., div().flex().flex_col().child(head("on your couch")).children(rows).child(div().mx(px(10.)).my(px(4.)).h(px(1.)).bg(theme::white(0.08))).child(everyone).into_any_element())
+            }
         };
         div()
             .id("pl-menu")
@@ -1238,7 +1322,7 @@ impl Render for PlayerView {
                     v.menu = None;
                     v.vol_pinned = false;
                     cx.notify();
-                } else if e.click_count() == 1 {
+                } else if e.click_count() == 1 && !crate::together::get(cx).read(cx).locked() {
                     // wait a moment: a second click makes it full screen instead
                     v.click_gen += 1;
                     let g = v.click_gen;
@@ -1568,7 +1652,7 @@ impl Render for PlayerView {
                             crate::Nav::back(cx);
                         })),
                 )
-                .child(
+                .when(!crate::together::get(cx).read(cx).locked(), |d| d.child(
                     div().absolute().top_0().left_0().size_full().flex().items_center().justify_center().gap(px(18.))
                         .child(round_btn("pip-b10", icon("replay10", 26.), 46.).on_click(move |_, _, cx| seek_by(&pa, -10., cx)))
                         .child(round_btn("pip-play", if paused { icon_fill("play", 34.) } else { icon_fill("pause", 34.) }, 60.).on_click({
@@ -1581,7 +1665,7 @@ impl Render for PlayerView {
                             }
                         }))
                         .child(round_btn("pip-f10", icon("forward10", 26.), 46.).on_click(move |_, _, cx| seek_by(&pb, 10., cx))),
-                )
+                ))
                                 .child({
                     let [c1, c2] = self.tint.as_ref().map(|t| t.1).unwrap_or([theme::neon().into(), theme::neon().into()]);
                     let style = bar_style();
@@ -1610,6 +1694,9 @@ impl Render for PlayerView {
         let segment = p.segment_at(st.pos);
         let next = p.next_video().map(|n| format!("S{} E{}", n["season"].as_i64().unwrap_or(0), n["episode"].as_i64().or(n["number"].as_i64()).unwrap_or(0)));
         let is_series = p.meta.as_ref().map_or(false, |m| m.kind == "series");
+        // on someone's couch without the remote: no play / skip / episode / source controls
+        let guest = crate::together::get(cx).read(cx).locked();
+        let hosting = crate::together::get(cx).read(cx).hosting.is_some();
         let near_end = st.duration > 300. && st.duration - st.pos < 45. && next.is_some();
         // another stream to switch to (not counting AIOStreams' 🦆 ones)
         let has_streams = p
@@ -1632,7 +1719,7 @@ impl Render for PlayerView {
         let ma = 1. - (1. - mt).powi(4);
         let menu = self.menu.map(|m| self.menu_panel(m, window, cx)).map(|el| div().absolute().left_0().top(px((1. - ma) * 16.)).w_full().h_full().opacity(ma).child(el));
         // skip intro / recap; at the credits (or the last bit): next episode
-        let skip = match &segment {
+        let skip = if guest { None } else { match &segment {
             Some((k, end)) if k == "intro" || k == "recap" => {
                 let (end, pb) = (*end, self.pb.clone());
                 Some(pill("pl-skip", if k == "intro" { "skip intro".into() } else { "skip recap".into() }).on_click(move |_, _, cx| {
@@ -1644,7 +1731,7 @@ impl Render for PlayerView {
             Some((k, _)) if k == "credits" && next.is_some() => Some(next_pill(self.pb.clone(), next.clone().unwrap_or_default())),
             _ if near_end => Some(next_pill(self.pb.clone(), next.clone().unwrap_or_default())),
             _ => None,
-        };
+        } };
         let root = root.children(skip.map(|b| div().absolute().right(px(theme::GUTTER)).bottom(px(140.)).child(b)));
         // what's next, while you point at "next"
         let next_a = self.next_since.map_or(0., |t| {
@@ -1833,7 +1920,7 @@ impl Render for PlayerView {
                             .flex()
                             .items_center()
                             .gap(px(2.))
-                            .child(bar_btn("pl-play", if paused { icon_fill("play", 28.) } else { icon_fill("pause", 28.) }, false).on_click(
+                            .when(!guest, |d| d.child(bar_btn("pl-play", if paused { icon_fill("play", 28.) } else { icon_fill("pause", 28.) }, false).on_click(
                                 move |_, _, cx| {
                                     let paused = pb3.read(cx).state.paused;
                                     if may(if paused { "play" } else { "pause" }, None, cx) {
@@ -1848,7 +1935,9 @@ impl Render for PlayerView {
                             .child(bar_btn("pl-fwd10", icon("forward10", 25.), false).on_click({
                                 let pb = self.pb.clone();
                                 move |_, _, cx| seek_by(&pb, 10., cx)
-                            }))
+                            })))
+                            // a guest: whose remote it is, instead of the buttons
+                            .when(guest, |d| d.child(couch_chip(cx)))
                             // the time, the bar, the time left
                             .child(div().ml(px(10.)).w(px(64.)).flex_none().flex().justify_end().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::white(0.5)).child(clock(st.pos)))
                             .child(
@@ -1901,6 +1990,9 @@ impl Render for PlayerView {
                                     })
                                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |v, e: &gpui::MouseDownEvent, _, cx| {
                                         cx.stop_propagation();
+                                        if crate::together::get(cx).read(cx).locked() {
+                                            return;
+                                        }
                                         v.drag = true;
                                         v.hover_x = Some(f32::from(e.position.x) - v.scrub_at.get().0);
                                         cx.notify();
@@ -1973,7 +2065,7 @@ impl Render for PlayerView {
                             )
                             )
                             .child(div().w(px(64.)).flex_none().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::white(0.5)).child(if st.duration > 0. { format!("-{}", clock(st.duration - st.pos)) } else { String::new() }))
-                            .children(next.clone().filter(|_| !narrow2).map(|_| {
+                            .children(next.clone().filter(|_| !narrow2 && !guest).map(|_| {
                                 let pb = self.pb.clone();
                                 bar_btn("pl-next", icon("next", 22.), false)
                                     .on_click(move |_, _, cx| {
@@ -2084,17 +2176,23 @@ impl Render for PlayerView {
                                     r.update(cx, |r, cx| r.toggle(cx));
                                 }))
                             })
+                            .when(hosting, |d| {
+                                d.child(bar_btn("pl-couch", icon("couch", 23.), menu_on == Some(Menu::Couch)).on_click(cx.listener(|v, _, _, cx| {
+                                    cx.stop_propagation();
+                                    v.toggle_menu(Menu::Couch, cx);
+                                })))
+                            })
                             .child(bar_btn("pl-audio", icon("subtitles", 23.), matches!(menu_on, Some(Menu::Audio | Menu::Subs))).on_click(cx.listener(|v, _, _, cx| {
                                 cx.stop_propagation();
                                 v.toggle_menu(Menu::Audio, cx);
                             })))
-                            .when(is_series && !narrow2, |d| {
+                            .when(is_series && !narrow2 && !guest, |d| {
                                 d.child(bar_btn("pl-eps", icon("stack", 23.), menu_on == Some(Menu::Episodes)).on_click(cx.listener(|v, _, _, cx| {
                                     cx.stop_propagation();
                                     v.toggle_menu(Menu::Episodes, cx);
                                 })))
                             })
-                            .when(has_streams && !narrow1, |d| {
+                            .when(has_streams && !narrow1 && !guest, |d| {
                                 d.child(bar_btn("pl-src", icon("link", 21.), menu_on == Some(Menu::Sources)).on_click(cx.listener(|v, _, _, cx| {
                                     cx.stop_propagation();
                                     v.toggle_menu(Menu::Sources, cx);
@@ -2118,7 +2216,110 @@ impl Render for PlayerView {
             // over everything else: the open menu, and what's next
             .children(menu)
             .children(next_card)
+            .children(together_overlay(cx))
     }
+}
+
+/// a guest's spot where the play buttons would be: whose remote it is
+fn couch_chip(cx: &mut Context<PlayerView>) -> gpui::AnyElement {
+    let t = crate::together::get(cx);
+    let host = t.read(cx).following.as_ref().map(|f| f.1.clone()).unwrap_or_default();
+    div()
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .h(px(40.))
+        .px(px(14.))
+        .rounded_full()
+        .bg(theme::white(0.08))
+        .text_size(px(14.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(theme::white(0.8))
+        .child(icon("couch", 18.))
+        .child(format!("{host} has the remote"))
+        .into_any_element()
+}
+
+/// watch together, over the film: the host left (choose), or the host is
+/// waiting on someone's connection
+fn together_overlay(cx: &mut Context<PlayerView>) -> Option<gpui::AnyElement> {
+    let t = crate::together::get(cx);
+    let tr = t.read(cx);
+    if let Some(name) = tr.orphan.clone() {
+        let (t1, t2) = (t.clone(), t.clone());
+        let btn = |id: &'static str, label: &'static str, main: bool| {
+            div()
+                .id(id)
+                .h(px(48.))
+                .px(px(22.))
+                .rounded_full()
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .text_size(px(16.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .when(main, |d| d.bg(theme::text()).text_color(gpui::rgb(0x000000)).hover(|s| s.opacity(0.88)))
+                .when(!main, |d| d.bg(theme::white(0.12)).hover(|s| s.bg(theme::white(0.18))))
+                .child(label)
+        };
+        return Some(
+            div()
+                .id("tg-orphan")
+                .occlude()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .bg(theme::black(0.55))
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .gap(px(10.))
+                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .child(icon("couch", 44.))
+                .child(div().text_size(px(30.)).font_weight(FontWeight::BLACK).child(format!("{name} left the couch")))
+                .child(div().text_size(px(16.)).text_color(theme::label2()).child("paused right where they stopped"))
+                .child(
+                    div()
+                        .mt(px(14.))
+                        .flex()
+                        .gap(px(12.))
+                        .child(btn("tg-alone", "keep watching on your own", true).on_click(move |_, _, cx| t1.update(cx, |t, cx| t.keep_alone(cx))))
+                        .child(btn("tg-stop", "stop", false).on_click(move |_, _, cx| t2.update(cx, |t, cx| t.stop_too(cx)))),
+                )
+                .into_any_element(),
+        );
+    }
+    if let Some((who, _)) = tr.held.clone() {
+        return Some(
+            div()
+                .absolute()
+                .top(px(28.))
+                .left_0()
+                .w_full()
+                .flex()
+                .justify_center()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(10.))
+                        .h(px(44.))
+                        .px(px(18.))
+                        .rounded_full()
+                        .bg(gpui::rgba(0x151114e6))
+                        .border_1()
+                        .border_color(theme::white(0.1))
+                        .text_size(px(15.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(div().size(px(10.)).rounded_full().bg(gpui::rgb(0xffc83d)))
+                        .child(format!("waiting for {who} to catch up… press play to carry on")),
+                )
+                .into_any_element(),
+        );
+    }
+    None
 }
 
 /// the speed you picked: watch-together nudges mpv a few % either side to keep

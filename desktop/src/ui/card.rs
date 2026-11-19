@@ -53,7 +53,11 @@ pub fn card_with(
     // only after you've rested on it (the same wait as the preview); each card waits on its own
     let (hov, since, from) = GROW.with(|g| g.borrow().get(&zkey).copied()).unwrap_or((false, std::time::Instant::now() - std::time::Duration::from_secs(5), 0.));
     let dwell = crate::ui::video::dwell_secs();
-    let (grow, moving) = if hov {
+    // on-the-couch cards hold still: the join button and faces sit over them
+    let still = zkey.starts_with("live-");
+    let (grow, moving) = if still {
+        (0., false)
+    } else if hov {
         let x = ((since.elapsed().as_secs_f32() - dwell) / 0.32).clamp(0., 1.);
         (1. - (1. - x).powi(3), x < 1.)
     } else {

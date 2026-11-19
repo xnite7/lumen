@@ -68,6 +68,20 @@ fn metas(v: &Value) -> Vec<(Meta, Value)> {
         .collect()
 }
 
+/// Discord's display-name fonts that couch carries (all SIL Open Font
+/// License, from Google Fonts); the others fall back to couch's own.
+fn name_font(id: i64) -> Option<&'static str> {
+    Some(match id {
+        1 => "Bangers",
+        2 => "BioRhyme",
+        3 => "Cherry Bomb One",
+        4 => "Chicle",
+        6 => "MuseoModerno",
+        8 => "Pixelify Sans",
+        _ => return None,
+    })
+}
+
 fn hex(s: &str) -> Option<Hsla> {
     let s = s.trim_start_matches('#');
     u32::from_str_radix(s, 16).ok().filter(|_| s.len() == 6).map(|v| gpui::rgb(v).into())
@@ -109,6 +123,12 @@ impl Render for Member {
         let mut glow = accent;
         glow.a = 0.28;
         let name = d["name"].as_str().unwrap_or("someone").to_string();
+        // their Discord look: the profile banner (a faint cloud behind the top)
+        // and their display-name style (font + colour), where couch has the font
+        let banner = d["look"]["banner"].as_str().map(String::from);
+        let ns = &d["look"]["nameStyle"];
+        let name_font = ns["font"].as_i64().and_then(name_font);
+        let name_color = ns["colors"][0].as_str().and_then(hex).filter(|_| ns["font"].as_i64().is_some());
         let stats: Vec<(i64, &str)> = [("movies", "films"), ("shows", "shows"), ("episodes", "episodes"), ("plan", "on the list")]
             .into_iter()
             .filter_map(|(k, l)| p["stats"][k].as_i64().filter(|n| *n > 0 || k != "episodes").map(|n| (n, l)))
@@ -152,6 +172,22 @@ impl Render for Member {
             .relative()
             // their colour, glowing in from the top
             .child(div().absolute().top_0().left_0().w_full().h(px(420.)).bg(linear_gradient(180., linear_color_stop(glow, 0.), linear_color_stop(theme::black(0.0), 1.))))
+            // their Discord banner: barely there, feathered into the page on every side
+            .children(banner.map(|u| {
+                let bg: Hsla = theme::bg().into();
+                let clear = Hsla { a: 0., ..bg };
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .w_full()
+                    .h(px(400.))
+                    .child(img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(0.2))
+                    .child(div().absolute().top_0().left_0().size_full().bg(linear_gradient(180., linear_color_stop(clear, 0.25), linear_color_stop(bg, 1.))))
+                    .child(div().absolute().top_0().left_0().h_full().w(px(260.)).bg(linear_gradient(90., linear_color_stop(bg, 0.), linear_color_stop(clear, 1.))))
+                    .child(div().absolute().top_0().right_0().h_full().w(px(260.)).bg(linear_gradient(270., linear_color_stop(bg, 0.), linear_color_stop(clear, 1.))))
+                    .child(div().absolute().top_0().left_0().w_full().h(px(90.)).bg(linear_gradient(180., linear_color_stop(Hsla { a: 0.7, ..bg }, 0.), linear_color_stop(clear, 1.))))
+            }))
             .child(
                 div()
                     .relative()
@@ -181,7 +217,14 @@ impl Render for Member {
                             .flex()
                             .flex_col()
                             .gap(px(10.))
-                            .child(div().flex().items_center().gap(px(14.)).child(div().text_size(px(48.)).font_weight(FontWeight::BLACK).child(name.clone())).when(!self.me.is_empty() && self.me == self.id, |d| {
+                            .child(div().flex().items_center().gap(px(14.)).child(
+                                div()
+                                    .text_size(px(48.))
+                                    .font_weight(if name_font.is_some() { FontWeight::NORMAL } else { FontWeight::BLACK })
+                                    .when_some(name_font, |d, f| d.font_family(f))
+                                    .when_some(name_color, |d, c| d.text_color(c))
+                                    .child(name.clone()),
+                            ).when(!self.me.is_empty() && self.me == self.id, |d| {
                                 d.child(
                                     div()
                                         .id("m-settings")
@@ -196,6 +239,7 @@ impl Render for Member {
                                         .on_click(|_, _, cx| Nav::go(crate::Route::Settings, cx))
                                         .child(crate::ui::icon("settings", 22.)),
                                 )
+                                .child(crate::ui::join_discord("m-discord", "the server"))
                             }))
                             .child(div().flex().gap(px(22.)).children(stats.into_iter().map(|(n, l)| {
                                 div().flex().items_baseline().gap(px(6.)).child(div().text_size(px(22.)).font_weight(FontWeight::BLACK).child(n.to_string())).child(div().text_size(px(14.)).text_color(theme::label2()).child(l))
