@@ -164,6 +164,7 @@ pub async fn invoke(cmd: &str, a: Value) -> Result<Value, String> {
             let id: String = arg(&a, "id")?;
             out(commands::subtitles_fetch(st, kind, id).await.map_err(|e| e.to_string())?)
         }
+        "subs_autosync" => out(commands::subs_autosync(st).await.map_err(|e| e.to_string())?),
         "skip_segments" => {
             let video_id: String = arg(&a, "videoId")?;
             let duration_ms: Option<u64> = arg(&a, "durationMs")?;

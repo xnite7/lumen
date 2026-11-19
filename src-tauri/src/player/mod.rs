@@ -13,6 +13,8 @@
 pub mod depth3d;
 #[cfg(desktop)]
 mod mpv;
+#[cfg(desktop)]
+pub mod subsync;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod surface;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -239,6 +241,28 @@ impl Player {
         {
             let _ = t;
             None
+        }
+    }
+
+    /// Line the chosen subtitle file up with the film's talking (ffmpeg listens).
+    pub async fn subs_autosync(&self) -> AppResult<Value> {
+        #[cfg(desktop)]
+        {
+            let src = self.backend.sync_source()?;
+            let raw: Vec<u8> = if src.sub.starts_with("http") {
+                let r = self.core.http.client().get(&src.sub).timeout(std::time::Duration::from_secs(15)).send().await.map_err(|e| AppError::msg(format!("couldn't fetch the subtitles: {e}")))?;
+                r.bytes().await.map_err(|e| AppError::msg(e.to_string()))?.to_vec()
+            } else {
+                std::fs::read(src.sub.trim_start_matches("file://")).map_err(|e| AppError::msg(format!("couldn't read the subtitles: {e}")))?
+            };
+            let cache = self.core.cache_dir.clone();
+            let found = tokio::task::spawn_blocking(move || subsync::run(&src, &raw, &cache)).await.map_err(|e| AppError::msg(e.to_string()))??;
+            self.backend.add_synced(&found.file)?;
+            return Ok(serde_json::json!({ "offset": found.offset, "ratio": found.ratio, "z": found.z }));
+        }
+        #[cfg(not(desktop))]
+        {
+            Err(AppError::msg("auto-sync is on the computer app"))
         }
     }
 

@@ -383,6 +383,11 @@ pub async fn player_open(s: S<'_>, req: PlayRequest) -> AppResult<crate::player:
 }
 
 #[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn subs_autosync(s: S<'_>) -> AppResult<Value> {
+    s.player.subs_autosync().await
+}
+
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn player_cmd(s: S<'_>, cmd: String, args: Option<Value>) -> AppResult<Value> {
     s.player.command(&cmd, &args.unwrap_or(Value::Null))
 }

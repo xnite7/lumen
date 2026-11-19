@@ -236,8 +236,15 @@ pub fn night_on() -> bool {
 }
 
 thread_local! {
+    /// subtitle auto-sync running
+    static SYNCING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+thread_local! {
     /// held down (space or the picture): 2× until let go. (the speed to go back to)
-    static BOOST: std::cell::Cell<Option<f64>> = const { std::cell::Cell::new(None) };
+    static BOOST: std::cell::Cell<Option<(f64, bool)>> = const { std::cell::Cell::new(None) };
+    /// a hold turned into 2×: the click that ends it is not a click (no pause)
+    static ATE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// when the hold began, and how many presses so far (a newer press cancels an older wait)
     static HOLD: std::cell::Cell<(Option<Instant>, u64)> = const { std::cell::Cell::new((None, 0)) };
 }
@@ -253,18 +260,28 @@ pub fn boost_start(cx: &mut gpui::App) -> bool {
     }
     let pb = crate::playback::get(cx);
     let p = pb.read(cx);
-    if !p.open || p.loading || p.state.paused {
+    if !p.open || p.loading {
         return false;
     }
-    BOOST.with(|b| b.set(Some(p.state.speed.max(0.25))));
+    // paused: it plays at 2× while held, and pauses again after
+    let was_paused = p.state.paused;
+    BOOST.with(|b| b.set(Some((p.state.speed.max(0.25), was_paused))));
+    ATE.with(|a| a.set(true));
     p.cmd("speed", json!({ "value": 2.0 }));
+    if was_paused {
+        p.cmd("pause", json!({ "value": false }));
+    }
     cx.refresh_windows();
     true
 }
 /// Let go: back to the speed before. True if it was speeding.
 pub fn boost_end(cx: &mut gpui::App) -> bool {
-    let Some(prev) = BOOST.with(|b| b.take()) else { return false };
-    crate::playback::get(cx).read(cx).cmd("speed", json!({ "value": prev }));
+    let Some((prev, was_paused)) = BOOST.with(|b| b.take()) else { return false };
+    let pb = crate::playback::get(cx);
+    pb.read(cx).cmd("speed", json!({ "value": prev }));
+    if was_paused {
+        pb.read(cx).cmd("pause", json!({ "value": true }));
+    }
     cx.refresh_windows();
     true
 }
@@ -273,6 +290,7 @@ pub fn boosting() -> bool {
 }
 /// a press began (space or the picture): after 350 ms still held, 2×
 pub fn hold_begin(cx: &mut gpui::App) {
+    ATE.with(|a| a.set(false));
     let n = HOLD.with(|h| {
         let n = h.get().1 + 1;
         h.set((Some(Instant::now()), n));
@@ -289,11 +307,17 @@ pub fn hold_begin(cx: &mut gpui::App) {
 }
 /// the press let go: true when it was a hold (so it isn't also a click / pause)
 pub fn hold_end(cx: &mut gpui::App) -> bool {
-    HOLD.with(|h| {
-        let (_, n) = h.get();
+    let long = HOLD.with(|h| {
+        let (at, n) = h.get();
         h.set((None, n));
+        at.map_or(false, |t| t.elapsed() >= Duration::from_millis(350))
     });
-    boost_end(cx)
+    // a long press is never a tap, even if 2× couldn't start (watch together)
+    boost_end(cx) || long
+}
+/// the click that arrives with letting go of a 2× hold: swallow it (once)
+pub fn hold_ate_click() -> bool {
+    ATE.with(|a| a.replace(false))
 }
 
 /// the "guests can't …" sign over the player: the control crossed out, and why
@@ -939,6 +963,43 @@ impl PlayerView {
                         let off = !list.iter().any(|t| t["selected"].as_bool() == Some(true));
                         let pb = self.pb.clone();
                         rows.push(row_f("sub-off".into(), "Off".into(), off, None).on_click(move |_, _, cx| pb.update(cx, |p, cx| p.pick_track("sub", None, cx))).into_any_element());
+                        // auto-sync: listens to the film and lines the chosen subtitles up with it
+                        if !off {
+                            let busy = SYNCING.with(|c| c.get());
+                            rows.push(
+                                row_f("sub-sync".into(), if busy { "syncing… (listening to the film)".into() } else { "✦ auto sync".into() }, false, None)
+                                    .on_click(|_, _, cx| {
+                                        if SYNCING.with(|c| c.replace(true)) {
+                                            return;
+                                        }
+                                        cx.refresh_windows();
+                                        cx.spawn(async move |cx| {
+                                            let r = crate::api::call::<serde_json::Value>("subs_autosync", json!({})).await;
+                                            SYNCING.with(|c| c.set(false));
+                                            let msg = match r {
+                                                Ok(v) => {
+                                                    let off = v["offset"].as_f64().unwrap_or(0.);
+                                                    let ratio = v["ratio"].as_f64().unwrap_or(1.);
+                                                    if (ratio - 1.).abs() > 1e-4 {
+                                                        format!("subtitles synced (they were made for a different frame rate, {:+.1} s)", off)
+                                                    } else if off.abs() < 0.1 {
+                                                        "subtitles were already in sync".to_string()
+                                                    } else {
+                                                        format!("subtitles synced: moved {:.1} s {}", off.abs(), if off < 0. { "earlier" } else { "later" })
+                                                    }
+                                                }
+                                                Err(e) => e,
+                                            };
+                                            let _ = cx.update(|cx| {
+                                                crate::Nav::toast(msg, cx);
+                                                cx.refresh_windows();
+                                            });
+                                        })
+                                        .detach();
+                                    })
+                                    .into_any_element(),
+                            );
+                        }
                     }
                     for (i, (t, label)) in named(&list).into_iter().enumerate() {
                         let on = t["selected"].as_bool() == Some(true);
@@ -1497,7 +1558,7 @@ impl Render for PlayerView {
                     return;
                 }
                 // that was a hold for 2×, not a click
-                if std::mem::take(&mut v.ate_click) {
+                if std::mem::take(&mut v.ate_click) | hold_ate_click() {
                     return;
                 }
                 if e.click_count() == 2 {
@@ -1518,7 +1579,7 @@ impl Render for PlayerView {
                     cx.spawn(async move |this, cx| {
                         crate::timer::after(Duration::from_millis(320)).await;
                         let _ = this.update(cx, |v, cx| {
-                            if v.click_gen != g {
+                            if v.click_gen != g || boosting() {
                                 return;
                             }
                             let paused = v.pb.read(cx).state.paused;

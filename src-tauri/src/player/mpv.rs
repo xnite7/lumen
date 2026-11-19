@@ -513,6 +513,41 @@ impl Mpv {
         }
     }
 
+    /// What subtitle auto-sync needs: the file playing (and how to fetch it),
+    /// where we are, and the chosen subtitle file.
+    pub fn sync_source(&self) -> AppResult<super::subsync::Source> {
+        let mpv = self.ensure()?;
+        let (url, headers, ua) = self.last.lock().clone().ok_or_else(|| AppError::msg("nothing's playing"))?;
+        let pos: f64 = mpv.get_property("time-pos").unwrap_or(0.0);
+        let n: i64 = mpv.get_property("track-list/count").unwrap_or(0);
+        let mut sub = None;
+        for i in 0..n {
+            let g = |k: &str| mpv.get_property::<String>(&format!("track-list/{i}/{k}")).ok();
+            let sel = mpv.get_property::<bool>(&format!("track-list/{i}/selected")).unwrap_or(false);
+            if sel && g("type").as_deref() == Some("sub") {
+                sub = Some(g("external-filename"));
+            }
+        }
+        let sub = match sub {
+            None => return Err(AppError::msg("pick a subtitle first")),
+            Some(None) => return Err(AppError::msg("these subtitles are built into the file, so they're already in sync")),
+            Some(Some(f)) => f,
+        };
+        Ok(super::subsync::Source { url, headers, ua, pos, sub })
+    }
+
+    /// Load the retimed copy and switch to it.
+    pub fn add_synced(&self, file: &std::path::Path) -> AppResult<()> {
+        let mpv = self.ensure()?;
+        let lang: String = mpv.get_property("current-tracks/sub/lang").unwrap_or_default();
+        let title: String = mpv.get_property("current-tracks/sub/title").unwrap_or_else(|_| "subtitles".into());
+        let title = format!("{} · synced", title.trim_end_matches(" · synced"));
+        let _ = mpv.set_property("sub-delay", 0.0f64);
+        let p = file.to_string_lossy().to_string();
+        let r = if lang.is_empty() { mpv.command("sub-add", &[&p, "select", &title]) } else { mpv.command("sub-add", &[&p, "select", &title, &lang]) };
+        r.map_err(|e| AppError::msg(format!("mpv: {e}")))
+    }
+
     pub fn command(&self, cmd: &str, a: &Value) -> AppResult<Value> {
         let mpv = self.ensure()?;
         let num = |k: &str| a.get(k).and_then(|v| v.as_f64());
