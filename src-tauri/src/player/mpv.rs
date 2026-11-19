@@ -83,6 +83,10 @@ pub struct Mpv {
     thumbs: Mutex<Option<ThumbWorker>>,
 }
 
+/// the Atmos sound's name in mpv's track list, and the film's own track it replaced
+const ATMOS_TITLE: &str = "Atmos · couch";
+static ATMOS_FROM: parking_lot::Mutex<Option<i64>> = parking_lot::Mutex::new(None);
+
 /// the still-maker: its own mpv, and the film it has open
 struct ThumbWorker {
     mpv: Arc<libmpv2::Mpv>,
@@ -395,6 +399,10 @@ impl Mpv {
         let _ = mpv.command("change-list", &["glsl-shader-opts", "add", "couch_blur=0"]);
         // headphone surround is set up again for the new film's channels
         let _ = mpv.command("af", &["remove", "@hp"]);
+        *ATMOS_FROM.lock() = None;
+        if let Some(sv) = super::atmos::server() {
+            sv.stop();
+        }
         mpv.command("loadfile", &[url, "replace"]).map_err(|e| AppError::msg(format!("mpv: {e}")))?;
         let _ = mpv.set_property("pause", false);
         Ok(())
@@ -598,6 +606,29 @@ impl Mpv {
         }
     }
 
+    /// Atmos off: back to the film's own track, the Atmos one gone.
+    fn atmos_off(&self, mpv: &libmpv2::Mpv) {
+        let from = ATMOS_FROM.lock().take();
+        if let Some(s) = super::atmos::server() {
+            s.stop();
+        }
+        let n: i64 = mpv.get_property("track-list/count").unwrap_or(0);
+        let ours: Vec<i64> = (0..n)
+            .filter(|i| mpv.get_property::<String>(&format!("track-list/{i}/title")).ok().as_deref() == Some(ATMOS_TITLE))
+            .filter_map(|i| mpv.get_property::<i64>(&format!("track-list/{i}/id")).ok())
+            .collect();
+        if from.is_none() && ours.is_empty() {
+            return;
+        }
+        let on_ours = ours.iter().any(|id| mpv.get_property::<i64>("aid").ok() == Some(*id));
+        if let (Some(f), true) = (from, on_ours) {
+            let _ = mpv.set_property("aid", f);
+        }
+        for id in ours {
+            let _ = mpv.command("audio-remove", &[&id.to_string()]);
+        }
+    }
+
     /// What subtitle auto-sync needs: the file playing (and how to fetch it),
     /// where we are, and the chosen subtitle file.
     pub fn sync_source(&self) -> AppResult<super::subsync::Source> {
@@ -723,8 +754,40 @@ impl Mpv {
                 let on = a.get("value").and_then(|v| v.as_bool()).unwrap_or(false);
                 let _ = mpv.command("af", &["remove", "@hp"]);
                 if !on {
+                    self.atmos_off(&mpv);
                     return Ok(json!({ "on": false }));
                 }
+                // the sound playing now
+                let n: i64 = mpv.get_property("track-list/count").unwrap_or(0);
+                let cur = (0..n).find(|i| {
+                    mpv.get_property::<String>(&format!("track-list/{i}/type")).ok().as_deref() == Some("audio") && mpv.get_property::<bool>(&format!("track-list/{i}/selected")).unwrap_or(false)
+                });
+                let g = |i: i64, k: &str| mpv.get_property::<String>(&format!("track-list/{i}/{k}")).ok();
+                let title = cur.and_then(|i| g(i, "title")).unwrap_or_default();
+                let codec = cur.and_then(|i| g(i, "codec")).unwrap_or_default();
+                let profile = cur.and_then(|i| g(i, "codec-profile")).unwrap_or_default();
+                // already on the Atmos sound
+                if title == ATMOS_TITLE {
+                    let objects = super::atmos::server().map_or(false, |s| s.objects.load(std::sync::atomic::Ordering::Relaxed));
+                    return Ok(json!({ "on": true, "atmos": true, "objects": objects }));
+                }
+                // TrueHD (Atmos or not): decoded here, every sound placed around and above you
+                if codec == "truehd" && super::atmos::available() {
+                    if let (Some(i), Some((url, headers, ua)), Some(server)) = (cur, self.last.lock().clone(), super::atmos::server()) {
+                        let stream: i64 = mpv.get_property(&format!("track-list/{i}/ff-index")).unwrap_or(-1);
+                        let duration: f64 = mpv.get_property("duration").unwrap_or(0.0);
+                        let id: i64 = mpv.get_property(&format!("track-list/{i}/id")).unwrap_or(0);
+                        if stream >= 0 && duration > 0.0 {
+                            self.atmos_off(&mpv);
+                            let addr = server.start(super::atmos::Source { url, headers, ua, stream, duration });
+                            *ATMOS_FROM.lock() = Some(id);
+                            mpv.command("audio-add", &[&addr, "select", ATMOS_TITLE]).map_err(|e| AppError::msg(format!("mpv: {e}")))?;
+                            return Ok(json!({ "on": true, "atmos": true, "atmosTrack": profile.to_lowercase().contains("atmos") }));
+                        }
+                    }
+                }
+                // another track picked while the Atmos sound was on: that one, the usual way
+                self.atmos_off(&mpv);
                 let layout: String = mpv.get_property("audio-params/channels").unwrap_or_default();
                 let Some(map) = super::headphones::speakers(&layout) else {
                     return Ok(json!({ "on": false, "why": "stereo" }));

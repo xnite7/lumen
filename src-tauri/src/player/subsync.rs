@@ -37,6 +37,9 @@ const WINDOW: f64 = 150.;
 const SEARCH: f64 = 60.;
 
 pub fn ffmpeg() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("COUCH_FFMPEG").map(PathBuf::from).filter(|p| p.exists()) {
+        return Some(p);
+    }
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
     for n in ["ffmpeg.exe", "ffmpeg"] {

@@ -1,6 +1,8 @@
 sadie-d1-brir.wav: 13 binaural room impulse responses (KU100, 48 kHz, 0.27 s)
 taken from the SADIE II Database, subject D1 BRIR set, unmodified apart from
 selection and trimming.
+sadie-d1-dome.wav: the same set's 29 responses at or above ear level (0.17 s,
+faded out at the end), for placing Atmos sounds around and above you.
 
 SADIE Database Copyright 2018 The University of York. This product includes
 data developed at The Audio Lab, University of York, UK (Cal Armstrong, Lewis

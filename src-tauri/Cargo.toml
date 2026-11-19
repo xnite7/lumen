@@ -54,6 +54,10 @@ librqbit-dualstack-sockets = "0.7"
 # Desktop-only: native mpv playback, single instance, window state, screen sampling.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 libmpv2 = "6"
+# Atmos on headphones: TrueHD (with its moving sounds) decoded in-house, then
+# placed around you through measured room responses
+truehd = "0.7"
+realfft = "3"
 libmpv2-sys = "4"
 discord-rich-presence = "1.1"
 tauri-plugin-single-instance = { version = "2.5", features = ["deep-link"], optional = true }

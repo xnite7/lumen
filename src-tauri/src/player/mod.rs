@@ -17,6 +17,8 @@ mod mpv;
 pub mod subsync;
 #[cfg(desktop)]
 pub mod headphones;
+#[cfg(desktop)]
+pub mod atmos;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod surface;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

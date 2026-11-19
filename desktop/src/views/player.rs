@@ -2189,7 +2189,7 @@ impl Render for PlayerView {
         let vol_frac = (vol_now / vol_max).clamp(0., 1.) as f32;
         let vol_x = self.vol_x.clone();
         // the sound playing has more than two channels (5.1, 7.1…): headphone surround is offered
-        let surround = self.pb.read(cx).tracks.iter().find(|t| t["type"] == "audio" && t["selected"] == true).and_then(|t| t["channels"].as_i64()).map_or(false, |c| c > 2);
+        let surround = self.pb.read(cx).tracks.iter().find(|t| t["type"] == "audio" && t["selected"] == true).map_or(false, |t| t["channels"].as_i64().map_or(false, |c| c > 2) || t["title"] == "Atmos · couch");
         let _ = &title;
         let top_logo = logo.clone();
         let top_title = title.clone();
@@ -2597,6 +2597,11 @@ impl Render for PlayerView {
                                                                             let r = crate::api::call::<serde_json::Value>("player_cmd", json!({ "cmd": "headphones", "args": { "value": on } })).await;
                                                                             let msg = match (on, r) {
                                                                                 (false, _) => "headphone surround off".to_string(),
+                                                                                (true, Ok(v)) if v["atmos"] == true => if v["atmosTrack"] == true || v["objects"] == true {
+                                                                                    "Atmos on headphones: every sound around you, and above".to_string()
+                                                                                } else {
+                                                                                    "headphone surround on (TrueHD: Atmos heights too, if it has them)".to_string()
+                                                                                },
                                                                                 (true, Ok(v)) if v["on"] == true => format!("headphone surround on: {} speakers around your head", v["speakers"].as_i64().unwrap_or(0)),
                                                                                 (true, Ok(_)) => "this one's stereo, nothing to place around you".to_string(),
                                                                                 (true, Err(e)) => format!("headphone surround didn't start: {e}"),
