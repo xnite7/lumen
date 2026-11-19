@@ -287,9 +287,10 @@ fn soft_light(pic: &std::sync::Arc<gpui::Image>) -> Option<std::sync::Arc<gpui::
 }
 
 /// The progress bar styles: (key, name in settings, moves?)
-pub const BAR_STYLES: [(&str, &str, bool); 12] = [
+pub const BAR_STYLES: [(&str, &str, bool); 13] = [
     ("mesh", "shimmer", true),
     ("chameleon", "chameleon", false),
+    ("fade", "logo fade", false),
     ("white", "plain white", false),
     ("steel", "steel", true),
     ("pulse", "pulse", true),
@@ -304,7 +305,7 @@ pub const BAR_STYLES: [(&str, &str, bool); 12] = [
 
 /// these two take the colours of what you're watching
 pub fn bar_dynamic(style: &str) -> bool {
-    matches!(style, "mesh" | "chameleon")
+    matches!(style, "mesh" | "chameleon" | "fade")
 }
 
 thread_local! {
@@ -335,6 +336,21 @@ pub fn bar_fill(style: &str, c1: gpui::Hsla, c2: gpui::Hsla, t: f32) -> gpui::An
     match style {
         "white" => div().absolute().size_full().bg(gpui::white()).into_any_element(),
         "chameleon" => div().absolute().size_full().bg(linear_gradient(90., linear_color_stop(c1, 0.), linear_color_stop(c2, 1.))).into_any_element(),
+        // the logo's colour, top to bottom: a light edge on top (1%), the colour
+        // itself (15%), deepening to dark at the bottom (100%)
+        "fade" => {
+            let light = gpui::hsla(c1.h, c1.s, (c1.l + (1. - c1.l) * 0.7).min(0.95), 1.);
+            let dark = gpui::hsla(c1.h, c1.s, c1.l * 0.3, 1.);
+            div()
+                .absolute()
+                .size_full()
+                .flex()
+                .flex_col()
+                .child(div().w_full().h(gpui::relative(0.01)).bg(light))
+                .child(div().w_full().h(gpui::relative(0.14)).bg(linear_gradient(180., linear_color_stop(light, 0.), linear_color_stop(c1, 1.))))
+                .child(div().w_full().flex_1().bg(linear_gradient(180., linear_color_stop(c1, 0.), linear_color_stop(dark, 1.))))
+                .into_any_element()
+        }
         // brushed metal with a light running along it
         "steel" => sheen(h(220., 0.06, 0.62), h(220., 0.08, 0.82), t, 0.9).into_any_element(),
         // plain white, a soft brighter band breathing along it
