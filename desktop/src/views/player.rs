@@ -42,6 +42,10 @@ pub struct PlayerView {
     reactions: Entity<super::reactions::Reactions>,
     /// pointing at "next": show what it is
     next_hover: bool,
+    /// the credits countdown to the next episode: (that episode, when it began)
+    countdown: Option<(String, Instant)>,
+    /// you said no to it for this episode
+    countdown_off: Option<String>,
     vol_acc: f64,
     vol_target: Option<f64>,
     /// dragging the scrub bar (hover_x is where)
@@ -173,7 +177,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "crop" => "crop", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -585,14 +589,88 @@ fn pill(id: &'static str, label: String) -> gpui::Stateful<gpui::Div> {
         .child(label)
 }
 
-fn next_pill(pb: Entity<Playback>, label: String) -> gpui::Stateful<gpui::Div> {
-    pill("pl-upnext", format!("next episode · {label}")).on_click(move |_, _, cx| {
+/// TheIntroDB's parts, each in its own colour (the bar and the skip buttons)
+pub fn seg_color(kind: &str) -> gpui::Rgba {
+    match kind {
+        "intro" => gpui::rgb(0x3b82f6),
+        "recap" => gpui::rgb(0xf97316),
+        "credits" => gpui::rgb(0xa855f7),
+        "preview" => gpui::rgb(0x14b8a6),
+        _ => gpui::rgb(0xffffff),
+    }
+}
+
+/// a skip button in its part's colour: tinted glass, coloured words and edge
+fn seg_pill(id: &'static str, kind: &str, label: String) -> gpui::Stateful<gpui::Div> {
+    let c = seg_color(kind);
+    let mix = |a: f32| gpui::Rgba { a, ..c };
+    div()
+        .id(id)
+        .relative()
+        .overflow_hidden()
+        .h(px(52.))
+        .px(px(24.))
+        .flex()
+        .items_center()
+        .gap(px(8.))
+        .rounded(px(14.))
+        .bg(gpui::rgba(0x0a0c14d9))
+        .border_1()
+        .border_color(mix(0.45))
+        .shadow(vec![gpui::BoxShadow { color: mix(0.45).into(), offset: gpui::point(px(0.), px(10.)), blur_radius: px(30.), spread_radius: px(-12.), inset: false }])
+        .text_color(c)
+        .text_size(px(17.))
+        .font_weight(FontWeight::SEMIBOLD)
+        .cursor_pointer()
+        .hover(move |s| s.bg(gpui::Rgba { a: 0.28, ..c }))
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(div().absolute().top_0().left_0().size_full().bg(mix(0.16)))
+        .child(div().relative().child(label))
+}
+
+/// the next episode, from the credits: with a countdown when it plays by itself
+fn next_pill(pb: Entity<Playback>, label: String, kind: &str, left: Option<f32>, on_cancel: Option<Box<dyn Fn(&mut gpui::App)>>) -> gpui::AnyElement {
+    let c = seg_color(kind);
+    let main = seg_pill("pl-upnext", kind, match left {
+        Some(l) => format!("next episode · {label} · {}", l.ceil() as i64),
+        None => format!("next episode · {label}"),
+    })
+    // the countdown drains along the bottom
+    .children(left.map(|l| div().absolute().left_0().bottom_0().h(px(3.)).w(gpui::relative((l / COUNTDOWN).clamp(0., 1.))).bg(c)))
+    .on_click(move |_, _, cx| {
         cx.stop_propagation();
         if may("episode", None, cx) {
             pb.update(cx, |p, cx| p.play_next(cx))
         }
-    })
+    });
+    let mut row = div().flex().items_center().gap(px(8.)).child(main);
+    if let Some(f) = on_cancel {
+        row = row.child(
+            div()
+                .id("pl-upnext-x")
+                .size(px(52.))
+                .rounded(px(14.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .bg(gpui::rgba(0x0a0c14d9))
+                .border_1()
+                .border_color(theme::white(0.12))
+                .hover(|s| s.bg(theme::white(0.12)))
+                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .on_click(move |_, _, cx| {
+                    cx.stop_propagation();
+                    f(cx)
+                })
+                .child(icon("close", 18.)),
+        );
+    }
+    row.into_any_element()
 }
+
+/// seconds the next episode waits in the credits before it plays by itself
+const COUNTDOWN: f32 = 10.;
 
 /// the dark glass the controls sit on
 fn glass(d: gpui::Div) -> gpui::Div {
@@ -1719,17 +1797,57 @@ impl Render for PlayerView {
         let ma = 1. - (1. - mt).powi(4);
         let menu = self.menu.map(|m| self.menu_panel(m, window, cx)).map(|el| div().absolute().left_0().top(px((1. - ma) * 16.)).w_full().h_full().opacity(ma).child(el));
         // skip intro / recap; at the credits (or the last bit): next episode
-        let skip = if guest { None } else { match &segment {
-            Some((k, end)) if k == "intro" || k == "recap" => {
+        // the end of an episode: credits / preview (or the last bit when nobody
+        // marked them). The next one counts down and plays by itself.
+        let tail = matches!(segment.as_ref().map(|x| x.0.as_str()), Some("credits" | "preview")) || near_end;
+        let next_id = if tail { self.pb.read(cx).next_video().and_then(|n| n["id"].as_str().map(String::from)) } else { None };
+        let auto_next = couch::state::get().core.settings().playback.autoplay_next;
+        match (&next_id, guest || !auto_next || st.paused) {
+            (Some(id), false) if self.countdown_off.as_deref() != Some(id.as_str()) => {
+                if self.countdown.as_ref().map(|c| &c.0) != Some(id) {
+                    self.countdown = Some((id.clone(), Instant::now()));
+                }
+            }
+            _ => self.countdown = None,
+        }
+        let left = self.countdown.as_ref().map(|c| COUNTDOWN - c.1.elapsed().as_secs_f32());
+        if let Some(l) = left {
+            if l <= 0. {
+                self.countdown = None;
+                self.countdown_off = next_id.clone();
+                let pb = self.pb.clone();
+                cx.defer(move |cx| pb.update(cx, |p, cx| p.play_next(cx)));
+            } else {
+                window.request_animation_frame();
+            }
+        }
+        let tail_kind = segment.as_ref().map(|x| x.0.clone()).filter(|k| k == "credits" || k == "preview").unwrap_or_else(|| "credits".into());
+        let skip: Option<gpui::AnyElement> = if guest { None } else { match &segment {
+            Some((k, end)) if k == "intro" || k == "recap" || (k == "preview" && next.is_none()) => {
                 let (end, pb) = (*end, self.pb.clone());
-                Some(pill("pl-skip", if k == "intro" { "skip intro".into() } else { "skip recap".into() }).on_click(move |_, _, cx| {
+                let label = match k.as_str() { "intro" => "skip intro", "recap" => "skip recap", _ => "skip preview" };
+                let id: &'static str = match k.as_str() { "intro" => "pl-skip-intro", "recap" => "pl-skip-recap", _ => "pl-skip-preview" };
+                Some(seg_pill(id, k, label.into()).on_click(move |_, _, cx| {
                     if may("seek", Some(end), cx) {
                         pb.read(cx).cmd("seek", json!({ "to": end }));
                     }
-                }))
+                }).into_any_element())
             }
-            Some((k, _)) if k == "credits" && next.is_some() => Some(next_pill(self.pb.clone(), next.clone().unwrap_or_default())),
-            _ if near_end => Some(next_pill(self.pb.clone(), next.clone().unwrap_or_default())),
+            _ if tail && next.is_some() => {
+                let cancel: Option<Box<dyn Fn(&mut gpui::App)>> = left.map(|_| {
+                    let me = cx.entity().downgrade();
+                    let id = next_id.clone();
+                    Box::new(move |cx: &mut gpui::App| {
+                        let _ = me.update(cx, |v, cx| {
+                            v.pb.update(cx, |p, _| p.no_autonext = true);
+                            v.countdown = None;
+                            v.countdown_off = id.clone();
+                            cx.notify();
+                        });
+                    }) as Box<dyn Fn(&mut gpui::App)>
+                });
+                Some(next_pill(self.pb.clone(), next.clone().unwrap_or_default(), &tail_kind, left, cancel))
+            }
             _ => None,
         } };
         let root = root.children(skip.map(|b| div().absolute().right(px(theme::GUTTER)).bottom(px(140.)).child(b)));
@@ -1788,18 +1906,18 @@ impl Render for PlayerView {
             _ => frac,
         };
         let fat = dragging || hover.is_some();
-        let segs: Vec<(f32, f32)> = if st.duration > 0. {
+        let segs: Vec<(f32, f32, gpui::Rgba)> = if st.duration > 0. {
             self.pb
                 .read(cx)
                 .segments
                 .as_object()
                 .into_iter()
-                .flat_map(|o| o.values())
-                .flat_map(|l| l.as_array().into_iter().flatten())
-                .map(|sg| {
+                .flat_map(|o| o.iter())
+                .flat_map(|(k, l)| l.as_array().into_iter().flatten().map(move |sg| (k.clone(), sg.clone())))
+                .map(|(k, sg)| {
                     let a = sg["start"].as_f64().unwrap_or(0.);
                     let b = sg["end"].as_f64().unwrap_or(st.duration);
-                    ((a / st.duration) as f32, ((b - a).max(0.) / st.duration) as f32)
+                    ((a / st.duration) as f32, ((b - a).max(0.) / st.duration) as f32, seg_color(&k))
                 })
                 .collect()
         } else {
@@ -2015,7 +2133,6 @@ impl Render for PlayerView {
                                     .rounded_full()
                                     .bg(theme::white(0.2))
                                     .child(div().absolute().top_0().left_0().h_full().w(px(tw * ahead)).rounded_full().bg(theme::white(0.3)))
-                                    .children(segs.into_iter().map(|(a, w)| div().absolute().top_0().h_full().left(px(tw * a)).w(px((tw * w).max(2.))).rounded_full().bg(theme::white(0.45))))
                                     .child({
                                         // the fill, in the style picked in settings
                                         let [c1, c2] = self.tint.as_ref().map(|t| t.1).unwrap_or([theme::neon().into(), theme::neon().into()]);
@@ -2035,6 +2152,9 @@ impl Render for PlayerView {
                                             .child(bar_fill(style, c1, c2, t))
                                             .when(style != "white", |d| d.shadow(vec![gpui::BoxShadow { color: c1.opacity(0.55), offset: gpui::point(px(0.), px(0.)), blur_radius: px(10.), spread_radius: px(0.), inset: false }]))
                                     })
+                                    // intro / recap / credits / preview, each in its colour (over the fill,
+                                    // so you still see them in the part you've watched)
+                                    .children(segs.into_iter().map(|(a, w, c)| div().absolute().top_0().h_full().left(px(tw * a)).w(px((tw * w).max(2.))).rounded_full().bg(gpui::Rgba { a: 0.85, ..c })))
                                     .child(
                                         div()
                                             .absolute()

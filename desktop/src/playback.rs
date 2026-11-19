@@ -68,6 +68,10 @@ pub struct Playback {
     pub load_gen: u64,
     /// where the current load will start (for watch together, while loading)
     pub start_hint: Option<f64>,
+    /// the next episode whose streams are being / were found in the background
+    preload_for: Option<String>,
+    /// you waved off the next-episode countdown: no autoplay at the end either
+    pub no_autonext: bool,
 }
 
 pub struct PlaybackHandle(pub Entity<Playback>);
@@ -122,6 +126,26 @@ pub fn init(cx: &mut App) {
                         }
                     }
                     p.watch_lag(&s, cx);
+                    // halfway through: find the next episode's streams now, so it starts at once
+                    if p.open && !p.loading && s.duration > 0. && s.pos / s.duration >= 0.5 && crate::together::get(cx).read(cx).following.is_none() {
+                        if let Some(n) = p.next_video() {
+                            let nid = n["id"].as_str().unwrap_or("").to_string();
+                            if !nid.is_empty() && p.preload_for.as_deref() != Some(nid.as_str()) {
+                                p.preload_for = Some(nid.clone());
+                                let g = p.load_gen;
+                                let rt = n.get("runtime").cloned().or_else(|| p.full.as_ref().map(|f| f["runtime"].clone())).unwrap_or(Value::Null);
+                                cx.spawn(async move |this, cx| {
+                                    let order = ranked("series".into(), nid.clone(), rt, None).await;
+                                    // still on the same thing (not closed, not moved on): keep it
+                                    let ok = this.update(cx, |p, _| p.open && p.load_gen == g).unwrap_or(false);
+                                    if ok && !order.is_empty() {
+                                        *PRELOAD.lock() = Some((nid, order, std::time::Instant::now()));
+                                    }
+                                })
+                                .detach();
+                            }
+                        }
+                    }
                     // reached the end: the next episode by itself
                     let finished = s.ended && !p.state.ended;
                     p.state = s;
@@ -129,7 +153,7 @@ pub fn init(cx: &mut App) {
                         if p.sleep == Some(Sleep::Episode) {
                             // sleep timer: that was the last one tonight
                             p.sleep = None;
-                        } else if couch::state::get().core.settings().playback.autoplay_next && crate::together::get(cx).read(cx).following.is_none() {
+                        } else if couch::state::get().core.settings().playback.autoplay_next && !p.no_autonext && crate::together::get(cx).read(cx).following.is_none() {
                             // (on someone's couch the host's next episode brings you along)
                             p.play_next(cx);
                         }
@@ -177,7 +201,26 @@ pub fn init(cx: &mut App) {
                 if vid.is_empty() || !couch::state::get().core.settings().integrations.tidb_enabled {
                     continue;
                 }
-                let segs = api::call::<Value>("skip_segments", json!({ "videoId": vid, "durationMs": Value::Null })).await.unwrap_or(Value::Null);
+                // with the file's length, TheIntroDB matches the right cut (a
+                // director's cut / extended episode has its intro elsewhere)
+                let mut dur = 0.;
+                for _ in 0..30 {
+                    dur = this.update(cx, |p, _| if p.video_id == vid { p.state.duration } else { -1. }).unwrap_or(-1.);
+                    if dur != 0. {
+                        break;
+                    }
+                    crate::timer::after(std::time::Duration::from_millis(500)).await;
+                }
+                if dur < 0. {
+                    continue;
+                }
+                let dms = (dur > 0.).then(|| (dur * 1000.) as u64);
+                let mut segs = api::call::<Value>("skip_segments", json!({ "videoId": vid, "durationMs": dms })).await.unwrap_or(Value::Null);
+                // nothing for this length: what's known for the episode at all
+                let empty = segs.as_object().map_or(true, |o| o.values().all(|l| l.as_array().map_or(true, |a| a.is_empty())));
+                if empty && dms.is_some() {
+                    segs = api::call::<Value>("skip_segments", json!({ "videoId": vid, "durationMs": Value::Null })).await.unwrap_or(Value::Null);
+                }
                 let _ = this.update(cx, |p, cx| {
                     if p.video_id == vid {
                         p.segments = segs;
@@ -625,6 +668,9 @@ impl Playback {
 
     pub fn close(&mut self, cx: &mut Context<Self>) {
         self.load_gen += 1;
+        // left the player: the next episode found in the background goes too
+        *PRELOAD.lock() = None;
+        self.preload_for = None;
         self.open = false;
         self.loading = false;
         self.error.clear();
@@ -654,6 +700,8 @@ pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f6
         p.fresh = false;
         p.stream = None;
         p.start_hint = start_at;
+        p.preload_for = None;
+        p.no_autonext = false;
         // the episode is known now: watch together tells guests at once
         p.video_id = video_id.clone().unwrap_or_default();
         p.state = State { volume: p.state.volume, muted: p.state.muted, speed: 1., ..Default::default() };
@@ -692,9 +740,43 @@ pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f6
                     rt = v.get("runtime").cloned().unwrap_or(rt);
                 }
             }
+            // the next episode, found while you watched the last one: no waiting
+            let order = match take_preload(&vid) {
+                Some(o) if prefer.is_none() => o,
+                _ => ranked(full["type"].as_str().unwrap_or("movie").to_string(), vid.clone(), rt.clone(), prefer.clone()).await,
+            };
+            let mut order = order;
+            let _ = this.update(cx, |p, cx| {
+                if !p.open || p.load_gen != g {
+                    return;
+                }
+                p.full = Some(full);
+                p.video_id = vid;
+                p.episode_title = ep_title;
+                if order.is_empty() {
+                    p.loading = false;
+                    p.error = "couldn't find a stream for that one".into();
+                    cx.notify();
+                    return;
+                }
+                p.all = order.clone();
+                let first = order.remove(0);
+                p.queue = order;
+                p.status = "starting…".into();
+                p.start(first, start_at, cx);
+            });
+        })
+        .detach();
+    });
+}
+
+
+/// Every stream for this film / episode, best first (your pick, or the
+/// host's, at the front; ones that lagged before at the back).
+async fn ranked(kind: String, vid: String, rt: Value, prefer: Option<Value>) -> Vec<Value> {
             let settings = api::call::<Value>("settings_get", json!({})).await.unwrap_or(Value::Null);
             let s = &settings["streams"];
-            let (streams, mbps) = futures::join!(gather(full["type"].as_str().unwrap_or("movie"), &vid, 9000), async {
+            let (streams, mbps) = futures::join!(gather(&kind, &vid, 9000), async {
                 api::call::<f64>("net_speed", json!({ "fresh": false })).await.unwrap_or(25.)
             });
             let max_gb = s["maxSizeGb"].as_f64().unwrap_or(0.);
@@ -739,28 +821,22 @@ pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f6
                     order.insert(0, s);
                 }
             }
-            let _ = this.update(cx, |p, cx| {
-                if !p.open || p.load_gen != g {
-                    return;
-                }
-                p.full = Some(full);
-                p.video_id = vid;
-                p.episode_title = ep_title;
-                if order.is_empty() {
-                    p.loading = false;
-                    p.error = "couldn't find a stream for that one".into();
-                    cx.notify();
-                    return;
-                }
-                p.all = order.clone();
-                let first = order.remove(0);
-                p.queue = order;
-                p.status = "starting…".into();
-                p.start(first, start_at, cx);
-            });
-        })
-        .detach();
-    });
+    order
+}
+
+/// The next episode's streams, found in the background halfway through this
+/// one: (video id, streams, when). Dropped when you close the player.
+static PRELOAD: parking_lot::Mutex<Option<(String, Vec<Value>, std::time::Instant)>> = parking_lot::Mutex::new(None);
+
+fn take_preload(vid: &str) -> Option<Vec<Value>> {
+    let mut g = PRELOAD.lock();
+    match g.take() {
+        Some((v, o, at)) if v == vid && at.elapsed().as_secs() < 1800 && !o.is_empty() => Some(o),
+        other => {
+            *g = other;
+            None
+        }
+    }
 }
 
 #[derive(Default)]
