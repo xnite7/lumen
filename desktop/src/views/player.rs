@@ -766,13 +766,18 @@ fn loading_name(t: &str) -> gpui::AnyElement {
 const COUNTDOWN: f32 = 10.;
 
 thread_local! {
+    /// where the film's picture sits in the window (fractions: x, y, w, h)
+    static VID_RECT: std::cell::Cell<[f32; 4]> = const { std::cell::Cell::new([0., 0., 1., 1.]) };
+}
+
+thread_local! {
     /// ambient mode as last sent to mpv: where the picture is, strength
     static AMB_SENT: std::cell::Cell<[f32; 5]> = const { std::cell::Cell::new([0.; 5]) };
 }
 
 fn ambient(p: &Playback, v: [f32; 5]) {
     let last = AMB_SENT.with(|b| b.get());
-    if last.iter().zip(v.iter()).all(|(a, b)| (a - b).abs() < 0.001) || (last[4] <= 0. && v[4] <= 0.) {
+    if (last[4] > 0.) == (v[4] > 0.) {
         return;
     }
     AMB_SENT.with(|b| b.set(v));
@@ -1935,19 +1940,22 @@ impl Render for PlayerView {
             let on = couch::state::get().core.db.get::<bool>("gpui_immersive").unwrap_or(true);
             let vs = window.viewport_size();
             let (ww, wh) = (f32::from(vs.width).max(1.), f32::from(vs.height).max(1.));
-            let want = if on && !starting && st.dw > 0. && st.dh > 0. && self.aspect == "fit" && !crate::pip::is_on() {
+            // where the picture is in the window (the bar's glass is placed in it)
+            let rect = if st.dw > 0. && st.dh > 0. && self.aspect == "fit" {
                 let a = (st.dw / st.dh) as f32;
                 if ww / wh > a {
                     let w = wh * a / ww;
-                    [(1. - w) / 2., 0., w, 1., 1.]
+                    [(1. - w) / 2., 0., w, 1.]
                 } else {
                     let h = ww / a / wh;
-                    [0., (1. - h) / 2., 1., h, 1.]
+                    [0., (1. - h) / 2., 1., h]
                 }
             } else {
-                [0., 0., 1., 1., 0.]
+                [0., 0., 1., 1.]
             };
-            ambient(p, want);
+            VID_RECT.with(|r| r.set(rect));
+            let s = if on && !starting && !crate::pip::is_on() { 1. } else { 0. };
+            ambient(p, [rect[0], rect[1], rect[2], rect[3], s]);
         }
         // while it starts: the title's art under a dim, the logo, a line
         if starting || !p.error.is_empty() {
@@ -2103,7 +2111,11 @@ impl Render for PlayerView {
             let (fw, fh) = (f32::from(vs.width).max(1.), f32::from(vs.height).max(1.));
             let bx = theme::GUTTER - 6.;
             let by = fh + (1. - ca) * 48. - 24. - 62.;
-            bar_glass(&self.pb, [bx / fw, by / fh, (fw - 2. * bx) / fw, 62. / fh, 31. / fh, ca], cx);
+            // mpv's finished picture is just the film (not the black bars): the
+            // bar's place, measured inside it
+            let [vx, vy, vw2, vh2] = VID_RECT.with(|r| r.get());
+            let (x, y, w, h) = (bx / fw, by / fh, (fw - 2. * bx) / fw, 62. / fh);
+            bar_glass(&self.pb, [(x - vx) / vw2.max(0.01), (y - vy) / vh2.max(0.01), w / vw2.max(0.01), h / vh2.max(0.01), (31. / fh) / vh2.max(0.01), ca], cx);
         }
         // paused: which episode, big, bottom left; each part rises in after the last
         // (not in picture-in-picture: too small for it)
@@ -2577,9 +2589,9 @@ impl Render for PlayerView {
                     .child(
                         glass(div())
                             // frosted glass: a lighter tint (mpv blurs the film under it), grain, a sheen
-                            .bg(gpui::rgba(0x1511146b))
+                            .bg(gpui::rgba(0x15111452))
                             .overflow_hidden()
-                            .child(img("ui/grain.png").absolute().top_0().left_0().size_full().rounded_full().object_fit(ObjectFit::Cover).opacity(0.06))
+                            .child(img("ui/grain.png").absolute().top_0().left_0().size_full().rounded_full().object_fit(ObjectFit::Cover).opacity(0.035))
                             .child(div().absolute().top_0().left_0().w_full().h(px(30.)).rounded_t(px(31.)).bg(linear_gradient(180., linear_color_stop(theme::white(0.09), 0.), linear_color_stop(theme::white(0.), 1.))))
                             .absolute()
                             .left(px(g - 6.))

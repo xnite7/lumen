@@ -917,22 +917,14 @@ impl Mpv {
             // ambient mode: the film's light spills into the black bars around
             // it, every frame (x, y, w, h: where the picture is, fractions of
             // the window; s: strength 0..1, 0 = off)
+            // ambient mode: mpv fills the black bars with a big, soft blur of
+            // the picture itself, every frame (s: 0 = off, else on)
             "ambient" => {
-                let f = |k: &str| num(k).unwrap_or(0.0);
-                let path = self.core.cache_dir.join("couch-ambient.glsl");
-                let p = path.to_string_lossy().to_string();
-                let on: Vec<String> = mpv.get_property::<String>("glsl-shaders").map(|l| l.split([';', ',']).map(String::from).collect()).unwrap_or_default();
-                if !on.iter().any(|x| x == &p) {
-                    if f("s") <= 0.0 {
-                        return Ok(Value::Null);
-                    }
-                    std::fs::write(&path, AMBIENT).map_err(|e| AppError::msg(e.to_string()))?;
-                    let _ = mpv.command("change-list", &["glsl-shaders", "append", &p]);
+                let on = num("s").unwrap_or(0.0) > 0.0;
+                if on {
+                    let _ = mpv.set_property("background-blur-radius", 0.25f64);
                 }
-                for kv in [format!("couch_ax={:.5}", f("x")), format!("couch_ay={:.5}", f("y")), format!("couch_aw={:.5}", f("w")), format!("couch_ah={:.5}", f("h")), format!("couch_as={:.3}", f("s").clamp(0.0, 1.0))] {
-                    let _ = mpv.command("change-list", &["glsl-shader-opts", "add", &kv]);
-                }
-                Ok(())
+                mpv.set_property("border-background", if on { "blur" } else { "color" })
             }
             // the control bar's glass: the film behind it blurred, in its
             // rounded shape (x, y, w, h, r: fractions of the window; a: 0..1)
@@ -1147,77 +1139,6 @@ fn crop_bars(mpv: &libmpv2::Mpv, gen: u64) {
     let _ = mpv.command("vf", &["add", &format!("@couchcrop:lavfi=[crop=w=trunc(iw*{fw:.4}/2)*2:h=trunc(ih*{fh:.4}/2)*2:x=trunc(iw*{l:.4}):y=trunc(ih*{t:.4})]")]);
 }
 
-
-/// Ambient mode (like YouTube's): the film is shrunk to a tiny, soft copy
-/// (48×27) every frame; around the picture, in the black bars, that copy is
-/// stretched outward and fades with distance, so the screen's edges glow with
-/// what's on screen. Live, on the GPU, nothing for couch's UI to draw.
-const AMBIENT: &str = r#"//!PARAM couch_ax
-//!TYPE DYNAMIC float
-0.0
-//!PARAM couch_ay
-//!TYPE DYNAMIC float
-0.0
-//!PARAM couch_aw
-//!TYPE DYNAMIC float
-1.0
-//!PARAM couch_ah
-//!TYPE DYNAMIC float
-1.0
-//!PARAM couch_as
-//!TYPE DYNAMIC float
-0.0
-
-//!HOOK MAIN
-//!BIND HOOKED
-//!SAVE COUCHAMB
-//!WIDTH 48
-//!HEIGHT 27
-//!DESC couch ambient (shrink)
-vec4 hook() {
-    // the average of this little cell's patch of the film
-    vec2 cell = vec2(1.0 / 48.0, 1.0 / 27.0);
-    vec2 base = HOOKED_pos - cell * 0.5;
-    vec4 acc = vec4(0.0);
-    for (int y = 0; y < 6; y++)
-        for (int x = 0; x < 6; x++)
-            acc += HOOKED_tex(base + cell * (vec2(float(x), float(y)) + 0.5) / 6.0);
-    return acc / 36.0;
-}
-
-//!HOOK OUTPUT
-//!BIND HOOKED
-//!BIND COUCHAMB
-//!DESC couch ambient
-vec4 hook() {
-    vec4 c = HOOKED_tex(HOOKED_pos);
-    if (couch_as <= 0.001)
-        return c;
-    vec2 lo = vec2(couch_ax, couch_ay);
-    vec2 hi = lo + vec2(couch_aw, couch_ah);
-    vec2 p = HOOKED_pos;
-    // on the picture itself: nothing to do
-    if (p.x >= lo.x && p.x <= hi.x && p.y >= lo.y && p.y <= hi.y)
-        return c;
-    // how far out (in screen heights), and the nearest place on the picture
-    vec2 aspect = vec2(HOOKED_size.x / HOOKED_size.y, 1.0);
-    vec2 near = clamp(p, lo, hi);
-    float dist = length((p - near) * aspect);
-    vec2 uv = (near - lo) / max(hi - lo, vec2(1e-5));
-    // pulled in a little from the edge, softer the further out
-    vec2 inward = (vec2(0.5) - uv) * min(dist * 1.6, 0.35);
-    uv = clamp(uv + inward, 0.0, 1.0);
-    vec2 t = vec2(1.0 / 48.0, 1.0 / 27.0) * (1.0 + dist * 6.0);
-    vec4 g = COUCHAMB_tex(uv) * 0.36
-           + (COUCHAMB_tex(uv + vec2(t.x, 0.0)) + COUCHAMB_tex(uv - vec2(t.x, 0.0)) + COUCHAMB_tex(uv + vec2(0.0, t.y)) + COUCHAMB_tex(uv - vec2(0.0, t.y))) * 0.11
-           + (COUCHAMB_tex(uv + t) + COUCHAMB_tex(uv - t) + COUCHAMB_tex(uv + vec2(t.x, -t.y)) + COUCHAMB_tex(uv + vec2(-t.x, t.y))) * 0.05;
-    // a soft fall-off away from the picture, and a little extra saturation
-    float k = couch_as * exp(-dist * 4.2) * 0.85;
-    float l = dot(g.rgb, vec3(0.299, 0.587, 0.114));
-    g.rgb = mix(vec3(l), g.rgb, 1.25);
-    return vec4(mix(c.rgb, max(c.rgb, g.rgb), clamp(k, 0.0, 1.0)), c.a);
-}
-"#;
 
 /// The control bar's glass: inside a rounded rectangle (given as fractions of
 /// the window, live), the picture is blurred and lifted a little, like frosted
