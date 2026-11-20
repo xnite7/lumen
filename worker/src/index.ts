@@ -942,6 +942,13 @@ export class Crew {
       const people = Object.values((await this.storage.get<Record<string, Person>>("people")) ?? {}).sort((a, b) => b.at - a.at);
       return json({ people });
     }
+    // display-name styles for a few people at once (names drawn in their font)
+    if (p === "/v1/looks" && req.method === "GET") {
+      const ids = (url.searchParams.get("ids") ?? "").split(",").filter((x) => /^[0-9]{5,25}$/.test(x)).slice(0, 40);
+      const looks: Record<string, any> = {};
+      await Promise.all(ids.map(async (id) => { looks[id] = (await this.discordLook(id))?.nameStyle ?? null; }));
+      return json({ looks });
+    }
     const pm = p.match(/^\/v1\/profile\/([0-9]{5,25})$/);
     if (pm && req.method === "GET") {
       const id = pm[1];
