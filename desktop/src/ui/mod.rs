@@ -249,3 +249,47 @@ pub fn join_discord(id: &'static str, label: &'static str) -> gpui::Stateful<gpu
             .detach();
         })
 }
+
+
+/// A picture that fades out softly at its edges into whatever is behind it
+/// (not into a flat colour: over the page's glow that left a hard line).
+/// Drawn as a grid of tiles, each the same picture clipped to its square at
+/// its own strength: `rows` × `cols`, strongest `alpha` in the middle, the
+/// edge fades `fx` (each side) and `fy` (top and bottom) long, as fractions.
+pub fn feathered(src: String, w: f32, h: f32, alpha: f32, fx: f32, fy_top: f32, fy_bottom: f32) -> gpui::AnyElement {
+    use gpui::prelude::*;
+    let (rows, cols) = (18usize, 16usize);
+    let smooth = |t: f32| {
+        let t = t.clamp(0., 1.);
+        t * t * (3. - 2. * t)
+    };
+    let (tw, th) = (w / cols as f32, h / rows as f32);
+    let mut d = gpui::div().absolute().top_0().left_0().w(gpui::px(w)).h(gpui::px(h));
+    for r in 0..rows {
+        let y = (r as f32 + 0.5) / rows as f32;
+        let ay = smooth(y / fy_top.max(0.001)).min(smooth((1. - y) / fy_bottom.max(0.001)));
+        if ay <= 0.003 {
+            continue;
+        }
+        for c in 0..cols {
+            let x = (c as f32 + 0.5) / cols as f32;
+            let ax = smooth(x / fx.max(0.001)).min(smooth((1. - x) / fx.max(0.001)));
+            let a = alpha * ay * ax;
+            if a <= 0.003 {
+                continue;
+            }
+            d = d.child(
+                gpui::div()
+                    .absolute()
+                    .left(gpui::px(c as f32 * tw))
+                    .top(gpui::px(r as f32 * th))
+                    // a hair over, so the seams don't show
+                    .w(gpui::px(tw + 1.))
+                    .h(gpui::px(th + 1.))
+                    .overflow_hidden()
+                    .child(gpui::img(src.clone()).absolute().left(gpui::px(-(c as f32) * tw)).top(gpui::px(-(r as f32) * th)).w(gpui::px(w)).h(gpui::px(h)).object_fit(gpui::ObjectFit::Cover).opacity(a)),
+            );
+        }
+    }
+    d.into_any_element()
+}

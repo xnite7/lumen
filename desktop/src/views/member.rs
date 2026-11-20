@@ -159,21 +159,7 @@ impl Render for Member {
             // their colour, glowing in from the top
             .child(div().absolute().top_0().left_0().w_full().h(px(420.)).bg(linear_gradient(180., linear_color_stop(glow, 0.), linear_color_stop(theme::black(0.0), 1.))))
             // their Discord banner: barely there, feathered into the page on every side
-            .children(banner.map(|u| {
-                let bg: Hsla = theme::bg().into();
-                let clear = Hsla { a: 0., ..bg };
-                div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .w_full()
-                    .h(px(400.))
-                    .child(img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(0.2))
-                    .child(div().absolute().top_0().left_0().size_full().bg(linear_gradient(180., linear_color_stop(clear, 0.25), linear_color_stop(bg, 1.))))
-                    .child(div().absolute().top_0().left_0().h_full().w(px(260.)).bg(linear_gradient(90., linear_color_stop(bg, 0.), linear_color_stop(clear, 1.))))
-                    .child(div().absolute().top_0().right_0().h_full().w(px(260.)).bg(linear_gradient(270., linear_color_stop(bg, 0.), linear_color_stop(clear, 1.))))
-                    .child(div().absolute().top_0().left_0().w_full().h(px(90.)).bg(linear_gradient(180., linear_color_stop(Hsla { a: 0.7, ..bg }, 0.), linear_color_stop(clear, 1.))))
-            }))
+            .children(banner.map(|u| crate::ui::feathered(u, vw, 420., 0.22, 0.22, 0.12, 0.6)))
             .child(
                 div()
                     .relative()
