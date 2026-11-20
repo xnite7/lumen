@@ -18,6 +18,7 @@ mod packaged;
 mod uninstall;
 mod media;
 mod notify;
+mod pad;
 mod timer;
 mod ui;
 mod views;
@@ -350,6 +351,37 @@ impl Nav {
             });
         });
     }
+    /// TV mode: couch for across the room (full screen, arrows / a controller)
+    pub fn tv_on(cx: &mut App) {
+        cx.defer(|cx| {
+            if let Some(r) = Self::root(cx) {
+                r.update(cx, |r, cx| {
+                    let shows = r.shows.get_or_insert_with(|| cx.new(|cx| views::home::Home::new("series", cx))).downgrade();
+                    let movies = r.movies.get_or_insert_with(|| cx.new(|cx| views::home::Home::new("movie", cx))).downgrade();
+                    let homes = [Some(r.home.downgrade()), Some(shows), Some(movies)];
+                    r.tv.update(cx, |t, cx| t.enter(homes, cx));
+                    cx.notify();
+                });
+                // the page's own clip stops; TV mode has its own
+                let v = ui::video::get(cx);
+                let owner = v.read(cx).owner.clone();
+                v.update(cx, |v, cx| v.stop(&owner, cx));
+            }
+        });
+    }
+    pub fn tv_off(cx: &mut App) {
+        cx.defer(|cx| {
+            if let Some(r) = Self::root(cx) {
+                r.update(cx, |r, cx| {
+                    r.tv.update(cx, |t, cx| t.leave(cx));
+                    cx.notify();
+                });
+            }
+        });
+    }
+    pub fn tv_is_on(cx: &App) -> bool {
+        Self::root(cx).map_or(false, |r| r.read(cx).tv.read(cx).on)
+    }
     /// your year on the couch
     pub fn wrapped(cx: &mut App) {
         cx.defer(|cx| {
@@ -411,6 +443,9 @@ pub struct Root {
     pub planner: Entity<views::planner::Planner>,
     pub wrapped: Entity<views::wrapped::Wrapped>,
     pub finale: Entity<views::finale::Finale>,
+    pub tv: Entity<views::tv::Tv>,
+    /// TV mode made the window full screen (and puts it back after)
+    tv_fs: Option<bool>,
     pub month: Entity<views::month::Month>,
     pub addto: Entity<views::addto::AddTo>,
     pub menu: Entity<views::menu::Menu>,
@@ -527,7 +562,21 @@ impl Root {
                                 .on_click(move |_, _, cx| Nav::go(target.clone(), cx))
                                 .when(*label == "Couch", |d| d.relative().child(tour::spot("couch")))
                                 .child(*label)
-                        })),
+                        }))
+                        .child(
+                            div()
+                                .id("tab-tv")
+                                .occlude()
+                                .size(px(38.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded_full()
+                                .cursor_pointer()
+                                .hover(|s| s.bg(theme::white(0.1)))
+                                .on_click(|_, _, cx| Nav::tv_on(cx))
+                                .child(icon("tv", 20.).text_color(theme::label2())),
+                        ),
                 ),
             )
             .child(
@@ -583,9 +632,82 @@ impl Root {
         }
     }
 
+    /// a controller button (see pad.rs), by where you are
+    fn pad(&mut self, k: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if self.finale.read(cx).open {
+            let f = self.finale.clone();
+            match k {
+                "right" | "next" => f.update(cx, |f, cx| f.step(1, cx)),
+                "left" | "prev" => f.update(cx, |f, cx| f.step(-1, cx)),
+                "enter" | "play" => f.update(cx, |f, cx| f.play(cx)),
+                "escape" => f.update(cx, |f, cx| f.close(cx)),
+                _ => {}
+            }
+            return;
+        }
+        if k == "escape" && (self.menu.read(cx).open.is_some() || self.addto.read(cx).meta.is_some()) {
+            self.menu.update(cx, |m, cx| {
+                m.open = None;
+                cx.notify();
+            });
+            self.addto.update(cx, |a, cx| {
+                a.meta = None;
+                cx.notify();
+            });
+            return;
+        }
+        if self.route == Route::Player {
+            let pb = playback::get(cx);
+            let (paused, pos) = (pb.read(cx).state.paused, pb.read(cx).state.pos);
+            let seek = match k {
+                "left" => Some(-10.),
+                "right" => Some(10.),
+                "prev" => Some(-30.),
+                "next" => Some(30.),
+                _ => None,
+            };
+            if let Some(d) = seek {
+                if views::player::may("seek", Some((pos + d).max(0.)), cx) {
+                    pb.read(cx).cmd("seek", json!({ "to": d, "relative": true }));
+                }
+            } else if matches!(k, "enter" | "play") {
+                if views::player::may(if paused { "play" } else { "pause" }, None, cx) {
+                    pb.read(cx).cmd("pause", json!({ "value": !paused }));
+                }
+            } else if k == "escape" {
+                if self.tv.read(cx).on {
+                    pb.update(cx, |p, cx| p.close(cx));
+                }
+                cx.defer(|cx| Nav::back(cx));
+            }
+            self.player.update(cx, |v, cx| v.poke(cx));
+            return;
+        }
+        if self.tv.read(cx).on {
+            let t = self.tv.clone();
+            t.update(cx, |t, cx| t.press(k, cx));
+            return;
+        }
+        let _ = window;
+        match k {
+            // Start, outside TV mode: into it
+            "play" => Nav::tv_on(cx),
+            "escape" => cx.defer(|cx| Nav::back(cx)),
+            _ => {}
+        }
+    }
+
     fn key(&mut self, e: &gpui::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let k = e.keystroke.key.as_str();
         // ctrl+shift+f: a frame-rate meter in the corner (how smooth is it here?)
+        if k == "t" && e.keystroke.modifiers.control && e.keystroke.modifiers.shift {
+            if self.tv.read(cx).on {
+                Nav::tv_off(cx);
+            } else {
+                Nav::tv_on(cx);
+            }
+            return;
+        }
         if k == "f" && e.keystroke.modifiers.control && e.keystroke.modifiers.shift {
             FPS_ON.with(|f| f.set(!f.get()));
             cx.notify();
@@ -637,6 +759,11 @@ impl Root {
             }
             return;
         }
+        if self.tv.read(cx).on && self.route != Route::Player {
+            let t = self.tv.clone();
+            t.update(cx, |t, cx| t.press(k, cx));
+            return;
+        }
         if self.route == Route::Player {
             let pb = playback::get(cx);
             // the same rules as the buttons (on someone's couch: theirs to do)
@@ -677,9 +804,13 @@ impl Root {
                 "escape" => {
                     if pip::is_on() {
                         pip::toggle(cx);
-                    } else if window.is_fullscreen() {
+                    } else if window.is_fullscreen() && !self.tv.read(cx).on {
                         window.toggle_fullscreen();
                     } else {
+                        // TV mode: the film stops (no corner picture across the room)
+                        if self.tv.read(cx).on {
+                            pb.update(cx, |p, cx| p.close(cx));
+                        }
                         // (Nav updates Root: after this key press, not inside it)
                         cx.defer(|cx| Nav::back(cx));
                     }
@@ -1196,6 +1327,24 @@ impl Render for Root {
             cx.defer(move |_| mini::set(want_mini, s));
         }
         let playing = self.route == Route::Player;
+        // TV mode: full screen while it's on (and back to how it was after)
+        let tv_on = self.tv.read(cx).on;
+        match (tv_on, self.tv_fs) {
+            (true, None) => {
+                let was = window.is_fullscreen();
+                self.tv_fs = Some(!was);
+                if !was {
+                    window.toggle_fullscreen();
+                }
+            }
+            (false, Some(made)) => {
+                self.tv_fs = None;
+                if made && window.is_fullscreen() {
+                    window.toggle_fullscreen();
+                }
+            }
+            _ => {}
+        }
         if playing {
             cx.defer(|_| mini::place_clip(None));
         }
@@ -1315,7 +1464,8 @@ impl Render for Root {
             .font_family(theme::FONT)
             .text_color(theme::text())
             .child(page)
-            .when(!playing && self.route != Route::SignIn && !views::detail::theater_on(), |d| d.child(gpui::deferred(self.nav_bar(cx)).with_priority(2)))
+            .when(!playing && self.route != Route::SignIn && !views::detail::theater_on() && !tv_on, |d| d.child(gpui::deferred(self.nav_bar(cx)).with_priority(2)))
+            .when(tv_on && !playing && self.route != Route::SignIn, |d| d.child(gpui::deferred(self.tv.clone()).with_priority(2)))
             .when(self.route == Route::SignIn, |d| d.child(window_controls()))
             .children(fps.map(|n| div().absolute().bottom(px(12.)).left(px(12.)).px(px(10.)).py(px(4.)).rounded(px(8.)).bg(theme::black(0.7)).text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(if n >= 130 { gpui::rgb(0x7ee08a) } else if n >= 90 { gpui::rgb(0xf4c76a) } else { gpui::rgb(0xff6b6b) }).child(format!("{n} fps"))))
             // while playing: a strip along the top moves the window (it never pauses the film)
@@ -1672,6 +1822,26 @@ fn main() {
                             }
                         })
                         .detach();
+                        // a game controller as a remote
+                        cx.spawn_in(window, async move |this, cx| {
+                            let mut pad = pad::Pad::default();
+                            loop {
+                                crate::timer::after(std::time::Duration::from_millis(33)).await;
+                                let keys = pad.poll();
+                                if keys.is_empty() {
+                                    continue;
+                                }
+                                let alive = this.update_in(cx, |r, window, cx| {
+                                    for k in keys {
+                                        r.pad(k, window, cx);
+                                    }
+                                });
+                                if alive.is_err() {
+                                    break;
+                                }
+                            }
+                        })
+                        .detach();
                         // the jump list: soon after start, then every 10 minutes
                         cx.spawn(async move |_, _| loop {
                             crate::timer::after(std::time::Duration::from_secs(8)).await;
@@ -1709,6 +1879,8 @@ fn main() {
                             planner: cx.new(views::planner::Planner::new),
                             wrapped: cx.new(views::wrapped::Wrapped::new),
                             finale: cx.new(views::finale::Finale::new),
+                            tv: cx.new(views::tv::Tv::new),
+                            tv_fs: None,
                             month: cx.new(views::month::Month::new),
                             addto,
                             menu,

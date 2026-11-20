@@ -1084,6 +1084,10 @@ async fn cw_row() -> Option<(Vec<Meta>, Vec<(Option<f32>, Option<String>)>)> {
 }
 
 impl Home {
+    /// for TV mode: the billboard's title and the rows, as they are now
+    pub fn tv(&self) -> (Option<Meta>, &Vec<Row>) {
+        (self.hero.clone(), &self.rows)
+    }
     fn set_cw(&mut self, metas: Vec<Meta>, extra: Vec<(Option<f32>, Option<String>)>, cx: &mut Context<Self>) {
         self.rows.retain(|r| r.key != "cw");
         if !metas.is_empty() {

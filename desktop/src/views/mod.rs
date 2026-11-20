@@ -2,6 +2,7 @@ pub mod home;
 pub mod crewx;
 pub mod wrapped;
 pub mod finale;
+pub mod tv;
 pub mod month;
 pub mod studio;
 pub mod member;
