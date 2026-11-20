@@ -68,6 +68,9 @@ fn start_menu(d: &std::path::Path) {
 
 pub fn start(cx: &mut App) {
     cx.set_global(Ready::default());
+    // the update that brought us here (and any before it): not needed anymore
+    // (right away: the first look for a newer one is 10 s off)
+    std::thread::spawn(|| crate::packaged::sweep(None));
     if crate::packaged::is_packaged() {
         crate::packaged::tidy_old();
     } else if let Some(d) = dir() {

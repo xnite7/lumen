@@ -60,13 +60,40 @@ pub async fn fetch(url: &str, name: &str) -> Option<std::path::PathBuf> {
         }
         let b = r.bytes().await.ok()?;
         std::fs::create_dir_all(p2.parent()?).ok()?;
-        std::fs::write(&p2, &b).ok()?;
+        // written to a side name first: a half download never looks finished
+        let part = p2.with_extension("part");
+        std::fs::write(&part, &b).ok()?;
+        std::fs::rename(&part, &p2).ok()?;
+        // a newer package in: the older ones go
+        if p2.extension().map_or(false, |e| e == "msix") {
+            sweep(Some(&p2));
+        }
         Some(())
     })
     .await
     .ok()
     .flatten()?;
     Some(path)
+}
+
+/// couch's download folder (in Temp): update packages pile up there, about
+/// 150 MB each. Everything goes except `keep` (the one about to install).
+/// Runs at every start (the running couch is already installed) and after
+/// each download.
+pub fn sweep(keep: Option<&std::path::Path>) {
+    let dir = std::env::temp_dir().join("midnite-couch");
+    let Ok(rd) = std::fs::read_dir(&dir) else { return };
+    for e in rd.flatten() {
+        let p = e.path();
+        if Some(p.as_path()) == keep || !p.is_file() {
+            continue;
+        }
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+        let junk = name.ends_with(".msix") || name.ends_with(".part") || name.ends_with(".zip") || name.ends_with(".exe") || name.ends_with(".ps1") || name.ends_with(".txt") || name.ends_with(".cer");
+        if junk {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
 }
 
 /// Is couch's certificate trusted on this PC yet?
