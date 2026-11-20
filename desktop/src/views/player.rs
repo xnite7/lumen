@@ -2508,25 +2508,28 @@ impl Render for PlayerView {
                             .top(px(42.))
                             .flex()
                             .items_center()
-                            .gap(px(30.))
+                            .gap(px(22.))
                             .child(
-                                glass(div())
+                                // just the arrow, with a soft shadow so it reads on a bright picture
+                                div()
                                     .id("pl-back")
                                     .occlude()
                                     .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                    .relative()
                                     .size(px(48.))
-                                    .rounded_full()
                                     .flex()
                                     .items_center()
                                     .justify_center()
                                     .cursor_pointer()
-                                    .hover(|s| s.bg(theme::white(0.18)))
+                                    .opacity(0.92)
+                                    .hover(|s| s.opacity(1.))
                                     .on_click(move |_, _, cx| {
                                         // back keeps the film playing in the corner
                                         let _ = &pb;
                                         crate::Nav::back(cx);
                                     })
-                                    .child(icon("back", 24.)),
+                                    .child(div().absolute().size(px(20.)).rounded_full().shadow(vec![gpui::BoxShadow { color: theme::black(0.45), offset: gpui::point(px(0.), px(2.)), blur_radius: px(18.), spread_radius: px(2.), inset: false }]))
+                                    .child(icon("back", 30.)),
                             )
                             .child(div().opacity(1. - pv_top).relative().top(px(-pv_top * 14.))
                                 // a soft dark pool behind the logo, so it reads over a bright picture
