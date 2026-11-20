@@ -781,6 +781,20 @@ fn next_pill(pb: Entity<Playback>, label: String, kind: &str, left: Option<f32>,
     row.into_any_element()
 }
 
+/// the title in words on the loading screen (no logo): centred, a fixed
+/// width and line height so it never runs into the couch below it
+fn loading_name(t: &str) -> gpui::AnyElement {
+    let long = t.chars().count() > 24;
+    let (size, lh) = if long { (38., 44.) } else { (48., 54.) };
+    div()
+        .flex_none()
+        .w(px(640.))
+        .flex()
+        .justify_center()
+        .child(div().max_w(px(640.)).text_center().text_size(px(size)).line_height(px(lh)).line_clamp(2).text_ellipsis().font_weight(FontWeight::BLACK).child(t.to_string()))
+        .into_any_element()
+}
+
 /// seconds the next episode waits in the credits before it plays by itself
 const COUNTDOWN: f32 = 10.;
 
@@ -1839,9 +1853,9 @@ impl Render for PlayerView {
                         .child(match logo.clone() {
                             Some(u) => {
                                 let t = title.clone();
-                                img(u).max_w(px(420.)).max_h(px(130.)).object_fit(ObjectFit::Contain).with_fallback(move || div().text_size(px(48.)).font_weight(FontWeight::BLACK).child(t.clone()).into_any_element()).into_any_element()
+                                img(u).max_w(px(420.)).max_h(px(130.)).object_fit(ObjectFit::Contain).with_fallback(move || loading_name(&t)).into_any_element()
                             }
-                            None => div().text_size(px(48.)).font_weight(FontWeight::BLACK).child(title.clone()).into_any_element(),
+                            None => loading_name(&title),
                         })
                         // the couch, turning
                         .when(p.error.is_empty(), |d| {
