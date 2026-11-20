@@ -79,7 +79,7 @@ fn btn(id: SharedString, label: &str, primary: bool) -> gpui::Stateful<gpui::Div
 }
 
 impl Render for Couch {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let g = theme::GUTTER;
         let vw = f32::from(window.viewport_size().width);
         let mut page = div()

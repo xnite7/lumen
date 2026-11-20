@@ -7,8 +7,6 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 pub const DUR: f32 = 0.42;
-/// how long the page's words take to fade in after the picture lands
-const AFTER: f32 = 0.3;
 
 #[derive(Clone)]
 struct Run {
@@ -121,10 +119,6 @@ pub fn back(id: &str) {
     });
 }
 
-/// Leaving any other way: no zoom to come back into.
-pub fn forget(id: &str) {
-    Z.with(|z| z.borrow_mut().opened.retain(|o| o.0 != id));
-}
 
 /// How long the whole opening lasts: the picture, then the page settling in.
 const SETTLE: f32 = 0.75;

@@ -29,9 +29,6 @@ pub fn surface2() -> Rgba {
 pub fn text() -> Rgba {
     rgb(0xf4eaf0)
 }
-pub fn text_dim() -> Rgba {
-    rgb(0x9c8a96)
-}
 /// label-2 / label-3: warm white at 60% / 34%
 pub fn label2() -> Rgba {
     rgba(0xf4eaf099)
@@ -47,11 +44,6 @@ pub fn neon_soft() -> Rgba {
 }
 pub fn lamp() -> Rgba {
     rgb(0xffb25c)
-}
-pub fn fill(a: f32) -> Hsla {
-    let mut c: Hsla = rgb(0x786e76).into();
-    c.a = a;
-    c
 }
 pub fn white(a: f32) -> Hsla {
     let mut c: Hsla = text().into();

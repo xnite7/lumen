@@ -4,10 +4,12 @@
 //! feed its Start tile. The tile flips through the crew's latest (with their
 //! face peeking in), what you're in the middle of and something from your
 //! plan to watch, and keeps doing so after couch is closed.
+#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[cfg(target_os = "windows")]
+use std::time::Duration;
 use crate::api;
 use gpui::App;
 use serde_json::{json, Value};
-use std::time::Duration;
 
 /// Get going: register the package if it's shipped and not done yet, then
 /// keep the tile fresh (every 20 minutes while couch runs).

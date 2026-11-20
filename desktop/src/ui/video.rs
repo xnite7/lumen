@@ -11,6 +11,7 @@ use std::time::Instant;
 
 /// What a clip shows right now.
 #[derive(Clone)]
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub enum Pic {
     /// a frame drawn by couch (software)
     Image(Arc<RenderImage>),
@@ -150,9 +151,10 @@ pub fn init(cx: &mut App) {
         cx.spawn(async move |this, cx| {
             while rx.next().await.is_some() {
                 // a burst of frames is one repaint
-                while let Ok(Some(_)) = rx.try_next() {}
+                while rx.try_recv().is_ok() {}
                 if this
                     .update(cx, |v, cx| {
+                        let _ = &v; // (used on Windows)
                         #[cfg(target_os = "windows")]
                         if v.since.is_none() && v.native.as_ref().map_or(false, |n| n.is_ready()) {
                             v.since = Some(Instant::now());
@@ -221,6 +223,7 @@ impl Video {
         cx.spawn(async move |this, cx| loop {
             crate::timer::after(std::time::Duration::from_millis(500)).await;
             let Ok(go) = this.update(cx, |v, cx| {
+                let _ = &cx; // (used on Windows)
                 if v.owner != o {
                     return false;
                 }
@@ -496,6 +499,7 @@ pub fn layers(art: Option<String>, pic: &Pic, a: f32, radius: f32) -> Vec<AnyEle
     }
 }
 
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub fn is_native(p: &Option<Pic>) -> bool {
     matches!(p, Some(Pic::Native))
 }

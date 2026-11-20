@@ -1,6 +1,7 @@
 //! Taskbar extras: right-click couch's icon for what you're watching and
 //! what's on your list (the jump list), and a second couch (from the jump
 //! list, a shortcut, a link) hands its page to the one already open.
+#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{channel, Receiver};

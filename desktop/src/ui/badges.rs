@@ -6,6 +6,7 @@ const RAW: &str = "https://raw.githubusercontent.com/kingsizew/badges/main/badge
 
 pub struct Badge {
     pub src: String,
+    #[allow(dead_code)] // (words for the picture, for screen readers later)
     pub alt: &'static str,
 }
 

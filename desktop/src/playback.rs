@@ -25,7 +25,9 @@ pub struct State {
     pub muted: bool,
     pub speed: f64,
     pub cache_ahead: f64,
+    #[allow(dead_code)] // (the picked tracks, as mpv reports them)
     pub aid: String,
+    #[allow(dead_code)]
     pub sid: String,
     pub ended: bool,
     pub sub_delay: f64,

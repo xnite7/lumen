@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 /// a run of nights: whose (None: the two of you together), how long
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub struct Streak {
     pub id: String,
     pub name: String,
@@ -131,7 +132,7 @@ pub async fn load(feed: &[Value]) -> Extras {
             }
         }
     }
-    let mut best = |days: f64| -> Vec<Meta> {
+    let best = |days: f64| -> Vec<Meta> {
         let since = now - days * 86_400_000.;
         // id -> (score, the title, how many of the crew)
         let mut score: HashMap<String, (f64, Value, u32)> = HashMap::new();

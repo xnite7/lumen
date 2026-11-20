@@ -48,7 +48,7 @@ fn bring_to_front() {
     }
 }
 
-/// the intro's frames (and how long each shows), decoded off the main thread at launch
+// the intro's frames (and how long each shows), decoded off the main thread at launch
 thread_local! {
     /// when the film went to the corner (the mini bar slides up from then)
     static MINI_AT: std::cell::RefCell<Option<std::time::Instant>> = const { std::cell::RefCell::new(None) };
@@ -159,7 +159,7 @@ fn play_intro_sound() {
 use api::Meta;
 use futures::StreamExt;
 use gpui::{
-    Focusable, div, img, prelude::*, px, size, App, Application, Bounds, Context, Entity, FontWeight, Global, Image, ImageFormat, SharedString,
+    Focusable, div, img, prelude::*, px, size, App, Bounds, Context, Entity, FontWeight, Global, Image, ImageFormat, SharedString,
     TitlebarOptions, WeakEntity, Window, WindowBackgroundAppearance, WindowBounds, WindowControlArea, WindowOptions,
 };
 use serde_json::json;
@@ -370,6 +370,7 @@ pub struct Root {
     shows: Option<Entity<views::home::Home>>,
     movies: Option<Entity<views::home::Home>>,
     toast: Option<String>,
+    #[allow(dead_code)]
     mark: Arc<Image>,
     /// the pointer on the couch mark up top (it jiggles)
     mark_hover: Option<std::time::Instant>,

@@ -7,6 +7,7 @@ use parking_lot::Mutex;
 use serde_json::Value;
 use std::sync::atomic::{AtomicIsize, Ordering};
 
+#[allow(dead_code)] // (what each message carries is read on the other side)
 pub enum Msg {
     Event(String, Value),
     OpenUrl(String),

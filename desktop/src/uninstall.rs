@@ -2,6 +2,7 @@
 //! Settings: once couch has closed, a small script takes out the live tile
 //! package, the shortcuts, the couch: links, the Apps entry and the folder.
 //! Your lists, ratings and sign-ins stay (the old couch shares them).
+#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
 
 const KEY: &str = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\MidniteCouchNew";
 

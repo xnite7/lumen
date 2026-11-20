@@ -1,10 +1,12 @@
 //! "Invincible S4 E3 is out": a Windows notification on the day a new
 //! episode of something you watch comes out (once per episode). Clicking it
 //! opens the show in couch, through a couch: link registered for this user.
+#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[cfg(target_os = "windows")]
+use std::time::Duration;
 use crate::api;
 use gpui::App;
 use serde_json::{json, Value};
-use std::time::Duration;
 
 const SEEN_KEY: &str = "gpui_notified_eps";
 

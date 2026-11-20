@@ -13,6 +13,7 @@ use serde_json::json;
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, PartialEq)]
+#[allow(dead_code)] // (Subs: the same panel as Audio, kept for the key that opens it)
 pub enum Menu {
     Audio,
     Subs,
@@ -696,24 +697,6 @@ fn named(list: &[serde_json::Value]) -> Vec<(serde_json::Value, String)> {
         .collect()
 }
 
-fn pill(id: &'static str, label: String) -> gpui::Stateful<gpui::Div> {
-    div()
-        .id(id)
-        .h(px(52.))
-        .px(px(24.))
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .rounded(px(14.))
-        .bg(theme::text())
-        .text_color(gpui::rgb(0x000000))
-        .text_size(px(17.))
-        .font_weight(FontWeight::SEMIBOLD)
-        .cursor_pointer()
-        .hover(|s| s.opacity(0.88))
-        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
-        .child(label)
-}
 
 /// TheIntroDB's parts, each in its own colour (the bar and the skip buttons)
 pub fn seg_color(kind: &str) -> gpui::Rgba {
@@ -2105,7 +2088,6 @@ impl Render for PlayerView {
         let paused = st.paused;
         let pb = self.pb.clone();
         let pb3 = self.pb.clone();
-        let pb4 = self.pb.clone();
         let hover = self.hover_x;
         let still_img = match hover {
             Some(x) if st.duration > 0. => {
@@ -2592,8 +2574,6 @@ impl Render for PlayerView {
                                             })),
                                     )
                                     .when(self.vol_open || self.vol_pinned, |d| {
-                                        let pb = pb4.clone();
-                                        let muted = st.muted;
                                         let va = self.vol_since.map_or(1., |t| {
                                             let x = (t.elapsed().as_secs_f32() / 0.24).min(1.);
                                             if x < 1. {
@@ -3003,10 +2983,6 @@ fn parse_hex(h: &str) -> Option<gpui::Hsla> {
     Some(gpui::rgb(v).into())
 }
 
-/// ♪ lyrics slanted.
-fn styled_sub(text: &str) -> gpui::StyledText {
-    styled_sub_in(text, None)
-}
 
 /// (`ink`: one colour for everything, for the dark copies behind an outline)
 fn styled_sub_in(text: &str, ink: Option<gpui::Hsla>) -> gpui::StyledText {

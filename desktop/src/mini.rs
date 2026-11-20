@@ -2,6 +2,7 @@
 //! corner of couch while you browse. mpv draws into a little host window of
 //! our own; full size it sits under couch's UI, mini it moves into a small
 //! rounded popup over the bottom-right corner.
+#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
 use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
 static VIDEO: AtomicIsize = AtomicIsize::new(0);

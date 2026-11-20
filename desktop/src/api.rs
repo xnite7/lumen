@@ -86,9 +86,6 @@ pub fn sized(url: &str, size: &str) -> String {
     url.to_string()
 }
 
-pub fn json(v: Value) -> Value {
-    v
-}
 
 /// IMDb's still for one episode ("tt123:1:4"), via metahub — used when a
 /// title's own episode picture is missing or won't load.

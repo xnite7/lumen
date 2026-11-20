@@ -3,6 +3,7 @@
 //! title and its picture), and buttons under couch's taskbar preview
 //! (back 10 s, play/pause, next episode). Everything goes through the same
 //! rules as couch's own buttons (on someone's couch, the host decides).
+#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
 use crate::playback;
 use gpui::App;
 use serde_json::json;

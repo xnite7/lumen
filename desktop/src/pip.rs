@@ -1,5 +1,6 @@
 //! Picture in picture: the whole window shrinks into a small, always-on-top
 //! corner of the screen and keeps playing; again (or ⤢) brings it back.
+#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static ON: AtomicBool = AtomicBool::new(false);

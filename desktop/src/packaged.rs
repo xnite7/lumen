@@ -2,6 +2,7 @@
 //! uninstalled straight from Start. This is everything that differs when it
 //! runs that way: how it updates, how an older unpackaged couch moves over to
 //! it, and tidying up after that move.
+#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
 
 /// The package's name (desktop/resources/msix/AppxManifest.xml).
 pub const NAME: &str = "MidniteCouch";
