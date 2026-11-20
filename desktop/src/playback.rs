@@ -1134,6 +1134,62 @@ async fn ranked(kind: String, vid: String, rt: Value, prefer: Option<Value>) -> 
     order
 }
 
+/// On a title's page, before Play: its streams are looked for already, so
+/// Play starts at once, and the page can say when there's nothing.
+/// (title id | video id) → None while looking, Some(found any)
+static WARM: parking_lot::Mutex<Option<std::collections::HashMap<String, Option<bool>>>> = parking_lot::Mutex::new(None);
+
+pub fn warm_state(id: &str, video: Option<&str>) -> Option<bool> {
+    WARM.lock().as_ref().and_then(|m| m.get(&format!("{id}|{}", video.unwrap_or(""))).copied().flatten())
+}
+
+pub fn warm(base: Meta, video_id: Option<String>, cx: &mut App) {
+    let key = format!("{}|{}", base.id, video_id.clone().unwrap_or_default());
+    {
+        let mut w = WARM.lock();
+        let w = w.get_or_insert_with(Default::default);
+        if w.contains_key(&key) {
+            return;
+        }
+        w.insert(key.clone(), None);
+    }
+    // something's playing: its next episode's search isn't pushed out
+    if get(cx).read(cx).open {
+        WARM.lock().get_or_insert_with(Default::default).remove(&key);
+        return;
+    }
+    cx.spawn(async move |cx| {
+        let full = api::call::<Value>("meta_get", json!({ "kind": base.kind, "id": base.id, "hint": Value::Null })).await.unwrap_or_else(|_| serde_json::to_value(&base).unwrap_or_default());
+        let mut vid = full["id"].as_str().unwrap_or(&base.id).to_string();
+        let mut rt = full["runtime"].clone();
+        let eps: Vec<Value> = ordered(&full).into_iter().filter(|v| v["season"].as_i64().unwrap_or(0) > 0).collect();
+        if let Some(want) = video_id.clone().filter(|v| v != &vid) {
+            if let Some(v) = eps.iter().find(|x| x["id"].as_str() == Some(want.as_str())) {
+                rt = v.get("runtime").cloned().unwrap_or(rt);
+            }
+            vid = want;
+        } else if full["type"] == "series" {
+            let item = api::call::<Value>("library_item", json!({ "id": vid })).await.unwrap_or(Value::Null);
+            let at = item["state"]["video_id"].as_str().map(|s| s.to_string());
+            if let Some(v) = at.as_ref().and_then(|a| eps.iter().find(|x| x["id"].as_str() == Some(a.as_str()))).or(eps.first()) {
+                vid = v["id"].as_str().unwrap_or("").to_string();
+                rt = v.get("runtime").cloned().unwrap_or(rt);
+            }
+        }
+        let order = ranked(full["type"].as_str().unwrap_or("movie").to_string(), vid.clone(), rt, None).await;
+        let found = !order.is_empty();
+        WARM.lock().get_or_insert_with(Default::default).insert(key, Some(found));
+        if found {
+            let playing = cx.update(|cx| get(cx).read(cx).open);
+            if !playing {
+                *PRELOAD.lock() = Some((vid, order, std::time::Instant::now()));
+            }
+        }
+        let _ = cx.update(|cx| cx.refresh_windows());
+    })
+    .detach();
+}
+
 /// The next episode's streams, found in the background halfway through this
 /// one: (video id, streams, when). Dropped when you close the player.
 static PRELOAD: parking_lot::Mutex<Option<(String, Vec<Value>, std::time::Instant)>> = parking_lot::Mutex::new(None);

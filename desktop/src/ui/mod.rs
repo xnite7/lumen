@@ -9,6 +9,7 @@ pub mod rows;
 pub mod hero;
 pub mod input;
 pub mod video;
+pub mod names;
 
 use crate::theme;
 use gpui::{prelude::*, px, svg, Svg};

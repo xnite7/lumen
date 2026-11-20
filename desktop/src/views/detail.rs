@@ -611,6 +611,14 @@ impl Render for Detail {
         }
         // the episode "Download" saves (the one the play button plays)
         let dl_video: Option<String> = pvideo.as_ref().and_then(|v| v["id"].as_str().map(String::from));
+        // look for its streams already (Play starts at once); nothing found: say so
+        let warm_vid = pvideo.as_ref().and_then(|v| v["id"].as_str().map(String::from));
+        crate::playback::warm(self.meta(), warm_vid.clone(), cx);
+        let unavailable = crate::playback::warm_state(&self.meta().id, warm_vid.as_deref()) == Some(false);
+        if unavailable {
+            plabel = "Unavailable".into();
+            psub = String::new();
+        }
         let flagged = self.item.as_ref().map_or(false, |i| crate::api::flag(&i["state"]["flaggedWatched"]));
         // in My List, or in any of your couch lists
         let base_id = m.id.split(':').next().unwrap_or("").to_string();
@@ -854,6 +862,8 @@ impl Render for Detail {
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .text_size(px(18.))
                                     .cursor_pointer()
+                                    // nothing found to play: dimmed (still tries, in case it shows up)
+                                    .when(unavailable, |d| d.opacity(0.4))
                                     .hover(|s| s.opacity(0.88))
                                     .on_click({
                                         let m = m.clone();

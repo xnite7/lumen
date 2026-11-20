@@ -102,7 +102,12 @@ pub fn card_with(
         .rounded(px(12.))
         .overflow_hidden()
         // the shadow grows with it: from nothing, softly spreading and darkening
-        .when(grow > 0.001, |d| d.shadow(vec![gpui::BoxShadow { color: theme::black(0.5 * grow), offset: gpui::point(px(0.), px(3. + 11. * grow)), blur_radius: px(6. + 26. * grow), spread_radius: px(-4. * (1. - grow)), inset: false }]))
+        // (it reaches out early, so it's seen fading in with the growing, not
+        // only once the card's done: tucked under the card it was invisible)
+        .when(grow > 0.001, |d| {
+            let k = grow.sqrt();
+            d.shadow(vec![gpui::BoxShadow { color: theme::black(0.5 * grow.powf(0.7)), offset: gpui::point(px(0.), px(4. + 10. * k)), blur_radius: px(14. + 18. * k), spread_radius: px(0.), inset: false }])
+        })
         // keeps the frames coming while it grows or shrinks
         .when(moving || (hov && grow < 1.), |d| d.child(gpui::canvas(|_, _, _| (), |_, _, w, _| w.request_animation_frame()).absolute().size_0()))
         // a GPU clip shows through this card: nothing of the card under it

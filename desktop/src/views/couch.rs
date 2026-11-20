@@ -79,7 +79,9 @@ fn btn(id: SharedString, label: &str, primary: bool) -> gpui::Stateful<gpui::Div
 }
 
 impl Render for Couch {
-    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // everyone's name in their Discord style
+        let looks: std::collections::HashMap<String, _> = self.members.iter().chain(self.people.iter()).filter_map(|m| m["id"].as_str().map(String::from)).map(|id| { let st = crate::ui::names::of(&id, cx); (id, st) }).collect();
         let g = theme::GUTTER;
         let vw = f32::from(window.viewport_size().width);
         let mut page = div()
@@ -186,7 +188,7 @@ impl Render for Couch {
                                     .bg(theme::black(0.45))
                                     .shadow(crate::ui::lift())
                                     .child(div().rounded_full().shadow(crate::ui::lift()).child(avatar(m["avatar"].as_str(), &name, 28.)))
-                                    .child(div().font_weight(FontWeight::SEMIBOLD).text_size(px(14.)).child(name.clone()))
+                                    .child(crate::ui::names::apply(div().font_weight(FontWeight::SEMIBOLD).text_size(px(14.)), looks.get(&id).copied().flatten()).child(name.clone()))
                                     .when(paused, |d| d.child(div().text_size(px(12.)).text_color(theme::label2()).child("· paused"))),
                             )
                             // S3:E2
@@ -288,6 +290,7 @@ impl Render for Couch {
                     let name = p["name"].as_str().unwrap_or("").to_string();
                     let on = self.members.iter().any(|m| m["id"] == p["id"]);
                     let pid = p["id"].as_str().unwrap_or("").to_string();
+                    let pid2 = pid.clone();
                     // nights in a row the two of you watched together (yours only, nobody else sees it)
                     let streak = crate::views::crewx::together_streak(&pid);
                     let group = SharedString::from(format!("crew-g-{pid}"));
@@ -332,7 +335,7 @@ impl Render for Couch {
                                 .w_full()
                                 .flex()
                                 .justify_center()
-                                .child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).truncate().when(streak >= 2, |d| d.group_hover(group.clone(), |s| s.opacity(0.))).child(name))
+                                .child(crate::ui::names::apply(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD), looks.get(&pid2).copied().flatten()).truncate().when(streak >= 2, |d| d.group_hover(group.clone(), |s| s.opacity(0.))).child(name))
                                 .when(streak >= 2, |d| {
                                     d.child(
                                         div()

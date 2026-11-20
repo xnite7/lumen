@@ -1,0 +1,2 @@
+Bangers: Copyright 2010 Vernon Adams. BioRhyme: Copyright 2016 The BioRhyme Project Authors (Aoife Mooney).
+Both are licensed under the SIL Open Font License, Version 1.1 (https://openfontlicense.org), the same text as Figtree-OFL.txt.

@@ -964,7 +964,7 @@ fn play_pause(paused: bool, size: f32, window: &mut Window) -> gpui::AnyElement 
     } else {
         at.unwrap_or_else(Instant::now)
     };
-    let p = (at.elapsed().as_secs_f32() / 0.38).min(1.);
+    let p = (at.elapsed().as_secs_f32() / 0.2).min(1.);
     if p < 1. {
         window.request_animation_frame();
     }
@@ -2113,7 +2113,7 @@ impl Render for PlayerView {
             self.pause_at = Instant::now();
         }
         let pt = self.pause_at.elapsed().as_secs_f32();
-        if pt < 1.3 {
+        if pt < 0.7 {
             window.request_animation_frame();
         }
         let ein = |d: f32, dur: f32| 1. - (1. - ((pt - d) / dur).clamp(0., 1.)).powi(5);
@@ -2123,9 +2123,9 @@ impl Render for PlayerView {
         };
         // (shade, S:E, title, logo, the top logo stepping away)
         let (pv_shade, pv_label, pv_title, pv_logo, pv_top) = if self.pause_on {
-            (ein(0., 0.7), ein(0.12, 0.7), ein(0.22, 0.75), ein(0.42, 0.8), ein(0., 0.35))
+            (ein(0., 0.34), ein(0.05, 0.34), ein(0.09, 0.36), ein(0.16, 0.38), ein(0., 0.2))
         } else {
-            (eout(0.1, 0.6), eout(0.16, 0.45), eout(0.08, 0.45), eout(0., 0.45), eout(0.25, 0.45))
+            (eout(0.03, 0.26), eout(0.05, 0.2), eout(0.02, 0.2), eout(0., 0.2), eout(0.1, 0.22))
         };
         // the picture blurs in with the shade (mpv draws it; steps of 5% are plenty)
         {

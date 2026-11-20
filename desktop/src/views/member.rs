@@ -68,20 +68,6 @@ fn metas(v: &Value) -> Vec<(Meta, Value)> {
         .collect()
 }
 
-/// Discord's display-name fonts that couch carries (all SIL Open Font
-/// License, from Google Fonts); the others fall back to couch's own.
-fn name_font(id: i64) -> Option<&'static str> {
-    Some(match id {
-        1 => "Bangers",
-        2 => "BioRhyme",
-        3 => "Cherry Bomb One",
-        4 => "Chicle",
-        6 => "MuseoModerno",
-        8 => "Pixelify Sans",
-        _ => return None,
-    })
-}
-
 fn hex(s: &str) -> Option<Hsla> {
     let s = s.trim_start_matches('#');
     u32::from_str_radix(s, 16).ok().filter(|_| s.len() == 6).map(|v| gpui::rgb(v).into())
@@ -127,7 +113,7 @@ impl Render for Member {
         // and their display-name style (font + colour), where couch has the font
         let banner = d["look"]["banner"].as_str().map(String::from);
         let ns = &d["look"]["nameStyle"];
-        let name_font = ns["font"].as_i64().and_then(name_font);
+        let name_font = ns["font"].as_i64().and_then(crate::ui::names::font);
         let name_color = ns["colors"][0].as_str().and_then(hex).filter(|_| ns["font"].as_i64().is_some());
         let stats: Vec<(i64, &str)> = [("movies", "films"), ("shows", "shows"), ("episodes", "episodes"), ("plan", "on the list")]
             .into_iter()

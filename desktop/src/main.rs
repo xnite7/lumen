@@ -591,7 +591,7 @@ impl Root {
                     .occlude()
                     .absolute()
                     .right(px(theme::GUTTER + 108.))
-                    .top(px(24.))
+                    .top(px(20.))
                     .cursor_pointer()
                     .on_click({
                         let id = self.me["id"].as_str().map(String::from);
@@ -600,7 +600,7 @@ impl Root {
                             None => Nav::go(Route::Settings, cx),
                         }
                     })
-                    .size(px(36.))
+                    .size(px(44.))
                     .rounded_full()
                     // (already placed absolutely: that holds the tour's marker too)
                     .child(tour::spot("me"))
@@ -612,7 +612,7 @@ impl Root {
                     .text_color(theme::text())
                     .overflow_hidden()
                     .child(match self.me["avatar"].as_str() {
-                        Some(u) => img(crate::net::face(u, 36.)).size_full().into_any_element(),
+                        Some(u) => img(crate::net::face(u, 44.)).size_full().into_any_element(),
                         None => div()
                             .child(self.me["name"].as_str().or(self.me["username"].as_str()).and_then(|n| n.chars().next()).unwrap_or('S').to_uppercase().to_string())
                             .into_any_element(),
