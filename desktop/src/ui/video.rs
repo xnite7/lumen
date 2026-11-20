@@ -535,6 +535,10 @@ pub fn hover(m: &crate::api::Meta, on: bool, cx: &mut App) {
         get(cx).update(cx, |v, cx| v.stop(&owner, cx));
         return;
     }
+    // previews on hover: off in settings
+    if !couch::state::get().core.settings().general.hover_previews {
+        return;
+    }
     cx.set_global(Pending(owner.clone()));
     // rest on it a moment (passing over a row doesn't set every card off)
     let delay = (dwell_secs() * 1000.) as u64;

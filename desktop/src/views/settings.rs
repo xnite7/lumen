@@ -22,10 +22,10 @@ enum Tab {
 }
 
 const TABS: [(Tab, &str, &str, &str); 9] = [
-    (Tab::Playing, "playing", "play", "which stream couch picks, and what plays by itself"),
-    (Tab::Video, "picture", "tv", "how the video is decoded and drawn"),
+    (Tab::Playing, "playing", "play", "what plays next, how loud, which files"),
+    (Tab::Video, "picture", "tv", "the picture, the glow around it, the bar under it"),
     (Tab::Subtitles, "subtitles", "subtitles", "how they look"),
-    (Tab::Couch, "couch", "couch", "home, previews, alerts and what your crew sees"),
+    (Tab::Couch, "couch", "couch", "Home, alerts and what your crew sees"),
     (Tab::Simkl, "Simkl", "checkCircle", "keep what you've watched, everywhere"),
     (Tab::Lights, "lights", "bulb", "Philips Hue: the room dims or follows the picture"),
     (Tab::Network, "network", "globe", "getting past blocks"),
@@ -44,15 +44,12 @@ use R::*;
 fn rows(tab: Tab) -> Vec<R> {
     match tab {
         Tab::Playing => vec![
-            Switch("couch picks the stream", "the best one your connection can keep up with", "streams.autoplayBest"),
-            Switch("next episode by itself", "", "playback.autoplayNext"),
+            Switch("next episode by itself", "at the credits, after a short countdown", "playback.autoplayNext"),
+            Switch("even volume", "quiet films turned up, loud ones down, so you're not riding the remote", "playback.evenVolume"),
+            Switch("volume up to 130%", "for quiet films on weak speakers", "playback.volumeBoost"),
+            Switch("prefer HDR", "off for a screen without HDR: plain versions first", "streams.preferHdr"),
             Switch("hide cam recordings", "never pick a cinema camera rip", "streams.hideCam"),
             Switch("hide 3D releases", "", "streams.hide3d"),
-            Switch("prefer HDR", "", "streams.preferHdr"),
-            Switch("prefer instant streams", "ones that start right away", "streams.preferCached"),
-            Switch("volume up to 130%", "", "playback.volumeBoost"),
-            Switch("even volume", "quiet films turned up, loud ones down, so you're not riding the remote", "playback.evenVolume"),
-            Choice("sort streams by", "streams.sort", vec![(json!("smart"), "best"), (json!("quality"), "quality"), (json!("size"), "size"), (json!("seeders"), "seeders")]),
             Choice("largest file", "streams.maxSizeGb", vec![(json!(0.0), "any"), (json!(5.0), "5 GB"), (json!(10.0), "10 GB"), (json!(20.0), "20 GB"), (json!(40.0), "40 GB")]),
         ],
         Tab::Video => vec![
@@ -75,20 +72,17 @@ fn rows(tab: Tab) -> Vec<R> {
             Choice("height", "subtitles.bottomOffset", vec![(json!(4.0), "low"), (json!(7.0), "normal"), (json!(12.0), "raised"), (json!(18.0), "high")]),
         ],
         Tab::Couch => vec![
-            Switch("previews on hover", "posters play a clip when you point at them", "general.hoverPreviews"),
-            Switch("billboard clips", "the big title on Home plays a clip", "general.heroTrailers"),
-            Switch("top 10 numbers", "", "general.topTenRanks"),
+            Switch("billboard clips", "the big title on Home plays its trailer", "general.heroTrailers"),
+            Switch("previews on hover", "posters play a clip when you rest on them", "general.hoverPreviews"),
             Switch("new episode alerts", "a notification when something you watch is out", "general.episodeAlerts"),
             Switch("big releases on the calendar", "", "general.calendarHits"),
-            Switch("hide adult titles", "", "general.hideAdult"),
-            Switch("show what I'm watching on the couch", "", "integrations.crewShare"),
+            Switch("show what I'm watching on the couch", "your crew sees it on their Home", "integrations.crewShare"),
             Switch("gatekeeper", "people ask before joining your couch", "integrations.crewGatekeeper"),
             Switch("Discord status", "\"watching …\" on your Discord profile", "integrations.discordPresence"),
         ],
         Tab::Simkl => vec![
             Switch("mark what I watch on Simkl", "as you finish things", "integrations.simklScrobble"),
             Switch("keep my watchlist in sync", "", "integrations.simklSyncWatchlist"),
-            Switch("ticks on Simkl count as watched here", "", "integrations.simklMirrorWatched"),
             Switch("log rewatches", "Simkl Pro / VIP: pressing Rewatch on a title counts it again", "integrations.simklRewatches"),
         ],
         Tab::Network => vec![

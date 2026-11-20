@@ -318,7 +318,38 @@ fn clean_cue(t: &str) -> String {
             _ => {}
         }
     }
-    rtl_visual(&fix_mojibake(out.trim()))
+    let mut text = fix_mojibake(out.trim());
+    // hide [sound descriptions]: [MUSIC], (DOOR SLAMS), and "JOHN:" speaker names
+    if couch::state::get().core.settings().subtitles.hide_sdh {
+        text = strip_sdh(&text);
+    }
+    rtl_visual(&text)
+}
+
+fn strip_sdh(s: &str) -> String {
+    let mut out = String::new();
+    let mut depth = 0;
+    for ch in s.chars() {
+        match ch {
+            '[' | '(' => depth += 1,
+            ']' | ')' if depth > 0 => depth -= 1,
+            c if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    out.lines()
+        .map(|l| {
+            let l = l.trim();
+            // a speaker's name in capitals before a colon
+            match l.split_once(':') {
+                Some((who, rest)) if who.len() <= 24 && !who.is_empty() && who.chars().all(|c| c.is_uppercase() || c.is_whitespace() || c == '.' || c == '\'' || c == '-') => rest.trim().to_string(),
+                _ => l.to_string(),
+            }
+        })
+        .map(|l| l.trim_start_matches(['-', ' ']).to_string())
+        .filter(|l| !l.trim().is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Arabic, Persian, Hebrew lines, ready for a renderer that only lays text
@@ -1072,6 +1103,10 @@ async fn ranked(kind: String, vid: String, rt: Value, prefer: Option<Value>) -> 
                 })
                 .collect();
             let mut order = rank(ok, mbps, &rt);
+            // "prefer HDR" off (an SDR screen): HDR / Dolby Vision files only if nothing else
+            if s["preferHdr"].as_bool() == Some(false) {
+                order.sort_by_key(|x| x["_couch"]["hdr"].as_array().map_or(false, |h| !h.is_empty()));
+            }
             // ones that lagged before go last; your own pick (or the host's) first
             let bad = couch::state::get().core.db.get::<serde_json::Map<String, Value>>(BAD_KEY).unwrap_or_default();
             let (good, lagged): (Vec<Value>, Vec<Value>) = order.into_iter().partition(|s| !bad.contains_key(&stream_key(s)));

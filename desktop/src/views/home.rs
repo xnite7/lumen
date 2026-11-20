@@ -129,8 +129,12 @@ impl Home {
                         cx.notify();
                     });
                     // a couple of seconds in, the billboard plays the title's
-                    // trailer, once (a clip only when there's no trailer)
+                    // trailer, once (a clip only when there's no trailer); not
+                    // when billboard clips are off in settings
                     crate::timer::after(std::time::Duration::from_millis(2000)).await;
+                    if !couch::state::get().core.settings().general.hero_trailers {
+                        return;
+                    }
                     let year = pick.year();
                     let trailer = api::call::<Option<String>>("trailer_get", json!({ "kind": pick.kind, "id": pick.id })).await.ok().flatten().filter(|k| !k.is_empty()).map(|k| format!("https://www.youtube.com/watch?v={k}"));
                     let url = match (std::env::var("COUCH_TEST_CLIP"), trailer) {
