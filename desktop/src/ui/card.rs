@@ -241,7 +241,7 @@ pub fn card_with(
         .text_size(px(13.))
         .children((!l.is_empty()).then(|| div().flex_none().font_weight(gpui::FontWeight::SEMIBOLD).text_color(theme::label2()).child(l)))
         .child(div().flex_1().h(px(4.)).rounded_full().bg(theme::white(0.18)).children(progress.map(|p| div().h_full().rounded_full().w(gpui::relative(p.clamp(0., 1.))).bg(gpui::white()))))
-        .children((!r.is_empty()).then(|| div().flex_none().text_color(theme::label3()).child(r)));
+        .children((!r.is_empty()).then(|| div().flex_none().text_color(if r == "new episode" { theme::neon() } else { theme::label3() }).child(r)));
     div().flex_none().flex().flex_col().gap(px(8.)).child(el).child(line).into_any_element()
 }
 

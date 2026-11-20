@@ -671,6 +671,8 @@ pub async fn calendar(core: &Core, mine: Vec<(String, String)>, follows: Vec<Val
         t["date"] = json!(d);
         t["label"] = json!(if en == 1 { if sn == 1 { "series premiere".to_string() } else { format!("season {sn} premiere") } } else { format!("S{sn} E{en}") });
         t["episode"] = json!(pick.get("name"));
+        t["season"] = json!(sn);
+        t["number"] = json!(en);
         t["still"] = json!(img(pick.get("still_path").and_then(|v| v.as_str()), "w780"));
         t["source"] = json!(src);
         if let Some(imdb) = full.pointer("/external_ids/imdb_id").and_then(|v| v.as_str()) {

@@ -1005,6 +1005,11 @@ async fn with_next_up(items: Vec<Value>) -> Vec<Value> {
                     && v["released"].as_str().filter(|r| !r.is_empty()).map_or(false, |r| &r[..r.len().min(10)] <= today.as_str())
             })?;
             let mut e = i.clone();
+            // out in the last ten days: a new episode, first in the row
+            let rel = next["released"].as_str().unwrap_or("");
+            if !rel.is_empty() && &rel[..rel.len().min(10)] >= couch::integrations::tmdb::day_str(-10).as_str() {
+                e["_new"] = json!(true);
+            }
             e["state"]["video_id"] = next["id"].clone();
             e["state"]["timeOffset"] = json!(0);
             e["state"]["duration"] = json!(0);
@@ -1014,7 +1019,18 @@ async fn with_next_up(items: Vec<Value>) -> Vec<Value> {
     }))
     .await;
     let mut all: Vec<Value> = items.into_iter().chain(found.into_iter().flatten()).collect();
-    all.sort_by_key(|i| -couch::library::parse_iso(i["state"]["lastWatched"].as_str().unwrap_or("")));
+    // new episodes first, then what you watched last
+    all.sort_by_key(|i| (i["_new"].as_bool() != Some(true), -couch::library::parse_iso(i["state"]["lastWatched"].as_str().unwrap_or(""))));
+    // and a few from your list you haven't started, at the end
+    let have: std::collections::HashSet<String> = all.iter().filter_map(|i| i["_id"].as_str().or(i["id"].as_str()).map(String::from)).collect();
+    let lists = api::call::<Value>("my_lists", json!({})).await.unwrap_or_default();
+    let plan: Vec<Value> = lists["plan"].as_array().cloned().unwrap_or_default();
+    for m in plan.into_iter().filter(|m| m["id"].as_str().map_or(false, |id| !have.contains(id))).take(4) {
+        let mut e = m.clone();
+        e["_id"] = m["id"].clone();
+        e["_plan"] = json!(true);
+        all.push(e);
+    }
     all
 }
 
@@ -1051,7 +1067,15 @@ async fn cw_row() -> Option<(Vec<Meta>, Vec<(Option<f32>, Option<String>)>)> {
                         m if m >= 60 => format!("{}h {}m left", m / 60, m % 60),
                         m => format!("{m}m left"),
                     });
-                    let left = if v["_next"].as_bool() == Some(true) { Some("up next".to_string()) } else { left };
+                    let left = if v["_new"].as_bool() == Some(true) {
+                        Some("new episode".to_string())
+                    } else if v["_next"].as_bool() == Some(true) {
+                        Some("up next".to_string())
+                    } else if v["_plan"].as_bool() == Some(true) {
+                        Some("on your list".to_string())
+                    } else {
+                        left
+                    };
                     let sub = (!ep.is_empty() || left.is_some()).then(|| format!("{ep}\t{}", left.unwrap_or_default()));
                     metas.push(m);
                     extra.push((p, sub));
@@ -1063,8 +1087,8 @@ impl Home {
     fn set_cw(&mut self, metas: Vec<Meta>, extra: Vec<(Option<f32>, Option<String>)>, cx: &mut Context<Self>) {
         self.rows.retain(|r| r.key != "cw");
         if !metas.is_empty() {
-            let spec = views_catalog::Spec { title: "continue watching".into(), fixed: Some(metas.clone()), ..Default::default() };
-            self.rows.insert(0, Row { key: "cw".into(), title: "continue watching".into(), items: metas, extra, spec: Some(spec) });
+            let spec = views_catalog::Spec { title: "up next".into(), fixed: Some(metas.clone()), ..Default::default() };
+            self.rows.insert(0, Row { key: "cw".into(), title: "up next".into(), items: metas, extra, spec: Some(spec) });
         }
         cx.notify();
     }

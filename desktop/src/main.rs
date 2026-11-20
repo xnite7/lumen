@@ -333,6 +333,23 @@ impl Nav {
             }
         });
     }
+    /// the end of a film (or the last episode out): leave the player for
+    /// "watch next"
+    pub fn finale(from: Meta, cx: &mut App) {
+        cx.defer(move |cx| {
+            playback::get(cx).update(cx, |p, cx| p.close(cx));
+            if Self::route(cx) == Some(Route::Player) {
+                Self::back(cx);
+            }
+            let from = from.clone();
+            cx.defer(move |cx| {
+                if let Some(r) = Self::root(cx) {
+                    let f = r.read(cx).finale.clone();
+                    f.update(cx, |f, cx| f.show(from, cx));
+                }
+            });
+        });
+    }
     /// your year on the couch
     pub fn wrapped(cx: &mut App) {
         cx.defer(|cx| {
@@ -393,6 +410,7 @@ pub struct Root {
     invite: Entity<views::invite::Invite>,
     pub planner: Entity<views::planner::Planner>,
     pub wrapped: Entity<views::wrapped::Wrapped>,
+    pub finale: Entity<views::finale::Finale>,
     pub month: Entity<views::month::Month>,
     pub addto: Entity<views::addto::AddTo>,
     pub menu: Entity<views::menu::Menu>,
@@ -593,6 +611,17 @@ impl Root {
                 m.open = false;
                 cx.notify();
             });
+            return;
+        }
+        if self.finale.read(cx).open {
+            let f = self.finale.clone();
+            match k {
+                "right" => f.update(cx, |f, cx| f.step(1, cx)),
+                "left" => f.update(cx, |f, cx| f.step(-1, cx)),
+                "enter" => f.update(cx, |f, cx| f.play(cx)),
+                "escape" => f.update(cx, |f, cx| f.close(cx)),
+                _ => {}
+            }
             return;
         }
         if self.wrapped.read(cx).open {
@@ -1158,7 +1187,7 @@ impl Render for Root {
             cx.defer(move |_| mini::fit(s));
         }
         // sheets and menus over the page keep the wheel for themselves
-        ui::smooth::set_overlay(self.menu.read(cx).open.is_some() || self.addto.read(cx).meta.is_some() || self.wrapped.read(cx).open || self.planner.read(cx).meta.is_some());
+        ui::smooth::set_overlay(self.finale.read(cx).open || self.menu.read(cx).open.is_some() || self.addto.read(cx).meta.is_some() || self.wrapped.read(cx).open || self.planner.read(cx).meta.is_some());
         // the film keeps playing in the corner while you browse
         let want_mini = playback::get(cx).read(cx).open && self.route != Route::Player && !pip::is_on();
         if want_mini != mini::is_on() {
@@ -1295,6 +1324,7 @@ impl Render for Root {
             .when(playing && !pip::is_on() && !(window.is_fullscreen() && self.player.read(cx).chrome_hidden()), |d| d.child(window_controls()))
             .child(self.together_cards(window, cx))
             .when(!playing && self.route != Route::SignIn, |d| d.child(self.planner.clone()).child(self.invite.clone()))
+            .when(self.finale.read(cx).open, |d| d.child(gpui::deferred(self.finale.clone()).with_priority(3)))
             .when(self.menu.read(cx).open.is_some(), |d| d.child(gpui::deferred(self.menu.clone()).with_priority(3)))
             .when(self.addto.read(cx).meta.is_some(), |d| d.child(gpui::deferred(self.addto.clone()).with_priority(3)))
             .when(self.wrapped.read(cx).open, |d| d.child(self.wrapped.clone()))
@@ -1344,6 +1374,18 @@ impl Render for Root {
 }
 
 /// A page by name: "detail:series:tt123", "search", "couch", …
+/// "play:series:tt…:2:5" (a notification's "watch now"): what to play
+fn play_of(spec: &str) -> Option<(Meta, Option<String>)> {
+    let spec = spec.trim().trim_matches('"');
+    let spec = spec.strip_prefix("couch://").or(spec.strip_prefix("couch:")).unwrap_or(spec).trim_end_matches('/');
+    let p: Vec<&str> = spec.split(':').collect();
+    match p.as_slice() {
+        ["play", "series", id, s, e] => Some((Meta { kind: "series".into(), id: (*id).into(), ..Default::default() }, Some(format!("{id}:{s}:{e}")))),
+        ["play", k, id] => Some((Meta { kind: (*k).into(), id: (*id).into(), ..Default::default() }, None)),
+        _ => None,
+    }
+}
+
 fn route_of(spec: &str) -> Option<Route> {
     // (a couch: link from a notification carries the same spec)
     let spec = spec.trim().trim_matches('"');
@@ -1599,6 +1641,14 @@ fn main() {
                         window.focus(&focus, cx);
                         // a page asked for at launch (the jump list, COUCH_START=detail:series:tt0903747)
                         let start = jump::requested().and_then(|v| route_of(&v));
+                        // started from "watch now": play it once couch is up
+                        if let Some((m, vid)) = jump::requested().and_then(|v| play_of(&v)) {
+                            cx.spawn(async move |_, cx| {
+                                crate::timer::after(std::time::Duration::from_secs(3)).await;
+                                let _ = cx.update(|cx| playback::quick_play(m, vid, None, cx));
+                            })
+                            .detach();
+                        }
                         // later launches hand their page over here
                         let launches = launches.take();
                         cx.spawn_in(window, async move |this, cx| {
@@ -1610,7 +1660,9 @@ fn main() {
                                         return;
                                     }
                                     // Nav updates Root itself, so not from inside an update of Root
-                                    if let Some(route) = route_of(&spec) {
+                                    if let Some((m, vid)) = play_of(&spec) {
+                                        let _ = cx.update(|_, cx| playback::quick_play(m, vid, None, cx));
+                                    } else if let Some(route) = route_of(&spec) {
                                         let _ = cx.update(|_, cx| Nav::go(route, cx));
                                     }
                                     // to the front: Windows messages couch's window right away,
@@ -1656,6 +1708,7 @@ fn main() {
                             invite: cx.new(views::invite::Invite::new),
                             planner: cx.new(views::planner::Planner::new),
                             wrapped: cx.new(views::wrapped::Wrapped::new),
+                            finale: cx.new(views::finale::Finale::new),
                             month: cx.new(views::month::Month::new),
                             addto,
                             menu,

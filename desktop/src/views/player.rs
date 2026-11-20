@@ -53,6 +53,9 @@ pub struct PlayerView {
     countdown: Option<(String, Instant)>,
     /// you said no to it for this episode
     countdown_off: Option<String>,
+    /// the end of a film (or the last episode out): "watch next" counts down
+    finale_cd: Option<(String, Instant)>,
+    finale_off: Option<String>,
     vol_acc: f64,
     vol_target: Option<f64>,
     /// dragging the scrub bar (hover_x is where)
@@ -186,7 +189,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, blur_sent: 0., ate_click: false, next_x: Default::default() }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, finale_cd: None, finale_off: None, blur_sent: 0., ate_click: false, next_x: Default::default() }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -2149,6 +2152,40 @@ impl Render for PlayerView {
                 window.request_animation_frame();
             }
         }
+        // nothing after this one (a film, or the last episode out): at the
+        // credits (or the last 30 s) "watch next" counts down, then the
+        // player gives way to it. Not on a watch party.
+        let vid_now = self.pb.read(cx).video_id.clone();
+        let ending = !guest
+            && !hosting
+            && next.is_none()
+            && st.duration > 600.
+            && (matches!(segment.as_ref().map(|x| x.0.as_str()), Some("credits")) || st.duration - st.pos < 30.)
+            && self.finale_off.as_deref() != Some(vid_now.as_str());
+        if ending && !st.paused {
+            if self.finale_cd.as_ref().map(|c| &c.0) != Some(&vid_now) {
+                self.finale_cd = Some((vid_now.clone(), Instant::now()));
+            }
+        } else if !ending {
+            self.finale_cd = None;
+        }
+        let finale_left = self.finale_cd.as_ref().map(|c| COUNTDOWN - c.1.elapsed().as_secs_f32());
+        if let Some(l) = finale_left {
+            if l <= 0. {
+                self.finale_cd = None;
+                self.finale_off = Some(vid_now.clone());
+                if let Some(m) = self.pb.read(cx).meta.clone() {
+                    crate::Nav::finale(m, cx);
+                }
+            } else if !st.paused {
+                window.request_animation_frame();
+            } else {
+                // paused: the countdown waits
+                if let Some(c) = self.finale_cd.as_mut() {
+                    c.1 = Instant::now() - std::time::Duration::from_secs_f32((COUNTDOWN - l).max(0.));
+                }
+            }
+        }
         let tail_kind = segment.as_ref().map(|x| x.0.clone()).filter(|k| k == "credits" || k == "preview").unwrap_or_else(|| "credits".into());
         let skip: Option<gpui::AnyElement> = if guest { None } else { match &segment {
             Some((k, end)) if k == "intro" || k == "recap" || (k == "preview" && next.is_none()) => {
@@ -2175,6 +2212,56 @@ impl Render for PlayerView {
                     }) as Box<dyn Fn(&mut gpui::App)>
                 });
                 Some(next_pill(self.pb.clone(), next.clone().unwrap_or_default(), &tail_kind, left, cancel))
+            }
+            _ if finale_left.is_some() => {
+                let l = finale_left.unwrap_or(0.);
+                let c = seg_color("credits");
+                let me = cx.entity().downgrade();
+                let me2 = me.clone();
+                let vid = vid_now.clone();
+                let meta = self.pb.read(cx).meta.clone();
+                let main = seg_pill("pl-finale", "credits", format!("watch next · {}", l.ceil().max(0.) as i64))
+                    .children(Some(div().absolute().left_0().bottom_0().h(px(3.)).w(gpui::relative((l / COUNTDOWN).clamp(0., 1.))).bg(c)))
+                    .on_click(move |_, _, cx| {
+                        cx.stop_propagation();
+                        let _ = me.update(cx, |v, _| v.finale_cd = None);
+                        if let Some(m) = meta.clone() {
+                            crate::Nav::finale(m, cx);
+                        }
+                    });
+                Some(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(main)
+                        .child(
+                            div()
+                                .id("pl-finale-x")
+                                .size(px(52.))
+                                .rounded(px(14.))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .cursor_pointer()
+                                .bg(gpui::rgba(0x0a0c14d9))
+                                .border_1()
+                                .border_color(theme::white(0.12))
+                                .hover(|s| s.bg(theme::white(0.12)))
+                                .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                                .on_click(move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    let vid = vid.clone();
+                                    let _ = me2.update(cx, |v, cx| {
+                                        v.finale_cd = None;
+                                        v.finale_off = Some(vid);
+                                        cx.notify();
+                                    });
+                                })
+                                .child(icon("close", 18.)),
+                        )
+                        .into_any_element(),
+                )
             }
             _ => None,
         } };
