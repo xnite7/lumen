@@ -914,6 +914,34 @@ impl Mpv {
                 }
                 mpv.command("change-list", &["glsl-shader-opts", "add", &format!("couch_blur={v:.3}")])
             }
+            // the control bar's glass: the film behind it blurred, in its
+            // rounded shape (x, y, w, h, r: fractions of the window; a: 0..1)
+            "bar-blur" => {
+                let f = |k: &str| num(k).unwrap_or(0.0);
+                let path = self.core.cache_dir.join("couch-bar-blur.glsl");
+                let p = path.to_string_lossy().to_string();
+                let on: Vec<String> = mpv.get_property::<String>("glsl-shaders").map(|l| l.split([';', ',']).map(String::from).collect()).unwrap_or_default();
+                if !on.iter().any(|x| x == &p) {
+                    if f("a") <= 0.0 {
+                        return Ok(Value::Null);
+                    }
+                    std::fs::write(&path, BAR_BLUR).map_err(|e| AppError::msg(e.to_string()))?;
+                    let _ = mpv.command("change-list", &["glsl-shaders", "append", &p]);
+                }
+                let opts = format!(
+                    "couch_bx={:.5},couch_by={:.5},couch_bw={:.5},couch_bh={:.5},couch_br={:.5},couch_ba={:.3}",
+                    f("x"),
+                    f("y"),
+                    f("w"),
+                    f("h"),
+                    f("r"),
+                    f("a").clamp(0.0, 1.0)
+                );
+                for kv in opts.split(',') {
+                    let _ = mpv.command("change-list", &["glsl-shader-opts", "add", kv]);
+                }
+                Ok(())
+            }
             "deband" => mpv.set_property("deband", a.get("value").and_then(|v| v.as_bool()).unwrap_or(true)),
             "chapters" => {
                 let n: i64 = mpv.get_property("chapter-list/count").unwrap_or(0);
@@ -1099,6 +1127,64 @@ fn crop_bars(mpv: &libmpv2::Mpv, gen: u64) {
     let _ = mpv.command("vf", &["add", &format!("@couchcrop:lavfi=[crop=w=trunc(iw*{fw:.4}/2)*2:h=trunc(ih*{fh:.4}/2)*2:x=trunc(iw*{l:.4}):y=trunc(ih*{t:.4})]")]);
 }
 
+
+/// The control bar's glass: inside a rounded rectangle (given as fractions of
+/// the window, live), the picture is blurred and lifted a little, like frosted
+/// glass; outside it nothing changes. On the finished picture (OUTPUT), so it
+/// lines up with couch's bar exactly, black bars and all.
+const BAR_BLUR: &str = r#"//!PARAM couch_bx
+//!TYPE DYNAMIC float
+0.0
+//!PARAM couch_by
+//!TYPE DYNAMIC float
+0.0
+//!PARAM couch_bw
+//!TYPE DYNAMIC float
+0.0
+//!PARAM couch_bh
+//!TYPE DYNAMIC float
+0.0
+//!PARAM couch_br
+//!TYPE DYNAMIC float
+0.0
+//!PARAM couch_ba
+//!TYPE DYNAMIC float
+0.0
+
+//!HOOK OUTPUT
+//!BIND HOOKED
+//!DESC couch bar glass
+vec4 hook() {
+    vec4 c = HOOKED_tex(HOOKED_pos);
+    if (couch_ba <= 0.001 || couch_bw <= 0.0)
+        return c;
+    vec2 px = HOOKED_pos * HOOKED_size;
+    vec2 lo = vec2(couch_bx, couch_by) * HOOKED_size;
+    vec2 sz = vec2(couch_bw, couch_bh) * HOOKED_size;
+    float rad = couch_br * HOOKED_size.y;
+    // rounded rectangle: <0 inside
+    vec2 q = abs(px - (lo + sz * 0.5)) - (sz * 0.5 - vec2(rad));
+    float d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - rad;
+    if (d > 1.5)
+        return c;
+    float inside = clamp(0.5 - d / 1.5, 0.0, 1.0) * couch_ba;
+    float r = 22.0 * HOOKED_size.y / 1080.0;
+    vec4 acc = c;
+    float n = 1.0;
+    for (int i = 1; i < 48; i++) {
+        float fi = float(i);
+        float rr = sqrt(fi / 48.0) * r;
+        float a = fi * 2.39996323;
+        acc += HOOKED_tex(HOOKED_pos + vec2(cos(a), sin(a)) * rr * HOOKED_pt);
+        n += 1.0;
+    }
+    vec4 b = acc / n;
+    // frosted: a touch brighter and less saturated
+    float l = dot(b.rgb, vec3(0.299, 0.587, 0.114));
+    b.rgb = mix(b.rgb, vec3(l), 0.18) * 1.06 + 0.015;
+    return mix(c, b, inside);
+}
+"#;
 
 /// The paused picture's blur: a golden-angle disc blur on the film's picture,
 /// strength (`couch_blur`, 0..1) changed live without recompiling.

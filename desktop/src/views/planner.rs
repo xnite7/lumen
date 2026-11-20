@@ -124,7 +124,8 @@ impl Render for Planner {
             .flex()
             .items_center()
             .justify_center()
-            .child(div().id("plan-scrim").absolute().top_0().left_0().size_full().bg(theme::black(0.6)).on_click(cx.listener(|p, _, _, cx| {
+            .child(div().id("plan-scrim").absolute().top_0().left_0().size_full().occlude().bg(theme::black(0.6)).on_mouse_down(gpui::MouseButton::Left, cx.listener(|p, _, _, cx| {
+                cx.stop_propagation();
                 p.meta = None;
                 cx.notify();
             })))

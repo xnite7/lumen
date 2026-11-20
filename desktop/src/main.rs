@@ -1129,8 +1129,8 @@ impl Root {
             .child(window_controls())
             .child(img("brand/nav-mark.png").w(px(120.)).h(px(68.)).object_fit(gpui::ObjectFit::Contain).opacity(0.6))
             .child(div().text_size(px(30.)).font_weight(FontWeight::BLACK).child("you're off the couch"))
-            .child(div().max_w(px(460.)).text_center().text_size(px(15.)).line_height(px(22.)).text_color(theme::label2()).child("couch is for the midnite crew. your account doesn't have the couch role in the server anymore. get it back, then check again."))
-            .child(ui::join_discord("lock-join", "open the server"))
+            .child(div().max_w(px(460.)).text_center().text_size(px(15.)).line_height(px(22.)).text_color(theme::label2()).child("couch is for the midnite crew. join the server (or get the couch role back), then check again."))
+            .child(ui::join_discord("lock-join", "join the Discord"))
             .child(
                 div()
                     .mt(px(10.))
@@ -1361,6 +1361,9 @@ impl Render for Root {
         }
         if playing {
             cx.defer(|_| mini::place_clip(None));
+        } else {
+            // the film in the corner: no bar, so no bar glass on it
+            views::player::glass_off(cx);
         }
         // "watch next" and TV mode cover the whole page: it isn't drawn under
         // them (it would also cover the hole their trailers show through)

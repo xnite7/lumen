@@ -143,7 +143,9 @@ impl Render for AddTo {
             .items_center()
             .justify_center()
             .child(
-                div().id("at-scrim").absolute().top_0().left_0().size_full().bg(theme::black(0.55)).on_click(cx.listener(|a, _, _, cx| {
+                // (closes on the press, and nothing behind it gets the click)
+                div().id("at-scrim").absolute().top_0().left_0().size_full().occlude().bg(theme::black(0.55)).on_mouse_down(gpui::MouseButton::Left, cx.listener(|a, _, _, cx| {
+                    cx.stop_propagation();
                     a.meta = None;
                     cx.notify();
                 })),

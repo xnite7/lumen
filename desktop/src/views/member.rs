@@ -239,7 +239,6 @@ impl Render for Member {
                                         .on_click(|_, _, cx| Nav::go(crate::Route::Settings, cx))
                                         .child(crate::ui::icon("settings", 22.)),
                                 )
-                                .child(crate::ui::join_discord("m-discord", "the server"))
                             }))
                             .child(div().flex().gap(px(22.)).children(stats.into_iter().map(|(n, l)| {
                                 div().flex().items_baseline().gap(px(6.)).child(div().text_size(px(22.)).font_weight(FontWeight::BLACK).child(n.to_string())).child(div().text_size(px(14.)).text_color(theme::label2()).child(l))

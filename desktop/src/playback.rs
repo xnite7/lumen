@@ -885,6 +885,17 @@ pub fn quick_play(base: Meta, video_id: Option<String>, start_at: Option<f64>, c
 /// couch: the host's own stream, so you're both on the same file).
 pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f64>, prefer: Option<Value>, cx: &mut App) {
     let pb = get(cx);
+    // already playing (the corner picture, the page behind it): back to it,
+    // not a fresh search that drops the film you're watching
+    {
+        let p = pb.read(cx);
+        let same_title = p.meta.as_ref().map_or(false, |m| m.id == base.id);
+        let same_video = video_id.as_ref().map_or(true, |v| *v == p.video_id);
+        if p.open && !p.loading && p.error.is_empty() && same_title && same_video && p.state.duration > 0. && !p.state.ended && prefer.is_none() && start_at.is_none() {
+            crate::Nav::go(crate::Route::Player, cx);
+            return;
+        }
+    }
     let g = pb.update(cx, |p, cx| {
         p.load_gen += 1;
         p.open = true;

@@ -116,11 +116,16 @@ impl PlayerView {
                 let held = (on_bar || busy) && idle < Duration::from_secs(10);
                 // paused and left alone a while: the controls go too (the title stays)
                 let paused_fresh = paused && (idle < Duration::from_secs(4) || held);
-                let show = paused_fresh || v.menu.is_some() || v.drag || v.vol_pinned || held || idle < Duration::from_millis(3200) || v.pb.read(cx).loading;
+                // (an open menu doesn't hold them up: when they go, it goes too)
+                let show = paused_fresh || v.drag || v.vol_pinned || held || idle < Duration::from_millis(3200) || v.pb.read(cx).loading;
                 // the little picture-in-picture window: controls only while the pointer is on it
                 let show = if crate::pip::is_on() { crate::pip::cursor_inside() && !v.pb.read(cx).loading } else { show };
                 if show != v.shown {
                     v.shown = show;
+                    if !show {
+                        v.menu = None;
+                        v.vol_open = false;
+                    }
                     // the pointer goes away with the controls (back on the next move)
                     #[cfg(target_os = "windows")]
                     if !show {
@@ -299,8 +304,28 @@ pub fn boost_end(cx: &mut gpui::App) -> bool {
 pub fn boosting() -> bool {
     BOOST.with(|b| b.get()).is_some()
 }
-/// a press began (space or the picture): after 350 ms still held, 2×
+/// is the key / button really down right now? (asks Windows: a let-go
+/// outside the window, or one swallowed by a window drag, never reaches us)
+fn really_down(mouse: bool) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+        let vk = if mouse { 0x01 } else { 0x20 };
+        return unsafe { GetAsyncKeyState(vk) } as u16 & 0x8000 != 0;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = mouse;
+        true
+    }
+}
+
+/// a press began (space, or the picture with `mouse`): after 350 ms still
+/// held, 2× — and back to normal the moment it's let go, wherever that is
 pub fn hold_begin(cx: &mut gpui::App) {
+    hold_begin_by(false, cx)
+}
+pub fn hold_begin_by(mouse: bool, cx: &mut gpui::App) {
     ATE.with(|a| a.set(false));
     let n = HOLD.with(|h| {
         let n = h.get().1 + 1;
@@ -309,9 +334,29 @@ pub fn hold_begin(cx: &mut gpui::App) {
     });
     cx.spawn(async move |cx| {
         crate::timer::after(Duration::from_millis(350)).await;
-        let still = HOLD.with(|h| h.get()) .1 == n && HOLD.with(|h| h.get()).0.is_some();
-        if still {
-            let _ = cx.update(|cx| boost_start(cx));
+        let still = HOLD.with(|h| h.get()).1 == n && HOLD.with(|h| h.get()).0.is_some() && really_down(mouse);
+        if !still {
+            return;
+        }
+        let on = cx.update(|cx| boost_start(cx));
+        if !on {
+            return;
+        }
+        // watch the button itself: let go anywhere (out of the window, over the
+        // taskbar) and 2× ends
+        loop {
+            crate::timer::after(Duration::from_millis(100)).await;
+            if !boosting() || HOLD.with(|h| h.get()).1 != n {
+                break;
+            }
+            if !really_down(mouse) {
+                HOLD.with(|h| {
+                    let (_, k) = h.get();
+                    h.set((None, k));
+                });
+                let _ = cx.update(|cx| boost_end(cx));
+                break;
+            }
         }
     })
     .detach();
@@ -390,19 +435,13 @@ fn soft_light(pic: &std::sync::Arc<gpui::Image>) -> Option<std::sync::Arc<gpui::
 }
 
 /// The progress bar styles: (key, name in settings, moves?)
-pub const BAR_STYLES: [(&str, &str, bool); 13] = [
+pub const BAR_STYLES: [(&str, &str, bool); 7] = [
     ("mesh", "shimmer", true),
     ("chameleon", "chameleon", false),
     ("fade", "logo fade", false),
     ("white", "plain white", false),
     ("steel", "steel", true),
-    ("pulse", "pulse", true),
-    ("aurora", "aurora", true),
-    ("ember", "ember", true),
-    ("ocean", "ocean", true),
-    ("midnite", "midnite", true),
     ("gold", "gold", true),
-    ("blocks", "blocks", false),
     ("rainbow", "rainbow", true),
 ];
 
@@ -463,22 +502,12 @@ pub fn bar_fill(style: &str, c1: gpui::Hsla, c2: gpui::Hsla, t: f32) -> gpui::An
         }
         // brushed metal with a light running along it
         "steel" => sheen(h(220., 0.06, 0.62), h(220., 0.08, 0.82), t, 0.9).into_any_element(),
-        // plain white, a soft brighter band breathing along it
-        "pulse" => sheen(h(0., 0., 0.86), h(0., 0., 1.), t, 1.6).into_any_element(),
-        "aurora" => mesh3(h(150., 0.75, 0.55), h(185., 0.8, 0.55), h(275., 0.6, 0.6), t, false).into_any_element(),
-        "ember" => mesh3(h(18., 0.95, 0.55), h(38., 1., 0.58), h(355., 0.85, 0.45), t, true).into_any_element(),
-        "ocean" => mesh3(h(200., 0.85, 0.5), h(215., 0.9, 0.62), h(180., 0.7, 0.45), t, false).into_any_element(),
-        "midnite" => mesh3(h(320., 0.9, 0.6), h(280., 0.75, 0.55), h(340., 0.95, 0.68), t, true).into_any_element(),
         "gold" => sheen(h(42., 0.85, 0.5), h(48., 1., 0.78), t, 0.7).into_any_element(),
-        "blocks" => blocks().into_any_element(),
         "rainbow" => rainbow(t).into_any_element(),
         _ => mesh(c1, c2, t).into_any_element(),
     }
 }
 
-fn mesh3(a: gpui::Hsla, b: gpui::Hsla, c: gpui::Hsla, t: f32, sparks: bool) -> impl IntoElement {
-    mesh_with(a, b, Some(c), t, sparks)
-}
 
 /// one colour with a brighter band gliding along it (`speed`: passes per second, roughly)
 fn sheen(base: gpui::Hsla, light: gpui::Hsla, t: f32, speed: f32) -> impl IntoElement {
@@ -513,24 +542,6 @@ fn sheen(base: gpui::Hsla, light: gpui::Hsla, t: f32, speed: f32) -> impl IntoEl
     .size_full()
 }
 
-/// white blocks with small gaps, like an old VU meter
-fn blocks() -> impl IntoElement {
-    gpui::canvas(
-        |_, _, _| (),
-        |b, _, window, _| {
-            let (x0, y0, w, hh) = (f32::from(b.origin.x), f32::from(b.origin.y), f32::from(b.size.width), f32::from(b.size.height));
-            let (bw, gap) = (10f32, 3f32);
-            let mut x = 0.;
-            while x < w {
-                let ww = bw.min(w - x);
-                window.paint_quad(gpui::fill(gpui::Bounds::new(gpui::point(px(x0 + x), px(y0)), gpui::size(px(ww), px(hh))), gpui::white()).corner_radii(px(1.5)));
-                x += bw + gap;
-            }
-        },
-    )
-    .absolute()
-    .size_full()
-}
 
 /// the whole spectrum, slowly sliding
 fn rainbow(t: f32) -> impl IntoElement {
@@ -797,6 +808,33 @@ fn loading_name(t: &str) -> gpui::AnyElement {
 
 /// seconds the next episode waits in the credits before it plays by itself
 const COUNTDOWN: f32 = 10.;
+
+thread_local! {
+    /// the bar glass last sent to mpv: x, y, w, h, radius, amount
+    static BAR_SENT: std::cell::Cell<[f32; 6]> = const { std::cell::Cell::new([0.; 6]) };
+}
+
+/// tell mpv where the control bar's glass is (only when it changed)
+fn bar_glass(pb: &Entity<Playback>, v: [f32; 6], cx: &mut gpui::App) {
+    let last = BAR_SENT.with(|b| b.get());
+    if last.iter().zip(v.iter()).all(|(a, b)| (a - b).abs() < 0.0008) {
+        return;
+    }
+    if last[5] <= 0. && v[5] <= 0. {
+        return;
+    }
+    BAR_SENT.with(|b| b.set(v));
+    pb.read(cx).cmd("bar-blur", json!({ "x": v[0], "y": v[1], "w": v[2], "h": v[3], "r": v[4], "a": v[5] }));
+}
+
+/// the player isn't showing its bar (left the player, picture in picture): no glass
+pub fn glass_off(cx: &mut gpui::App) {
+    let v = BAR_SENT.with(|b| b.get());
+    if v[5] > 0. {
+        let pb = crate::playback::get(cx);
+        bar_glass(&pb, [v[0], v[1], v[2], v[3], v[4], 0.], cx);
+    }
+}
 
 /// the dark glass the controls sit on
 fn glass(d: gpui::Div) -> gpui::Div {
@@ -1787,9 +1825,10 @@ impl Render for PlayerView {
                 v.poke(cx)
             }))
             // holding the picture down: 2× while held
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|v, _, _, cx| {
-                if !v.drag {
-                    hold_begin(cx);
+            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|v, e: &gpui::MouseDownEvent, _, cx| {
+                // (not along the top: that's where the window is dragged from)
+                if !v.drag && f32::from(e.position.y) > 70. {
+                    hold_begin_by(true, cx);
                 }
             }))
             .on_mouse_up(gpui::MouseButton::Left, cx.listener(|v, _, _, cx| {
@@ -2095,6 +2134,15 @@ impl Render for PlayerView {
         if ct < 0.62 {
             window.request_animation_frame();
         }
+        // the bar's glass: the film blurred behind it, drawn by mpv in the
+        // bar's exact place (it slides and fades with the bar)
+        {
+            let vs = window.viewport_size();
+            let (fw, fh) = (f32::from(vs.width).max(1.), f32::from(vs.height).max(1.));
+            let bx = theme::GUTTER - 6.;
+            let by = fh + (1. - ca) * 48. - 24. - 62.;
+            bar_glass(&self.pb, [bx / fw, by / fh, (fw - 2. * bx) / fw, 62. / fh, 31. / fh, ca], cx);
+        }
         // paused: which episode, big, bottom left; each part rises in after the last
         // (not in picture-in-picture: too small for it)
         let want_pause = st.paused && !starting && self.pb.read(cx).error.is_empty() && self.menu.is_none() && !crate::pip::is_on() && f32::from(vw) >= 640.;
@@ -2177,6 +2225,7 @@ impl Render for PlayerView {
         // small window (picture in picture): just play/pause, ±10, a thin bar, and back to big
         // picture in picture (any size it's dragged to), or just a tiny window
         if crate::pip::is_on() || f32::from(vw) < 640. {
+            glass_off(cx);
             let paused = st.paused;
             let (pa, pb, pc) = (self.pb.clone(), self.pb.clone(), self.pb.clone());
             return root
@@ -2404,14 +2453,15 @@ impl Render for PlayerView {
                 .rounded(px(18.))
                 .overflow_hidden()
                 .bg(gpui::rgba(0x151114f2))
-                .border_1()
-                .border_color(theme::white(0.10))
+                // no outline: a faint shadow lifts it off the picture
+                .shadow(vec![gpui::BoxShadow { color: theme::black(0.45), offset: gpui::point(px(0.), px(14.)), blur_radius: px(36.), spread_radius: px(-6.), inset: false }])
                 .flex()
                 .flex_col()
                 .children(still.map(|u| {
                     let alt = imdb.clone().filter(|a| a != &u);
-                    img(u).w_full().h(px(191.)).object_fit(ObjectFit::Cover).with_fallback(move || match alt.clone() {
-                        Some(a) => img(a).w_full().h(px(191.)).object_fit(ObjectFit::Cover).into_any_element(),
+                    // (the picture rounds its own top corners: the card's clip is square)
+                    img(u).w_full().h(px(191.)).rounded_t(px(18.)).object_fit(ObjectFit::Cover).with_fallback(move || match alt.clone() {
+                        Some(a) => img(a).w_full().h(px(191.)).rounded_t(px(18.)).object_fit(ObjectFit::Cover).into_any_element(),
                         None => div().into_any_element(),
                     })
                 }))
@@ -2484,7 +2534,7 @@ impl Render for PlayerView {
                             .top(px(42.))
                             .flex()
                             .items_center()
-                            .gap(px(18.))
+                            .gap(px(30.))
                             .child(
                                 glass(div())
                                     .id("pl-back")
@@ -2560,8 +2610,15 @@ impl Render for PlayerView {
                     .w_full()
                     .h(px(210.))
                     .bg(linear_gradient(180., linear_color_stop(theme::black(0.0), 0.), linear_color_stop(theme::black(0.72), 1.)))
+                    // the strip the bar sits in (beside and under it): a press there isn't a pause
+                    .child(div().absolute().left_0().bottom_0().w_full().h(px(100.)).occlude().on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation()))
                     .child(
                         glass(div())
+                            // frosted glass: a lighter tint (mpv blurs the film under it), grain, a sheen
+                            .bg(gpui::rgba(0x1511146b))
+                            .overflow_hidden()
+                            .child(img("ui/grain.png").absolute().top_0().left_0().size_full().rounded_full().object_fit(ObjectFit::Cover).opacity(0.06))
+                            .child(div().absolute().top_0().left_0().w_full().h(px(30.)).rounded_t(px(31.)).bg(linear_gradient(180., linear_color_stop(theme::white(0.09), 0.), linear_color_stop(theme::white(0.), 1.))))
                             .absolute()
                             .left(px(g - 6.))
                             .right(px(g - 6.))
@@ -2569,6 +2626,15 @@ impl Render for PlayerView {
                             .h(px(62.))
                             .px(px(9.))
                             .occlude()
+                            // a press on the bar itself (not a button): any open menu closes
+                            .on_mouse_down(gpui::MouseButton::Left, cx.listener(|v, _, _, cx| {
+                                cx.stop_propagation();
+                                if v.menu.is_some() || v.vol_open {
+                                    v.menu = None;
+                                    v.vol_open = false;
+                                    cx.notify();
+                                }
+                            }))
                             .rounded_full()
                             .flex()
                             .items_center()

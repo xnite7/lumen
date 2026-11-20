@@ -135,7 +135,9 @@ impl Render for Menu {
                     .top_0()
                     .left_0()
                     .size_full()
-                    .on_click(cx.listener(|me, _, _, cx| {
+                    .occlude()
+                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(|me, _, _, cx| {
+                        cx.stop_propagation();
                         me.open = None;
                         cx.notify();
                     }))

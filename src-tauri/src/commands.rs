@@ -744,12 +744,17 @@ pub fn lists_value(core: &crate::core::Core) -> Value {
         }
         out
     };
+    // newest first: plan by when it was added, the others by when watched
+    let newest = |mut v: Vec<Value>, key: &str| -> Vec<Value> {
+        v.sort_by(|a, b| b[key].as_str().unwrap_or("").cmp(a[key].as_str().unwrap_or("")));
+        v
+    };
     json!({
         "simkl": true,
         "paid": simkl::paid(core),
-        "plan": rows(&["plantowatch"]),
-        "watching": rows(&["watching", "hold"]),
-        "completed": rows(&["completed"]),
+        "plan": newest(rows(&["plantowatch"]), "addedAt"),
+        "watching": newest(rows(&["watching", "hold"]), "watchedAt"),
+        "completed": newest(rows(&["completed"]), "watchedAt"),
     })
 }
 

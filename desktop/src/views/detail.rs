@@ -790,16 +790,23 @@ impl Render for Detail {
                         div()
                             .id("d-studio")
                             .relative()
+                            // as wide as the logo (not the whole column), so only the logo clicks
+                            .self_start()
                             .top(px(rz[1].1 * 2.6))
                             .opacity(rz[1].0)
                             .flex()
-                            .h(px(34.))
                             .items_center()
                             .cursor_pointer()
                             .hover(|s| s.opacity(0.75))
                             .on_click(move |_, _, cx| Nav::go(crate::Route::Studio(cid, n2.clone()), cx))
                             .child(match (pic, svg) {
-                                (Some(i), _) => img(i).h(px(30.)).max_w(px(200.)).object_fit(ObjectFit::Contain).into_any_element(),
+                                (Some(i), _) => {
+                                    // square-ish logos (A24, Neon's badge…) get more height than wide ones
+                                    let (w, h) = image::ImageReader::new(std::io::Cursor::new(&i.bytes)).with_guessed_format().ok().and_then(|r| r.into_dimensions().ok()).unwrap_or((4, 1));
+                                    let r = w as f32 / h.max(1) as f32;
+                                    let hh = if r < 1.4 { 56. } else if r < 2.4 { 40. } else { 30. };
+                                    img(i.clone()).h(px(hh)).w(px((hh * r).min(220.))).object_fit(ObjectFit::Contain).into_any_element()
+                                }
                                 (None, Some(u)) => img(u).h(px(30.)).max_w(px(200.)).object_fit(ObjectFit::Contain).into_any_element(),
                                 _ => div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::white(0.85)).child(cname.to_uppercase()).into_any_element(),
                             })
