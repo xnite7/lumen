@@ -814,7 +814,10 @@ fn bar_btn(id: &'static str, child: impl IntoElement, on: bool) -> gpui::Statefu
     div()
         .id(id)
         .occlude()
-        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_mouse_down(gpui::MouseButton::Left, move |_, _, cx| {
+            kick(id);
+            cx.stop_propagation()
+        })
         .size(px(44.))
         .flex_none()
         .flex()
@@ -858,6 +861,118 @@ fn bar_btn(id: &'static str, child: impl IntoElement, on: bool) -> gpui::Statefu
 thread_local! {
     /// each control-bar button: is the pointer on it, since when
     static HOVER: std::cell::RefCell<std::collections::HashMap<&'static str, (bool, Instant)>> = std::cell::RefCell::new(std::collections::HashMap::new());
+    /// each control-bar button: when it was last pressed (its icon's little show)
+    static KICK: std::cell::RefCell<std::collections::HashMap<&'static str, Instant>> = std::cell::RefCell::new(std::collections::HashMap::new());
+    /// play/pause: what it showed, since when (the two icons morph)
+    static PLAY_MORPH: std::cell::Cell<(bool, Option<Instant>)> = const { std::cell::Cell::new((false, None)) };
+}
+
+/// a control-bar button was pressed: its icon plays its animation
+pub fn kick(id: &'static str) {
+    KICK.with(|k| k.borrow_mut().insert(id, Instant::now()));
+}
+
+/// how an icon moves
+#[derive(Clone, Copy)]
+enum Fx {
+    /// ±10: the arrow swings round (−1 back, +1 ahead); a nudge on hover
+    Spin(f32),
+    /// grows a little on hover, pops when pressed
+    Pop,
+    /// the speaker: a wobble when pressed
+    Wobble,
+    /// full screen: opens outwards on hover
+    Grow,
+}
+
+fn back_out(t: f32) -> f32 {
+    let (c1, c3) = (1.70158, 2.70158);
+    1. + c3 * (t - 1.).powi(3) + c1 * (t - 1.).powi(2)
+}
+
+/// An animated control icon: hover and press drive a small transform
+/// (the SVGs themselves are still; couch moves them).
+fn fx(id: &'static str, s: gpui::Svg, kind: Fx, window: &mut Window) -> gpui::Svg {
+    let h = HOVER.with(|m| m.borrow().get(id).copied()).map_or(0., |(over, since)| {
+        let x = (since.elapsed().as_secs_f32() / 0.22).min(1.);
+        let e = 1. - (1. - x).powi(3);
+        if over { e } else { 1. - e }
+    });
+    let t = KICK.with(|k| k.borrow().get(id).map(|i| i.elapsed().as_secs_f32())).unwrap_or(9.);
+    let live = t < 0.7 || (h > 0.001 && h < 0.999);
+    if live {
+        window.request_animation_frame();
+    }
+    let (mut rot, mut sc) = (0f32, 1f32);
+    match kind {
+        Fx::Spin(dir) => {
+            rot = dir * 0.42 * h;
+            if t < 0.6 {
+                rot += dir * std::f32::consts::TAU * back_out((t / 0.6).min(1.)).min(1.08);
+                sc = 1. + 0.12 * (std::f32::consts::PI * (t / 0.6)).sin();
+            }
+        }
+        Fx::Pop => {
+            sc = 1. + 0.1 * h;
+            if t < 0.45 {
+                let p = t / 0.45;
+                sc += -0.22 * (std::f32::consts::PI * p * 2.).sin() * (1. - p);
+            }
+        }
+        Fx::Wobble => {
+            sc = 1. + 0.08 * h;
+            if t < 0.6 {
+                let p = t / 0.6;
+                rot = 0.35 * (p * 18.).sin() * (1. - p);
+            }
+        }
+        Fx::Grow => {
+            sc = 1. + 0.16 * h;
+            if t < 0.4 {
+                sc += 0.15 * (std::f32::consts::PI * t / 0.4).sin();
+            }
+        }
+    }
+    s.with_transformation(gpui::Transformation::scale(gpui::size(sc, sc)).with_rotation(gpui::radians(rot)))
+}
+
+/// play ⇄ pause: the old one shrinks and spins away while the new one
+/// springs in from small
+fn play_pause(paused: bool, size: f32, window: &mut Window) -> gpui::AnyElement {
+    let (was, at) = PLAY_MORPH.with(|c| c.get());
+    let at = if at.is_none() || was != paused {
+        let now = if at.is_none() { Instant::now() - Duration::from_secs(5) } else { Instant::now() };
+        PLAY_MORPH.with(|c| c.set((paused, Some(now))));
+        now
+    } else {
+        at.unwrap_or_else(Instant::now)
+    };
+    let p = (at.elapsed().as_secs_f32() / 0.38).min(1.);
+    if p < 1. {
+        window.request_animation_frame();
+    }
+    let h = HOVER.with(|m| m.borrow().get("pl-play").copied()).map_or(0., |(over, since)| {
+        let x = (since.elapsed().as_secs_f32() / 0.22).min(1.);
+        let e = 1. - (1. - x).powi(3);
+        if over { e } else { 1. - e }
+    });
+    let grow = 1. + 0.08 * h;
+    let name = |pz: bool| if pz { "play" } else { "pause" };
+    let incoming = icon_fill(name(paused), size)
+        .absolute()
+        .text_color(theme::white(p.min(1.)))
+        .with_transformation(gpui::Transformation::scale(gpui::size(grow * (0.35 + 0.65 * back_out(p)), grow * (0.35 + 0.65 * back_out(p)))).with_rotation(gpui::radians(-1.2 * (1. - p))));
+    let mut d = div().relative().size(px(size)).flex().items_center().justify_center().child(incoming);
+    if p < 1. {
+        let q = 1. - p;
+        d = d.child(
+            icon_fill(name(!paused), size)
+                .absolute()
+                .text_color(theme::white(q))
+                .with_transformation(gpui::Transformation::scale(gpui::size(0.4 + 0.6 * q, 0.4 + 0.6 * q)).with_rotation(gpui::radians(1.2 * p))),
+        );
+    }
+    d.into_any_element()
 }
 
 /// ±seconds, by the watch-together rules
@@ -2176,30 +2291,14 @@ impl Render for PlayerView {
             && st.duration > 600.
             && (matches!(segment.as_ref().map(|x| x.0.as_str()), Some("credits")) || st.duration - st.pos < 30.)
             && self.finale_off.as_deref() != Some(vid_now.as_str());
-        if ending && !st.paused {
-            if self.finale_cd.as_ref().map(|c| &c.0) != Some(&vid_now) {
-                self.finale_cd = Some((vid_now.clone(), Instant::now()));
-            }
-        } else if !ending {
-            self.finale_cd = None;
-        }
-        let finale_left = self.finale_cd.as_ref().map(|c| COUNTDOWN - c.1.elapsed().as_secs_f32());
-        if let Some(l) = finale_left {
-            if l <= 0. {
-                self.finale_cd = None;
-                self.finale_off = Some(vid_now.clone());
-                if let Some(m) = self.pb.read(cx).meta.clone() {
-                    crate::Nav::finale(m, cx);
-                }
-            } else if !st.paused {
-                window.request_animation_frame();
-            } else {
-                // paused: the countdown waits
-                if let Some(c) = self.finale_cd.as_mut() {
-                    c.1 = Instant::now() - std::time::Duration::from_secs_f32((COUNTDOWN - l).max(0.));
-                }
+        // straight into "watch next" (the film shrinks into the corner)
+        if ending && !st.paused && self.born.elapsed().as_secs_f32() > 3. {
+            self.finale_off = Some(vid_now.clone());
+            if let Some(m) = self.pb.read(cx).meta.clone() {
+                crate::Nav::finale(m, cx);
             }
         }
+        let finale_left: Option<f32> = None;
         let tail_kind = segment.as_ref().map(|x| x.0.clone()).filter(|k| k == "credits" || k == "preview").unwrap_or_else(|| "credits".into());
         let skip: Option<gpui::AnyElement> = if guest { None } else { match &segment {
             Some((k, end)) if k == "intro" || k == "recap" || (k == "preview" && next.is_none()) => {
@@ -2474,21 +2573,28 @@ impl Render for PlayerView {
                             .flex()
                             .items_center()
                             .gap(px(2.))
-                            .when(!guest, |d| d.child(bar_btn("pl-play", if paused { icon_fill("play", 28.) } else { icon_fill("pause", 28.) }, false).on_click(
+                            .when(!guest, |d| d.child(bar_btn("pl-play", play_pause(paused, 28., window), false).on_click(
                                 move |_, _, cx| {
+                                    kick("pl-play");
                                     let paused = pb3.read(cx).state.paused;
                                     if may(if paused { "play" } else { "pause" }, None, cx) {
                                         pb3.read(cx).cmd("pause", json!({ "value": !paused }));
                                     }
                                 },
                             ))
-                            .child(bar_btn("pl-back10", icon("replay10", 25.), false).on_click({
+                            .child(bar_btn("pl-back10", fx("pl-back10", icon("replay10", 25.), Fx::Spin(-1.), window), false).on_click({
                                 let pb = self.pb.clone();
-                                move |_, _, cx| seek_by(&pb, -10., cx)
+                                move |_, _, cx| {
+                                    kick("pl-back10");
+                                    seek_by(&pb, -10., cx)
+                                }
                             }))
-                            .child(bar_btn("pl-fwd10", icon("forward10", 25.), false).on_click({
+                            .child(bar_btn("pl-fwd10", fx("pl-fwd10", icon("forward10", 25.), Fx::Spin(1.), window), false).on_click({
                                 let pb = self.pb.clone();
-                                move |_, _, cx| seek_by(&pb, 10., cx)
+                                move |_, _, cx| {
+                                    kick("pl-fwd10");
+                                    seek_by(&pb, 10., cx)
+                                }
                             })))
                             // a guest: whose remote it is, instead of the buttons
                             .when(guest, |d| d.child(couch_chip(cx)))
@@ -2624,7 +2730,7 @@ impl Render for PlayerView {
                             .children(next.clone().filter(|_| !narrow2 && !guest).map(|_| {
                                 let pb = self.pb.clone();
                                 let nx = self.next_x.clone();
-                                bar_btn("pl-next", icon("next", 22.), false)
+                                bar_btn("pl-next", fx("pl-next", icon("next", 22.), Fx::Pop, window), false)
                                     .relative()
                                     .child(gpui::canvas(move |b, _, _| nx.set(f32::from(b.origin.x + b.size.width / 2.)), |_, _, _, _| {}).absolute().size_full())
                                     .on_click(cx.listener(move |v, _, _, cx| {
@@ -2659,7 +2765,7 @@ impl Render for PlayerView {
                                         cx.notify();
                                     }))
                                     .child(
-                                        bar_btn("pl-mute", icon(if st.muted || st.volume <= 0. { "mute" } else { "volume" }, 23.), self.vol_pinned)
+                                        bar_btn("pl-mute", fx("pl-mute", icon(if st.muted || st.volume <= 0. { "mute" } else { "volume" }, 23.), Fx::Wobble, window), self.vol_pinned)
                                             .on_click(cx.listener(|v, _, _, cx| {
                                                 cx.stop_propagation();
                                                 v.vol_pinned = !v.vol_pinned;
@@ -2814,23 +2920,23 @@ impl Render for PlayerView {
                                 })))
                             })
                             .when(hosting, |d| {
-                                d.child(bar_btn("pl-couch", icon("couch", 23.), menu_on == Some(Menu::Couch)).on_click(cx.listener(|v, _, _, cx| {
+                                d.child(bar_btn("pl-couch", fx("pl-couch", icon("couch", 23.), Fx::Pop, window), menu_on == Some(Menu::Couch)).on_click(cx.listener(|v, _, _, cx| {
                                     cx.stop_propagation();
                                     v.toggle_menu(Menu::Couch, cx);
                                 })))
                             })
-                            .child(bar_btn("pl-audio", icon("subtitles", 23.), matches!(menu_on, Some(Menu::Audio | Menu::Subs))).on_click(cx.listener(|v, _, _, cx| {
+                            .child(bar_btn("pl-audio", fx("pl-audio", icon("subtitles", 23.), Fx::Pop, window), matches!(menu_on, Some(Menu::Audio | Menu::Subs))).on_click(cx.listener(|v, _, _, cx| {
                                 cx.stop_propagation();
                                 v.toggle_menu(Menu::Audio, cx);
                             })))
                             .when(is_series && !narrow2 && !guest, |d| {
-                                d.child(bar_btn("pl-eps", icon("stack", 23.), menu_on == Some(Menu::Episodes)).on_click(cx.listener(|v, _, _, cx| {
+                                d.child(bar_btn("pl-eps", fx("pl-eps", icon("stack", 23.), Fx::Pop, window), menu_on == Some(Menu::Episodes)).on_click(cx.listener(|v, _, _, cx| {
                                     cx.stop_propagation();
                                     v.toggle_menu(Menu::Episodes, cx);
                                 })))
                             })
                             .when(has_streams && !narrow1, |d| {
-                                d.child(bar_btn("pl-src", icon("link", 21.), menu_on == Some(Menu::Sources)).on_click(cx.listener(|v, _, _, cx| {
+                                d.child(bar_btn("pl-src", fx("pl-src", icon("link", 21.), Fx::Pop, window), menu_on == Some(Menu::Sources)).on_click(cx.listener(|v, _, _, cx| {
                                     cx.stop_propagation();
                                     v.toggle_menu(Menu::Sources, cx);
                                 })))
@@ -2846,8 +2952,11 @@ impl Render for PlayerView {
                                     v.toggle_menu(Menu::Speed, cx);
                                 })),
                             )
-                            .when(!narrow1, |d| d.child(bar_btn("pl-pip", icon("pip", 22.), false).on_click(|_, window, cx| crate::pip::toggle_in(window, cx))))
-                            .child(bar_btn("pl-full", icon(if window.is_fullscreen() { "exitFullscreen" } else { "fullscreen" }, 22.), false).on_click(|_, window, _| window.toggle_fullscreen())),
+                            .when(!narrow1, |d| d.child(bar_btn("pl-pip", fx("pl-pip", icon("pip", 22.), Fx::Pop, window), false).on_click(|_, window, cx| crate::pip::toggle_in(window, cx))))
+                            .child(bar_btn("pl-full", fx("pl-full", icon(if window.is_fullscreen() { "exitFullscreen" } else { "fullscreen" }, 22.), Fx::Grow, window), false).on_click(|_, window, _| {
+                                kick("pl-full");
+                                window.toggle_fullscreen()
+                            })),
                     ),
             )
             // over everything else: the open menu, and what's next

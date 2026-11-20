@@ -937,8 +937,9 @@ impl Render for Tv {
             .left_0()
             .size_full()
             .occlude()
-            .bg(gpui::black())
             .overflow_hidden()
+            // black, with the hole the trailer shows through
+            .child(crate::ui::video::paint_bg(gpui::black()))
             .text_color(theme::white(0.96))
             .on_mouse_move(cx.listener(|t, _: &gpui::MouseMoveEvent, _, cx| {
                 let fresh = t.mouse_at.map_or(true, |m| m.elapsed().as_secs() >= 4);

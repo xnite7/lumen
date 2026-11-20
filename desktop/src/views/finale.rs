@@ -1,7 +1,9 @@
-//! The end of a film (or the last episode out): the player fades into a
-//! full-screen "watch next". The pick's backdrop fills the screen, its logo
-//! sits on the left and its trailer fades in through the backdrop. Play it,
-//! put it on your list, look closer, or leave. Other picks run along the bottom.
+//! The end of a film (or the last episode out): at the credits the player
+//! gives way to a full-screen "watch next". The film keeps rolling small in
+//! the corner, quieter; point at it and it's loud again (the trailer hushes),
+//! click it and it's full size. The pick's backdrop fills the screen, its logo
+//! on the left, its trailer fading in through the backdrop. Play it, put it on
+//! your list, look closer, or leave. Other picks run along the bottom.
 use crate::api::{self, sized, Meta};
 use crate::theme;
 use crate::Nav;
@@ -22,20 +24,46 @@ pub struct Finale {
     clip: Option<(String, String)>,
     /// picks are on their way
     loading: bool,
+    /// the film rolling in the corner: its volume before, the volume now
+    film: Option<(f64, f64)>,
+    /// the pointer is on the film in the corner
+    film_hover: bool,
 }
+
+/// the film's volume while "watch next" is up (of what it was)
+const QUIET: f64 = 0.3;
 
 const OWNER: &str = "finale:";
 
 impl Finale {
     pub fn new(_cx: &mut Context<Self>) -> Self {
-        Self { open: false, from: None, picks: vec![], sel: 0, at: Instant::now(), sel_at: Instant::now(), clip: None, loading: false }
+        Self { open: false, from: None, picks: vec![], sel: 0, at: Instant::now(), sel_at: Instant::now(), clip: None, loading: false, film: None, film_hover: false }
     }
 
-    pub fn show(&mut self, from: Meta, cx: &mut Context<Self>) {
+    pub fn show(&mut self, from: Meta, film: bool, cx: &mut Context<Self>) {
         if self.open && self.from.as_ref().map(|f| &f.id) == Some(&from.id) {
             return;
         }
         self.open = true;
+        self.film_hover = false;
+        self.film = film.then(|| {
+            let v = crate::playback::get(cx).read(cx).state.volume;
+            (v, v)
+        });
+        // a steady look at the corner film (the pointer on it, its volume easing)
+        cx.spawn(async move |this, cx| loop {
+            crate::timer::after(std::time::Duration::from_millis(50)).await;
+            let ok = this.update(cx, |f, cx| {
+                if f.open {
+                    f.tick(cx);
+                }
+                f.open
+            });
+            if !matches!(ok, Ok(true)) {
+                break;
+            }
+        })
+        .detach();
         self.at = Instant::now();
         self.picks.clear();
         self.sel = 0;
@@ -60,7 +88,53 @@ impl Finale {
         self.clip = None;
         let v = crate::ui::video::get(cx);
         v.update(cx, |v, cx| v.stop_prefix(OWNER, cx));
+        // the film (if it's still there) at its own volume again
+        if let Some((was, _)) = self.film.take() {
+            let pb = crate::playback::get(cx);
+            if pb.read(cx).open {
+                pb.read(cx).cmd("volume", json!({ "value": was }));
+            }
+        }
         cx.notify();
+    }
+
+    /// "done": the film in the corner goes too
+    pub fn done(&mut self, cx: &mut Context<Self>) {
+        let had = self.film.is_some();
+        self.close(cx);
+        if had {
+            crate::playback::get(cx).update(cx, |p, cx| p.close(cx));
+        }
+    }
+
+    /// every 50 ms while open: the film's volume eases toward quiet (or back
+    /// up while you point at it, with the trailer hushed); the film opened
+    /// full size again, or stopped: this closes
+    fn tick(&mut self, cx: &mut Context<Self>) {
+        let pb = crate::playback::get(cx);
+        let Some((was, now)) = self.film else { return };
+        if !pb.read(cx).open {
+            self.film = None;
+            return;
+        }
+        if crate::Nav::route(cx) == Some(crate::Route::Player) {
+            return self.close(cx);
+        }
+        let hover = crate::mini::hovered();
+        if hover != self.film_hover {
+            self.film_hover = hover;
+            let v = crate::ui::video::get(cx);
+            let owner = v.read(cx).owner.clone();
+            v.read(cx).set_muted(hover || crate::ui::video::is_muted(&owner));
+            cx.notify();
+        }
+        let want = if hover { was } else { was * QUIET };
+        if (want - now).abs() > 0.5 {
+            let step = (want - now).signum() * (want - now).abs().min(6.);
+            let next = now + step;
+            self.film = Some((was, next));
+            pb.read(cx).cmd("volume", json!({ "value": next }));
+        }
     }
 
     /// another pick: its backdrop cross-fades in, then its trailer
@@ -173,8 +247,9 @@ impl Render for Finale {
             .left_0()
             .size_full()
             .occlude()
-            .bg(gpui::black())
             .opacity(a)
+            // black, with the hole the trailer shows through (a plain fill hides it)
+            .child(crate::ui::video::paint_bg(gpui::black()))
             .on_scroll_wheel(|_, _, cx| cx.stop_propagation());
         match self.picks.get(self.sel).cloned() {
             Some(m) => {
@@ -253,14 +328,17 @@ impl Render for Finale {
                     .cursor_pointer()
                     .hover(|s| s.bg(theme::white(0.22)))
                     .on_click(move |_, _, cx| {
-                        let _ = shut.update(cx, |f, cx| f.close(cx));
+                        let _ = shut.update(cx, |f, cx| f.done(cx));
                     })
                     .child(crate::ui::icon("close", 16.))
                     .child("done"),
             );
         // bottom: the other picks
         if self.picks.len() > 1 {
-            let cw = ((vw - theme::GUTTER * 2. - 14. * 5.) / 6.).clamp(140., 200.);
+            // clear of the film in the corner
+            let room = vw - theme::GUTTER - if self.film.is_some() { crate::mini::W + crate::mini::M * 2. } else { theme::GUTTER };
+            let n = self.picks.len() as f32;
+            let cw = ((room - 14. * (n - 1.)) / n).clamp(120., 200.);
             let ch = cw * 9. / 16.;
             let cards = self.picks.iter().enumerate().map(|(i, m)| {
                 let on = i == self.sel;

@@ -338,7 +338,12 @@ impl Nav {
     /// "watch next"
     pub fn finale(from: Meta, cx: &mut App) {
         cx.defer(move |cx| {
-            playback::get(cx).update(cx, |p, cx| p.close(cx));
+            // the film keeps rolling, small in the corner (the mini player),
+            // except in TV mode and picture in picture, where it stops
+            let tv = Self::tv_is_on(cx) || pip::is_on();
+            if tv {
+                playback::get(cx).update(cx, |p, cx| p.close(cx));
+            }
             if Self::route(cx) == Some(Route::Player) {
                 Self::back(cx);
             }
@@ -346,7 +351,8 @@ impl Nav {
             cx.defer(move |cx| {
                 if let Some(r) = Self::root(cx) {
                     let f = r.read(cx).finale.clone();
-                    f.update(cx, |f, cx| f.show(from, cx));
+                    let film = playback::get(cx).read(cx).open;
+                    f.update(cx, |f, cx| f.show(from, film, cx));
                 }
             });
         });
@@ -667,6 +673,7 @@ impl Root {
                 _ => None,
             };
             if let Some(d) = seek {
+                views::player::kick(if d < 0. { "pl-back10" } else { "pl-fwd10" });
                 if views::player::may("seek", Some((pos + d).max(0.)), cx) {
                     pb.read(cx).cmd("seek", json!({ "to": d, "relative": true }));
                 }
@@ -789,6 +796,7 @@ impl Root {
                 return;
             }
             if let Some(d) = step {
+                views::player::kick(if d < 0. { "pl-back10" } else { "pl-fwd10" });
                 if views::player::may("seek", Some((pos + d).max(0.)), cx) {
                     pb.read(cx).cmd("seek", json!({ "to": d, "relative": true }));
                 }
@@ -798,8 +806,14 @@ impl Root {
             match k {
                 "up" => p.cmd("volume", json!({ "value": (p.state.volume + 5.).min(130.) })),
                 "down" => p.cmd("volume", json!({ "value": (p.state.volume - 5.).max(0.) })),
-                "m" => p.cmd("mute", json!({})),
-                "f" => window.toggle_fullscreen(),
+                "m" => {
+                    views::player::kick("pl-mute");
+                    p.cmd("mute", json!({}))
+                }
+                "f" => {
+                    views::player::kick("pl-full");
+                    window.toggle_fullscreen()
+                }
                 "p" | "i" => pip::toggle_in(window, cx),
                 "escape" => {
                     if pip::is_on() {
@@ -1348,7 +1362,11 @@ impl Render for Root {
         if playing {
             cx.defer(|_| mini::place_clip(None));
         }
+        // "watch next" and TV mode cover the whole page: it isn't drawn under
+        // them (it would also cover the hole their trailers show through)
+        let covered = self.finale.read(cx).open || (tv_on && !playing);
         let page = match &self.route {
+            _ if covered => div().into_any_element(),
             Route::Home => self.home.clone().into_any_element(),
             Route::Player => self.player.clone().into_any_element(),
             Route::Calendar => self.calendar.get_or_insert_with(|| cx.new(views::calendar::Calendar::new)).clone().into_any_element(),

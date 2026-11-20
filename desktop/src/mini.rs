@@ -14,6 +14,13 @@ static ON: AtomicBool = AtomicBool::new(false);
 pub static CLICKED: AtomicBool = AtomicBool::new(false);
 /// its ✕ was clicked: stop the film
 pub static CLOSE: AtomicBool = AtomicBool::new(false);
+/// the pointer is on the picture
+static HOVER: AtomicBool = AtomicBool::new(false);
+
+/// is the pointer on the mini picture? ("watch next" turns the film up then)
+pub fn hovered() -> bool {
+    is_on() && HOVER.load(Ordering::Relaxed)
+}
 
 /// logical size and margin of the mini picture
 pub const W: f32 = 400.;
@@ -70,6 +77,7 @@ mod imp {
             }
             // the pointer on the picture: the ✕ shows (until it leaves)
             WM_MOUSEMOVE => {
+                HOVER.store(true, Ordering::Relaxed);
                 let x = XBTN.load(Ordering::Relaxed);
                 if x != 0 {
                     unsafe {
@@ -96,6 +104,7 @@ mod imp {
                         let mut r = RECT::default();
                         let _ = GetWindowRect(hw(x), &mut r);
                         let on_x = pt.x >= r.left && pt.x < r.right && pt.y >= r.top && pt.y < r.bottom;
+                        HOVER.store(on_x, Ordering::Relaxed);
                         if !on_x {
                             let _ = ShowWindow(hw(x), SW_HIDE);
                         }
@@ -320,6 +329,7 @@ mod imp {
     }
 
     pub fn set(on: bool, scale: f32) {
+        HOVER.store(false, Ordering::Relaxed);
         let (v, main, pop) = (VIDEO.load(Ordering::Relaxed), MAIN.load(Ordering::Relaxed), POPUP.load(Ordering::Relaxed));
         if v == 0 || pop == 0 || ON.swap(on, Ordering::Relaxed) == on {
             return;
