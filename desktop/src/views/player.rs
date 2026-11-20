@@ -1076,7 +1076,9 @@ impl PlayerView {
                                 Ok(v) => {
                                     let off = v["offset"].as_f64().unwrap_or(0.);
                                     let ratio = v["ratio"].as_f64().unwrap_or(1.);
-                                    if (ratio - 1.).abs() > 1e-4 {
+                                    if v["builtIn"] == true && off.abs() >= 0.1 {
+                                        format!("built-in subtitles synced: {:.1} s {}", off.abs(), if off < 0. { "earlier" } else { "later" })
+                                    } else if (ratio - 1.).abs() > 1e-4 {
                                         format!("subtitles synced (they were made for a different frame rate, {:+.1} s)", off)
                                     } else if off.abs() < 0.1 {
                                         "subtitles were already in sync".to_string()

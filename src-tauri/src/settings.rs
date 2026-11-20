@@ -185,6 +185,8 @@ pub struct Playback {
     pub seek_large: u32,
     pub volume: f64,
     pub volume_boost: bool,
+    /// measure each title's loudness and even it out (quiet films up, loud shows down)
+    pub even_volume: bool,
     pub cache_mb: u32,
     pub readahead_secs: u32,
     /// Native mpv render for subtitles with heavy ASS typesetting.
@@ -222,6 +224,7 @@ impl Default for Playback {
             seek_large: 60,
             volume: 100.0,
             volume_boost: false,
+            even_volume: true,
             cache_mb: 400,
             readahead_secs: 120,
             native_ass: false,

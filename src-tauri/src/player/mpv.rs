@@ -83,6 +83,52 @@ pub struct Mpv {
     thumbs: Mutex<Option<ThumbWorker>>,
 }
 
+/// Even volume: titles are levelled to this (EBU R128, dialogue-heavy
+/// mixes sit around −24 LUFS, so most films move only a little)
+const LOUD_TARGET: f64 = -23.0;
+static LOUD_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// what each title measured last time (so it starts levelled)
+static LOUD: std::sync::LazyLock<parking_lot::Mutex<std::collections::HashMap<String, f64>>> = std::sync::LazyLock::new(|| parking_lot::Mutex::new(std::collections::HashMap::new()));
+
+fn loud_key(url: &str) -> String {
+    url.split('?').next().unwrap_or(url).to_string()
+}
+fn loud_gain(lufs: f64) -> f64 {
+    (LOUD_TARGET - lufs).clamp(-8.0, 10.0)
+}
+
+/// Every few seconds: how loud has this title been so far (integrated, so
+/// one explosion doesn't swing it), and the gain eased toward what it needs.
+fn loudness(m: std::sync::Weak<libmpv2::Mpv>, gen: u64, key: String, mut gain: f64) {
+    let mut since = 0u32;
+    loop {
+        std::thread::sleep(Duration::from_secs(4));
+        if LOUD_GEN.load(std::sync::atomic::Ordering::Relaxed) != gen {
+            return;
+        }
+        let Some(mpv) = m.upgrade() else { return };
+        if mpv.get_property::<bool>("pause").unwrap_or(true) {
+            continue;
+        }
+        since += 4;
+        let direct = mpv.get_property::<String>("af-metadata/loud/lavfi.r128.I").ok().and_then(|v| v.trim().parse::<f64>().ok());
+        let meta: String = mpv.get_property("af-metadata/loud").unwrap_or_default();
+        let Some(i) = direct.or_else(|| meta.split(['\n', ',', '{', '}']).find_map(|kv| kv.trim().trim_matches('"').strip_prefix("lavfi.r128.I").map(|v| v.trim_start_matches(['"', '=', ':', ' ']).trim_matches('"').to_string()).and_then(|v| v.trim().parse::<f64>().ok()))) else { continue };
+        // the first half minute is too little to go on (unless we knew it already)
+        if since < 30 || !i.is_finite() || i < -70.0 {
+            continue;
+        }
+        let want = loud_gain(i);
+        // a dB at most every few seconds: nobody hears it move
+        let step = (want - gain).clamp(-1.0, 1.0);
+        if step.abs() >= 0.2 {
+            gain += step;
+            let _ = mpv.command("af-command", &["gain", "volume", &format!("{gain:.2}dB")]);
+        }
+        LOUD.lock().insert(key.clone(), i);
+    }
+}
+
 /// the Atmos sound's name in mpv's track list, and the film's own track it replaced
 const ATMOS_TITLE: &str = "Atmos · couch";
 static ATMOS_FROM: parking_lot::Mutex<Option<i64>> = parking_lot::Mutex::new(None);
@@ -395,6 +441,18 @@ impl Mpv {
             st.duration = 0.0;
             st.sub_overlay = !s.playback.native_ass;
         }
+        // even volume: measure this film as it plays, and level it
+        let _ = mpv.command("af", &["remove", "@loud"]);
+        let _ = mpv.command("af", &["remove", "@gain"]);
+        if s.playback.even_volume {
+            let key = loud_key(url);
+            let start = LOUD.lock().get(&key).copied().map_or(0.0, |l| loud_gain(l));
+            let _ = mpv.command("af", &["add", "@loud:lavfi=[ebur128=metadata=1:peak=none]"]);
+            let _ = mpv.command("af", &["add", &format!("@gain:lavfi=[volume={start:.2}dB]")]);
+            let gen = LOUD_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            let m = Arc::downgrade(&mpv);
+            std::thread::spawn(move || loudness(m, gen, key, start));
+        }
         // a new film starts clear (the last one may have been left paused, blurred)
         let _ = mpv.command("change-list", &["glsl-shader-opts", "add", "couch_blur=0"]);
         // headphone surround is set up again for the new film's channels
@@ -641,15 +699,22 @@ impl Mpv {
             let g = |k: &str| mpv.get_property::<String>(&format!("track-list/{i}/{k}")).ok();
             let sel = mpv.get_property::<bool>(&format!("track-list/{i}/selected")).unwrap_or(false);
             if sel && g("type").as_deref() == Some("sub") {
-                sub = Some(g("external-filename"));
+                sub = Some((g("external-filename"), mpv.get_property::<i64>(&format!("track-list/{i}/ff-index")).ok()));
             }
         }
-        let sub = match sub {
+        let (sub, embedded) = match sub {
             None => return Err(AppError::msg("pick a subtitle first")),
-            Some(None) => return Err(AppError::msg("these subtitles are built into the file, so they're already in sync")),
-            Some(Some(f)) => f,
+            // built in: by its stream in the file
+            Some((None, ff)) => (String::new(), ff),
+            Some((Some(f), _)) => (f, None),
         };
-        Ok(super::subsync::Source { url, headers, ua, pos, sub })
+        Ok(super::subsync::Source { url, headers, ua, pos, sub, embedded })
+    }
+
+    /// Built-in subtitles: moved by a delay.
+    pub fn set_sub_delay(&self, d: f64) -> AppResult<()> {
+        let mpv = self.ensure()?;
+        mpv.set_property("sub-delay", d).map_err(|e| AppError::msg(format!("mpv: {e}")))
     }
 
     /// Load the retimed copy and switch to it.

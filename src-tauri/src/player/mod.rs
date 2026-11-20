@@ -263,6 +263,11 @@ impl Player {
         #[cfg(desktop)]
         {
             let src = self.backend.sync_source()?;
+            if let Some(stream) = src.embedded {
+                let d = tokio::task::spawn_blocking(move || subsync::run_embedded(&src, stream)).await.map_err(|e| AppError::msg(e.to_string()))??;
+                self.backend.set_sub_delay(d)?;
+                return Ok(serde_json::json!({ "offset": d, "ratio": 1.0, "builtIn": true }));
+            }
             let raw: Vec<u8> = if src.sub.starts_with("http") {
                 let r = self.core.http.client().get(&src.sub).timeout(std::time::Duration::from_secs(15)).send().await.map_err(|e| AppError::msg(format!("couldn't fetch the subtitles: {e}")))?;
                 r.bytes().await.map_err(|e| AppError::msg(e.to_string()))?.to_vec()

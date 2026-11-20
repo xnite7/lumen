@@ -70,6 +70,8 @@ pub struct Playback {
     pub start_hint: Option<f64>,
     /// the next episode whose streams are being / were found in the background
     preload_for: Option<String>,
+    /// the languages this show was last watched in, still being put back (since when)
+    langs_pending: Option<std::time::Instant>,
     /// you waved off the next-episode countdown: no autoplay at the end either
     pub no_autonext: bool,
 }
@@ -168,6 +170,7 @@ pub fn init(cx: &mut App) {
             while let Some(v) = tr.next().await {
                 let _ = this.update(cx, |p, cx| {
                     p.tracks = v.as_array().cloned().unwrap_or_default();
+                    p.apply_langs(cx);
                     cx.notify();
                 });
             }
@@ -499,7 +502,97 @@ impl Playback {
 
     /// Pick an audio / subtitle track (None: subtitles off). The tick moves
     /// right away; mpv doesn't always report the change back.
+    /// Put back the audio and subtitle languages this show (or film) was last
+    /// watched in. Runs as tracks arrive (addon subtitles come a few seconds
+    /// after the film), for up to 20 s after it opens.
+    fn apply_langs(&mut self, _cx: &mut Context<Self>) {
+        let Some(since) = self.langs_pending else { return };
+        if since.elapsed().as_secs() > 20 {
+            self.langs_pending = None;
+            return;
+        }
+        let Some(key) = self.meta.as_ref().map(|m| m.id.clone()) else { return };
+        let all = couch::state::get().core.db.get::<serde_json::Map<String, Value>>(LANGS_KEY).unwrap_or_default();
+        let Some(want) = all.get(&key).cloned() else {
+            self.langs_pending = None;
+            return;
+        };
+        let mut done = true;
+        let lang = |t: &Value| t["lang"].as_str().unwrap_or("").to_lowercase();
+        // audio
+        if let Some(a) = want["audio"].as_str().filter(|a| !a.is_empty()) {
+            let list: Vec<&Value> = self.tracks.iter().filter(|t| t["type"] == "audio").collect();
+            let on = list.iter().find(|t| t["selected"] == true).map(|t| lang(t));
+            if on.as_deref() != Some(a) {
+                let title = want["audioTitle"].as_str();
+                let pick = list.iter().filter(|t| lang(t) == a).max_by_key(|t| (t["title"].as_str() == title) as u8).and_then(|t| t["id"].as_i64());
+                if let Some(id) = pick {
+                    self.cmd("aid", json!({ "value": id }));
+                }
+            }
+        }
+        // subtitles: off, or a language (built-in or not, as it was)
+        match want["sub"].as_str() {
+            Some("off") => {
+                if self.tracks.iter().any(|t| t["type"] == "sub" && t["selected"] == true) {
+                    self.subs_off = true;
+                    self.sub.clear();
+                    self.cmd("sid", json!({ "value": "no" }));
+                }
+            }
+            Some(sl) if !sl.is_empty() => {
+                let list: Vec<&Value> = self.tracks.iter().filter(|t| t["type"] == "sub").collect();
+                let on = list.iter().find(|t| t["selected"] == true);
+                if on.map(|t| lang(t)).as_deref() != Some(sl) {
+                    let ext = want["subExternal"].as_bool();
+                    let pick = list
+                        .iter()
+                        .filter(|t| lang(t) == sl && t["forced"] != true)
+                        .max_by_key(|t| (Some(t["external"].as_bool().unwrap_or(false)) == ext) as u8)
+                        .and_then(|t| t["id"].as_i64());
+                    match pick {
+                        Some(id) => {
+                            self.subs_off = false;
+                            self.cmd("sid", json!({ "value": id }));
+                        }
+                        // not here yet (addon subtitles come a little later)
+                        None => done = false,
+                    }
+                }
+            }
+            _ => {}
+        }
+        if done {
+            self.langs_pending = None;
+        }
+    }
+
     pub fn pick_track(&mut self, kind: &str, id: Option<i64>, cx: &mut Context<Self>) {
+        // remembered for this show: its next episodes start the same way
+        if let Some(key) = self.meta.as_ref().map(|m| m.id.clone()) {
+            let db = &couch::state::get().core.db;
+            let mut all = db.get::<serde_json::Map<String, Value>>(LANGS_KEY).unwrap_or_default();
+            let mut e = all.get(&key).cloned().unwrap_or_else(|| json!({}));
+            let t = id.and_then(|i| self.tracks.iter().find(|t| t["type"] == kind && t["id"].as_i64() == Some(i)).cloned());
+            if kind == "audio" {
+                if let Some(t) = &t {
+                    e["audio"] = json!(t["lang"].as_str().unwrap_or("").to_lowercase());
+                    e["audioTitle"] = t["title"].clone();
+                }
+            } else {
+                match &t {
+                    Some(t) => {
+                        e["sub"] = json!(t["lang"].as_str().unwrap_or("").to_lowercase());
+                        e["subExternal"] = t["external"].clone();
+                    }
+                    None => e["sub"] = json!("off"),
+                }
+            }
+            all.insert(key, e);
+            let _ = db.set(LANGS_KEY, &all);
+            // you chose: nothing is put back over it now
+            self.langs_pending = None;
+        }
         for t in self.tracks.iter_mut().filter(|t| t["type"] == kind) {
             t["selected"] = json!(id.is_some() && t["id"].as_i64() == id);
         }
@@ -750,6 +843,7 @@ pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f6
         p.start_hint = start_at;
         p.preload_for = None;
         p.no_autonext = false;
+        p.langs_pending = Some(std::time::Instant::now());
         // the episode is known now: watch together tells guests at once
         p.video_id = video_id.clone().unwrap_or_default();
         p.state = State { volume: p.state.volume, muted: p.state.muted, speed: 1., ..Default::default() };
@@ -895,6 +989,8 @@ struct Lag {
 }
 
 const PICKS_KEY: &str = "gpui_stream_picks";
+/// per show / film: { audio, audioTitle, sub ("off" or a language), subExternal }
+const LANGS_KEY: &str = "gpui_langs";
 const BAD_KEY: &str = "gpui_bad_streams";
 
 /// One stream, the same whichever addon listed it: its torrent (and file), or its address.

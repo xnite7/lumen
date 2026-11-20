@@ -19,8 +19,10 @@ pub struct Source {
     pub headers: String,
     pub ua: String,
     pub pos: f64,
-    /// the chosen subtitle file (a URL or a path)
+    /// the chosen subtitle file (a URL or a path); empty when it's built in
     pub sub: String,
+    /// a built-in subtitle track: its ffmpeg stream index
+    pub embedded: Option<i64>,
 }
 
 pub struct Found {
@@ -228,6 +230,60 @@ fn best_for(talk: &[f64], start: f64, cues: &[(f64, f64)], ratio: f64) -> (f64, 
     let mean = sum / n;
     let sd = (sum2 / n - mean * mean).max(1e-9).sqrt();
     (best.0, best.1, (best.0 - mean) / sd, ratio)
+}
+
+/// Built-in subtitles: ffmpeg reads their lines around where you are (same
+/// stretch as the listening), they're matched the same way, and the answer is
+/// a delay (nothing to rewrite: they're inside the film). Text subtitles only.
+pub fn run_embedded(src: &Source, stream: i64) -> AppResult<f64> {
+    let ff = ffmpeg().ok_or_else(|| AppError::msg("auto-sync needs ffmpeg"))?;
+    let start = (src.pos - 10.).max(0.);
+    let from = (start - SEARCH).max(0.);
+    let pre = (from - 3.).max(0.);
+    let mut cmd = std::process::Command::new(&ff);
+    cmd.args(["-nostdin", "-hide_banner", "-loglevel", "error"]);
+    add_http(&mut cmd, src);
+    // (-copyts: the lines keep the film's own times, wherever ffmpeg landed)
+    cmd.args(["-copyts", "-ss", &format!("{pre:.2}"), "-i", &src.url, "-to", &format!("{:.2}", from + WINDOW * 2. + SEARCH * 2.), "-map", &format!("0:{stream}"), "-f", "srt", "pipe:1"]);
+    cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    let out = cmd.output().map_err(|e| AppError::msg(format!("couldn't start ffmpeg: {e}")))?;
+    if out.stdout.is_empty() {
+        return Err(AppError::msg("these subtitles are pictures (not text), so they can't be synced by listening"));
+    }
+    let all: Vec<(f64, f64)> = cues(&out.stdout);
+    let mut st = start;
+    let near = |st: f64| all.iter().filter(|(a, _)| *a > st - SEARCH && *a < st + WINDOW + SEARCH).count();
+    let mut talk = speech(&ff, src, st)?;
+    if talk.iter().filter(|x| **x).count() < 600 || near(st) < 6 {
+        st = start + WINDOW;
+        talk = speech(&ff, src, st)?;
+    }
+    if near(st) < 6 {
+        return Err(AppError::msg("hardly any subtitle lines around here to match. try again during some talking"));
+    }
+    let t: Vec<f64> = talk.iter().map(|x| if *x { 1. } else { -1. }).collect();
+    let (_, offset, z, _) = best_for(&t, st, &all, 1.0);
+    if z < 4.5 {
+        return Err(AppError::msg("couldn't find a sure match here. try again during some talking"));
+    }
+    Ok(offset)
+}
+
+fn add_http(cmd: &mut std::process::Command, src: &Source) {
+    if src.url.starts_with("http") {
+        if !src.ua.is_empty() {
+            cmd.args(["-user_agent", &src.ua]);
+        }
+        if !src.headers.is_empty() {
+            let h: String = src.headers.replace("\\,", "\u{1}").split(',').map(|x| format!("{}\r\n", x.replace('\u{1}', ","))).collect();
+            cmd.args(["-headers", &h]);
+        }
+    }
 }
 
 pub fn run(src: &Source, raw: &[u8], cache: &std::path::Path) -> AppResult<Found> {

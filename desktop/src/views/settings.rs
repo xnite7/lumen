@@ -51,6 +51,7 @@ fn rows(tab: Tab) -> Vec<R> {
             Switch("prefer HDR", "", "streams.preferHdr"),
             Switch("prefer instant streams", "ones that start right away", "streams.preferCached"),
             Switch("volume up to 130%", "", "playback.volumeBoost"),
+            Switch("even volume", "quiet films turned up, loud ones down, so you're not riding the remote", "playback.evenVolume"),
             Choice("sort streams by", "streams.sort", vec![(json!("smart"), "best"), (json!("quality"), "quality"), (json!("size"), "size"), (json!("seeders"), "seeders")]),
             Choice("largest file", "streams.maxSizeGb", vec![(json!(0.0), "any"), (json!(5.0), "5 GB"), (json!(10.0), "10 GB"), (json!(20.0), "20 GB"), (json!(40.0), "40 GB")]),
         ],
