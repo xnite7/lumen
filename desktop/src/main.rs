@@ -1440,6 +1440,11 @@ impl Render for Root {
             .on_key_up(cx.listener(Self::key_up))
             // the mouse's back button: back a page (from the player: the film goes to the corner)
             .on_mouse_down(gpui::MouseButton::Navigate(gpui::NavigationDirection::Back), cx.listener(|r, _, _, cx| {
+                // TV mode: a step back inside it
+                if r.tv.read(cx).on && r.route != Route::Player && r.menu.read(cx).open.is_none() && r.addto.read(cx).meta.is_none() && !r.finale.read(cx).open {
+                    r.tv.update(cx, |t, cx| t.press("escape", cx));
+                    return;
+                }
                 if r.wrapped.read(cx).open || r.menu.read(cx).open.is_some() || r.addto.read(cx).meta.is_some() {
                     r.wrapped.update(cx, |w, cx| {
                         w.open = false;
