@@ -931,9 +931,12 @@ pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f6
                     rt = v.get("runtime").cloned().unwrap_or(rt);
                 }
             }
-            // the next episode, found while you watched the last one: no waiting
-            let order = match take_preload(&vid) {
-                Some(o) if prefer.is_none() => o,
+            // saved on this computer: that file (no internet needed); else the
+            // next episode found while you watched the last one; else a search
+            let saved = api::call::<Option<String>>("download_local", json!({ "videoId": vid })).await.ok().flatten();
+            let order = match (saved, take_preload(&vid)) {
+                (Some(path), _) if prefer.is_none() => vec![json!({ "url": path, "name": "on this computer", "title": "downloaded", "_addonName": "couch" })],
+                (_, Some(o)) if prefer.is_none() => o,
                 _ => ranked(full["type"].as_str().unwrap_or("movie").to_string(), vid.clone(), rt.clone(), prefer.clone()).await,
             };
             let mut order = order;
@@ -961,6 +964,35 @@ pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f6
     });
 }
 
+
+/// Save a film (or one episode) to this computer: the best stream that can
+/// be saved (an instant / web one; torrents play from their swarm).
+pub fn download(base: Meta, video_id: Option<String>, cx: &mut App) {
+    cx.spawn(async move |cx| {
+        let full = api::call::<Value>("meta_get", json!({ "kind": base.kind, "id": base.id, "hint": Value::Null })).await.unwrap_or_else(|_| serde_json::to_value(&base).unwrap_or_default());
+        let vid = video_id.clone().unwrap_or_else(|| full["id"].as_str().unwrap_or(&base.id).to_string());
+        let ep = ordered(&full).into_iter().find(|v| v["id"].as_str() == Some(vid.as_str()));
+        let label = match &ep {
+            Some(v) => format!("{} S{:02}E{:02} {}", base.name, v["season"].as_i64().unwrap_or(0), v["episode"].as_i64().or(v["number"].as_i64()).unwrap_or(0), episode_name(v)),
+            None => format!("{} ({})", base.name, full["year"].as_str().map(String::from).or(full["releaseInfo"].as_str().map(String::from)).unwrap_or_default()),
+        };
+        let rt = ep.as_ref().and_then(|v| v.get("runtime").cloned()).unwrap_or(full["runtime"].clone());
+        let order = ranked(full["type"].as_str().unwrap_or("movie").to_string(), vid.clone(), rt, None).await;
+        let pick = order.into_iter().find(|s| s["url"].as_str().is_some_and(|u| u.starts_with("http")));
+        let msg = match pick {
+            None => "nothing saveable found for that one (only instant / web streams can be saved)".to_string(),
+            Some(stream) => {
+                let meta = json!({ "id": base.id, "type": base.kind, "name": base.name, "poster": base.poster, "background": base.background, "logo": base.logo });
+                match api::call::<Value>("download_start", json!({ "stream": stream, "meta": meta, "videoId": vid, "label": label })).await {
+                    Ok(_) => format!("saving {label} to watch offline (My Lists → Downloads)"),
+                    Err(e) => e,
+                }
+            }
+        };
+        let _ = cx.update(|cx| crate::Nav::toast(msg, cx));
+    })
+    .detach();
+}
 
 /// Every stream for this film / episode, best first (your pick, or the
 /// host's, at the front; ones that lagged before at the back).

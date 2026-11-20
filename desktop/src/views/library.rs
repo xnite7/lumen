@@ -16,9 +16,10 @@ enum Tab {
     Completed,
     Favs,
     Lists,
+    Downloads,
 }
 
-const TABS: &[(Tab, &str)] = &[(Tab::Plan, "Plan to Watch"), (Tab::Watching, "Watching"), (Tab::Completed, "Completed"), (Tab::Favs, "Favourites"), (Tab::Lists, "Lists")];
+const TABS: &[(Tab, &str)] = &[(Tab::Plan, "Plan to Watch"), (Tab::Watching, "Watching"), (Tab::Completed, "Completed"), (Tab::Favs, "Favourites"), (Tab::Lists, "Lists"), (Tab::Downloads, "Downloads")];
 
 pub struct Library {
     tab: Tab,
@@ -33,6 +34,8 @@ pub struct Library {
     new_name: Entity<TextInput>,
     rename: Entity<TextInput>,
     scroll: ScrollHandle,
+    /// saved to this computer (and saving), refreshed while the tab is open
+    downloads: Vec<Value>,
 }
 
 fn metas(v: &Value) -> Vec<Meta> {
@@ -64,7 +67,7 @@ impl Library {
             }
         })
         .detach();
-        let me = Self { tab: Tab::Plan, kind: "all", plan: vec![], watching: vec![], completed: vec![], favs: vec![], lists: vec![], open_list: None, loaded: false, new_name, rename, scroll: ScrollHandle::new() };
+        let me = Self { downloads: vec![], tab: Tab::Plan, kind: "all", plan: vec![], watching: vec![], completed: vec![], favs: vec![], lists: vec![], open_list: None, loaded: false, new_name, rename, scroll: ScrollHandle::new() };
         Self::load(cx);
         me
     }
@@ -200,11 +203,15 @@ impl Render for Library {
                 }))
             })));
 
+        if self.tab == Tab::Downloads {
+            return page.child(self.downloads_view(window, cx)).child(div().h(px(60.)));
+        }
         let list: Vec<Meta> = match self.tab {
             Tab::Plan => self.plan.clone(),
             Tab::Watching => self.watching.clone(),
             Tab::Completed => self.completed.clone(),
             Tab::Favs => self.favs.clone(),
+            Tab::Downloads => vec![],
             Tab::Lists => match self.open_list {
                 Some(i) => self.lists.get(i).map(|l| l.2.clone()).unwrap_or_default(),
                 None => {
@@ -300,5 +307,122 @@ impl Render for Library {
             card::poster(SharedString::from(format!("lib-{i}")), &m, w, move |_, _, cx| Nav::detail(&mm, cx))
         })))
         .child(div().h(px(60.)))
+    }
+}
+
+fn size(b: f64) -> String {
+    if b >= 1e9 { format!("{:.1} GB", b / 1e9) } else { format!("{:.0} MB", b / 1e6) }
+}
+
+impl Library {
+    /// Downloads: what's saved and what's saving (play, pause / carry on, delete).
+    fn downloads_view(&mut self, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
+        // fresh every second while it's on screen
+        let list = couch::downloads::list(&couch::state::get().core).as_array().cloned().unwrap_or_default();
+        self.downloads = list.clone();
+        if list.iter().any(|d| d["done"] != true) {
+            cx.spawn(async move |this, cx| {
+                crate::timer::after(std::time::Duration::from_secs(1)).await;
+                let _ = this.update(cx, |_, cx| cx.notify());
+            })
+            .detach();
+        }
+        let _ = window;
+        if list.is_empty() {
+            return div()
+                .flex()
+                .flex_col()
+                .gap(px(6.))
+                .child(div().text_color(theme::label2()).child("nothing saved yet."))
+                .child(div().text_size(px(13.)).text_color(theme::label3()).child("on a title's page, Download saves it (or the episode you're on) to watch without internet."))
+                .into_any_element();
+        }
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(10.))
+            .max_w(px(900.))
+            .children(list.into_iter().enumerate().map(|(i, d)| {
+                let id = d["id"].as_str().unwrap_or("").to_string();
+                let m: Meta = serde_json::from_value(d["meta"].clone()).unwrap_or_default();
+                let done = d["done"] == true;
+                let active = d["active"] == true;
+                let (got, total) = (d["got"].as_f64().unwrap_or(0.), d["total"].as_f64().or(d["size"].as_f64()).unwrap_or(0.));
+                let frac = if done { 1. } else if total > 0. { (got / total).clamp(0., 1.) } else { 0. };
+                let status = if done {
+                    format!("on this computer · {}", size(total.max(got)))
+                } else if let Some(e) = d["error"].as_str() {
+                    format!("stopped: {e}")
+                } else if active {
+                    let sp = d["speed"].as_f64().unwrap_or(0.);
+                    let left = if sp > 0. && total > got { format!(" · {} min left", ((total - got) / sp / 60.).ceil() as i64) } else { String::new() };
+                    format!("saving · {} of {} · {}/s{left}", size(got), size(total), size(sp))
+                } else {
+                    format!("paused · {} saved", size(got))
+                };
+                let art = m.background.clone().or(m.poster.clone());
+                let (id1, id2, id3) = (id.clone(), id.clone(), id.clone());
+                let (m1, m2) = (m.clone(), m.clone());
+                let btn = |key: String, ic: &'static str| {
+                    div().id(SharedString::from(key)).size(px(38.)).flex_none().rounded_full().flex().items_center().justify_center().cursor_pointer().bg(theme::white(0.08)).hover(|s| s.bg(theme::white(0.16))).child(crate::ui::icon(ic, 18.))
+                };
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(14.))
+                    .p(px(10.))
+                    .rounded(px(16.))
+                    .bg(theme::white(0.04))
+                    .child(
+                        div()
+                            .relative()
+                            .w(px(160.))
+                            .h(px(90.))
+                            .flex_none()
+                            .rounded(px(10.))
+                            .overflow_hidden()
+                            .bg(theme::surface2())
+                            .children(art.map(|u| gpui::img(crate::net::fit(&api::sized(&u, "w500"), 160.)).size_full().object_fit(gpui::ObjectFit::Cover)))
+                            .when(!done, |d| d.child(div().absolute().left_0().bottom_0().w_full().h(px(3.)).bg(theme::white(0.25)).child(div().h_full().w(px(160. * frac as f32)).bg(theme::neon())))),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .gap(px(4.))
+                            .child(div().truncate().text_size(px(16.)).font_weight(FontWeight::SEMIBOLD).child(d["label"].as_str().unwrap_or(&m.name).to_string()))
+                            .child(div().text_size(px(13.)).text_color(theme::label3()).child(status)),
+                    )
+                    // play (from the file once it's all here)
+                    .when(done, |d| {
+                        d.child(btn(format!("dl-play-{i}"), "play").on_click(move |_, _, cx| {
+                            if id1.contains(':') {
+                                Nav::play_episode(&m1, id1.clone(), cx)
+                            } else {
+                                Nav::play(&m1, cx)
+                            }
+                        }))
+                    })
+                    // pause / carry on
+                    .when(!done, |d| {
+                        d.child(btn(format!("dl-pp-{i}"), if active { "pause" } else { "download" }).on_click(cx.listener(move |_, _, _, cx| {
+                            if active {
+                                couch::downloads::pause(&id2);
+                            } else {
+                                let vid = id2.contains(':').then(|| id2.clone());
+                                crate::playback::download(m2.clone(), vid, cx);
+                            }
+                            cx.notify();
+                        })))
+                    })
+                    .child(btn(format!("dl-del-{i}"), "trash").on_click(cx.listener(move |_, _, _, cx| {
+                        couch::downloads::remove(&couch::state::get().core, &id3);
+                        cx.notify();
+                    })))
+                    .into_any_element()
+            }))
+            .into_any_element()
     }
 }

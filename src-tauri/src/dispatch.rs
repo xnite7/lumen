@@ -164,6 +164,26 @@ pub async fn invoke(cmd: &str, a: Value) -> Result<Value, String> {
             let id: String = arg(&a, "id")?;
             out(commands::subtitles_fetch(st, kind, id).await.map_err(|e| e.to_string())?)
         }
+        "download_start" => {
+            let stream: Value = arg(&a, "stream")?;
+            let meta: Value = arg(&a, "meta")?;
+            let video_id: String = arg(&a, "videoId")?;
+            let label: String = arg(&a, "label")?;
+            out(commands::download_start(st, stream, meta, video_id, label).await.map_err(|e| e.to_string())?)
+        }
+        "downloads_list" => out(commands::downloads_list(st)),
+        "download_local" => {
+            let video_id: String = arg(&a, "videoId")?;
+            out(commands::download_local(st, video_id))
+        }
+        "download_remove" => {
+            let video_id: String = arg(&a, "videoId")?;
+            out(commands::download_remove(st, video_id))
+        }
+        "download_pause" => {
+            let video_id: String = arg(&a, "videoId")?;
+            out(commands::download_pause(video_id))
+        }
         "ear_find" => {
             let kind: String = arg(&a, "kind")?;
             out(commands::ear_find(st, kind).await.map_err(|e| e.to_string())?)

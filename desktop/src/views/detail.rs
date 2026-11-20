@@ -609,6 +609,8 @@ impl Render for Detail {
                 }
             }
         }
+        // the episode "Download" saves (the one the play button plays)
+        let dl_video: Option<String> = pvideo.as_ref().and_then(|v| v["id"].as_str().map(String::from));
         let flagged = self.item.as_ref().map_or(false, |i| crate::api::flag(&i["state"]["flaggedWatched"]));
         // in My List, or in any of your couch lists
         let base_id = m.id.split(':').next().unwrap_or("").to_string();
@@ -947,6 +949,12 @@ impl Render for Detail {
                                     cx.notify();
                                 })))
                             })
+                            // save it to watch offline (a film, or the episode the play button would play)
+                            .child(act("d-dl", icon("download", 22.), "Download").on_click({
+                                let m = m.clone();
+                                let v = dl_video.clone();
+                                move |_, _, cx| crate::playback::download(m.clone(), v.clone(), cx)
+                            }))
                             .child(act("d-share", icon("share", 22.), "Share").on_click({
                                 let m = m.clone();
                                 move |_, _, cx| {

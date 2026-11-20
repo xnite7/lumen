@@ -382,6 +382,35 @@ pub async fn player_open(s: S<'_>, req: PlayRequest) -> AppResult<crate::player:
     s.player.open(req).await
 }
 
+/// Save this stream to the computer (Videos\couch), to watch offline.
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn download_start(s: S<'_>, stream: Value, meta: Value, video_id: String, label: String) -> AppResult<()> {
+    let url = s.player.resolve_url(&stream).await?.ok_or_else(|| AppError::msg("that stream can't be saved"))?;
+    let headers: Vec<(String, String)> = stream
+        .pointer("/behaviorHints/proxyHeaders/request")
+        .and_then(|h| h.as_object())
+        .map(|h| h.iter().filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_string()))).collect())
+        .unwrap_or_default();
+    let hint = stream.pointer("/behaviorHints/filename").and_then(|f| f.as_str()).map(String::from);
+    crate::downloads::start(s.core.clone(), url, headers, meta, video_id, label, hint)
+}
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub fn downloads_list(s: S<'_>) -> Value {
+    crate::downloads::list(&s.core)
+}
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub fn download_local(s: S<'_>, video_id: String) -> Option<String> {
+    crate::downloads::local(&s.core, &video_id)
+}
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub fn download_remove(s: S<'_>, video_id: String) {
+    crate::downloads::remove(&s.core, &video_id)
+}
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub fn download_pause(video_id: String) {
+    crate::downloads::pause(&video_id)
+}
+
 #[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn ear_find(s: S<'_>, kind: String) -> AppResult<Value> {
     s.player.ear(&kind).await

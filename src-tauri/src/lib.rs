@@ -19,6 +19,7 @@ pub mod updates;
 pub mod player;
 pub mod relay;
 pub mod stream_cache;
+pub mod downloads;
 pub mod rt;
 pub mod settings;
 pub mod state;

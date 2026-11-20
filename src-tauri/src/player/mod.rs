@@ -121,7 +121,7 @@ impl Player {
         self.session.lock().clone()
     }
 
-    async fn resolve_url(&self, stream: &Value) -> AppResult<Option<String>> {
+    pub async fn resolve_url(&self, stream: &Value) -> AppResult<Option<String>> {
         if let Some(u) = stream.get("url").and_then(|u| u.as_str()) {
             return Ok(Some(u.to_string()));
         }
