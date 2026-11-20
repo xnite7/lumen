@@ -274,7 +274,7 @@ pub fn run_embedded(src: &Source, stream: i64) -> AppResult<f64> {
     Ok(offset)
 }
 
-fn add_http(cmd: &mut std::process::Command, src: &Source) {
+pub fn add_http(cmd: &mut std::process::Command, src: &Source) {
     if src.url.starts_with("http") {
         if !src.ua.is_empty() {
             cmd.args(["-user_agent", &src.ua]);

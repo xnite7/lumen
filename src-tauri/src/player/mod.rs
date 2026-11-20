@@ -19,6 +19,8 @@ pub mod subsync;
 pub mod headphones;
 #[cfg(desktop)]
 pub mod atmos;
+#[cfg(desktop)]
+pub mod ear;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub mod surface;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -260,6 +262,88 @@ impl Player {
         {
             let _ = t;
             None
+        }
+    }
+
+    /// The intro ("intro") or credits ("credits") of the episode playing, by
+    /// ear (for shows TheIntroDB doesn't know). Null when not found.
+    pub async fn ear(&self, kind: &str) -> AppResult<Value> {
+        #[cfg(desktop)]
+        {
+            use serde_json::json;
+            let vid = self.session().map(|s| s.req.video_id.clone()).unwrap_or_default();
+            let parts: Vec<&str> = vid.split(':').collect();
+            if parts.len() != 3 {
+                return Ok(Value::Null);
+            }
+            let db = &self.core.db;
+            let seg_key = format!("ear_seg:{vid}:{kind}");
+            if let Some(v) = db.get::<Value>(&seg_key) {
+                return Ok(v);
+            }
+            let (src, dur, rate) = self.backend.film_source()?;
+            // a film too heavy to read ahead twice (a 4K remux): not now
+            if dur < 600.0 || rate > 3.5e6 {
+                return Ok(Value::Null);
+            }
+            let show_key = format!("ear:{}:{}", parts[0], parts[1]);
+            let (start, len, min) = if kind == "intro" { (0.0, (dur * 0.35).min(420.0), 150) } else { ((dur - 360.0).max(0.0), 360.0f64.min(dur), 200) };
+            let fp = tokio::task::spawn_blocking(move || ear::listen(&src, start, len)).await.map_err(|e| AppError::msg(e.to_string()))??;
+            let mut show: Value = db.get(&show_key).unwrap_or_else(|| json!({}));
+            let sig_name = format!("{kind}Sig");
+            let mut found: Option<(usize, usize)> = None;
+            if let Some(sig) = show[&sig_name].as_array().map(|a| a.iter().filter_map(|x| x.as_u64().map(|v| v as u16)).collect::<Vec<u16>>()) {
+                if let Some(p) = ear::find(&fp, &sig) {
+                    found = Some((p, sig.len()));
+                }
+            }
+            if found.is_none() {
+                // compare with earlier episodes' (the first match becomes the show's signature)
+                let list_name = format!("{kind}s");
+                let others: Vec<(String, Vec<u16>)> = show[&list_name]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|e| e["vid"].as_str() != Some(vid.as_str()))
+                    .map(|e| (e["vid"].as_str().unwrap_or("").to_string(), e["fp"].as_array().map(|a| a.iter().filter_map(|x| x.as_u64().map(|v| v as u16)).collect()).unwrap_or_default()))
+                    .collect();
+                let fp2 = fp.clone();
+                let hit = tokio::task::spawn_blocking(move || others.iter().find_map(|(_, o)| ear::common(&fp2, o, min).filter(|c| c.2 <= 1800))).await.ok().flatten();
+                if let Some((a, _, l)) = hit {
+                    show[&sig_name] = json!(fp[a..a + l]);
+                    found = Some((a, l));
+                }
+                // this episode's, for the next one to compare with (the last two kept)
+                let mut list: Vec<Value> = show[&list_name].as_array().cloned().unwrap_or_default();
+                list.retain(|e| e["vid"].as_str() != Some(vid.as_str()));
+                list.push(json!({ "vid": vid, "fp": fp }));
+                if list.len() > 2 {
+                    list.remove(0);
+                }
+                show[&list_name] = json!(list);
+                let _ = db.set(&show_key, &show);
+            }
+            let out = match found {
+                Some((p, l)) => {
+                    let a = start + p as f64 * ear::STEP;
+                    let mut b = a + l as f64 * ear::STEP;
+                    // credits that run (nearly) to the end: to the end
+                    if kind != "intro" && dur - b < 30.0 {
+                        b = dur;
+                    }
+                    json!({ "start": a, "end": b })
+                }
+                None => Value::Null,
+            };
+            if !out.is_null() {
+                let _ = db.set(&seg_key, &out);
+            }
+            return Ok(out);
+        }
+        #[cfg(not(desktop))]
+        {
+            let _ = kind;
+            Ok(Value::Null)
         }
     }
 

@@ -70,6 +70,8 @@ pub struct Playback {
     pub start_hint: Option<f64>,
     /// the next episode whose streams are being / were found in the background
     preload_for: Option<String>,
+    /// the episode whose credits were already listened for
+    ear_asked: String,
     /// the languages this show was last watched in, still being put back (since when)
     langs_pending: Option<std::time::Instant>,
     /// you waved off the next-episode countdown: no autoplay at the end either
@@ -128,6 +130,21 @@ pub fn init(cx: &mut App) {
                         }
                     }
                     p.watch_lag(&s, cx);
+                    // the last ten minutes, and no credits known: listen for them (once)
+                    if p.open && !p.loading && s.duration > 900. && s.duration - s.pos < 600. && p.video_id.split(':').count() == 3 && p.ear_asked != p.video_id {
+                        let no_credits = p.segments["credits"].as_array().map_or(true, |a| a.is_empty());
+                        p.ear_asked = p.video_id.clone();
+                        if no_credits {
+                            let vid = p.video_id.clone();
+                            cx.spawn(async move |this, cx| {
+                                let r = api::call::<Value>("ear_find", json!({ "kind": "credits" })).await.unwrap_or(Value::Null);
+                                if r.is_object() {
+                                    let _ = this.update(cx, |p, cx| p.add_segment("credits", &vid, r, cx));
+                                }
+                            })
+                            .detach();
+                        }
+                    }
                     // halfway through: find the next episode's streams now, so it starts at once
                     if p.open && !p.loading && s.duration > 0. && s.pos / s.duration >= 0.5 && crate::together::get(cx).read(cx).following.is_none() {
                         if let Some(n) = p.next_video() {
@@ -231,12 +248,29 @@ pub fn init(cx: &mut App) {
                 if empty && dms.is_some() {
                     segs = api::call::<Value>("skip_segments", json!({ "videoId": vid, "durationMs": Value::Null })).await.unwrap_or(Value::Null);
                 }
-                let _ = this.update(cx, |p, cx| {
-                    if p.video_id == vid {
-                        p.segments = segs;
-                        cx.notify();
-                    }
-                });
+                let no_intro = segs["intro"].as_array().map_or(true, |a| a.is_empty());
+                let early = this
+                    .update(cx, |p, cx| {
+                        if p.video_id == vid {
+                            p.segments = segs;
+                            cx.notify();
+                        }
+                        p.state.pos < 300.
+                    })
+                    .unwrap_or(false);
+                // TheIntroDB doesn't know this one: listen for the intro (from the start
+                // of an episode, while it's still ahead)
+                if no_intro && early && vid.split(':').count() == 3 {
+                    let v2 = vid.clone();
+                    let this2 = this.clone();
+                    cx.spawn(async move |cx| {
+                        let r = api::call::<Value>("ear_find", json!({ "kind": "intro" })).await.unwrap_or(Value::Null);
+                        if r.is_object() {
+                            let _ = this2.update(cx, |p, cx| p.add_segment("intro", &v2, r, cx));
+                        }
+                    })
+                    .detach();
+                }
             }
         })
         .detach();
@@ -564,6 +598,21 @@ impl Playback {
         }
         if done {
             self.langs_pending = None;
+        }
+    }
+
+    /// a part found by ear (when the episode's still the one playing)
+    fn add_segment(&mut self, kind: &str, vid: &str, seg: Value, cx: &mut Context<Self>) {
+        if self.video_id != vid {
+            return;
+        }
+        if !self.segments.is_object() {
+            self.segments = json!({});
+        }
+        let empty = self.segments[kind].as_array().map_or(true, |a| a.is_empty());
+        if empty {
+            self.segments[kind] = json!([seg]);
+            cx.notify();
         }
     }
 

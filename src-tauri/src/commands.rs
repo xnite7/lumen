@@ -383,6 +383,11 @@ pub async fn player_open(s: S<'_>, req: PlayRequest) -> AppResult<crate::player:
 }
 
 #[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn ear_find(s: S<'_>, kind: String) -> AppResult<Value> {
+    s.player.ear(&kind).await
+}
+
+#[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn subs_autosync(s: S<'_>) -> AppResult<Value> {
     s.player.subs_autosync().await
 }

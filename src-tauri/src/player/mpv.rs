@@ -722,6 +722,16 @@ impl Mpv {
         Ok(super::subsync::Source { url, headers, ua, pos, sub, embedded })
     }
 
+    /// The film playing, for listening to it: (source, length, bytes per second)
+    pub fn film_source(&self) -> AppResult<(super::subsync::Source, f64, f64)> {
+        let mpv = self.ensure()?;
+        let (url, headers, ua) = self.last.lock().clone().ok_or_else(|| AppError::msg("nothing's playing"))?;
+        let dur: f64 = mpv.get_property("duration").unwrap_or(0.0);
+        let size: f64 = mpv.get_property::<i64>("file-size").map(|v| v as f64).unwrap_or(0.0);
+        let rate = if dur > 0.0 { size / dur } else { 0.0 };
+        Ok((super::subsync::Source { url, headers, ua, pos: 0.0, sub: String::new(), embedded: None }, dur, rate))
+    }
+
     /// Built-in subtitles: moved by a delay.
     pub fn set_sub_delay(&self, d: f64) -> AppResult<()> {
         let mpv = self.ensure()?;
