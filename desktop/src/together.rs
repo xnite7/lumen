@@ -327,6 +327,13 @@ impl Together {
         cx.notify();
     }
 
+    /// host: ask the server who's on the couch (the couch panel opening)
+    pub fn ask_roster(&self) {
+        if let (Some(_), Some(l)) = (&self.hosting, &self.line) {
+            l.send(json!({ "k": "roster" }));
+        }
+    }
+
     /// hand one guest the remote (play / pause / seek), or take it back
     pub fn give_remote(&mut self, id: &str, on: bool, cx: &mut Context<Self>) {
         if let Some(l) = &self.line {

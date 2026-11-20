@@ -30,7 +30,14 @@ pub struct Reactions {
     seen: HashSet<u64>,
     last_busy: Instant,
     opened_at: Instant,
+    /// couch chat: lines on screen (name, text, mine, when)
+    chat: Vec<(String, String, bool, Instant)>,
+    /// the chat box, while typing
+    typing: Option<gpui::Entity<TextInput>>,
 }
+
+/// how long a chat line stays on screen
+const CHAT_LIFE: f32 = 9.;
 
 /// the room we're in: the host we follow, or us when hosting
 pub fn room(cx: &gpui::App) -> Option<String> {
@@ -84,9 +91,13 @@ impl Reactions {
                                 v.last_busy = Instant::now();
                                 let delay = (x["at"].as_f64().unwrap_or(first) - first).clamp(0., 1500.) as u64;
                                 let (e, n) = (x["emoji"].as_str().unwrap_or("🔥").to_string(), x["name"].as_str().unwrap_or("").to_string());
+                                let text = x["text"].as_str().map(String::from);
                                 cx.spawn(async move |this, cx| {
                                     crate::timer::after(Duration::from_millis(delay)).await;
-                                    let _ = this.update(cx, |v, cx| v.launch(e, n, false, cx));
+                                    let _ = this.update(cx, |v, cx| match text {
+                                        Some(t) => v.say(n, t, false, cx),
+                                        None => v.launch(e, n, false, cx),
+                                    });
                                 })
                                 .detach();
                             }
@@ -98,7 +109,7 @@ impl Reactions {
         })
         .detach();
         let mine = couch::state::get().core.db.get::<Vec<String>>("gpui_reactions").filter(|l| !l.is_empty()).unwrap_or_else(|| EMOJI.iter().map(|e| e.to_string()).collect());
-        Self { open: false, people: vec![], mine, adding: None, flying: vec![], since: 0, seen: HashSet::new(), last_busy: Instant::now() - Duration::from_secs(60), opened_at: Instant::now() }
+        Self { open: false, people: vec![], mine, adding: None, flying: vec![], since: 0, seen: HashSet::new(), last_busy: Instant::now() - Duration::from_secs(60), opened_at: Instant::now(), chat: vec![], typing: None }
     }
 
     fn launch(&mut self, emoji: String, name: String, mine: bool, cx: &mut Context<Self>) {
@@ -108,6 +119,39 @@ impl Reactions {
         if self.flying.len() > 24 {
             self.flying.remove(0);
         }
+        cx.notify();
+    }
+
+    fn say(&mut self, name: String, text: String, mine: bool, cx: &mut Context<Self>) {
+        self.chat.push((name, text, mine, Instant::now()));
+        if self.chat.len() > 6 {
+            self.chat.remove(0);
+        }
+        cx.notify();
+    }
+
+    /// open the chat box (Enter sends, Esc / empty closes)
+    pub fn start_typing(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let input = cx.new(|cx| TextInput::new("say something to the couch…", cx));
+        cx.subscribe(&input, |v, i, _: &Submitted, cx| {
+            let t = i.read(cx).content.trim().to_string();
+            v.typing = None;
+            if !t.is_empty() {
+                if let Some(r) = room(cx) {
+                    v.say("you".into(), t.clone(), true, cx);
+                    v.last_busy = Instant::now();
+                    cx.spawn(async move |_, _| {
+                        let _ = api::call::<Value>("crew_social", json!({ "method": "POST", "path": format!("/v1/react/{r}"), "body": { "text": t } })).await;
+                    })
+                    .detach();
+                }
+            }
+            cx.notify();
+        })
+        .detach();
+        window.focus(&input.focus_handle(cx), cx);
+        self.typing = Some(input);
+        self.opened_at = Instant::now();
         cx.notify();
     }
 
@@ -160,7 +204,11 @@ impl Render for Reactions {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.flying.retain(|f| f.born.elapsed().as_secs_f32() < LIFE);
         // the tray folds itself away after a few quiet seconds
-        if self.open && self.adding.is_none() && self.opened_at.elapsed() > Duration::from_secs(5) {
+        self.chat.retain(|c| c.3.elapsed().as_secs_f32() < CHAT_LIFE);
+        if !self.chat.is_empty() {
+            window.request_animation_frame();
+        }
+        if self.open && self.adding.is_none() && self.typing.is_none() && self.opened_at.elapsed() > Duration::from_secs(5) {
             self.open = false;
         }
         if !self.flying.is_empty() {
@@ -242,6 +290,26 @@ impl Render for Reactions {
                         }))
                         .child(emoji::emoji(&e2_view(&i, &self.mine), 34.))
                 }))
+                // couch chat
+                .child(match self.typing.clone() {
+                    Some(inp) => div().w(px(280.)).h(px(40.)).px(px(14.)).flex().items_center().rounded_full().bg(theme::white(0.1)).text_size(px(15.)).child(inp).into_any_element(),
+                    None => div()
+                        .id("react-chat")
+                        .size(px(48.))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded_full()
+                        .cursor_pointer()
+                        .bg(theme::white(0.08))
+                        .hover(|s| s.bg(theme::white(0.16)))
+                        .on_click(cx.listener(|v, _, window, cx| {
+                            cx.stop_propagation();
+                            v.start_typing(window, cx);
+                        }))
+                        .child(emoji::emoji("💬", 26.))
+                        .into_any_element(),
+                })
                 .child(match self.adding.clone() {
                     Some(inp) => div().w(px(200.)).h(px(40.)).px(px(12.)).flex().items_center().rounded_full().bg(theme::white(0.1)).text_size(px(15.)).child(inp).into_any_element(),
                     None => div()
@@ -265,7 +333,35 @@ impl Render for Reactions {
                         .into_any_element(),
                 })
         });
-        div().absolute().top_0().left_0().size_full().children(flies).children(tray)
+        // the chat: newest at the bottom, each line fading out after a while
+        let chat = (!self.chat.is_empty()).then(|| {
+            div()
+                .absolute()
+                .left(px(theme::GUTTER))
+                .bottom(px(120.))
+                .max_w(px(460.))
+                .flex()
+                .flex_col()
+                .gap(px(6.))
+                .children(self.chat.iter().map(|(name, text, mine, at)| {
+                    let t = at.elapsed().as_secs_f32();
+                    let a = if t < 0.2 { t / 0.2 } else if t > CHAT_LIFE - 1. { (CHAT_LIFE - t).max(0.) } else { 1. };
+                    div()
+                        .opacity(a)
+                        .flex()
+                        .items_baseline()
+                        .gap(px(8.))
+                        .px(px(14.))
+                        .py(px(8.))
+                        .rounded(px(16.))
+                        .bg(gpui::rgba(0x0c090be0))
+                        .border_1()
+                        .border_color(theme::white(0.08))
+                        .child(div().flex_none().text_size(px(13.)).font_weight(FontWeight::BLACK).text_color(if *mine { gpui::Hsla::from(theme::neon()) } else { gpui::Hsla::from(theme::label2()) }).child(name.clone()))
+                        .child(div().text_size(px(15.)).line_height(px(20.)).child(text.clone()))
+                }))
+        });
+        div().absolute().top_0().left_0().size_full().children(flies).children(chat).children(tray)
     }
 }
 

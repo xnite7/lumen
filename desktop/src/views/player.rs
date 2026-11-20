@@ -887,6 +887,9 @@ fn round_btn(id: &'static str, child: impl IntoElement, size: f32) -> gpui::Stat
 impl PlayerView {
     fn toggle_menu(&mut self, m: Menu, cx: &mut Context<Self>) {
         self.menu = if self.menu == Some(m) { None } else { Some(m) };
+        if self.menu == Some(Menu::Couch) {
+            crate::together::get(cx).read(cx).ask_roster();
+        }
         // one thing open at a time: the volume slider and the reactions go
         if self.menu.is_some() {
             self.vol_pinned = false;

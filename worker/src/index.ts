@@ -251,7 +251,7 @@ type Ask = { id: string; from: string; fromName: string; fromAvatar?: string; to
 type Room = { host: string; metaId: string; type: string; videoId: string; title?: string; sk?: string; pos: number; paused: boolean; at: number; guests: string[]; reacts?: React[]; shared?: boolean; cmds?: Cmd[]; stalled?: boolean; wsAt?: number; remote?: string[]; buf?: Record<string, number>; du?: number };
 /** a guest steering the host's player (only when the host shares control) */
 type Cmd = { from: string; name: string; action: "pause" | "play" | "seek"; pos?: number; at: number };
-type React = { n: number; who: string; name: string; avatar?: string; emoji: string; at: number };
+type React = { n: number; who: string; name: string; avatar?: string; emoji: string; text?: string; at: number };
 /** one line of the crew's activity: a review, a rating, or "finished X" */
 type Act = { id: string; who: string; name: string; avatar?: string; kind: "review" | "rating" | "finished"; title: { id: string; type: string; name: string; poster?: string; background?: string; logo?: string }; rating?: number; text?: string; at: number };
 type Fav = { id: string; type: string; name: string; poster?: string; at: number };
@@ -734,6 +734,11 @@ export class Crew {
         }
         return;
       }
+      // the host's couch panel asks who's here
+      if (isHost && d?.k === "roster") {
+        this.roster(hostId);
+        return;
+      }
       // the host closed the player: guests stop on this frame and choose
       if (isHost && d?.k === "bye") {
         this.endRoom(hostId);
@@ -1109,11 +1114,13 @@ export class Crew {
       const now = Date.now();
       r.reacts = (r.reacts ?? []).filter((x) => now - x.at < 20_000);
       if (req.method === "POST") {
-        const emoji = REACTIONS.includes(b?.emoji) || isEmoji(b?.emoji) ? b.emoji : null;
+        // couch chat: a line of text rides the same way as a reaction
+        const text = typeof b?.text === "string" ? b.text.replace(/\s+/g, " ").trim().slice(0, 200) : "";
+        const emoji = text ? "💬" : REACTIONS.includes(b?.emoji) || isEmoji(b?.emoji) ? b.emoji : null;
         if (!emoji) return json({ error: "bad reaction" }, 400);
         const mine = r.reacts.filter((x) => x.who === who.id && now - x.at < 3000).length;
         if (mine >= 20) return json({ ok: true }); // easy there
-        r.reacts.push({ n: ++this.reactN, who: who.id, name: who.name, avatar: who.avatar, emoji, at: now });
+        r.reacts.push({ n: ++this.reactN, who: who.id, name: who.name, avatar: who.avatar, emoji, text: text || undefined, at: now });
         return json({ ok: true });
       }
       const since = Number(url.searchParams.get("since") ?? 0) || 0;
