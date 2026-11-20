@@ -81,10 +81,6 @@ pub struct PlayerView {
     chrome_at: Instant,
     /// the progress bar's colours, from the title's logo (or its picture): (for which url, two colours)
     tint: Option<(String, [gpui::Hsla; 2])>,
-    /// immersive light: the picture, soft, glowing in the black bars (latest, the one before, when it changed)
-    glow: Option<std::sync::Arc<gpui::Image>>,
-    glow_prev: Option<std::sync::Arc<gpui::Image>>,
-    glow_at: Instant,
     vol_x: std::rc::Rc<std::cell::Cell<f32>>,
     /// for the bar's living colours
     born: Instant,
@@ -170,31 +166,9 @@ impl PlayerView {
             };
         })
         .detach();
-        // immersive light: every couple of seconds, a small still of what's on screen
-        cx.spawn(async move |this, cx| loop {
-            crate::timer::after(Duration::from_millis(1800)).await;
-            let Ok(want) = this.update(cx, |v, cx| {
-                let p = v.pb.read(cx);
-                let on = couch::state::get().core.db.get::<bool>("gpui_immersive").unwrap_or(true);
-                (on && p.open && !p.loading && p.state.duration > 0.).then_some(p.state.pos)
-            }) else {
-                break;
-            };
-            let Some(pos) = want else { continue };
-            let Some(pic) = api_still(pos + 0.5).await else { continue };
-            // soften it off the main thread
-            let soft = couch::rt::spawn_blocking(move || soft_light(&pic)).await.ok().flatten();
-            let Some(soft) = soft else { continue };
-            let _ = this.update(cx, |v, cx| {
-                v.glow_prev = v.glow.replace(soft);
-                v.glow_at = Instant::now();
-                cx.notify();
-            });
-        })
-        .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, glow: None, glow_prev: None, glow_at: Instant::now(), vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, finale_cd: None, finale_off: None, blur_sent: 0., ate_click: false, next_x: Default::default() }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, finale_cd: None, finale_off: None, blur_sent: 0., ate_click: false, next_x: Default::default() }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -415,24 +389,6 @@ fn denied_sign(cx: &mut Context<PlayerView>, window: &mut Window) -> Option<gpui
     )
 }
 
-/// a still of the film, made soft and dim for the light around the picture
-fn soft_light(pic: &std::sync::Arc<gpui::Image>) -> Option<std::sync::Arc<gpui::Image>> {
-    let im = image::load_from_memory(&pic.bytes).ok()?;
-    let small = image::imageops::resize(&im.to_rgba8(), 40, 24, image::imageops::FilterType::Triangle);
-    let mut soft = image::imageops::blur(&small, 2.6);
-    for p in soft.pixels_mut() {
-        let (r, g, b) = (p[0] as f32, p[1] as f32, p[2] as f32);
-        let l = 0.299 * r + 0.587 * g + 0.114 * b;
-        let sat = |c: f32| ((l + (c - l) * 1.25) * 0.62).clamp(0., 255.);
-        p[0] = sat(r) as u8;
-        p[1] = sat(g) as u8;
-        p[2] = sat(b) as u8;
-        p[3] = 255;
-    }
-    let mut out = std::io::Cursor::new(Vec::new());
-    image::DynamicImage::ImageRgba8(soft).write_to(&mut out, image::ImageFormat::Png).ok()?;
-    Some(std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
-}
 
 /// The progress bar styles: (key, name in settings, moves?)
 pub const BAR_STYLES: [(&str, &str, bool); 7] = [
@@ -808,6 +764,29 @@ fn loading_name(t: &str) -> gpui::AnyElement {
 
 /// seconds the next episode waits in the credits before it plays by itself
 const COUNTDOWN: f32 = 10.;
+
+thread_local! {
+    /// ambient mode as last sent to mpv: where the picture is, strength
+    static AMB_SENT: std::cell::Cell<[f32; 5]> = const { std::cell::Cell::new([0.; 5]) };
+}
+
+fn ambient(p: &Playback, v: [f32; 5]) {
+    let last = AMB_SENT.with(|b| b.get());
+    if last.iter().zip(v.iter()).all(|(a, b)| (a - b).abs() < 0.001) || (last[4] <= 0. && v[4] <= 0.) {
+        return;
+    }
+    AMB_SENT.with(|b| b.set(v));
+    p.cmd("ambient", json!({ "x": v[0], "y": v[1], "w": v[2], "h": v[3], "s": v[4] }));
+}
+
+/// off the player (the corner picture has no bars of its own)
+pub fn ambient_off(cx: &mut gpui::App) {
+    let v = AMB_SENT.with(|b| b.get());
+    if v[4] > 0. {
+        let pb = crate::playback::get(cx);
+        ambient(pb.read(cx), [v[0], v[1], v[2], v[3], 0.]);
+    }
+}
 
 thread_local! {
     /// the bar glass last sent to mpv: x, y, w, h, radius, amount
@@ -1509,7 +1488,7 @@ impl PlayerView {
                                     let _ = couch::state::get().core.db.set("gpui_immersive", &!on);
                                     cx.notify();
                                 }))
-                                .child(div().flex().flex_col().child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).child("immersive light")).child(div().text_size(px(12.)).text_color(theme::label3()).child("the film's colours glow in the black bars")))
+                                .child(div().flex().flex_col().child(div().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).child("ambient mode")).child(div().text_size(px(12.)).text_color(theme::label3()).child("the film's light glows into the black bars")))
                                 .child(
                                     div()
                                         .w(px(38.))
@@ -1950,42 +1929,25 @@ impl Render for PlayerView {
             })
             .detach();
         }
-        // immersive light: the picture's own colours, softly, in the black bars around it
-        if !starting && st.dw > 0. && st.dh > 0. && self.aspect == "fit" && couch::state::get().core.db.get::<bool>("gpui_immersive").unwrap_or(true) {
-            if let Some(cur) = self.glow.clone() {
-                let vs = window.viewport_size();
-                let (ww, wh) = (f32::from(vs.width), f32::from(vs.height));
+        // ambient mode: mpv lets the film's light spill into the black bars
+        // (every frame, on the GPU); couch only says where the picture is
+        {
+            let on = couch::state::get().core.db.get::<bool>("gpui_immersive").unwrap_or(true);
+            let vs = window.viewport_size();
+            let (ww, wh) = (f32::from(vs.width).max(1.), f32::from(vs.height).max(1.));
+            let want = if on && !starting && st.dw > 0. && st.dh > 0. && self.aspect == "fit" && !crate::pip::is_on() {
                 let a = (st.dw / st.dh) as f32;
-                let fade = (self.glow_at.elapsed().as_secs_f32() / 1.2).min(1.);
-                if fade < 1. {
-                    window.request_animation_frame();
-                }
-                let bars: Vec<gpui::Bounds<Pixels>> = if ww / wh > a + 0.01 {
-                    let pw = (ww - wh * a) / 2.;
-                    if pw < 6. { vec![] } else { vec![gpui::Bounds::new(gpui::point(px(0.), px(0.)), gpui::size(px(pw + 1.), px(wh))), gpui::Bounds::new(gpui::point(px(ww - pw - 1.), px(0.)), gpui::size(px(pw + 1.), px(wh)))] }
+                if ww / wh > a {
+                    let w = wh * a / ww;
+                    [(1. - w) / 2., 0., w, 1., 1.]
                 } else {
-                    let ph = (wh - ww / a) / 2.;
-                    if ph < 6. { vec![] } else { vec![gpui::Bounds::new(gpui::point(px(0.), px(0.)), gpui::size(px(ww), px(ph + 1.))), gpui::Bounds::new(gpui::point(px(0.), px(wh - ph - 1.)), gpui::size(px(ww), px(ph + 1.)))] }
-                };
-                if !bars.is_empty() {
-                    let layer = |pic: std::sync::Arc<gpui::Image>, bars: Vec<gpui::Bounds<Pixels>>| {
-                        gpui::canvas(
-                            |_, _, _| (),
-                            move |b, _, window, cx| {
-                                let Some(data) = pic.clone().use_render_image(window, cx) else { return };
-                                for r in &bars {
-                                    let _ = window.paint_image(*r, b, gpui::Corners::default(), data.clone(), 0, false);
-                                }
-                            },
-                        )
-                        .absolute()
-                        .size_full()
-                    };
-                    root = root
-                        .children(self.glow_prev.clone().filter(|_| fade < 1.).map(|p| div().absolute().top_0().left_0().size_full().opacity(1. - fade).child(layer(p, bars.clone()))))
-                        .child(div().absolute().top_0().left_0().size_full().opacity(fade).child(layer(cur, bars)));
+                    let h = ww / a / wh;
+                    [0., (1. - h) / 2., 1., h, 1.]
                 }
-            }
+            } else {
+                [0., 0., 1., 1., 0.]
+            };
+            ambient(p, want);
         }
         // while it starts: the title's art under a dim, the logo, a line
         if starting || !p.error.is_empty() {

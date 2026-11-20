@@ -1364,6 +1364,7 @@ impl Render for Root {
         } else {
             // the film in the corner: no bar, so no bar glass on it
             views::player::glass_off(cx);
+            views::player::ambient_off(cx);
         }
         // "watch next" and TV mode cover the whole page: it isn't drawn under
         // them (it would also cover the hole their trailers show through)

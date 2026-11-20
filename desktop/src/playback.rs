@@ -318,7 +318,46 @@ fn clean_cue(t: &str) -> String {
             _ => {}
         }
     }
-    fix_mojibake(out.trim())
+    rtl_visual(&fix_mojibake(out.trim()))
+}
+
+/// Arabic, Persian, Hebrew lines, ready for a renderer that only lays text
+/// out left to right (couch's draws every run left to right, so Arabic came
+/// out back to front and in pieces): the letters are put in their joined
+/// forms, the line is put in the order it's seen in (right to left, numbers
+/// and Latin words kept the right way round), and it's held left to right
+/// so nothing turns it round again.
+pub fn rtl_visual(s: &str) -> String {
+    let rtl = |c: char| matches!(c as u32, 0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF);
+    if !s.chars().any(rtl) {
+        return s.to_string();
+    }
+    s.lines()
+        .map(|line| {
+            if !line.chars().any(rtl) {
+                return line.to_string();
+            }
+            let shaped = ar_reshaper::reshape_line(line);
+            let bi = unicode_bidi::BidiInfo::new(&shaped, Some(unicode_bidi::Level::rtl()));
+            let Some(para) = bi.paragraphs.first() else { return shaped };
+            let seen: String = bi.reorder_line(para, para.range.clone()).into_owned();
+            // brackets face the other way once the line is turned
+            let seen: String = seen
+                .chars()
+                .map(|c| match c {
+                    '(' => ')',
+                    ')' => '(',
+                    '[' => ']',
+                    ']' => '[',
+                    '«' => '»',
+                    '»' => '«',
+                    c => c,
+                })
+                .collect();
+            format!("\u{202D}{seen}\u{202C}")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Text that was UTF-8 but read as Windows-1252 ("â™ª" for ♪, "Ã©" for é):

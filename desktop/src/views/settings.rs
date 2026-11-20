@@ -949,7 +949,7 @@ impl Render for Settings {
                                     let _ = couch::state::get().core.db.set("gpui_immersive", &!on);
                                     cx.notify();
                                 }))
-                                .child(label("immersive light", "the film's colours glow softly in the black bars"))
+                                .child(label("ambient mode", "the film's light glows softly into the black bars, live"))
                                 .child(toggle(on))
                                 .into_any_element(),
                         );

@@ -25,6 +25,10 @@ unicode-segmentation = "1"
 base64 = "0.22"
 # Arabic (and other) subtitles saved in old Windows code pages
 encoding_rs = "0.8"
+# Arabic / Hebrew subtitles: joined letter forms and right-to-left order (the text
+# renderer only lays out left to right)
+ar-reshaper = "1.5"
+unicode-bidi = "0.3"
 # the monthly card is drawn as SVG and rendered to a PNG (same resvg as GPUI)
 resvg = { version = "0.46.0", default-features = false, features = ["text", "raster-images"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }

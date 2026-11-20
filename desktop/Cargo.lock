@@ -215,6 +215,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "ar-reshaper"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08dae85b57b725df143d5a2eb92c032dd032f062a636826fda1e1a4b21c40c03"
+
+[[package]]
 name = "arbitrary"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1448,6 +1454,7 @@ name = "couch-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ar-reshaper",
  "base64 0.22.1",
  "chrono",
  "couch",
@@ -1470,6 +1477,7 @@ dependencies = [
  "smallvec",
  "tokio",
  "tokio-tungstenite",
+ "unicode-bidi",
  "unicode-segmentation",
  "urlencoding",
  "windows 0.61.3",
