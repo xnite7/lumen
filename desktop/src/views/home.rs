@@ -750,7 +750,15 @@ fn feed_card(i: usize, acts: &[&Value]) -> gpui::AnyElement {
         if *on {
             crate::views::detail::prefetch(&pre, cx);
         }
-    }).on_click(move |_, _, cx| Nav::detail(&mm, cx));
+    }).on_click(move |_, _, cx| Nav::detail(&mm, cx))
+    // right click: the usual menu for the title
+    .on_mouse_down(gpui::MouseButton::Right, {
+        let mr = m.clone();
+        move |e, _, cx| {
+            cx.stop_propagation();
+            Nav::menu(&mr, e.position, cx)
+        }
+    });
     // everyone else on this title: little faces with their scores
     let others = |skip: Option<&Value>| {
         div().flex().gap(px(10.)).children(acts.iter().filter(|a| skip.map_or(true, |s| !std::ptr::eq(**a, s))).take(4).map(|a| {

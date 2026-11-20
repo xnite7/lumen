@@ -173,55 +173,63 @@ pub fn restart(cx: &mut App) {
 /// The card in the corner when a new version is ready.
 pub fn card(cx: &mut App) -> Option<impl IntoElement> {
     let v = cx.try_global::<Ready>().and_then(|r| r.0.clone())?;
+    let moving = matches!(*VIA.lock(), Some(Via::MoveTo { .. }));
+    // the same dark glass as couch's other floating bits: one line, two buttons
     let btn = |id: &'static str, label: &'static str, strong: bool| {
         div()
             .id(id)
-            .px(px(16.))
-            .h(px(36.))
+            .px(px(14.))
+            .h(px(32.))
             .flex()
             .items_center()
             .rounded_full()
             .font_weight(FontWeight::SEMIBOLD)
-            .text_size(px(14.))
+            .text_size(px(13.))
             .cursor_pointer()
-            .when(strong, |d| d.bg(crate::theme::neon()))
-            .when(!strong, |d| d.bg(crate::theme::white(0.1)))
-            .hover(|s| s.opacity(0.85))
+            // a press here is only this button's (nothing behind it gets it)
+            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .when(strong, |d| d.bg(crate::theme::text()).text_color(gpui::rgb(0x000000)).hover(|s| s.opacity(0.88)))
+            .when(!strong, |d| d.text_color(crate::theme::label2()).hover(|s| s.bg(crate::theme::white(0.08)).text_color(crate::theme::text())))
             .child(label)
     };
     Some(
         div()
+            .id("update-card")
+            .occlude()
             .absolute()
             .left(px(24.))
             .bottom(px(24.))
-            .w(px(360.))
-            .p(px(18.))
-            .rounded(px(20.))
-            // lit, so it stands out from any page: the neon at the edge, a glow under it
-            .bg(gpui::linear_gradient(160., gpui::linear_color_stop(gpui::rgba(0x2a1a2cf7), 0.), gpui::linear_color_stop(gpui::rgba(0x150d17f7), 1.)))
+            .max_w(px(460.))
+            .pl(px(16.))
+            .pr(px(6.))
+            .py(px(6.))
+            .rounded_full()
+            .bg(gpui::rgba(0x151114e6))
             .border_1()
-            .border_color(crate::theme::neon())
-            .shadow(vec![
-                gpui::BoxShadow { color: crate::theme::black(0.6), offset: gpui::point(px(0.), px(16.)), blur_radius: px(40.), spread_radius: px(0.), inset: false },
-                gpui::BoxShadow { color: gpui::Hsla::from(crate::theme::neon()).opacity(0.45), offset: gpui::point(px(0.), px(0.)), blur_radius: px(28.), spread_radius: px(0.), inset: false },
-            ])
+            .border_color(crate::theme::white(0.1))
+            .shadow(vec![gpui::BoxShadow { color: crate::theme::black(0.45), offset: gpui::point(px(0.), px(10.)), blur_radius: px(30.), spread_radius: px(0.), inset: false }])
+            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .flex()
-            .flex_col()
-            .gap(px(12.))
-            .child(div().flex().items_center().gap(px(12.)).child(div().size(px(40.)).flex_none().rounded_full().bg(crate::theme::neon()).flex().items_center().justify_center().child(crate::ui::icon("download", 20.))).child(div().flex_1().min_w_0().flex().flex_col().gap(px(2.)).child(div().text_size(px(17.)).font_weight(FontWeight::BLACK).child(format!("couch {v} is ready"))).child(div().w_full().text_size(px(13.)).line_height(px(18.)).text_color(crate::theme::label2()).child(if matches!(*VIA.lock(), Some(Via::MoveTo { .. })) {
-                "couch now installs like a proper app: Windows asks once to trust it, then its installer opens"
-            } else {
-                "restart to get it, or it's there next time you open couch"
-            }))))
+            .items_center()
+            .gap(px(10.))
+            .child(crate::ui::icon("download", 16.).text_color(crate::theme::label2()))
             .child(
                 div()
-                    .flex()
-                    .gap(px(8.))
-                    .child(btn("upd-now", if matches!(*VIA.lock(), Some(Via::MoveTo { .. })) { "install now" } else { "restart now" }, true).on_click(|_, _, cx| restart(cx)))
-                    .child(btn("upd-later", "later", false).on_click(|_, _, cx| {
-                        cx.set_global(Ready(None));
-                        cx.refresh_windows();
-                    })),
-            ),
+                    .flex_1()
+                    .min_w_0()
+                    .text_size(px(13.))
+                    .font_weight(FontWeight::MEDIUM)
+                    .truncate()
+                    .child(if moving { format!("couch {v} · installs as an app (Windows asks once)") } else { format!("couch {v} is ready") }),
+            )
+            .child(btn("upd-later", "later", false).on_click(|_, _, cx| {
+                cx.stop_propagation();
+                cx.set_global(Ready(None));
+                cx.refresh_windows();
+            }))
+            .child(btn("upd-now", if moving { "install" } else { "restart" }, true).on_click(|_, _, cx| {
+                cx.stop_propagation();
+                restart(cx)
+            })),
     )
 }

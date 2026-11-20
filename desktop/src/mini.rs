@@ -234,7 +234,9 @@ mod imp {
                     XBTN.store(x.0 as isize, Ordering::Relaxed);
                 }
                 // rounded corners (Windows 11)
-                let pref: u32 = 2; // DWMWCP_ROUND
+                // (square: fit() rounds just the top corners itself, the bar
+                // under it carries on from its bottom edge)
+                let pref: u32 = 1; // DWMWCP_DONOTROUND
                 let _ = windows::Win32::Graphics::Dwm::DwmSetWindowAttribute(p, windows::Win32::Graphics::Dwm::DWMWA_WINDOW_CORNER_PREFERENCE, &pref as *const u32 as *const _, 4);
             }
             v.0 as isize
@@ -297,6 +299,12 @@ mod imp {
                 let mut pt = POINT { x: r.right - w - m, y: r.bottom - h - m - bar };
                 let _ = ClientToScreen(hw(main), &mut pt);
                 let _ = SetWindowPos(hw(pop), None, pt.x, pt.y, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
+                // the top corners round, the bottom ones meet the bar below square
+                {
+                    let rad = (18. * scale) as i32;
+                    let rg = windows::Win32::Graphics::Gdi::CreateRoundRectRgn(0, 0, w + 1, h + 1 + rad * 2, rad * 2, rad * 2);
+                    let _ = windows::Win32::Graphics::Gdi::SetWindowRgn(hw(pop), Some(rg), true);
+                }
                 let _ = SetWindowPos(hw(v), None, 0, 0, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
                 let x = XBTN.load(Ordering::Relaxed);
                 if x != 0 {

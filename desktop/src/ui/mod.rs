@@ -74,7 +74,13 @@ static VIEW_W: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(
 pub fn view_w() -> f32 {
     VIEW_W.load(std::sync::atomic::Ordering::Relaxed) as f32
 }
+static WIN_W: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1600);
+/// the window's real width (view_w is rounded up, for picture sizes)
+pub fn window_w() -> f32 {
+    WIN_W.load(std::sync::atomic::Ordering::Relaxed) as f32
+}
 pub fn set_scale(s: f32, w: f32) {
+    WIN_W.store(w.round() as u32, std::sync::atomic::Ordering::Relaxed);
     SCALE.store((s * 100.).round() as u32, std::sync::atomic::Ordering::Relaxed);
     VIEW_W.store(((w / 320.).ceil() * 320.) as u32, std::sync::atomic::Ordering::Relaxed);
 }

@@ -535,8 +535,8 @@ pub fn hover(m: &crate::api::Meta, on: bool, cx: &mut App) {
         get(cx).update(cx, |v, cx| v.stop(&owner, cx));
         return;
     }
-    // previews on hover: off in settings
-    if !couch::state::get().core.settings().general.hover_previews {
+    // previews on hover: off in settings (or a right-click menu is up)
+    if !couch::state::get().core.settings().general.hover_previews || crate::views::menu::is_open() {
         return;
     }
     cx.set_global(Pending(owner.clone()));

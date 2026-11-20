@@ -52,6 +52,8 @@ pub fn card_with(
     let hkey = zkey.clone();
     // only after you've rested on it (the same wait as the preview); each card waits on its own
     let (hov, since, from) = GROW.with(|g| g.borrow().get(&zkey).copied()).unwrap_or((false, std::time::Instant::now() - std::time::Duration::from_secs(5), 0.));
+    // a right-click menu is up: nothing grows under it
+    let hov = hov && !crate::views::menu::is_open();
     let dwell = crate::ui::video::dwell_secs();
     // on-the-couch cards hold still: the join button and faces sit over them
     let still = zkey.starts_with("live-");
@@ -75,7 +77,7 @@ pub fn card_with(
     // when it was half off the side)
     let dx = if grow > 0. {
         SLOTS.with(|m| m.borrow().get(&zkey).copied()).map_or(0., |sx: f32| {
-            let vw = crate::ui::view_w();
+            let vw = crate::ui::window_w();
             let margin = 28.;
             let left = sx - (gw - W) / 2.;
             let right = left + gw;
@@ -145,7 +147,16 @@ pub fn card_with(
         })
         .children(match &clip {
             Some((p, a, _)) => crate::ui::video::layers(art.clone(), p, *a, 12.),
-            None => art.clone().map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).into_any_element()).into_iter().collect(),
+            // a touch of depth as it grows: the picture zooms a hair more than
+            // the card and drifts down, the logo lifts (barely there)
+            None => art
+                .clone()
+                .map(|u| {
+                    let z = 1. + 0.045 * grow;
+                    img(u).absolute().left(px(-gw * (z - 1.) / 2.)).top(px(-gh * (z - 1.) / 2. + 2. * grow)).w(px(gw * z)).h(px(gh * z)).object_fit(ObjectFit::Cover).into_any_element()
+                })
+                .into_iter()
+                .collect(),
         })
         // not in English: its country's flag, top right
         .children(crate::seen::flag_for(&m.id, m.lang.as_deref()).filter(|_| !watched).map(|f| {
@@ -180,7 +191,7 @@ pub fn card_with(
                 .absolute()
                 .left(px(14.))
                 .right(px(14.))
-                .bottom(px(12.))
+                .bottom(px(12. + 3. * grow))
                 .h(px(54.))
                 .flex()
                 .items_end()

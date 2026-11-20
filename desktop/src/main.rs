@@ -652,10 +652,7 @@ impl Root {
             return;
         }
         if k == "escape" && (self.menu.read(cx).open.is_some() || self.addto.read(cx).meta.is_some()) {
-            self.menu.update(cx, |m, cx| {
-                m.open = None;
-                cx.notify();
-            });
+            self.menu.update(cx, |m, cx| m.close(cx));
             self.addto.update(cx, |a, cx| {
                 a.meta = None;
                 cx.notify();
@@ -722,10 +719,7 @@ impl Root {
         }
         // esc closes a menu or sheet first
         if k == "escape" && self.menu.read(cx).open.is_some() {
-            self.menu.update(cx, |m, cx| {
-                m.open = None;
-                cx.notify();
-            });
+            self.menu.update(cx, |m, cx| m.close(cx));
             return;
         }
         if k == "escape" && self.addto.read(cx).meta.is_some() {
@@ -1000,10 +994,11 @@ impl Root {
             .right(px(mini::M))
             // under the picture (the picture sits above it, see mini::BAR)
             .bottom(px(mini::M - (1. - a) * 16.))
-            .h(px(mini::BAR - 8.))
+            // right under the picture, one piece with it: the progress line is the seam
+            .h(px(mini::BAR))
             .opacity(a)
             .w(px(mini::W))
-            .rounded(px(18.))
+            .rounded_b(px(18.))
             .overflow_hidden()
             // clicks on it stay on it (nothing behind it gets them)
             .id("mini-card")
@@ -1012,24 +1007,20 @@ impl Root {
             .on_mouse_down(gpui::MouseButton::Right, |_, _, cx| cx.stop_propagation())
             .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
             .bg(gpui::linear_gradient(180., gpui::linear_color_stop(gpui::rgba(0x1d181cf2), 0.), gpui::linear_color_stop(gpui::rgba(0x0e0b0df2), 1.)))
-            .border_1()
-            .border_color(theme::white(0.10))
             .shadow(vec![gpui::BoxShadow { color: theme::black(0.55), offset: gpui::point(px(0.), px(14.)), blur_radius: px(36.), spread_radius: px(0.), inset: false }])
             .flex()
             .flex_col()
-            .justify_center()
-            .gap(px(8.))
-            .px(px(14.))
             .child(
-                // the progress first: a click anywhere on it jumps there
+                // the progress first, edge to edge along the picture's bottom: a
+                // click anywhere on it jumps there
                 div()
                     .id("mini-track")
-                    .h(px(12.))
+                    .h(px(14.))
                     .flex()
-                    .items_center()
+                    .items_start()
                     .cursor_pointer()
                     .on_mouse_down(gpui::MouseButton::Left, move |e, _, cx| {
-                        let x = (f32::from(e.position.x) - left_edge - 14.) / (mini::W - 28.);
+                        let x = (f32::from(e.position.x) - left_edge) / mini::W;
                         let d = p5.read(cx).state.duration;
                         if d > 0. {
                             let to = x.clamp(0., 1.) as f64 * d;
@@ -1039,8 +1030,8 @@ impl Root {
                         }
                     })
                     .child(
-                        div().w_full().h(px(4.)).rounded_full().bg(theme::white(0.16)).child(
-                            div().relative().h_full().rounded_full().overflow_hidden().w(px((mini::W - 28.) * frac)).child({
+                        div().w_full().h(px(4.)).bg(theme::white(0.16)).child(
+                            div().relative().h_full().rounded_r_full().overflow_hidden().w(px(mini::W * frac)).child({
                                 // the colours of the film's logo, like the big player's bar
                                 let [c1, c2] = views::player::play_tint().unwrap_or([theme::neon().into(), theme::neon_soft().into()]);
                                 views::player::bar_fill(views::player::bar_style(), c1, c2, t0)
@@ -1051,6 +1042,9 @@ impl Root {
             .child(
                 // what's on (left), the controls (middle), the time (right)
                 div()
+                    .flex_1()
+                    .px(px(14.))
+                    .pb(px(6.))
                     .flex()
                     .items_center()
                     .child(
@@ -1348,13 +1342,22 @@ impl Render for Root {
                 let was = window.is_fullscreen();
                 self.tv_fs = Some(!was);
                 if !was {
-                    window.toggle_fullscreen();
+                    // (after this frame: toggled mid-draw it could be lost)
+                    window.defer(cx, |window, _| {
+                        if !window.is_fullscreen() {
+                            window.toggle_fullscreen();
+                        }
+                    });
                 }
             }
             (false, Some(made)) => {
                 self.tv_fs = None;
-                if made && window.is_fullscreen() {
-                    window.toggle_fullscreen();
+                if made {
+                    window.defer(cx, |window, _| {
+                        if window.is_fullscreen() {
+                            window.toggle_fullscreen();
+                        }
+                    });
                 }
             }
             _ => {}
@@ -1368,7 +1371,13 @@ impl Render for Root {
         }
         // "watch next" and TV mode cover the whole page: it isn't drawn under
         // them (it would also cover the hole their trailers show through)
-        let covered = self.finale.read(cx).open || (tv_on && !playing);
+        // the launch intro: nothing drawn under it until it starts fading
+        // (Home's first draw, with all its pictures, stalled the animation)
+        let intro_cover = self.splash.is_some() && {
+            let play: f32 = INTRO.get().map_or(0., |f| f.iter().map(|x| x.1).sum());
+            self.intro_play.map_or(true, |a| a.elapsed().as_secs_f32() < play + 0.15)
+        };
+        let covered = self.finale.read(cx).open || (tv_on && !playing) || intro_cover;
         let page = match &self.route {
             _ if covered => div().into_any_element(),
             Route::Home => self.home.clone().into_any_element(),
@@ -1472,10 +1481,7 @@ impl Render for Root {
                         w.open = false;
                         cx.notify();
                     });
-                    r.menu.update(cx, |m, cx| {
-                        m.open = None;
-                        cx.notify();
-                    });
+                    r.menu.update(cx, |m, cx| m.close(cx));
                     r.addto.update(cx, |a, cx| {
                         a.meta = None;
                         cx.notify();

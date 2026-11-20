@@ -11,6 +11,15 @@ pub struct Menu {
     pub open: Option<(Meta, Point<Pixels>)>,
     /// the title is on "continue watching" (so it can be taken off)
     in_cw: bool,
+    /// when it opened, and when it started closing (it fades and drops away)
+    at: std::time::Instant,
+    closing: Option<std::time::Instant>,
+}
+
+/// a menu is up: cards don't grow or play under it
+static OPEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub fn is_open() -> bool {
+    OPEN.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 thread_local! {
@@ -23,7 +32,27 @@ pub fn dismissed() -> Vec<String> {
 
 impl Menu {
     pub fn new(_cx: &mut Context<Self>) -> Self {
-        Self { open: None, in_cw: false }
+        Self { open: None, in_cw: false, at: std::time::Instant::now(), closing: None }
+    }
+    /// fade away, then gone
+    pub fn close(&mut self, cx: &mut Context<Self>) {
+        if self.open.is_none() || self.closing.is_some() {
+            return;
+        }
+        self.closing = Some(std::time::Instant::now());
+        cx.spawn(async move |this, cx| {
+            crate::timer::after(std::time::Duration::from_millis(130)).await;
+            let _ = this.update(cx, |m, cx| {
+                if m.closing.is_some() {
+                    m.open = None;
+                    m.closing = None;
+                    OPEN.store(false, std::sync::atomic::Ordering::Relaxed);
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+        cx.notify();
     }
     pub fn show(&mut self, m: Meta, at: Point<Pixels>, cx: &mut Context<Self>) {
         self.in_cw = couch::commands::continue_watching(couch::state::get())
@@ -31,15 +60,32 @@ impl Menu {
             .unwrap_or(false)
             && !dismissed().contains(&m.id);
         self.open = Some((m, at));
+        self.at = std::time::Instant::now();
+        self.closing = None;
+        OPEN.store(true, std::sync::atomic::Ordering::Relaxed);
         cx.notify();
     }
 }
 
 impl Render for Menu {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some((m, at)) = self.open.clone() else { return div().absolute().into_any_element() };
+        let Some((m, at)) = self.open.clone() else {
+            OPEN.store(false, std::sync::atomic::Ordering::Relaxed);
+            return div().absolute().into_any_element();
+        };
+        // in quickly from just above the pointer; out quicker
+        let k = match self.closing {
+            Some(c) => 1. - (c.elapsed().as_secs_f32() / 0.12).min(1.),
+            None => {
+                let x = (self.at.elapsed().as_secs_f32() / 0.16).min(1.);
+                1. - (1. - x).powi(3)
+            }
+        };
+        if k > 0. && k < 1. || self.closing.is_some() {
+            window.request_animation_frame();
+        }
         let vs = window.viewport_size();
-        let (w, h) = (270., if self.in_cw { 345. } else { 300. });
+        let (w, h) = (290., if self.in_cw { 345. } else { 300. });
         let x = f32::from(at.x).min(f32::from(vs.width) - w - 12.);
         let y = f32::from(at.y).min(f32::from(vs.height) - h - 12.);
         let (seen, listed) = crate::seen::status(&m.id);
@@ -89,7 +135,7 @@ impl Render for Menu {
         if self.in_cw {
             items.push((
                 "close",
-                "remove from continue watching",
+                "remove from up next",
                 Box::new(|m, cx| {
                     let id = m.id.clone();
                     DISMISSED.with(|d| d.borrow_mut().push(id.clone()));
@@ -116,12 +162,11 @@ impl Render for Menu {
                 .cursor_pointer()
                 .hover(|s| s.bg(theme::white(0.1)))
                 .on_click(cx.listener(move |me, _, _, cx| {
-                    me.open = None;
-                    cx.notify();
+                    me.close(cx);
                     f(&m, cx);
                 }))
                 .child(icon(ic, 19.))
-                .child(div().text_size(px(15.)).font_weight(FontWeight::MEDIUM).child(label))
+                .child(div().flex_1().min_w_0().text_size(px(15.)).font_weight(FontWeight::MEDIUM).truncate().child(label))
         });
         div()
             .absolute()
@@ -138,12 +183,10 @@ impl Render for Menu {
                     .occlude()
                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(|me, _, _, cx| {
                         cx.stop_propagation();
-                        me.open = None;
-                        cx.notify();
+                        me.close(cx);
                     }))
                     .on_mouse_down(gpui::MouseButton::Right, cx.listener(|me, _, _, cx| {
-                        me.open = None;
-                        cx.notify();
+                        me.close(cx);
                     })),
             )
             .child(
@@ -151,7 +194,8 @@ impl Render for Menu {
                     .id("ctx-menu")
                     .absolute()
                     .left(px(x))
-                    .top(px(y))
+                    .top(px(y - 8. * (1. - k)))
+                    .opacity(k)
                     .w(px(w))
                     .p(px(6.))
                     .rounded(px(16.))
