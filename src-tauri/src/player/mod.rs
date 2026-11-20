@@ -93,12 +93,17 @@ impl Player {
     /// address to open and whether request headers were absorbed.
     async fn route(&self, url: &str, headers: &[(String, String)]) -> (String, bool) {
         let remote = url.starts_with("http") && !url.starts_with("http://127.0.0.1") && !url.starts_with("http://localhost");
-        if !remote || !self.core.settings.read().network.doh {
+        if !remote {
             return (url.to_string(), false);
         }
         let core = self.core.clone();
         match self.relay.get_or_try_init(|| crate::relay::Relay::start(move || core.http.client())).await {
-            Ok(r) => (r.register(url, headers), true),
+            Ok(r) => {
+                // (the computer app: pieces are shared, so a film is fetched once)
+                #[cfg(desktop)]
+                r.use_cache(&self.core.cache_dir.join("streams"));
+                (r.register(url, headers), true)
+            }
             Err(e) => {
                 log::warn!("relay unavailable: {e}");
                 (url.to_string(), false)

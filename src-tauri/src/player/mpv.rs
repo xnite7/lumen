@@ -126,6 +126,16 @@ fn loudness(m: std::sync::Weak<libmpv2::Mpv>, gen: u64, key: String, mut gain: f
             let _ = mpv.command("af-command", &["gain", "volume", &format!("{gain:.2}dB")]);
         }
         LOUD.lock().insert(key.clone(), i);
+        // kept for next time (a minute in is a fair measure)
+        if since % 60 == 0 {
+            let db = &crate::state::get().core.db;
+            let mut m = db.get::<std::collections::HashMap<String, f64>>("loudness").unwrap_or_default();
+            if m.len() > 400 {
+                m.clear();
+            }
+            m.insert(key.clone(), i);
+            let _ = db.set("loudness", &m);
+        }
     }
 }
 
@@ -446,7 +456,8 @@ impl Mpv {
         let _ = mpv.command("af", &["remove", "@gain"]);
         if s.playback.even_volume {
             let key = loud_key(url);
-            let start = LOUD.lock().get(&key).copied().map_or(0.0, |l| loud_gain(l));
+            let known = LOUD.lock().get(&key).copied().or_else(|| self.core.db.get::<std::collections::HashMap<String, f64>>("loudness").and_then(|m| m.get(&key).copied()));
+            let start = known.map_or(0.0, loud_gain);
             let _ = mpv.command("af", &["add", "@loud:lavfi=[ebur128=metadata=1:peak=none]"]);
             let _ = mpv.command("af", &["add", &format!("@gain:lavfi=[volume={start:.2}dB]")]);
             let gen = LOUD_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
