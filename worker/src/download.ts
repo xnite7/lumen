@@ -13,8 +13,8 @@ export const DOWNLOAD_HTML = `<!doctype html>
 <meta name="description" content="couch is midnite™'s streaming app. watch together, on one couch.">
 <meta property="og:title" content="couch · midnite™">
 <meta property="og:description" content="watch together, on one couch.">
-<meta property="og:image" content="/logo.png">
-<link rel="icon" href="/logo.png">
+<meta property="og:image" content="/couch.png">
+<link rel="icon" href="/couch.png">
 <style>
   :root { --bg:#07070b; --fg:#f2f2f5; --dim:#8b8b96; --line:#1c1c24; --card:#0e0e14; --max:1120px; }
   * { box-sizing:border-box; margin:0; }
@@ -94,7 +94,7 @@ export const DOWNLOAD_HTML = `<!doctype html>
 
 <nav>
   <div class="wrap">
-    <a class="brand" href="#top"><img src="/logo.png" alt="">couch</a>
+    <a class="brand" href="#top"><img src="/couch.png" alt="">couch</a>
     <div class="links"><a href="#features">features</a><a href="/install">install guide</a><a href="#faq">faq</a></div>
     <a class="btn" href="${ZIP}" style="padding:8px 18px;font-size:14px">download</a>
   </div>

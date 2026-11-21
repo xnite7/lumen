@@ -330,8 +330,11 @@ async function serverInvite(env: Env): Promise<Response> {
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-    if (url.pathname === "/logo.png") {
-      return new Response(logo, { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
+    // the couch mark: the favicon and every logo on the site. /logo.png is the old name
+    // (and Discord's small image); /couch.png is the one the pages use, so browsers
+    // that cached an older mark under /logo.png still get the right one.
+    if (url.pathname === "/couch.png" || url.pathname === "/logo.png" || url.pathname === "/favicon.ico" || url.pathname === "/apple-touch-icon.png") {
+      return new Response(logo, { headers: { "content-type": "image/png", "cache-control": "public, max-age=3600" } });
     }
     if (url.pathname === "/" || url.pathname === "/download" || url.pathname === "/couch") {
       return new Response(LANDING_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
@@ -586,7 +589,7 @@ img{width:120px;height:120px;border-radius:28px;box-shadow:0 0 60px -10px #E0309
 a{display:inline-block;margin-top:22px;padding:12px 26px;border-radius:999px;background:#F4EAF0;color:#0C070B;text-decoration:none;font:600 15px system-ui,sans-serif}
 p{color:#9C8A96;margin:18px 24px 0}
 </style>
-<div><img src="/logo.png" alt=""><h1 style="font:800 26px system-ui,sans-serif;letter-spacing:-.03em;margin:22px 0 0">you're invited to the couch.</h1>
+<div><img src="/couch.png" alt=""><h1 style="font:800 26px system-ui,sans-serif;letter-spacing:-.03em;margin:22px 0 0">you're invited to the couch.</h1>
 <a href="${esc(deep)}">open couch</a><p>no couch yet? ask in the server for the app.</p></div>
 <script>setTimeout(function(){location.href=${JSON.stringify(deep)}},400)</script>`;
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" } });

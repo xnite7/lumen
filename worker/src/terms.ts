@@ -6,7 +6,7 @@ export const TERMS_HTML = `<!doctype html>
 <meta name="description" content="The terms for using midnite™ couch.">
 <meta property="og:title" content="midnite™ couch · Terms & Conditions">
 <meta name="theme-color" content="#E0309A">
-<link rel="icon" href="/logo.png">
+<link rel="icon" href="/couch.png">
 <style>
 :root{--bg:#0C070B;--card:#150d13;--text:#F4EAF0;--dim:#9C8A96;--neon:#E0309A;--lamp:#FFB25C;--line:rgba(244,234,240,.1)}
 *{box-sizing:border-box}
@@ -35,7 +35,7 @@ th{color:var(--dim);font-weight:600;font-size:12.5px;text-transform:uppercase;le
 footer{margin-top:30px;color:var(--dim);font-size:13px;text-align:center}
 a{color:var(--lamp)}
 </style></head><body><main>
-<header><img src="/logo.png" alt=""><div><div class="eyebrow">midnite™ couch</div><h1>Terms &amp; Conditions</h1></div></header>
+<header><img src="/couch.png" alt=""><div><div class="eyebrow">midnite™ couch</div><h1>Terms &amp; Conditions</h1></div></header>
 <p class="updated">Last updated 8 November 2026</p>
 <nav>
 <a href="#about">About</a><a href="#who">Who can use couch</a><a href="#what">What couch is</a><a href="#you">Your responsibility</a>

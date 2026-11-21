@@ -20,8 +20,8 @@ export const INSTALL_HTML = `<!doctype html>
 <meta name="description" content="get couch on your PC, iPhone or iPad, step by step.">
 <meta property="og:title" content="how to install couch">
 <meta property="og:description" content="step by step, no tech skills needed.">
-<meta property="og:image" content="/logo.png">
-<link rel="icon" href="/logo.png">
+<meta property="og:image" content="/couch.png">
+<link rel="icon" href="/couch.png">
 <style>
   :root { --bg:#07070b; --fg:#f4eaf0; --dim:#9a8f98; --line:#211b22; --card:#0f0c10; --card2:#17121a; --neon:#e0309a; --soft:#ff6ec4; --ok:#3ddc84; --warn:#ffb25c; }
   * { box-sizing:border-box; margin:0; }
@@ -141,7 +141,7 @@ export const INSTALL_HTML = `<!doctype html>
 <body>
 <div class="wrap">
 
-<nav><a href="/"><img src="/logo.png" alt="">couch</a><a class="back" href="/">${ic("back")} back</a></nav>
+<nav><a href="/"><img src="/couch.png" alt="">couch</a><a class="back" href="/">${ic("back")} back</a></nav>
 
 <header>
   <h1>let's get couch<br>on your device</h1>
