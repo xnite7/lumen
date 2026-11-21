@@ -7,6 +7,8 @@ const ITUNES = "https://www.apple.com/itunes/download/win64";
 const ICLOUD = "https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe";
 const SIDELOADLY = "https://sideloadly.io";
 
+import { ic, ICON } from "./icons";
+
 const path = (...p: string[]) => `<div class="path">${p.map((x) => `<span>${x}</span>`).join("<i>›</i>")}</div>`;
 
 export const INSTALL_HTML = `<!doctype html>
@@ -42,6 +44,13 @@ export const INSTALL_HTML = `<!doctype html>
   .pick button:active { transform:scale(.97); }
   .pick button.on { border-color:var(--neon); background:var(--card2); }
   .pick .em { font-size:40px; display:block; }
+  .ic { display:inline-flex; width:1.15em; height:1.15em; vertical-align:-.22em; flex:none; }
+  .ic svg { width:100%; height:100%; fill:currentColor; }
+  .pick .em .ic { width:44px; height:44px; }
+  .finish .em .ic { width:52px; height:52px; color:var(--soft); }
+  .tip .ic { color:var(--soft); } .warn .ic { color:var(--warn); }
+  .check .ic { width:1.3em; height:1.3em; }
+  .step.done .check .ic { color:var(--ok); }
   .pick b { display:block; margin-top:6px; font-size:18px; }
   .pick small { color:var(--dim); font-size:13px; }
   .guess { text-align:center; color:var(--dim); font-size:14px; min-height:22px; }
@@ -52,7 +61,7 @@ export const INSTALL_HTML = `<!doctype html>
   .need { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:18px 20px; margin:20px 0; }
   .need h3 { font-size:15px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin-bottom:10px; }
   .need ul { list-style:none; padding:0; display:grid; gap:8px; }
-  .need li::before { content:"✔️ "; }
+  .need li { display:flex; gap:10px; align-items:flex-start; } .need li .ic { color:var(--ok); margin-top:.15em; }
 
   .bar { position:sticky; top:0; z-index:5; background:rgba(7,7,11,.85); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); padding:12px 0; margin:0 -20px; padding-left:20px; padding-right:20px; }
   .bar .track { height:8px; border-radius:4px; background:var(--line); overflow:hidden; }
@@ -63,8 +72,9 @@ export const INSTALL_HTML = `<!doctype html>
   .step .n { width:48px; height:48px; border-radius:50%; background:var(--line); display:grid; place-items:center; font-weight:800; font-size:20px; }
   .step.done { border-color:#3ddc8455; }
   .step.done .n { background:var(--ok); color:#000; }
+  .step .n .ok { display:none; width:26px; height:26px; }
   .step.done .n span { display:none; }
-  .step.done .n::after { content:"✓"; }
+  .step.done .n .ok { display:inline-flex; }
   .step h2 { font-size:21px; line-height:1.25; }
   .step p { color:var(--dim); margin-top:8px; }
   .step p b, .step li b { color:var(--fg); }
@@ -130,7 +140,7 @@ export const INSTALL_HTML = `<!doctype html>
 <body>
 <div class="wrap">
 
-<nav><a href="/"><img src="/logo.png" alt="">couch</a><a class="back" href="/">← back</a></nav>
+<nav><a href="/"><img src="/logo.png" alt="">couch</a><a class="back" href="/">${ic("back")} back</a></nav>
 
 <header>
   <h1>let's get couch<br>on your device</h1>
@@ -138,8 +148,8 @@ export const INSTALL_HTML = `<!doctype html>
 </header>
 
 <div class="pick" role="tablist">
-  <button data-g="pc" role="tab"><span class="em">💻</span><b>Windows PC</b><small>about 2 minutes</small></button>
-  <button data-g="ios" role="tab"><span class="em">📱</span><b>iPhone / iPad</b><small>about 15 minutes, first time</small></button>
+  <button data-g="pc" role="tab"><span class="em">${ic("windows")}</span><b>Windows PC</b><small>about 2 minutes</small></button>
+  <button data-g="ios" role="tab"><span class="em">${ic("apple")}</span><b>iPhone / iPad</b><small>about 15 minutes, first time</small></button>
 </div>
 <p class="guess" id="guess"></p>
 
@@ -147,52 +157,52 @@ export const INSTALL_HTML = `<!doctype html>
 <section class="guide" id="pc">
   <div class="need">
     <h3>you'll need</h3>
-    <ul><li>a Windows 10 or 11 computer</li><li>a Discord account that's in the midnite server</li></ul>
+    <ul><li>${ic("check")}<span>a Windows 10 or 11 computer</span></li><li>${ic("check")}<span>a Discord account that's in the midnite server</span></li></ul>
   </div>
 
   <div class="bar"><div class="track"><div class="fill"></div></div><div class="txt"></div></div>
 
   <div class="step">
-    <div class="n"><span>1</span></div>
+    <div class="n"><span>1</span>${ic("check", "ok")}</div>
     <div>
       <h2>download couch</h2>
       <p>press the button. a file called <b>couch-setup.exe</b> will download.</p>
-      <a class="dl" href="${EXE}">⬇️ download couch for Windows</a>
-      <button class="check">☐ done</button>
+      <a class="dl" href="${EXE}">${ic("download")} download couch for Windows</a>
+      <button class="check">${ic("circle")} done</button>
     </div>
   </div>
 
   <div class="step">
-    <div class="n"><span>2</span></div>
+    <div class="n"><span>2</span>${ic("check", "ok")}</div>
     <div>
       <h2>open the file you downloaded</h2>
-      <p>click it at the top-right of your browser (the little ⬇️ icon), or find it in your <b>Downloads</b> folder and double-click it.</p>
-      <button class="check">☐ done</button>
+      <p>click it at the top-right of your browser (the little ${ic("download")} icon), or find it in your <b>Downloads</b> folder and double-click it.</p>
+      <button class="check">${ic("circle")} done</button>
     </div>
   </div>
 
   <div class="step">
-    <div class="n"><span>3</span></div>
+    <div class="n"><span>3</span>${ic("check", "ok")}</div>
     <div>
       <h2>if a blue box pops up, press "More info", then "Run anyway"</h2>
       <p>this is normal. Windows shows it for any app it doesn't know yet. it's safe.</p>
       <div class="see"><div class="smart"><b>Windows protected your PC</b>Microsoft Defender SmartScreen prevented an unrecognized app from starting…<br><br><u class="hl">More info</u><div class="row"><span class="hl">Run anyway</span><span>Don't run</span></div></div></div>
       <p style="font-size:14px">no blue box? great, skip this one.</p>
-      <button class="check">☐ done</button>
+      <button class="check">${ic("circle")} done</button>
     </div>
   </div>
 
   <div class="step">
-    <div class="n"><span>4</span></div>
+    <div class="n"><span>4</span>${ic("check", "ok")}</div>
     <div>
       <h2>sign in with Discord</h2>
-      <p>couch opens by itself. press <b>sign in with Discord</b>, then <b>Authorize</b> in the page that opens.</p>
-      <button class="check">☐ done</button>
+      <p>couch opens by itself. press ${ic("discord")} <b>sign in with Discord</b>, then <b>Authorize</b> in the page that opens.</p>
+      <button class="check">${ic("circle")} done</button>
     </div>
   </div>
 
   <div class="finish">
-    <div class="em">🍿</div>
+    <div class="em">${ic("party")}</div>
     <h2>you're on the couch!</h2>
     <p>couch updates itself from now on. you never have to do this again.</p>
   </div>
@@ -209,66 +219,66 @@ export const INSTALL_HTML = `<!doctype html>
   <div class="need">
     <h3>you'll need</h3>
     <ul>
-      <li>a computer (Windows or Mac), just for setting it up</li>
-      <li>your phone's charging cable</li>
-      <li>your Apple ID (the email and password you use for the App Store)</li>
-      <li>a Discord account that's in the midnite server</li>
+      <li>${ic("check")}<span>a computer (Windows or Mac), just for setting it up</span></li>
+      <li>${ic("check")}<span>your phone's charging cable</span></li>
+      <li>${ic("check")}<span>your Apple ID (the email and password you use for the App Store)</span></li>
+      <li>${ic("check")}<span>a Discord account that's in the midnite server</span></li>
     </ul>
   </div>
-  <div class="tip">💡 <b>why a computer?</b> couch isn't on the App Store, so your computer puts it on your phone for you. it's free and safe, it just takes a few more steps the first time.</div>
+  <div class="tip">${ic("bulb")} <b>why a computer?</b> couch isn't on the App Store, so your computer puts it on your phone for you. it's free and safe, it just takes a few more steps the first time.</div>
 
   <div class="bar"><div class="track"><div class="fill"></div></div><div class="txt"></div></div>
 
   <div class="step">
-    <div class="n"><span>1</span></div>
+    <div class="n"><span>1</span>${ic("check", "ok")}</div>
     <div>
-      <span class="who">💻 on your computer · Windows only (Mac: skip)</span>
+      <span class="who">${ic("computer")} on your computer · Windows only (Mac: skip)</span>
       <h2>install iTunes and iCloud from Apple's website</h2>
       <p>these let your computer talk to your phone. download both, then open each file and click <b>Next</b> until it's finished.</p>
-      <div class="dls"><a class="dl" href="${ITUNES}">⬇️ iTunes</a><a class="dl" href="${ICLOUD}">⬇️ iCloud</a></div>
-      <div class="warn">⚠️ <b>it has to be these ones, not the Microsoft Store versions.</b> if you already have iTunes or iCloud from the Microsoft Store, uninstall them first (Start › Settings › Apps › find them › Uninstall), then install these.</div>
-      <button class="check">☐ done</button>
+      <div class="dls"><a class="dl" href="${ITUNES}">${ic("itunes")} iTunes</a><a class="dl" href="${ICLOUD}">${ic("icloud")} iCloud</a></div>
+      <div class="warn">${ic("warn")} <b>it has to be these ones, not the Microsoft Store versions.</b> if you already have iTunes or iCloud from the Microsoft Store, uninstall them first (Start › Settings › Apps › find them › Uninstall), then install these.</div>
+      <button class="check">${ic("circle")} done</button>
     </div>
   </div>
 
   <div class="step">
-    <div class="n"><span>2</span></div>
+    <div class="n"><span>2</span>${ic("check", "ok")}</div>
     <div>
-      <span class="who">💻 on your computer</span>
+      <span class="who">${ic("computer")} on your computer</span>
       <h2>install Sideloadly</h2>
       <p>this free app puts couch on your phone. open the link, press the download for your computer (Windows or Mac), then install it like any app.</p>
-      <a class="dl" href="${SIDELOADLY}" target="_blank" rel="noopener">🔗 get Sideloadly</a>
-      <button class="check">☐ done</button>
+      <a class="dl" href="${SIDELOADLY}" target="_blank" rel="noopener">${ic("link")} get Sideloadly</a>
+      <button class="check">${ic("circle")} done</button>
     </div>
   </div>
 
   <div class="step">
-    <div class="n"><span>3</span></div>
+    <div class="n"><span>3</span>${ic("check", "ok")}</div>
     <div>
-      <span class="who">💻 on your computer</span>
+      <span class="who">${ic("computer")} on your computer</span>
       <h2>download couch for iPhone</h2>
       <p>a file called <b>couch.ipa</b> will download. leave it in your Downloads folder for now.</p>
-      <a class="dl" href="${IPA}">⬇️ download couch.ipa</a>
-      <button class="check">☐ done</button>
+      <a class="dl" href="${IPA}">${ic("download")} download couch.ipa</a>
+      <button class="check">${ic("circle")} done</button>
     </div>
   </div>
 
   <div class="step">
-    <div class="n"><span>4</span></div>
+    <div class="n"><span>4</span>${ic("check", "ok")}</div>
     <div>
-      <span class="who">📱 on your phone</span>
+      <span class="who">${ic("phone")} on your phone</span>
       <h2>plug your phone into the computer and tap "Trust"</h2>
       <p>unlock your phone. a message pops up asking if you trust this computer. tap <b>Trust</b>, then type your phone's passcode.</p>
       <div class="see"><div class="ios"><b>Trust This Computer?</b>Your settings and data will be accessible from this computer when connected.<div class="btns"><span class="hl">Trust</span><span>Don't Trust</span></div></div></div>
-      <div class="tip">💡 no message? on Windows, open <b>iTunes</b> once while the phone is plugged in. it'll show up.</div>
-      <button class="check">☐ done</button>
+      <div class="tip">${ic("bulb")} no message? on Windows, open <b>iTunes</b> once while the phone is plugged in. it'll show up.</div>
+      <button class="check">${ic("circle")} done</button>
     </div>
   </div>
 
   <div class="step">
-    <div class="n"><span>5</span></div>
+    <div class="n"><span>5</span>${ic("check", "ok")}</div>
     <div>
-      <span class="who">💻 on your computer</span>
+      <span class="who">${ic("computer")} on your computer</span>
       <h2>open Sideloadly and press Start</h2>
       <ol>
         <li>drag <b>couch.ipa</b> from your Downloads into the Sideloadly window (or click the IPA icon and pick it)</li>
@@ -277,55 +287,55 @@ export const INSTALL_HTML = `<!doctype html>
         <li>press <b>Start</b></li>
         <li>type your <b>Apple ID password</b> when it asks. if Apple sends a 6-digit code to your phone, type that in too</li>
       </ol>
-      <div class="see"><div class="app"><div class="f">📦 couch.ipa</div><div class="f">📱 your iPhone</div><div class="f">✉️ you@icloud.com</div><span class="go">Start</span></div></div>
+      <div class="see"><div class="app"><div class="f">${ic("pkg")} couch.ipa</div><div class="f">${ic("phone")} your iPhone</div><div class="f">${ic("mail")} you@icloud.com</div><span class="go">Start</span></div></div>
       <p>wait until it says <b>Done</b> (about a minute). the couch icon appears on your phone, but it won't open yet. two quick steps left.</p>
-      <div class="tip">🔒 your Apple ID only goes to Apple, to make the app work on your phone. couch never sees it.</div>
-      <button class="check">☐ done</button>
+      <div class="tip">${ic("lock")} your Apple ID only goes to Apple, to make the app work on your phone. couch never sees it.</div>
+      <button class="check">${ic("circle")} done</button>
     </div>
   </div>
 
   <div class="step">
-    <div class="n"><span>6</span></div>
+    <div class="n"><span>6</span>${ic("check", "ok")}</div>
     <div>
-      <span class="who">📱 on your phone</span>
+      <span class="who">${ic("phone")} on your phone</span>
       <h2>trust the app</h2>
       <p>open <b>Settings</b> and go to:</p>
       ${path("Settings", "General", "VPN &amp; Device Management")}
       <p>tap your <b>email</b> under "Developer App", then tap <b>Trust</b>, and <b>Trust</b> again.</p>
-      <button class="check">☐ done</button>
+      <button class="check">${ic("circle")} done</button>
     </div>
   </div>
 
   <div class="step">
-    <div class="n"><span>7</span></div>
+    <div class="n"><span>7</span>${ic("check", "ok")}</div>
     <div>
-      <span class="who">📱 on your phone</span>
+      <span class="who">${ic("phone")} on your phone</span>
       <h2>turn on Developer Mode</h2>
       <p>iPhones need this switched on to open apps that aren't from the App Store:</p>
       ${path("Settings", "Privacy &amp; Security", "Developer Mode")}
       <p>(it's right at the bottom.) turn it <b>on</b>, tap <b>Restart</b>. when the phone comes back on, tap <b>Turn On</b> and type your passcode.</p>
-      <div class="tip">💡 don't see Developer Mode? open the couch app once, then look again. it shows up after that.</div>
-      <button class="check">☐ done</button>
+      <div class="tip">${ic("bulb")} don't see Developer Mode? open the couch app once, then look again. it shows up after that.</div>
+      <button class="check">${ic("circle")} done</button>
     </div>
   </div>
 
   <div class="step">
-    <div class="n"><span>8</span></div>
+    <div class="n"><span>8</span>${ic("check", "ok")}</div>
     <div>
-      <span class="who">📱 on your phone</span>
+      <span class="who">${ic("phone")} on your phone</span>
       <h2>open couch and sign in with Discord</h2>
-      <p>tap the couch icon, go to <b>me</b>, press <b>sign in with Discord</b>, then <b>Authorize</b>.</p>
-      <button class="check">☐ done</button>
+      <p>tap the couch icon, go to <b>me</b>, press ${ic("discord")} <b>sign in with Discord</b>, then <b>Authorize</b>.</p>
+      <button class="check">${ic("circle")} done</button>
     </div>
   </div>
 
   <div class="finish">
-    <div class="em">🍿</div>
+    <div class="em">${ic("party")}</div>
     <h2>you're on the couch!</h2>
-    <p>one thing to remember 👇</p>
+    <p>one thing to remember, just below</p>
   </div>
 
-  <div class="warn" style="font-size:16px">🗓️ <b>once a week, couch needs a refresh.</b> with a free Apple ID, Apple makes apps like this stop opening after <b>7 days</b>. when that happens, nothing's lost: just plug your phone in, open Sideloadly and press <b>Start</b> again (step 5). you don't have to repeat any other step.<br><br>🆕 the same thing gets you the newest version of couch: download <b>couch.ipa</b> again first.</div>
+  <div class="warn" style="font-size:16px">${ic("calendar")} <b>once a week, couch needs a refresh.</b> with a free Apple ID, Apple makes apps like this stop opening after <b>7 days</b>. when that happens, nothing's lost: just plug your phone in, open Sideloadly and press <b>Start</b> again (step 5). you don't have to repeat any other step.<br><br>${ic("fresh")} the same thing gets you the newest version of couch: download <b>couch.ipa</b> again first.</div>
 
   <h2 class="sec">stuck?</h2>
   <details><summary>Sideloadly doesn't see my phone</summary><p>unlock your phone and make sure you tapped <b>Trust</b>. on Windows, check iTunes and iCloud are the ones from step 1 (not the Microsoft Store ones), then restart the computer. a different cable or USB port often fixes it too.</p></details>
@@ -333,12 +343,12 @@ export const INSTALL_HTML = `<!doctype html>
   <details><summary>"Untrusted Developer" when I open couch</summary><p>you need step 6: Settings › General › VPN &amp; Device Management › your email › Trust.</p></details>
   <details><summary>"Developer Mode Required" when I open couch</summary><p>you need step 7: Settings › Privacy &amp; Security › Developer Mode › on, then restart.</p></details>
   <details><summary>couch stopped opening</summary><p>it's been 7 days. plug in, open Sideloadly, press Start. that's it.</p></details>
-  <details><summary>I don't have a computer</summary><p>you'll need to borrow one for setting it up (any Windows PC or Mac works), and once a week for the refresh. ask a friend in midnite, someone will help 🫶</p></details>
+  <details><summary>I don't have a computer</summary><p>you'll need to borrow one for setting it up (any Windows PC or Mac works), and once a week for the refresh. ask a friend in midnite, someone will help ${ic("heart")}</p></details>
   <details><summary>it says "maximum number of apps"</summary><p>a free Apple ID can only have 3 apps like this at once. delete one you don't use, then press Start again.</p></details>
 </section>
 
 <div class="share">
-  <a class="dl alt" href="#" id="share">📤 send this guide to a friend</a>
+  <a class="dl alt" href="#" id="share">${ic("share")} send this guide to a friend</a>
   <p id="shared"></p>
 </div>
 
@@ -346,13 +356,14 @@ export const INSTALL_HTML = `<!doctype html>
 </div>
 
 <script>
+const PHONE = ${JSON.stringify(ic("phone"))}, DONE = ${JSON.stringify(ic("checkCircle"))}, TODO = ${JSON.stringify(ic("circle"))};
 (() => {
   const store = { get(k) { try { return JSON.parse(localStorage.getItem(k) || "null"); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
   const btns = [...document.querySelectorAll(".pick button")];
   function show(g, why) {
     btns.forEach((b) => b.classList.toggle("on", b.dataset.g === g));
     document.querySelectorAll(".guide").forEach((s) => s.classList.toggle("on", s.id === g));
-    document.getElementById("guess").textContent = why || "";
+    document.getElementById("guess").innerHTML = why || "";
     store.set("couch-install-guide", g);
   }
   btns.forEach((b) => b.addEventListener("click", () => { show(b.dataset.g); }));
@@ -363,7 +374,7 @@ export const INSTALL_HTML = `<!doctype html>
   const hash = location.hash.slice(1);
   if (hash === "pc" || hash === "ios") show(hash);
   else if (store.get("couch-install-guide")) show(store.get("couch-install-guide"));
-  else if (apple) show("ios", "📱 looks like you're on an iPhone or iPad. you'll need a computer for a few of the steps, so you might want to open this page there too.");
+  else if (apple) show("ios", PHONE + " looks like you're on an iPhone or iPad. you'll need a computer for a few of the steps, so you might want to open this page there too.");
   else show("pc");
 
   // ticking steps off, remembered per guide
@@ -376,10 +387,10 @@ export const INSTALL_HTML = `<!doctype html>
       steps.forEach((s, i) => {
         const on = done.has(i);
         s.classList.toggle("done", on);
-        s.querySelector(".check").textContent = on ? "✅ done" : "☐ done";
+        s.querySelector(".check").innerHTML = (on ? DONE : TODO) + " done";
       });
       fill.style.width = (done.size / steps.length) * 100 + "%";
-      txt.textContent = done.size === steps.length ? "all done 🎉" : "step " + Math.min(done.size + 1, steps.length) + " of " + steps.length;
+      txt.textContent = done.size === steps.length ? "all done!" : "step " + Math.min(done.size + 1, steps.length) + " of " + steps.length;
     }
     steps.forEach((s, i) => s.querySelector(".check").addEventListener("click", () => {
       if (done.has(i)) done.delete(i); else {
@@ -399,7 +410,7 @@ export const INSTALL_HTML = `<!doctype html>
     const out = document.getElementById("shared");
     try {
       if (navigator.share) await navigator.share({ title: "how to install couch", url });
-      else { await navigator.clipboard.writeText(url); out.textContent = "link copied ✓ paste it to your friend"; }
+      else { await navigator.clipboard.writeText(url); out.innerHTML = DONE + " link copied, paste it to your friend"; }
     } catch { out.textContent = url; }
   });
 })();
