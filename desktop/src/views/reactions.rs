@@ -202,6 +202,12 @@ impl Reactions {
 
 impl Render for Reactions {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // the chat box lost the keyboard (Esc, a click elsewhere): it closes
+        if let Some(inp) = &self.typing {
+            if !inp.focus_handle(cx).is_focused(window) && self.opened_at.elapsed() > Duration::from_millis(300) {
+                self.typing = None;
+            }
+        }
         self.flying.retain(|f| f.born.elapsed().as_secs_f32() < LIFE);
         // the tray folds itself away after a few quiet seconds
         self.chat.retain(|c| c.3.elapsed().as_secs_f32() < CHAT_LIFE);

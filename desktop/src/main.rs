@@ -645,8 +645,9 @@ impl Root {
 
 impl Root {
     /// keys: space play/pause, arrows seek/volume, f full screen, esc back
-    fn key_up(&mut self, e: &gpui::KeyUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
-        if e.keystroke.key != "space" || self.route != Route::Player {
+    fn key_up(&mut self, e: &gpui::KeyUpEvent, window: &mut Window, cx: &mut Context<Self>) {
+        // typing in a box (chat, search, a review): its keys are just letters
+        if e.keystroke.key != "space" || self.route != Route::Player || !self.focus.is_focused(window) {
             return;
         }
         // held: that was 2×, now over; a tap: play / pause
@@ -724,6 +725,16 @@ impl Root {
 
     fn key(&mut self, e: &gpui::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let k = e.keystroke.key.as_str();
+        // typing in a box (the couch chat, search, a review): no shortcuts,
+        // except Esc to get out of it
+        if !self.focus.is_focused(window) {
+            // Esc just leaves the box (not the page or the film)
+            if k == "escape" {
+                window.focus(&self.focus, cx);
+                cx.notify();
+            }
+            return;
+        }
         // ctrl+shift+f: a frame-rate meter in the corner (how smooth is it here?)
         if k == "t" && e.keystroke.modifiers.control && e.keystroke.modifiers.shift {
             if self.tv.read(cx).on {
