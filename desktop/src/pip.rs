@@ -146,8 +146,85 @@ mod imp {
         }
     }
 
+    /// While a game (or anything) is full screen in front, the little picture
+    /// lets the mouse straight through to it: no stray clicks or hovers on
+    /// couch while you play. Back to normal as soon as that's no longer so.
+    static PASS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    static GUARD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+    fn fullscreen_other_in_front(ours: HWND) -> bool {
+        use windows::Win32::UI::WindowsAndMessaging::{GetClassNameW, GetForegroundWindow, GetWindowThreadProcessId};
+        unsafe {
+            let fg = GetForegroundWindow();
+            if fg.is_invalid() || fg == ours {
+                return false;
+            }
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(fg, Some(&mut pid));
+            if pid == std::process::id() {
+                return false;
+            }
+            // the desktop and the taskbar aren't games
+            let mut cls = [0u16; 64];
+            let n = GetClassNameW(fg, &mut cls) as usize;
+            let cls = String::from_utf16_lossy(&cls[..n.min(64)]);
+            if matches!(cls.as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd") {
+                return false;
+            }
+            let mut r = RECT::default();
+            if GetWindowRect(fg, &mut r).is_err() {
+                return false;
+            }
+            let mon = MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST);
+            let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+            let _ = GetMonitorInfoW(mon, &mut mi);
+            let m = mi.rcMonitor;
+            r.left <= m.left && r.top <= m.top && r.right >= m.right && r.bottom >= m.bottom
+        }
+    }
+
+    fn pass_through(h: HWND, on: bool) {
+        use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongW, SetLayeredWindowAttributes, SetWindowLongW, GWL_EXSTYLE, LWA_ALPHA, WS_EX_LAYERED, WS_EX_TRANSPARENT};
+        if PASS.swap(on, std::sync::atomic::Ordering::Relaxed) == on {
+            return;
+        }
+        unsafe {
+            let ex = GetWindowLongW(h, GWL_EXSTYLE) as u32;
+            if on {
+                let _ = SetWindowLongW(h, GWL_EXSTYLE, (ex | WS_EX_LAYERED.0 | WS_EX_TRANSPARENT.0) as i32);
+                let _ = SetLayeredWindowAttributes(h, windows::Win32::Foundation::COLORREF(0), 255, LWA_ALPHA);
+            } else {
+                let _ = SetWindowLongW(h, GWL_EXSTYLE, (ex & !(WS_EX_LAYERED.0 | WS_EX_TRANSPARENT.0)) as i32);
+            }
+        }
+    }
+
+    /// watch what's in front while the little picture is up
+    fn guard(hwnd: isize) {
+        if GUARD.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
+        std::thread::spawn(move || {
+            let h = HWND(hwnd as *mut _);
+            while super::is_on() {
+                pass_through(h, fullscreen_other_in_front(h));
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
+            pass_through(h, false);
+            GUARD.store(false, std::sync::atomic::Ordering::Relaxed);
+        });
+    }
+
+    /// is the mouse passing straight through right now (a game in front)?
+    pub fn passing() -> bool {
+        PASS.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     pub fn set(hwnd: isize, on: bool) {
         let h = HWND(hwnd as *mut _);
+        if on {
+            guard(hwnd);
+        }
         unsafe {
             if !HOOKED.swap(true, std::sync::atomic::Ordering::Relaxed) {
                 let _ = windows::Win32::UI::Shell::SetWindowSubclass(h, Some(sub), 0xC0C4, 0);
@@ -192,6 +269,11 @@ mod imp {
 
 /// Is the pointer over couch's window? (PiP shows its controls only then)
 pub fn cursor_inside() -> bool {
+    // a game in front: the pointer belongs to it
+    #[cfg(target_os = "windows")]
+    if imp::passing() {
+        return false;
+    }
     #[cfg(target_os = "windows")]
     unsafe {
         use windows::Win32::Foundation::{HWND, POINT, RECT};
