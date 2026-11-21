@@ -149,7 +149,7 @@ export const INSTALL_HTML = `<!doctype html>
 
 <div class="pick" role="tablist">
   <button data-g="pc" role="tab"><span class="em">${ic("windows")}</span><b>Windows PC</b><small>about 2 minutes</small></button>
-  <button data-g="ios" role="tab"><span class="em">${ic("apple")}</span><b>iPhone / iPad</b><small>about 15 minutes, first time</small></button>
+  <button data-g="ios" role="tab"><span class="em">${ic("apple")}</span><b>iPhone / iPad</b><small>about 10 minutes</small></button>
 </div>
 <p class="guess" id="guess"></p>
 
@@ -210,8 +210,6 @@ export const INSTALL_HTML = `<!doctype html>
   <h2 class="sec">stuck?</h2>
   <details><summary>the download got blocked by my browser</summary><p>in Chrome or Edge, click the download, then <b>Keep</b> (you may need to press ⋯ first). it's flagged only because not many people have downloaded it yet.</p></details>
   <details><summary>it says I'm not in the server</summary><p>you need to be in the midnite Discord server, with the same Discord account you signed in with. ask a friend for an invite, join, then press <b>try again</b> in couch.</p></details>
-  <details><summary>my antivirus deleted it</summary><p>some antivirus apps are jumpy about new apps. restore it from your antivirus's quarantine, or add couch as an exception, then run it again.</p></details>
-  <details><summary>I'm on a Mac</summary><p>the Mac app isn't out yet. you can still put couch on your iPhone or iPad using your Mac (the iPhone / iPad guide above works on a Mac too).</p></details>
 </section>
 
 <!-- ========================= iPHONE / iPAD ========================= -->
@@ -219,24 +217,22 @@ export const INSTALL_HTML = `<!doctype html>
   <div class="need">
     <h3>you'll need</h3>
     <ul>
-      <li>${ic("check")}<span>a computer (Windows or Mac), just for setting it up</span></li>
-      <li>${ic("check")}<span>your phone's charging cable</span></li>
-      <li>${ic("check")}<span>your Apple ID (the email and password you use for the App Store)</span></li>
-      <li>${ic("check")}<span>a Discord account that's in the midnite server</span></li>
+      <li>${ic("check")}<span>a Windows PC or Mac</span></li>
+      <li>${ic("check")}<span>your phone's cable</span></li>
+      <li>${ic("check")}<span>your Apple ID (the one you use for the App Store)</span></li>
     </ul>
   </div>
-  <div class="tip">${ic("bulb")} <b>why a computer?</b> couch isn't on the App Store, so your computer puts it on your phone for you. it's free and safe, it just takes a few more steps the first time.</div>
 
   <div class="bar"><div class="track"><div class="fill"></div></div><div class="txt"></div></div>
 
   <div class="step">
     <div class="n"><span>1</span>${ic("check", "ok")}</div>
     <div>
-      <span class="who">${ic("computer")} on your computer · Windows only (Mac: skip)</span>
-      <h2>install iTunes and iCloud from Apple's website</h2>
-      <p>these let your computer talk to your phone. download both, then open each file and click <b>Next</b> until it's finished.</p>
+      <span class="who">${ic("windows")} Windows only · Mac users skip this</span>
+      <h2>install iTunes and iCloud</h2>
+      <p>open each one and click <b>Next</b> till it's done.</p>
       <div class="dls"><a class="dl" href="${ITUNES}">${ic("itunes")} iTunes</a><a class="dl" href="${ICLOUD}">${ic("icloud")} iCloud</a></div>
-      <div class="warn">${ic("warn")} <b>it has to be these ones, not the Microsoft Store versions.</b> if you already have iTunes or iCloud from the Microsoft Store, uninstall them first (Start › Settings › Apps › find them › Uninstall), then install these.</div>
+      <div class="warn">${ic("warn")} already have them from the <b>Microsoft Store</b>? uninstall those first. Sideloadly can't use them.</div>
       <button class="check">${ic("circle")} done</button>
     </div>
   </div>
@@ -245,9 +241,9 @@ export const INSTALL_HTML = `<!doctype html>
     <div class="n"><span>2</span>${ic("check", "ok")}</div>
     <div>
       <span class="who">${ic("computer")} on your computer</span>
-      <h2>install Sideloadly</h2>
-      <p>this free app puts couch on your phone. open the link, press the download for your computer (Windows or Mac), then install it like any app.</p>
-      <a class="dl" href="${SIDELOADLY}" target="_blank" rel="noopener">${ic("link")} get Sideloadly</a>
+      <h2>get Sideloadly and couch</h2>
+      <p>install Sideloadly like any app, and download couch.</p>
+      <div class="dls"><a class="dl" href="${SIDELOADLY}" target="_blank" rel="noopener">${ic("link")} Sideloadly</a><a class="dl" href="${IPA}">${ic("download")} couch.ipa</a></div>
       <button class="check">${ic("circle")} done</button>
     </div>
   </div>
@@ -255,10 +251,9 @@ export const INSTALL_HTML = `<!doctype html>
   <div class="step">
     <div class="n"><span>3</span>${ic("check", "ok")}</div>
     <div>
-      <span class="who">${ic("computer")} on your computer</span>
-      <h2>download couch for iPhone</h2>
-      <p>a file called <b>couch.ipa</b> will download. leave it in your Downloads folder for now.</p>
-      <a class="dl" href="${IPA}">${ic("download")} download couch.ipa</a>
+      <span class="who">${ic("phone")} on your phone</span>
+      <h2>plug your phone in and tap "Trust"</h2>
+      <div class="see"><div class="ios"><b>Trust This Computer?</b>Your settings and data will be accessible from this computer when connected.<div class="btns"><span class="hl">Trust</span><span>Don't Trust</span></div></div></div>
       <button class="check">${ic("circle")} done</button>
     </div>
   </div>
@@ -266,11 +261,9 @@ export const INSTALL_HTML = `<!doctype html>
   <div class="step">
     <div class="n"><span>4</span>${ic("check", "ok")}</div>
     <div>
-      <span class="who">${ic("phone")} on your phone</span>
-      <h2>plug your phone into the computer and tap "Trust"</h2>
-      <p>unlock your phone. a message pops up asking if you trust this computer. tap <b>Trust</b>, then type your phone's passcode.</p>
-      <div class="see"><div class="ios"><b>Trust This Computer?</b>Your settings and data will be accessible from this computer when connected.<div class="btns"><span class="hl">Trust</span><span>Don't Trust</span></div></div></div>
-      <div class="tip">${ic("bulb")} no message? on Windows, open <b>iTunes</b> once while the phone is plugged in. it'll show up.</div>
+      <span class="who">${ic("computer")} on your computer</span>
+      <h2>in Sideloadly: drop in couch.ipa, type your Apple ID, press Start</h2>
+      <p>if it asks for your password or a code, type them in. wait for <b>Done</b>.</p>
       <button class="check">${ic("circle")} done</button>
     </div>
   </div>
@@ -278,18 +271,11 @@ export const INSTALL_HTML = `<!doctype html>
   <div class="step">
     <div class="n"><span>5</span>${ic("check", "ok")}</div>
     <div>
-      <span class="who">${ic("computer")} on your computer</span>
-      <h2>open Sideloadly and press Start</h2>
-      <ol>
-        <li>drag <b>couch.ipa</b> from your Downloads into the Sideloadly window (or click the IPA icon and pick it)</li>
-        <li>check your phone's name shows at the top</li>
-        <li>type your <b>Apple ID email</b> in the box</li>
-        <li>press <b>Start</b></li>
-        <li>type your <b>Apple ID password</b> when it asks. if Apple sends a 6-digit code to your phone, type that in too</li>
-      </ol>
-      <div class="see"><div class="app"><div class="f">${ic("pkg")} couch.ipa</div><div class="f">${ic("phone")} your iPhone</div><div class="f">${ic("mail")} you@icloud.com</div><span class="go">Start</span></div></div>
-      <p>wait until it says <b>Done</b> (about a minute). the couch icon appears on your phone, but it won't open yet. two quick steps left.</p>
-      <div class="tip">${ic("lock")} your Apple ID only goes to Apple, to make the app work on your phone. couch never sees it.</div>
+      <span class="who">${ic("phone")} on your phone</span>
+      <h2>allow the app</h2>
+      ${path("Settings", "General", "VPN &amp; Device Management", "your email", "Trust")}
+      ${path("Settings", "Privacy &amp; Security", "Developer Mode", "on")}
+      <p>the phone restarts. tap <b>Turn On</b> when it's back.</p>
       <button class="check">${ic("circle")} done</button>
     </div>
   </div>
@@ -298,33 +284,7 @@ export const INSTALL_HTML = `<!doctype html>
     <div class="n"><span>6</span>${ic("check", "ok")}</div>
     <div>
       <span class="who">${ic("phone")} on your phone</span>
-      <h2>trust the app</h2>
-      <p>open <b>Settings</b> and go to:</p>
-      ${path("Settings", "General", "VPN &amp; Device Management")}
-      <p>tap your <b>email</b> under "Developer App", then tap <b>Trust</b>, and <b>Trust</b> again.</p>
-      <button class="check">${ic("circle")} done</button>
-    </div>
-  </div>
-
-  <div class="step">
-    <div class="n"><span>7</span>${ic("check", "ok")}</div>
-    <div>
-      <span class="who">${ic("phone")} on your phone</span>
-      <h2>turn on Developer Mode</h2>
-      <p>iPhones need this switched on to open apps that aren't from the App Store:</p>
-      ${path("Settings", "Privacy &amp; Security", "Developer Mode")}
-      <p>(it's right at the bottom.) turn it <b>on</b>, tap <b>Restart</b>. when the phone comes back on, tap <b>Turn On</b> and type your passcode.</p>
-      <div class="tip">${ic("bulb")} don't see Developer Mode? open the couch app once, then look again. it shows up after that.</div>
-      <button class="check">${ic("circle")} done</button>
-    </div>
-  </div>
-
-  <div class="step">
-    <div class="n"><span>8</span>${ic("check", "ok")}</div>
-    <div>
-      <span class="who">${ic("phone")} on your phone</span>
       <h2>open couch and sign in with Discord</h2>
-      <p>tap the couch icon, go to <b>me</b>, press ${ic("discord")} <b>sign in with Discord</b>, then <b>Authorize</b>.</p>
       <button class="check">${ic("circle")} done</button>
     </div>
   </div>
@@ -332,19 +292,12 @@ export const INSTALL_HTML = `<!doctype html>
   <div class="finish">
     <div class="em">${ic("party")}</div>
     <h2>you're on the couch!</h2>
-    <p>one thing to remember, just below</p>
+    <p>${ic("calendar")} free Apple IDs make the app stop after <b>7 days</b>. plug in and press <b>Start</b> in Sideloadly again to keep it going.</p>
   </div>
 
-  <div class="warn" style="font-size:16px">${ic("calendar")} <b>once a week, couch needs a refresh.</b> with a free Apple ID, Apple makes apps like this stop opening after <b>7 days</b>. when that happens, nothing's lost: just plug your phone in, open Sideloadly and press <b>Start</b> again (step 5). you don't have to repeat any other step.<br><br>${ic("fresh")} the same thing gets you the newest version of couch: download <b>couch.ipa</b> again first.</div>
-
   <h2 class="sec">stuck?</h2>
-  <details><summary>Sideloadly doesn't see my phone</summary><p>unlock your phone and make sure you tapped <b>Trust</b>. on Windows, check iTunes and iCloud are the ones from step 1 (not the Microsoft Store ones), then restart the computer. a different cable or USB port often fixes it too.</p></details>
-  <details><summary>it asks for a code or says my password is wrong</summary><p>type the 6-digit code Apple shows on your phone. if your Apple ID has two-factor turned on, that code is what it wants.</p></details>
-  <details><summary>"Untrusted Developer" when I open couch</summary><p>you need step 6: Settings › General › VPN &amp; Device Management › your email › Trust.</p></details>
-  <details><summary>"Developer Mode Required" when I open couch</summary><p>you need step 7: Settings › Privacy &amp; Security › Developer Mode › on, then restart.</p></details>
-  <details><summary>couch stopped opening</summary><p>it's been 7 days. plug in, open Sideloadly, press Start. that's it.</p></details>
-  <details><summary>I don't have a computer</summary><p>you'll need to borrow one for setting it up (any Windows PC or Mac works), and once a week for the refresh. ask a friend in midnite, someone will help ${ic("heart")}</p></details>
-  <details><summary>it says "maximum number of apps"</summary><p>a free Apple ID can only have 3 apps like this at once. delete one you don't use, then press Start again.</p></details>
+  <details><summary>Sideloadly doesn't see my phone</summary><p>unlock it, tap Trust, try another cable or port. on Windows, make sure iTunes and iCloud are the ones from step 1.</p></details>
+  <details><summary>couch won't open</summary><p>do step 5 again. if it's been 7 days, press Start in Sideloadly again.</p></details>
 </section>
 
 <div class="share">
