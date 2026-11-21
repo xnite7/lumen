@@ -68,6 +68,14 @@ pub fn card_with(
         (from * (1. - x * x * (3. - 2. * x)), x < 1. && from > 0.)
     };
     let s = 1. + 0.07 * grow;
+    // the shadow starts the moment you rest on it (through the wait and the
+    // grow), so it's there all along rather than arriving at the end
+    let sh = if hov && !still {
+        let x = (since.elapsed().as_secs_f32() / (dwell + 0.32)).clamp(0., 1.);
+        x * x * (3. - 2. * x)
+    } else {
+        grow
+    };
     // on whole screen pixels, growing two at a time (one each side): edges that
     // land between pixels got rounded differently every frame and shivered
     let sf = crate::ui::scale().max(1.);
@@ -106,12 +114,11 @@ pub fn card_with(
         // the shadow grows with it: from nothing, softly spreading and darkening
         // (it reaches out early, so it's seen fading in with the growing, not
         // only once the card's done: tucked under the card it was invisible)
-        .when(grow > 0.001, |d| {
-            let k = grow.sqrt();
-            d.shadow(vec![gpui::BoxShadow { color: theme::black(0.5 * grow.powf(0.7)), offset: gpui::point(px(0.), px(4. + 10. * k)), blur_radius: px(14. + 18. * k), spread_radius: px(0.), inset: false }])
+        .when(sh > 0.001, |d| {
+            d.shadow(vec![gpui::BoxShadow { color: theme::black(0.5 * sh), offset: gpui::point(px(0.), px(4. + 10. * sh)), blur_radius: px(14. + 18. * sh), spread_radius: px(0.), inset: false }])
         })
         // keeps the frames coming while it grows or shrinks
-        .when(moving || (hov && grow < 1.), |d| d.child(gpui::canvas(|_, _, _| (), |_, _, w, _| w.request_animation_frame()).absolute().size_0()))
+        .when(moving || (hov && (grow < 1. || sh < 1.)), |d| d.child(gpui::canvas(|_, _, _| (), |_, _, w, _| w.request_animation_frame()).absolute().size_0()))
         // a GPU clip shows through this card: nothing of the card under it
         .when(!matches!(clip, Some((crate::ui::video::Pic::Native, _, _))), |d| d.bg(theme::surface2()))
         .cursor_pointer()
@@ -241,7 +248,7 @@ pub fn card_with(
         .h(px(H))
         // where its slot is on screen (for keeping the grown card in view)
         .child(gpui::canvas(move |b, _, _| SLOTS.with(|m| { m.borrow_mut().insert(skey.clone(), f32::from(b.origin.x)); }), |_, _, _, _| {}).absolute().size_full())
-        .child(if grow > 0.001 { gpui::deferred(el).with_priority(1).into_any_element() } else { el }).into_any_element();
+        .child(if grow > 0.001 || sh > 0.001 { gpui::deferred(el).with_priority(1).into_any_element() } else { el }).into_any_element();
     // under the picture, on one line: "S1 E2", the progress, the time left
     // (a tab in `sub` splits the two words; a long time drops its "left")
     let (l, r) = sub.map(|t| t.split_once('\t').map_or((t.clone(), String::new()), |(a, b)| (a.to_string(), b.to_string()))).unwrap_or_default();

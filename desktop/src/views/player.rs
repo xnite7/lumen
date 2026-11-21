@@ -76,6 +76,10 @@ pub struct PlayerView {
     /// the controls: showing or not, and since when (they slide in and out)
     chrome_on: bool,
     /// the paused screen (which episode, big), and when it last came or went
+    /// ambient mode: a soft still of the film (latest, the one before, when it changed)
+    glow: Option<std::sync::Arc<gpui::Image>>,
+    glow_prev: Option<std::sync::Arc<gpui::Image>>,
+    glow_at: Instant,
     pause_on: bool,
     pause_at: Instant,
     chrome_at: Instant,
@@ -166,9 +170,31 @@ impl PlayerView {
             };
         })
         .detach();
+        // ambient mode: every second, a small, very soft still of what's on
+        // screen; it cross-fades in around the picture (like YouTube's)
+        cx.spawn(async move |this, cx| loop {
+            crate::timer::after(Duration::from_millis(1000)).await;
+            let Ok(want) = this.update(cx, |v, cx| {
+                let p = v.pb.read(cx);
+                let on = couch::state::get().core.db.get::<bool>("gpui_immersive").unwrap_or(true);
+                (on && p.open && !p.loading && p.state.duration > 0. && v.aspect == "fit").then_some(p.state.pos)
+            }) else {
+                break;
+            };
+            let Some(pos) = want else { continue };
+            let Some(pic) = api_still(pos + 0.3).await else { continue };
+            let soft = couch::rt::spawn_blocking(move || soft_light(&pic)).await.ok().flatten();
+            let Some(soft) = soft else { continue };
+            let _ = this.update(cx, |v, cx| {
+                v.glow_prev = v.glow.replace(soft);
+                v.glow_at = Instant::now();
+                cx.notify();
+            });
+        })
+        .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, finale_cd: None, finale_off: None, blur_sent: 0., ate_click: false, next_x: Default::default() }
+        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), glow: None, glow_prev: None, glow_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, finale_cd: None, finale_off: None, blur_sent: 0., ate_click: false, next_x: Default::default() }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -389,6 +415,25 @@ fn denied_sign(cx: &mut Context<PlayerView>, window: &mut Window) -> Option<gpui
     )
 }
 
+
+/// a still of the film, shrunk and blurred to a soft wash of its colours
+fn soft_light(pic: &std::sync::Arc<gpui::Image>) -> Option<std::sync::Arc<gpui::Image>> {
+    let im = image::load_from_memory(&pic.bytes).ok()?;
+    let small = image::imageops::resize(&im.to_rgba8(), 48, 27, image::imageops::FilterType::Triangle);
+    let mut soft = image::imageops::blur(&small, 3.2);
+    for p in soft.pixels_mut() {
+        let (r, g, b) = (p[0] as f32, p[1] as f32, p[2] as f32);
+        let l = 0.299 * r + 0.587 * g + 0.114 * b;
+        let sat = |c: f32| ((l + (c - l) * 1.2) * 0.85).clamp(0., 255.);
+        p[0] = sat(r) as u8;
+        p[1] = sat(g) as u8;
+        p[2] = sat(b) as u8;
+        p[3] = 255;
+    }
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(soft).write_to(&mut out, image::ImageFormat::Png).ok()?;
+    Some(std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
+}
 
 /// The progress bar styles: (key, name in settings, moves?)
 pub const BAR_STYLES: [(&str, &str, bool); 7] = [
@@ -1954,8 +1999,69 @@ impl Render for PlayerView {
                 [0., 0., 1., 1.]
             };
             VID_RECT.with(|r| r.set(rect));
-            let s = if on && !starting && !crate::pip::is_on() { 1. } else { 0. };
-            ambient(p, [rect[0], rect[1], rect[2], rect[3], s]);
+            // (mpv's own blurred borders: off, this looks like YouTube's)
+            ambient(p, [rect[0], rect[1], rect[2], rect[3], 0.]);
+            // ambient mode, like YouTube's: the film's colours, enlarged and very
+            // soft, glowing out of the picture's edges into the black bars and
+            // fading toward the screen's edge; a new still cross-fades in each second
+            let bars: Vec<gpui::Bounds<Pixels>> = if rect[0] > 0.004 {
+                let pw = rect[0] * ww;
+                vec![gpui::Bounds::new(gpui::point(px(0.), px(0.)), gpui::size(px(pw + 1.), px(wh))), gpui::Bounds::new(gpui::point(px(ww - pw - 1.), px(0.)), gpui::size(px(pw + 1.), px(wh)))]
+            } else if rect[1] > 0.004 {
+                let ph = rect[1] * wh;
+                vec![gpui::Bounds::new(gpui::point(px(0.), px(0.)), gpui::size(px(ww), px(ph + 1.))), gpui::Bounds::new(gpui::point(px(0.), px(wh - ph - 1.)), gpui::size(px(ww), px(ph + 1.)))]
+            } else {
+                vec![]
+            };
+            if on && !starting && !crate::pip::is_on() && !bars.is_empty() {
+                if let Some(cur) = self.glow.clone() {
+                    let fade = (self.glow_at.elapsed().as_secs_f32() / 1.0).min(1.);
+                    let fade = fade * fade * (3. - 2. * fade);
+                    if fade < 1. {
+                        window.request_animation_frame();
+                    }
+                    let layer = |pic: std::sync::Arc<gpui::Image>, bars: Vec<gpui::Bounds<Pixels>>| {
+                        gpui::canvas(
+                            |_, _, _| (),
+                            move |b, _, window, cx| {
+                                let Some(data) = pic.clone().use_render_image(window, cx) else { return };
+                                // the picture, a quarter bigger than the window, centred
+                                let k = 1.25;
+                                let (w, h) = (b.size.width * k, b.size.height * k);
+                                let big = gpui::Bounds::new(gpui::point(b.origin.x - (w - b.size.width) / 2., b.origin.y - (h - b.size.height) / 2.), gpui::size(w, h));
+                                for r in &bars {
+                                    let _ = window.paint_image(*r, big, gpui::Corners::default(), data.clone(), 0, false);
+                                }
+                            },
+                        )
+                        .absolute()
+                        .size_full()
+                    };
+                    root = root
+                        .children(self.glow_prev.clone().filter(|_| fade < 1.).map(|p| div().absolute().top_0().left_0().size_full().opacity(0.8 * (1. - fade)).child(layer(p, bars.clone()))))
+                        .child(div().absolute().top_0().left_0().size_full().opacity(0.8 * fade).child(layer(cur, bars.clone())));
+                    // brightest at the picture's edge, gone by the screen's
+                    for (i, r) in bars.iter().enumerate() {
+                        let pillar = rect[0] > 0.004;
+                        // which way is "away from the picture"
+                        let deg = match (pillar, i) {
+                            (true, 0) => 270.,
+                            (true, _) => 90.,
+                            (false, 0) => 0.,
+                            (false, _) => 180.,
+                        };
+                        root = root.child(
+                            div()
+                                .absolute()
+                                .left(r.origin.x)
+                                .top(r.origin.y)
+                                .w(r.size.width)
+                                .h(r.size.height)
+                                .bg(linear_gradient(deg, linear_color_stop(theme::black(0.), 0.), linear_color_stop(theme::black(0.9), 1.))),
+                        );
+                    }
+                }
+            }
         }
         // while it starts: the title's art under a dim, the logo, a line
         if starting || !p.error.is_empty() {
@@ -2593,7 +2699,6 @@ impl Render for PlayerView {
                         glass(div())
                             // frosted glass: a lighter tint (mpv blurs the film under it), grain, a sheen
                             .bg(gpui::rgba(0x15111452))
-                            .overflow_hidden()
                             .child(img("ui/grain.png").absolute().top_0().left_0().size_full().rounded_full().object_fit(ObjectFit::Cover).opacity(0.035))
                             .child(div().absolute().top_0().left_0().w_full().h(px(30.)).rounded_t(px(31.)).bg(linear_gradient(180., linear_color_stop(theme::white(0.09), 0.), linear_color_stop(theme::white(0.), 1.))))
                             .absolute()

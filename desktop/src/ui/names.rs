@@ -31,9 +31,10 @@ pub fn font(id: i64) -> Option<&'static str> {
         16 => "Journal",
         // gg sans: couch's own
         11 | 0 => return None,
-        // newer ones (the GTA VI style is Pricedown, which isn't free to
-        // ship): the nearest heavy display face couch has
-        _ => "Bangers",
+        // newer ones: the GTA VI style is Pricedown. Its licence doesn't let
+        // couch carry it, so it's used when it's installed on this PC (any
+        // "Pricedown" family), else the nearest heavy face couch has
+        _ => PRICEDOWN.get().copied().flatten().unwrap_or("Bangers"),
     })
 }
 
@@ -47,8 +48,16 @@ fn parse(ns: &Value) -> Option<(Option<&'static str>, Option<Hsla>)> {
     (face.is_some() || col.is_some()).then_some((face, col))
 }
 
+/// Pricedown, if it's installed on this PC (looked for once)
+static PRICEDOWN: std::sync::OnceLock<Option<&'static str>> = std::sync::OnceLock::new();
+
 /// Their style, if known (asks the server for it the first time)
 pub fn of(id: &str, cx: &mut App) -> Option<(Option<&'static str>, Option<Hsla>)> {
+    PRICEDOWN.get_or_init(|| {
+        let names = cx.text_system().all_font_names();
+        let pick = names.iter().find(|n| n.eq_ignore_ascii_case("Pricedown Black")).or_else(|| names.iter().find(|n| n.to_lowercase().starts_with("pricedown")));
+        pick.map(|n| &*Box::leak(n.clone().into_boxed_str()))
+    });
     if id.is_empty() {
         return None;
     }

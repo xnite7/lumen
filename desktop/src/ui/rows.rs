@@ -75,6 +75,8 @@ pub fn scroller(key: impl ToString, inner: Stateful<Div>) -> AnyElement {
                     .justify_center()
                     .cursor_pointer()
                     .hover(|s| s.bg(theme::black(0.88)))
+                    // the card under it doesn't take the pointer (no grow, no preview)
+                    .when(show, |d| d.occlude())
                     .when(show, |d| {
                         d.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(move |_, window, _| {
                             let (cur, max) = pos(&h);

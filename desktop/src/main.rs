@@ -189,6 +189,9 @@ pub enum Route {
 }
 
 /// Getting around from anywhere: `Nav::detail(&meta, cx)`.
+/// TV mode made the window full screen (so leaving it puts it back)
+static TV_MADE_FS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub struct Nav(WeakEntity<Root>);
 impl Global for Nav {}
 
@@ -368,6 +371,17 @@ impl Nav {
                     r.tv.update(cx, |t, cx| t.enter(homes, cx));
                     cx.notify();
                 });
+                // full screen (and back to how it was after): asked of the window
+                // straight away, not from inside a draw
+                if let Some(h) = cx.windows().first().copied() {
+                    let _ = h.update(cx, |_, window, _| {
+                        let was = window.is_fullscreen();
+                        TV_MADE_FS.store(!was, std::sync::atomic::Ordering::Relaxed);
+                        if !was {
+                            window.toggle_fullscreen();
+                        }
+                    });
+                }
                 // the page's own clip stops; TV mode has its own
                 let v = ui::video::get(cx);
                 let owner = v.read(cx).owner.clone();
@@ -377,6 +391,15 @@ impl Nav {
     }
     pub fn tv_off(cx: &mut App) {
         cx.defer(|cx| {
+            if TV_MADE_FS.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                if let Some(h) = cx.windows().first().copied() {
+                    let _ = h.update(cx, |_, window, _| {
+                        if window.is_fullscreen() {
+                            window.toggle_fullscreen();
+                        }
+                    });
+                }
+            }
             if let Some(r) = Self::root(cx) {
                 r.update(cx, |r, cx| {
                     r.tv.update(cx, |t, cx| t.leave(cx));
@@ -450,8 +473,6 @@ pub struct Root {
     pub wrapped: Entity<views::wrapped::Wrapped>,
     pub finale: Entity<views::finale::Finale>,
     pub tv: Entity<views::tv::Tv>,
-    /// TV mode made the window full screen (and puts it back after)
-    tv_fs: Option<bool>,
     pub month: Entity<views::month::Month>,
     pub addto: Entity<views::addto::AddTo>,
     pub menu: Entity<views::menu::Menu>,
@@ -1335,33 +1356,7 @@ impl Render for Root {
             cx.defer(move |_| mini::set(want_mini, s));
         }
         let playing = self.route == Route::Player;
-        // TV mode: full screen while it's on (and back to how it was after)
         let tv_on = self.tv.read(cx).on;
-        match (tv_on, self.tv_fs) {
-            (true, None) => {
-                let was = window.is_fullscreen();
-                self.tv_fs = Some(!was);
-                if !was {
-                    // (after this frame: toggled mid-draw it could be lost)
-                    window.defer(cx, |window, _| {
-                        if !window.is_fullscreen() {
-                            window.toggle_fullscreen();
-                        }
-                    });
-                }
-            }
-            (false, Some(made)) => {
-                self.tv_fs = None;
-                if made {
-                    window.defer(cx, |window, _| {
-                        if window.is_fullscreen() {
-                            window.toggle_fullscreen();
-                        }
-                    });
-                }
-            }
-            _ => {}
-        }
         if playing {
             cx.defer(|_| mini::place_clip(None));
         } else {
@@ -1518,7 +1513,7 @@ impl Render for Root {
             })
             .when(mini::is_on(), |d| d.child(gpui::deferred(self.mini_bar(window, cx)).with_priority(2)))
             .children(if playing { None } else { update::card(cx).map(|c| gpui::deferred(c).with_priority(2)) })
-            .children(ui::zoom::overlay(window, cx))
+            .children(ui::zoom::overlay(window, cx).map(|o| gpui::deferred(o).with_priority(6)))
             .children(self.intro(window))
             .when(self.locked, |d| d.child(gpui::deferred(self.lock_screen(cx)).with_priority(9)))
             .children({
@@ -1913,7 +1908,6 @@ fn main() {
                             wrapped: cx.new(views::wrapped::Wrapped::new),
                             finale: cx.new(views::finale::Finale::new),
                             tv: cx.new(views::tv::Tv::new),
-                            tv_fs: None,
                             month: cx.new(views::month::Month::new),
                             addto,
                             menu,

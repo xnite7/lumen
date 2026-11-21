@@ -1141,9 +1141,9 @@ fn crop_bars(mpv: &libmpv2::Mpv, gen: u64) {
 
 
 /// The control bar's glass: inside a rounded rectangle (given as fractions of
-/// the window, live), the picture is blurred and lifted a little, like frosted
-/// glass; outside it nothing changes. On the finished picture (OUTPUT), so it
-/// lines up with couch's bar exactly, black bars and all.
+/// the film's own picture, live), the picture is blurred and lifted a little,
+/// like frosted glass; outside it nothing changes. On the film itself (MAIN:
+/// known size and orientation; couch works out where its bar falls on it).
 const BAR_BLUR: &str = r#"//!PARAM couch_bx
 //!TYPE DYNAMIC float
 0.0
@@ -1163,7 +1163,7 @@ const BAR_BLUR: &str = r#"//!PARAM couch_bx
 //!TYPE DYNAMIC float
 0.0
 
-//!HOOK OUTPUT
+//!HOOK MAIN
 //!BIND HOOKED
 //!DESC couch bar glass
 vec4 hook() {

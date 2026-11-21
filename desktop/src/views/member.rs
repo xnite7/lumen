@@ -113,6 +113,7 @@ impl Render for Member {
         // and their display-name style (font + colour), where couch has the font
         let banner = d["look"]["banner"].as_str().map(String::from);
         let ns = &d["look"]["nameStyle"];
+        let _ = crate::ui::names::of("", cx);
         let name_font = ns["font"].as_i64().and_then(crate::ui::names::font);
         let name_color = ns["colors"][0].as_str().and_then(hex).filter(|_| ns["font"].as_i64().is_some());
         let stats: Vec<(i64, &str)> = [("movies", "films"), ("shows", "shows"), ("episodes", "episodes"), ("plan", "on the list")]
