@@ -89,7 +89,7 @@ export const DOWNLOAD_HTML = `<!doctype html>
 <nav>
   <div class="wrap">
     <a class="brand" href="#top"><img src="/logo.png" alt="">couch</a>
-    <div class="links"><a href="#features">features</a><a href="#install">install</a><a href="#faq">faq</a></div>
+    <div class="links"><a href="#features">features</a><a href="/install">install guide</a><a href="#faq">faq</a></div>
     <a class="btn" href="${ZIP}" style="padding:8px 18px;font-size:14px">download</a>
   </div>
 </nav>
@@ -101,6 +101,8 @@ export const DOWNLOAD_HTML = `<!doctype html>
     <div class="cta">
       <a class="btn" href="${ZIP}">download for windows</a>
       <span class="meta">windows 10 / 11 · 64-bit · free for midnite members</span>
+      <a class="btn ghost" href="/install#ios">📱 iPhone / iPad</a>
+      <a class="meta" href="/install">first time? follow the step-by-step guide →</a>
     </div>
     <div class="shot">[ app screenshot / trailer ]</div>
   </div>
@@ -148,6 +150,7 @@ export const DOWNLOAD_HTML = `<!doctype html>
       <div class="step"><h3>sign in with discord</h3><p>you'll need to be in the midnite server.</p></div>
     </div>
     <div class="req"><span>windows 10 / 11</span><span>64-bit</span><span>a discord account in midnite</span><span>an internet connection</span></div>
+    <p style="margin-top:24px"><a class="btn ghost" href="/install">open the step-by-step guide (PC, iPhone &amp; iPad)</a></p>
     <p class="meta" style="margin-top:24px">on the old couch? it'll offer to move you over automatically.</p>
   </div>
 </section>
@@ -159,6 +162,7 @@ export const DOWNLOAD_HTML = `<!doctype html>
     <details><summary>why do i need discord?</summary><p>couch is for the midnite crew. signing in with discord is how it knows you're one of us.</p></details>
     <details><summary>i had the old couch. what happens to it?</summary><p>it's retired. open it once and it'll install the new one for you, or just download it here. your simkl history comes with you.</p></details>
     <details><summary>windows says it doesn't recognise the app</summary><p>click "more info" then "run anyway". it's not signed by a big publisher yet.</p></details>
+    <details><summary>iPhone or iPad?</summary><p>yes! it takes a computer and about 15 minutes the first time. <a href="/install#ios">here is the guide</a>.</p></details>
     <details><summary>mac or linux?</summary><p>windows only for now.</p></details>
   </div>
 </section>

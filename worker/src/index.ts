@@ -21,6 +21,7 @@
 import logo from "./logo.png";
 import { TERMS_HTML } from "./terms";
 import { DOWNLOAD_HTML } from "./download";
+import { INSTALL_HTML } from "./install";
 
 export interface Env {
   CREW: DurableObjectNamespace;
@@ -333,6 +334,9 @@ export default {
     }
     if (url.pathname === "/" || url.pathname === "/download" || url.pathname === "/couch") {
       return new Response(DOWNLOAD_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
+    }
+    if (url.pathname === "/install" || url.pathname === "/help" || url.pathname === "/ios") {
+      return new Response(INSTALL_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
     }
     if (url.pathname === "/join") return joinPage(url);
     if (url.pathname === "/terms" || url.pathname === "/tos") {
