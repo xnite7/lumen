@@ -8,10 +8,12 @@ compatibility_date = "2025-06-01"
 [[rules]]
 type = "Data"
 globs = ["**/*.png", "**/*.jpg", "**/*.woff2"]
+fallthrough = true
 
 [[rules]]
 type = "Text"
 globs = ["**/*.html"]
+fallthrough = true
 
 [[durable_objects.bindings]]
 name = "CREW"
