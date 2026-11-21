@@ -18,7 +18,13 @@ fn out<T: serde::Serialize>(v: T) -> Result<Value, String> {
 
 /// Run a command: `invoke("meta_get", json!({ "kind": "movie", "id": "tt.." }))`.
 pub async fn invoke(cmd: &str, a: Value) -> Result<Value, String> {
+    #[cfg(not(feature = "tauri-app"))]
     let st = crate::state::get();
+    // (the Tauri app: its commands take Tauri's handle on the same state)
+    #[cfg(feature = "tauri-app")]
+    let app = crate::tauri_host::app();
+    #[cfg(feature = "tauri-app")]
+    let st: tauri::State<'_, crate::state::AppState> = tauri::Manager::state(&app);
     match cmd {
         "app_info" => {
             out(commands::app_info(st))
@@ -507,7 +513,7 @@ pub async fn invoke(cmd: &str, a: Value) -> Result<Value, String> {
             out(commands::crew_line(st, host).await.map_err(|e| e.to_string())?)
         }
         "crew_end_room" => out(commands::crew_end_room(st)),
-        "crew_server_invite" => out(commands::crew_server_invite(st).await),
+        "crew_server_invite" => out(commands::crew_server_invite(st).await?),
         "crew_leave" => {
             let host: String = arg(&a, "host")?;
             out(commands::crew_leave(st, host).await.map_err(|e| e.to_string())?)

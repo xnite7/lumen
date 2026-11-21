@@ -1,0 +1,123 @@
+name: Build couch (iPhone / iPad)
+
+# The new iPhone/iPad app: the new screens (mobile/) on couch's engine, with
+# the native mpv player. An unsigned .ipa for sideloading (AltStore /
+# Sideloadly re-sign it with your Apple ID), always at:
+# https://github.com/xnite7/lumen/releases/download/couch-ios/couch.ipa
+
+on:
+  push:
+    branches: [gpui]
+    paths:
+      - "mobile/**"
+      - "src/lib/**"
+      - "src-tauri/**"
+      - "scripts/ios-project.py"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/ios.yml"
+  workflow_dispatch:
+
+env:
+  COUCH_TMDB_KEY: ${{ secrets.COUCH_TMDB_KEY }}
+  COUCH_TIDB_KEY: ${{ secrets.COUCH_TIDB_KEY }}
+  COUCH_MOTN_KEY: ${{ secrets.COUCH_MOTN_KEY }}
+  COUCH_AI_KEY: ${{ secrets.COUCH_AI_KEY }}
+  COUCH_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+  COUCH_ROLES: ${{ secrets.ALLOWED_ROLE_IDS }}
+  COUCH_VERSION: 1.0.${{ github.run_number }}
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - name: Point the app at the new screens
+        run: |
+          node -e '
+            const fs = require("fs"); const f = "src-tauri/tauri.conf.json";
+            const c = JSON.parse(fs.readFileSync(f, "utf8"));
+            c.version = process.env.COUCH_VERSION;
+            c.bundle.createUpdaterArtifacts = false;
+            c.build.frontendDist = "../dist-mobile";
+            c.build.beforeBuildCommand = "npm run build:mobile";
+            c.build.devUrl = "http://localhost:1430";
+            fs.writeFileSync(f, JSON.stringify(c, null, 2));
+          '
+      - name: Generate Xcode project
+        run: npx tauri ios init --ci
+      - name: Build the screens
+        run: npm run build:mobile
+      - name: Build Rust library for iOS
+        working-directory: src-tauri
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: "14.0"
+        run: |
+          cargo build --release --lib --target aarch64-apple-ios --features tauri/custom-protocol
+          mkdir -p gen/apple/Externals/arm64/release gen/apple/Externals/arm64/Release
+          cp target/aarch64-apple-ios/release/libcouch_lib.a gen/apple/Externals/arm64/release/libapp.a
+          cp target/aarch64-apple-ios/release/libcouch_lib.a gen/apple/Externals/arm64/Release/libapp.a
+      - name: Add widget extension and iPhone permissions
+        working-directory: src-tauri/gen/apple
+        run: |
+          pip3 install --quiet --break-system-packages pyyaml || pip3 install --quiet pyyaml
+          python3 ../../../scripts/ios-project.py
+          which xcodegen || brew install xcodegen
+          xcodegen generate --spec project.yml
+      - name: Disable Xcode's Rust build phase
+        working-directory: src-tauri/gen/apple
+        run: |
+          python3 - <<'PY'
+          import re, glob
+          p = glob.glob('*.xcodeproj/project.pbxproj')[0]
+          s = open(p).read()
+          s, n = re.subn(r'shellScript = "(?:[^"\\]|\\.)*?xcode-script(?:[^"\\]|\\.)*";', 'shellScript = "true";', s)
+          print("patched build phases:", n)
+          assert n, "Rust build phase not found"
+          open(p, 'w').write(s)
+          PY
+      - name: Build app (unsigned)
+        working-directory: src-tauri/gen/apple
+        run: |
+          PROJ=$(ls -d *.xcodeproj | head -1)
+          SCHEME=$(xcodebuild -list -project "$PROJ" | grep -o "[A-Za-z0-9_-]*_iOS" | head -1)
+          CONF=$(xcodebuild -list -project "$PROJ" | awk '/Build Configurations:/{f=1;next} f&&NF{print $1; exit}' )
+          for c in release Release; do xcodebuild -list -project "$PROJ" | grep -qx "        $c" && CONF=$c; done
+          echo "project: $PROJ scheme: $SCHEME configuration: $CONF"
+          xcodebuild -project "$PROJ" -scheme "$SCHEME" -configuration "$CONF" -sdk iphoneos \
+            -destination 'generic/platform=iOS' -derivedDataPath build ARCHS=arm64 \
+            -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          APP=$(find build/Build/Products -name "*.app" -maxdepth 3 | head -1)
+          echo "app: $APP"
+          mkdir -p Payload && cp -R "$APP" Payload/
+          zip -qr ../../../couch.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: couch-ios
+          path: couch.ipa
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          R=couch-ios
+          gh release view $R >/dev/null 2>&1 || gh release create $R --prerelease --target "$GITHUB_SHA" --title "couch for iPhone / iPad" --notes "unsigned .ipa, sideload with AltStore or Sideloadly."
+          gh release upload $R couch.ipa --clobber
+          gh release edit $R --notes "unsigned .ipa, sideload with AltStore or Sideloadly. this one: $COUCH_VERSION"

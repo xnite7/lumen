@@ -29,7 +29,6 @@ pub mod tauri_host;
 #[cfg(desktop)]
 pub mod tobii;
 pub mod torrent;
-#[cfg(not(feature = "tauri-app"))]
 pub mod dispatch;
 
 #[cfg(feature = "tauri-app")]

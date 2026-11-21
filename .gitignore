@@ -10,3 +10,4 @@ src-tauri/mpv
 dist-demo
 desktop/target/
 zed-src/
+dist-mobile/

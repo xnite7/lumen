@@ -107,6 +107,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            call,
             commands::app_info,
             commands::settings_get,
             commands::settings_set,
@@ -237,4 +238,12 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running couch");
+}
+
+
+/// Any engine command by name, the same way the PC app calls them: the new
+/// iPhone / iPad screens use this one door for everything.
+#[tauri::command]
+async fn call(cmd: String, args: Option<serde_json::Value>) -> Result<serde_json::Value, String> {
+    crate::dispatch::invoke(&cmd, args.unwrap_or(serde_json::Value::Null)).await
 }

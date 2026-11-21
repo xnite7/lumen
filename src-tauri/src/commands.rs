@@ -1175,8 +1175,8 @@ pub fn crew_end_room(s: S<'_>) {
 }
 /// The Discord server's invite, for people who aren't in it yet.
 #[cfg_attr(feature = "tauri-app", tauri::command)]
-pub async fn crew_server_invite(s: S<'_>) -> Option<String> {
-    crate::crew::server_invite(&s.core).await
+pub async fn crew_server_invite(s: S<'_>) -> Result<Option<String>, String> {
+    Ok(crate::crew::server_invite(&s.core).await)
 }
 #[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn crew_leave(s: S<'_>, host: String) -> AppResult<Value> {
