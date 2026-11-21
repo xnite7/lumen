@@ -22,6 +22,7 @@ import logo from "./logo.png";
 import { TERMS_HTML } from "./terms";
 import { DOWNLOAD_HTML } from "./download";
 import { INSTALL_HTML } from "./install";
+import { LANDING_HTML, LANDING_FILES } from "./landing/landing";
 
 export interface Env {
   CREW: DurableObjectNamespace;
@@ -333,6 +334,14 @@ export default {
       return new Response(logo, { headers: { "content-type": "image/png", "cache-control": "public, max-age=86400" } });
     }
     if (url.pathname === "/" || url.pathname === "/download" || url.pathname === "/couch") {
+      return new Response(LANDING_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
+    }
+    const lf = url.pathname.match(/^\/l\/([\w.-]+)$/);
+    if (lf && LANDING_FILES[lf[1]]) {
+      const [data, type] = LANDING_FILES[lf[1]];
+      return new Response(data, { headers: { "content-type": type, "cache-control": "public, max-age=604800, immutable" } });
+    }
+    if (url.pathname === "/old") {
       return new Response(DOWNLOAD_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
     }
     if (url.pathname === "/install" || url.pathname === "/help" || url.pathname === "/ios") {

@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en"><head><style data-dc-design-system-vars="">@layer{:root{--room-0:#000000;--room-1:#0a0809;--room-2:#141113;--room-3:#1d181b;--broadcast:#050304;--plum:#7a3b5e;--ink:#f4eaf0;--ink-2:#f4eaf099;--ink-3:#f4eaf057;--ink-4:#f4eaf029;--lamp:#ffb25c;--on-lamp:#120a06;--neon:#e0309a;--neon-soft:#ff6ec4;--neon-core:#ffe3f3;--on-ink:#000000;--fill:#786e764d;--good:#7fd6a0;--danger:#ff5a5a;--glow-neon:0 0 18px -2px #e0309a8c, 0 0 46px -6px #e0309a66;--glow-lamp:0 0 22px -4px #ffb25c8c, 0 0 60px -10px #ffb25c59;--lift:0 2px 10px 0 #0000008c;--float:0 14px 34px -10px #00000099;--drop:0 18px 36px -12px #000000cc;--s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;--s7:32px;--s8:44px;--gutter:56px;--r-xs:8px;--r-sm:12px;--r-card:14px;--r-md:16px;--r-lg:22px;--r-xl:30px;--r-pill:999px;--d-tap:120ms;--d-quick:200ms;--d-turn:320ms;--d-channel:460ms;--d-settle:560ms;--d-lamp:800ms;--d-beat:550ms;--d-neon:1300ms;--d-room:4000ms;--ease-lamp:cubic-bezier(0.25, 1, 0.5, 1);--ease-out:cubic-bezier(0.33, 1, 0.68, 1);--ease-in-out:cubic-bezier(0.65, 0, 0.35, 1);--ease-in:cubic-bezier(0.32, 0, 0.67, 0);--spring-bouncy:linear(0, 0.19, 0.51, 0.79, 0.96, 1.04, 1.05, 1.04, 1.02, 1.01, 1);--spring-glide:linear(0, 0.09, 0.26, 0.44, 0.59, 0.71, 0.8, 0.86, 0.91, 0.94, 0.97, 0.99, 1);--font-satoshi:"Satoshi", "Segoe UI Variable Display", -apple-system, system-ui, sans-serif;--text-sign:900 210px/200px var(--font-satoshi);--text-display:900 132px/130px var(--font-satoshi);--text-hero:900 72px/72px var(--font-satoshi);--text-title1:900 34px/39px var(--font-satoshi);--text-title2:700 24px/30px var(--font-satoshi);--text-title3:600 20px/25px var(--font-satoshi);--text-aside:500 19px/28px var(--font-satoshi);--text-kick:700 18px/24px var(--font-satoshi);--text-headline:600 17px/22px var(--font-satoshi);--text-osd:900 16px/20px var(--font-satoshi);--text-body:500 15px/22px var(--font-satoshi);--text-foot:600 13px/18px var(--font-satoshi);--text-caption:600 12px/16px var(--font-satoshi);}}</style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>couch · midnite™</title>
+<meta name="description" content="couch is midnite™'s streaming app. watch together, on one couch.">
+<meta property="og:title" content="couch · midnite™">
+<meta property="og:description" content="watch together, on one couch.">
+<meta property="og:image" content="/logo.png">
+<link rel="icon" href="/logo.png">
+
+
+<style>
+@font-face{font-family:"Satoshi";src:url("/l/satoshi.woff2") format("woff2");font-weight:300 900;font-display:swap}
+
+
+:root{--ink:#f4eaf0;--ink2:rgba(244,234,240,.6);--ink3:rgba(244,234,240,.34);--ink4:rgba(244,234,240,.12);--r1:#0a0809;--r2:#141113;
+--glass:rgba(28,22,26,.42);--rim:rgba(244,234,240,.09);
+--lamp:cubic-bezier(.25,1,.5,1);--glide:linear(0,.09,.26,.44,.59,.71,.8,.86,.91,.94,.97,.99,1);--bouncy:linear(0,.19,.51,.79,.96,1.04,1.05,1.04,1.02,1.01,1);
+--gut:clamp(16px,4.2vw,56px)}
+html{background:#000;scroll-behavior:smooth}
+body{margin:0;background:#000;color:#f4eaf0;font-family:"Satoshi","Segoe UI Variable Display",-apple-system,system-ui,sans-serif;font-weight:500;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:#f4eaf0;text-decoration:none}a:hover{color:#fff}
+*{box-sizing:border-box}
+img{display:block}
+:focus-visible{outline:2px solid #f4eaf0;outline-offset:3px;border-radius:999px}
+.pg{position:relative;overflow-x:clip;background:#000;min-height:100vh}
+.wrap{position:relative;z-index:2;max-width:1240px;margin:0 auto;padding:0 clamp(16px,4.2vw,56px)}
+
+/* grain */
+.grain{position:fixed;inset:-50%;width:200%;height:200%;z-index:60;pointer-events:none;opacity:.07;mix-blend-mode:overlay;animation:grain 1s steps(24) infinite}
+@keyframes grain{0%{transform:translate(0,0)}10%{transform:translate(-3%,2%)}20%{transform:translate(2%,-4%)}30%{transform:translate(-4%,-1%)}40%{transform:translate(3%,3%)}50%{transform:translate(-2%,4%)}60%{transform:translate(4%,-2%)}70%{transform:translate(-1%,-3%)}80%{transform:translate(2%,1%)}90%{transform:translate(-3%,3%)}100%{transform:translate(0,0)}}
+
+/* glass */
+.glass{background:rgba(28,22,26,.42);-webkit-backdrop-filter:blur(30px) saturate(170%);backdrop-filter:blur(30px) saturate(170%);border:1px solid rgba(244,234,240,.09);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 14px 34px -10px rgba(0,0,0,.6)}
+
+/* nav */
+.nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:14px clamp(16px,4.2vw,56px);padding-top:max(14px,env(safe-area-inset-top));display:flex;justify-content:center;pointer-events:none}
+.navin{pointer-events:auto;width:100%;max-width:1240px;display:flex;align-items:center;gap:8px;padding:8px 8px 8px 18px;border-radius:999px;border:1px solid transparent;transition:background .6s cubic-bezier(.25,1,.5,1),border-color .6s cubic-bezier(.25,1,.5,1),backdrop-filter .6s cubic-bezier(.25,1,.5,1),max-width .7s linear(0,.09,.26,.44,.59,.71,.8,.86,.91,.94,.97,.99,1)}
+.nav.on .navin{background:rgba(20,16,19,.5);-webkit-backdrop-filter:blur(30px) saturate(170%);backdrop-filter:blur(30px) saturate(170%);border-color:rgba(244,234,240,.09);max-width:880px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:19px;letter-spacing:-.02em;margin-right:auto}
+.brand img{width:34px;height:34px;object-fit:contain}
+.nl{font-weight:700;font-size:15px;color:rgba(244,234,240,.6);padding:10px 14px;border-radius:999px;transition:color .2s,background .2s}
+.nl:hover{color:#f4eaf0;background:rgba(244,234,240,.07)}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:54px;padding:0 26px;border-radius:999px;font-weight:700;font-size:16px;letter-spacing:-.01em;white-space:nowrap;transition:transform .63s linear(0,.19,.51,.79,.96,1.04,1.05,1.04,1.02,1.01,1),background .2s,color .2s}
+.btn svg{width:20px;height:20px;flex:none}
+.btn:active{transform:scale(.95);transition-duration:.12s}
+.btn.pri{background:#f4eaf0;color:#000}.btn.pri:hover{background:#fff;color:#000;transform:scale(1.03)}
+.btn.alt{color:#f4eaf0}.btn.alt:hover{background:rgba(60,50,56,.55);transform:scale(1.03)}
+.btn.sm{height:40px;padding:0 18px;font-size:14px}
+.lk{display:inline-flex;align-items:center;gap:8px;font-weight:700;color:rgba(244,234,240,.6);font-size:15px;transition:color .2s,gap .3s cubic-bezier(.25,1,.5,1)}
+.lk svg{width:18px;height:18px}.lk:hover{color:#f4eaf0;gap:12px}
+
+/* hero */
+.hero{position:relative;height:100svh;min-height:640px;max-height:1100px;overflow:hidden;z-index:2}
+.stage{position:absolute;inset:-6% 0 0 0;transform:translate3d(0,calc(var(--sy,0) * .32px),0);will-change:transform}
+.slide{position:absolute;inset:0;opacity:0;transition:opacity 1.6s cubic-bezier(.25,1,.5,1)}
+.slide img{width:100%;height:100%;object-fit:cover;transform:scale(1.1);transition:transform 9s linear}
+.slide.on{opacity:1}.slide.on img{transform:scale(1)}
+.scrim{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,0) 22%,rgba(0,0,0,0) 42%,rgba(0,0,0,.75) 78%,#000 100%),linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.2) 55%,rgba(0,0,0,0) 100%)}
+.dim{position:absolute;inset:0;background:#000;opacity:calc(var(--sy,0) / 900);pointer-events:none}
+.hcopy{position:absolute;left:0;right:0;bottom:0;z-index:3;padding-bottom:clamp(40px,8vh,96px);transform:translate3d(0,calc(var(--sy,0) * -.12px),0);opacity:calc(1 - var(--sy,0) / 700)}
+.eyebrow{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;color:rgba(244,234,240,.6);letter-spacing:.01em;margin:0 0 22px}
+.eyebrow img{width:22px;height:22px;object-fit:contain;opacity:.9}
+h1.big{margin:0;font-weight:900;font-size:clamp(52px,9vw,136px);line-height:.9;letter-spacing:-.055em;max-width:11ch;text-shadow:0 2px 30px rgba(0,0,0,.35)}
+h1.big span{display:block}
+.lede{margin:26px 0 0;max-width:30em;font-size:clamp(17px,1.5vw,20px);line-height:1.5;color:rgba(244,234,240,.6)}
+.ctas{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:34px}
+.fine{margin:18px 0 0;font-size:13px;font-weight:600;color:rgba(244,234,240,.6)}
+.now{position:absolute;right:clamp(16px,4.2vw,56px);bottom:clamp(40px,8vh,96px);z-index:3;display:flex;flex-direction:column;align-items:flex-end;gap:14px;opacity:calc(1 - var(--sy,0) / 500)}
+.nowlabel{font-size:12px;font-weight:700;color:rgba(244,234,240,.6);letter-spacing:.02em}
+.nowlogo{position:relative;width:240px;height:72px}
+.nowlogo img{position:absolute;right:0;bottom:0;max-width:240px;max-height:72px;object-fit:contain;opacity:0;transform:translateY(10px);transition:opacity .9s cubic-bezier(.25,1,.5,1),transform .9s cubic-bezier(.25,1,.5,1);filter:drop-shadow(0 2px 14px rgba(0,0,0,.5))}
+.nowlogo img.on{opacity:1;transform:none}
+.segs{display:flex;gap:6px}
+.seg{position:relative;width:34px;height:6px;border-radius:999px;border:0;padding:0;background:rgba(244,234,240,.22);overflow:hidden;cursor:pointer}
+.seg::before{content:"";position:absolute;inset:-19px -4px}
+.seg i{position:absolute;inset:0;background:#f4eaf0;transform-origin:left;transform:scaleX(0);border-radius:999px}
+.seg.on{width:56px;transition:width .5s linear(0,.09,.26,.44,.59,.71,.8,.86,.91,.94,.97,.99,1)}
+.seg.on i{animation:segfill 8s linear forwards}
+@keyframes segfill{to{transform:scaleX(1)}}
+
+/* ambient spill from the hero art */
+.spill{position:absolute;left:-10%;right:-10%;top:calc(100svh - 260px);height:1100px;z-index:0;pointer-events:none;opacity:.55}
+.spill img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(110px) saturate(1.5);opacity:0;transition:opacity 4s cubic-bezier(.25,1,.5,1)}
+.spill img.on{opacity:1}
+.spill::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0),#000 92%)}
+
+/* sections */
+.sec{position:relative;padding:clamp(80px,12vw,160px) 0}
+.kick{font-size:14px;font-weight:700;color:rgba(244,234,240,.6);margin:0 0 14px;letter-spacing:.01em}
+h2.t{margin:0;font-weight:900;font-size:clamp(40px,6vw,84px);line-height:.95;letter-spacing:-.045em}
+.sub{margin:20px 0 0;max-width:32em;font-size:clamp(17px,1.4vw,19px);line-height:1.55;color:rgba(244,234,240,.6)}
+
+/* features */
+.fgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:56px}
+.ft{position:relative;border-radius:28px;padding:28px;min-height:250px;display:flex;flex-direction:column;overflow:hidden}
+.ico{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:rgba(244,234,240,.08);border:1px solid rgba(244,234,240,.09)}
+.ico svg{width:24px;height:24px}
+.ft h3{margin:auto 0 0;padding-top:40px;font-weight:900;font-size:26px;letter-spacing:-.03em;line-height:1.1}
+.ft p{margin:10px 0 0;font-size:15px;line-height:1.5;color:rgba(244,234,240,.6)}
+.with{position:absolute;top:30px;right:28px;font-size:12px;font-weight:700;color:rgba(244,234,240,.6);padding:6px 11px;border-radius:999px;border:1px solid rgba(244,234,240,.09)}
+.pool{position:absolute;pointer-events:none;z-index:0;filter:blur(120px) saturate(1.5);opacity:.32;border-radius:50%;object-fit:cover}
+
+/* tilt cards (tvOS focus) */
+.tilt{position:relative;border-radius:22px;transform:perspective(1100px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translate3d(0,var(--ly,0px),0) scale(var(--sc,1));transition:transform .6s linear(0,.09,.26,.44,.59,.71,.8,.86,.91,.94,.97,.99,1),box-shadow .6s linear(0,.09,.26,.44,.59,.71,.8,.86,.91,.94,.97,.99,1);box-shadow:0 18px 36px -12px rgba(0,0,0,.8);transform-style:preserve-3d}
+.tilt:hover{--ly:-8px;--sc:1.025;box-shadow:0 40px 70px -20px rgba(0,0,0,.95)}
+.tilt::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:5;background:radial-gradient(circle at var(--mx,50%) var(--my,0%),rgba(255,255,255,.2),rgba(255,255,255,0) 45%),linear-gradient(115deg,rgba(255,255,255,0) 35%,rgba(255,255,255,.07) 48%,rgba(255,255,255,0) 60%);opacity:0;transition:opacity .4s cubic-bezier(.25,1,.5,1)}
+.tilt:hover::after{opacity:1}
+.ft.tilt{border-radius:28px}
+
+/* spotlights */
+.spot{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:clamp(32px,6vw,96px);align-items:center;padding:clamp(56px,8vw,110px) 0}
+.spot.flip{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
+.spot.flip .scopy{order:2}
+.scopy h3{margin:0;font-weight:900;font-size:clamp(34px,4.2vw,58px);line-height:.98;letter-spacing:-.04em}
+.scopy p{margin:20px 0 0;font-size:clamp(17px,1.4vw,19px);line-height:1.55;color:rgba(244,234,240,.6);max-width:26em}
+.chan{font-size:13px;font-weight:900;color:rgba(244,234,240,.34);letter-spacing:.04em;margin:0 0 18px}
+.vis{position:relative}
+.glow{position:absolute;inset:-14% -12%;z-index:0;pointer-events:none}
+.glow img{width:100%;height:100%;object-fit:cover;filter:blur(80px) saturate(1.6);opacity:.6;border-radius:50%}
+.card{position:relative;z-index:1;overflow:hidden;aspect-ratio:16/10;background:#141113}
+.card>img{width:100%;height:100%;object-fit:cover}
+.float{position:absolute;z-index:3}
+
+/* crew couch */
+.crew{position:absolute;left:14px;right:14px;bottom:14px;z-index:4;border-radius:22px;padding:12px 12px 12px 14px;display:flex;align-items:center;gap:14px}
+.sofa{position:relative;display:flex;align-items:flex-end;padding:6px 10px 8px;border-radius:16px 16px 12px 12px;background:rgba(244,234,240,.06);border:1px solid rgba(244,234,240,.09)}
+.sofa::before,.sofa::after{content:"";position:absolute;bottom:0;width:8px;height:26px;border-radius:6px;background:rgba(244,234,240,.12)}
+.sofa::before{left:-4px}.sofa::after{right:-4px}
+.av{width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid rgba(10,8,9,.9);margin-left:-8px;animation:bob 3.6s ease-in-out infinite}
+.av:first-child{margin-left:0}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+.crewtxt{min-width:0;flex:1}
+.crewtxt b{display:block;font-weight:900;font-size:15px;letter-spacing:-.01em}
+.crewtxt span{display:block;font-size:13px;font-weight:600;color:rgba(244,234,240,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.live{display:inline-block;width:7px;height:7px;border-radius:50%;background:#f4eaf0;margin-right:6px;vertical-align:1px;animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.35}}
+.rxs{position:absolute;right:8%;bottom:84px;width:120px;height:72%;z-index:4;pointer-events:none}
+.rx{position:absolute;bottom:0;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:#f4eaf0;background:rgba(20,16,19,.45);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid rgba(244,234,240,.09);opacity:0;animation:rise 6.4s cubic-bezier(.25,1,.5,1) infinite}
+.rx svg{width:19px;height:19px}
+@keyframes rise{0%{opacity:0;transform:translate3d(0,0,0) scale(.6)}12%{opacity:1;transform:translate3d(0,-30px,0) scale(1)}70%{opacity:.85}100%{opacity:0;transform:translate3d(var(--dx,10px),-300px,0) scale(.9)}}
+
+/* player / up next extras */
+.pipc{width:38%;right:-5%;bottom:-9%;border-radius:14px;overflow:hidden;aspect-ratio:464/286;box-shadow:0 30px 60px -16px rgba(0,0,0,.95);border:1px solid rgba(244,234,240,.09)}
+.pipc img{width:100%;height:100%;object-fit:cover}
+.calc{left:-6%;bottom:-10%;width:min(250px,44%);border-radius:20px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.calc h4{margin:0;font-weight:900;font-size:15px;letter-spacing:-.01em}
+.calrow{display:flex;gap:10px;align-items:center}
+.calrow img{width:72px;height:41px;border-radius:8px;object-fit:cover;flex:none}
+.calrow b{display:block;font-size:13px;font-weight:700}
+.calrow span{display:block;font-size:12px;font-weight:600;color:rgba(244,234,240,.6)}
+
+/* install */
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:56px}
+.step{border-radius:28px;padding:28px;min-height:260px;display:flex;flex-direction:column}
+.num{font-weight:900;font-size:64px;line-height:1;letter-spacing:-.05em}
+.num i{font-style:normal;color:rgba(244,234,240,.12)}
+.step h3{margin:auto 0 0;padding-top:32px;font-weight:900;font-size:24px;letter-spacing:-.03em}
+.step p{margin:10px 0 0;font-size:15px;line-height:1.55;color:rgba(244,234,240,.6)}
+.req{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px}
+.chip{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 15px;border-radius:999px;font-size:14px;font-weight:700;color:rgba(244,234,240,.6);border:1px solid rgba(244,234,240,.09);background:rgba(244,234,240,.04)}
+.chip svg{width:16px;height:16px;color:#f4eaf0}
+.instfoot{display:flex;flex-wrap:wrap;align-items:center;gap:14px 24px;margin-top:32px}
+.note{font-size:14px;font-weight:600;color:rgba(244,234,240,.6);margin:20px 0 0}
+
+/* faq */
+.faq{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,7fr);gap:clamp(32px,6vw,96px);align-items:start}
+.qs{display:flex;flex-direction:column;gap:10px}
+details{border-radius:22px;overflow:hidden;transition:background .3s}
+summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 24px;font-weight:700;font-size:18px;letter-spacing:-.015em;min-height:64px}
+summary::-webkit-details-marker{display:none}
+.pl{width:32px;height:32px;flex:none;border-radius:50%;display:grid;place-items:center;background:rgba(244,234,240,.08);transition:transform .5s linear(0,.19,.51,.79,.96,1.04,1.05,1.04,1.02,1.01,1)}
+.pl svg{width:16px;height:16px}
+details[open] .pl{transform:rotate(45deg)}
+details[open]{background:rgba(40,32,37,.5)}
+.ans{padding:0 24px 24px;margin:0;font-size:16px;line-height:1.6;color:rgba(244,234,240,.6);max-width:40em}
+.ans a{color:#f4eaf0;text-decoration:underline;text-underline-offset:3px;text-decoration-color:rgba(244,234,240,.34)}
+
+/* final cta */
+.cta{position:relative;overflow:hidden;padding:clamp(120px,16vw,220px) 0;text-align:center}
+.wall{position:absolute;inset:-30% -20%;z-index:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:18px;transform:rotate(-9deg);opacity:.42;animation:drift 60s linear infinite alternate}
+.wall img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:12px}
+@keyframes drift{to{transform:rotate(-9deg) translate3d(0,-14%,0)}}
+.vign{position:absolute;inset:0;z-index:1;background:radial-gradient(ellipse 55% 60% at 50% 50%,rgba(0,0,0,.55),#000 78%),linear-gradient(180deg,#000,rgba(0,0,0,0) 30%,rgba(0,0,0,0) 70%,#000)}
+.cta .wrap{display:flex;flex-direction:column;align-items:center}
+.cta h2{margin:0 0 34px;font-weight:900;font-size:clamp(56px,10vw,150px);line-height:.9;letter-spacing:-.055em}
+.cta p{margin:20px 0 0;font-size:15px;color:rgba(244,234,240,.6)}
+.ctamark{width:64px;height:64px;object-fit:contain;margin-bottom:26px;opacity:.95}
+
+/* footer */
+.foot{position:relative;z-index:2;border-top:1px solid rgba(244,234,240,.12);padding:28px 0 calc(28px + env(safe-area-inset-bottom))}
+.foot .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:14px;font-weight:600;color:rgba(244,234,240,.6)}
+.foot .brand{font-size:15px;font-weight:700;color:rgba(244,234,240,.6);margin:0}
+.foot .brand img{width:24px;height:24px}
+.foot a{color:rgba(244,234,240,.6)}.foot a:hover{color:#f4eaf0}
+
+/* scroll-driven reveals + parallax, only where the browser has it */
+@supports (animation-timeline: view()){
+@media (prefers-reduced-motion: no-preference){
+.rv{animation:rv linear both;animation-timeline:view();animation-range:entry 0% entry 55%}
+@keyframes rv{from{opacity:0;transform:translate3d(0,24px,0)}to{opacity:1;transform:none}}
+.px{animation:px linear both;animation-timeline:view();animation-range:cover}
+@keyframes px{from{translate:0 50px}to{translate:0 -50px}}
+.pxs{animation:pxs linear both;animation-timeline:view();animation-range:cover}
+@keyframes pxs{from{translate:0 20px}to{translate:0 -20px}}
+}}
+
+/* responsive */
+@media (max-width:980px){
+.fgrid,.steps{grid-template-columns:repeat(2,minmax(0,1fr))}
+.spot,.spot.flip,.faq{grid-template-columns:minmax(0,1fr)}
+.spot.flip .scopy{order:0}
+.nl.hide{display:none}
+}
+@media (max-width:640px){
+.fgrid,.steps{grid-template-columns:minmax(0,1fr)}
+.nl{display:none}
+.navin{padding:6px 6px 6px 14px}
+.hero{min-height:600px}
+.ctas .btn{flex:1 1 100%}
+.now{left:clamp(16px,4.2vw,56px);right:auto;top:calc(max(14px,env(safe-area-inset-top)) + 76px);bottom:auto;align-items:flex-start}
+.nowlogo{width:170px;height:50px}.nowlogo img{left:0;right:auto;max-width:170px;max-height:50px}
+.ft,.step{min-height:0}
+.ft h3,.step h3{padding-top:28px}
+.crew{left:10px;right:10px;bottom:10px;padding:10px;gap:10px}
+.av{width:32px;height:32px}
+.crew .btn{display:none}
+.rxs{bottom:70px;right:4%}
+.calc{left:4%;bottom:-18%;width:62%}
+.pipc{width:46%;right:-2%;bottom:-14%}
+.vis{margin-bottom:40px}
+.wall{grid-template-columns:repeat(3,minmax(0,1fr))}
+.foot .wrap{flex-direction:column;align-items:flex-start}
+summary{font-size:17px;padding:18px 18px}
+.ans{padding:0 18px 20px}
+}
+@media (hover:none){.tilt:hover{--ly:0px;--sc:1}}
+@media (prefers-reduced-motion: reduce){
+*,*::before,*::after{animation:none !important;transition-duration:.01ms !important;scroll-behavior:auto !important}
+.grain{display:none}
+.rx{opacity:0}
+.slide img{transform:none}
+}
+@media (max-width:640px){.hero{height:auto;min-height:100svh;max-height:none;display:flex;flex-direction:column;justify-content:flex-end}.hcopy{position:relative;padding-top:calc(max(14px,env(safe-area-inset-top)) + 200px)}.eyebrow{display:none}}
+</style>
+
+</head>
+<body>
+
+
+
+<div class="pg" data-canvas-width="1440" data-canvas-height="6400" data-document-role="page" data-label="landing page">
+
+<svg class="grain" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><filter id="gn"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"></feTurbulence><feColorMatrix type="saturate" values="0"></feColorMatrix></filter><rect width="100%" height="100%" filter="url(#gn)"></rect></svg>
+
+<header class="nav">
+<nav class="navin" aria-label="main">
+<a class="brand" href="#top"><img src="/logo.png" alt="">couch</a>
+<a class="nl" href="#features">features</a>
+<a class="nl hide" href="/install">install guide</a>
+<a class="nl" href="#faq">faq</a>
+<a class="btn pri sm" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe">download</a>
+</nav>
+</header>
+
+<div class="spill" aria-hidden="true">
+<img class=" on" data-s="0" src="/l/11.jpg" alt="">
+<img class="" data-s="1" src="/l/24.jpg" alt="">
+</div>
+
+<section class="hero" id="top">
+<div class="stage" aria-hidden="true">
+<div class="slide on" data-s="0"><img src="/l/11.jpg" alt="" style="object-position: 62% 30%"></div>
+<div class="slide" data-s="1"><img src="/l/24.jpg" alt="" style="object-position: 50% 35%"></div>
+</div>
+<div class="scrim"></div>
+<div class="dim"></div>
+
+<div class="now">
+<span class="nowlabel">on the couch tonight</span>
+<div class="nowlogo">
+<img class=" on" data-s="0" src="/l/13.png" alt="Scrubs">
+<img class="" data-s="1" src="/l/06.png" alt="The Body">
+</div>
+<div class="segs">
+<button class="seg on" data-s="0" type="button" aria-label="show Scrubs" data-go="0"><i></i></button>
+<button class="seg" data-s="1" type="button" aria-label="show The Body" data-go="1"><i></i></button>
+</div>
+</div>
+
+<div class="hcopy">
+<div class="wrap">
+<p class="eyebrow"><img src="/logo.png" alt="">midnite™ couch</p>
+<h1 class="big"><span>watch together,</span><span>on one couch.</span></h1>
+<p class="lede">couch is midnite™'s streaming app. find something, press play, and the whole crew is in the room with you.</p>
+<div class="ctas">
+<a class="btn pri" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"></path></svg>download for windows</a>
+<a class="btn alt glass" href="/install#ios"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="12" height="16" rx="2.5"></rect><rect x="16.5" y="9" width="5" height="11" rx="1.5"></rect></svg>iPhone / iPad</a>
+</div>
+<p class="fine">windows 10 / 11 · 64-bit · free for midnite members</p>
+<p style="margin: 14px 0 0"><a class="lk" href="/install">first time? follow the step-by-step guide<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"></path></svg></a></p>
+</div>
+</div>
+</section>
+
+<section class="sec" id="features">
+<img class="pool" src="/l/03.jpg" alt="" aria-hidden="true" style="width: 520px; height: 520px; right: -140px; top: 280px">
+<img class="pool" src="/l/24.jpg" alt="" aria-hidden="true" style="width: 560px; height: 460px; left: -180px; bottom: 40px">
+<div class="wrap">
+<div class="rv">
+<p class="kick">ch 01</p>
+<h2 class="t">everything in one place</h2>
+<p class="sub">films, shows and anime, with the people you actually watch with.</p>
+</div>
+<div class="fgrid">
+<div class="ft glass tilt rv">
+<span class="with">with Discord</span>
+<div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"></circle><path d="M3.5 19c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6"></path><path d="M16 5.2a3 3 0 0 1 0 5.6M17.5 14.6c1.6.6 2.7 2 3 4.4"></path></svg></div>
+<h3>watch parties</h3>
+<p>one host, everyone in sync. see who's watching and react in real time.</p>
+</div>
+<div class="ft glass tilt rv">
+<span class="with">with Dolby</span>
+<div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="12.5" rx="2"></rect><path d="M8 21h8M12 17v4"></path><path d="M12 7.6l.9 2 2 .9-2 .9-.9 2-.9-2-2-.9 2-.9z"></path></svg></div>
+<h3>4k &amp; hdr</h3>
+<p>picks the best stream it can find, with audio and subtitle tracks to match.</p>
+</div>
+<div class="ft glass tilt rv">
+<span class="with">with Philips Hue</span>
+<div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2v.2h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"></path></svg></div>
+<h3>immersive light</h3>
+<p>the film's colours glow softly into the black bars.</p>
+</div>
+<div class="ft glass tilt rv">
+<span class="with">with Simkl</span>
+<div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 0 1-14.3 4.9M4 12a8 8 0 0 1 14.3-4.9"></path><path d="M18.5 3v4.2h-4.2M5.5 21v-4.2h4.2"></path></svg></div>
+<h3>simkl sync</h3>
+<p>your history and watchlist follow you, nothing to re-mark.</p>
+</div>
+<div class="ft glass tilt rv">
+<span class="with">like Apple TV</span>
+<div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11V8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v3"></path><path d="M3 13a2 2 0 0 1 4 0v2h10v-2a2 2 0 0 1 4 0v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M6 19v2M18 19v2"></path></svg></div>
+<h3>on the couch</h3>
+<p>see what your friends are watching right now and jump in.</p>
+</div>
+<div class="ft glass tilt rv">
+<span class="with">with mpv</span>
+<div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><rect x="12" y="11.5" width="6.5" height="5" rx="1" fill="currentColor"></rect></svg></div>
+<h3>picture-in-picture</h3>
+<p>keep it playing in a corner while you do something else.</p>
+</div>
+</div>
+</div>
+</section>
+
+<section class="sec" style="padding-top: 0">
+<div class="wrap">
+
+<div class="spot">
+<div class="scopy rv">
+<p class="chan">ch 02 · the party</p>
+<h3>the room, not just the remote</h3>
+<p>faces of everyone watching, custom emoji reactions floating up the screen, and an invite that's one click away.</p>
+</div>
+<div class="vis rv">
+<div class="glow" aria-hidden="true"><img src="/l/24.jpg" alt=""></div>
+<div class="card tilt" style="aspect-ratio: 4 / 3">
+<img src="/l/24.jpg" alt="The Body playing in a watch party" style="object-position: 50% 30%">
+<div class="rxs" aria-hidden="true">
+<span class="rx" style="left: 10px; animation-delay: 0s; --dx: -14px"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path></svg></span>
+<span class="rx" style="left: 62px; animation-delay: 1.3s; --dx: 12px"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.9 3.4-5.6 3.9-9.8 2.6 1.6 4 4 4 6.1.9-.6 1.5-1.7 1.6-2.9 2 1.6 3.5 4 3.5 6.6 0 3.6-2.6 6.2-6.5 6.2z"></path></svg></span>
+<span class="rx" style="left: 30px; animation-delay: 2.6s; --dx: 20px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M8 9.8c.6-.8 1.6-.8 2.2 0M13.8 9.8c.6-.8 1.6-.8 2.2 0"></path><path d="M7.8 13.5h8.4a4.2 4.2 0 0 1-8.4 0z" fill="currentColor"></path></svg></span>
+<span class="rx" style="left: 74px; animation-delay: 3.9s; --dx: -8px"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2z"></path></svg></span>
+<span class="rx" style="left: 4px; animation-delay: 5.1s; --dx: 16px"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path></svg></span>
+</div>
+<div class="crew glass">
+<div class="sofa">
+<img class="av" src="/l/07.jpg" alt="xnite">
+<img class="av" src="/l/08.jpg" alt="mari" style="animation-delay: .4s">
+<img class="av" src="/l/01.jpg" alt="North" style="animation-delay: .9s">
+<img class="av" src="/l/09.jpg" alt="lx0nit" style="animation-delay: 1.3s">
+</div>
+<div class="crewtxt"><b><span class="live" aria-hidden="true"></span>4 on the couch</b><span>The Body · watching together</span></div>
+<span class="btn alt sm glass" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path></svg>invite</span>
+</div>
+</div>
+</div>
+</div>
+
+<div class="spot flip">
+<div class="scopy rv">
+<p class="chan">ch 03 · the player</p>
+<h3>made to feel like a cinema</h3>
+<p>a quiet player that gets out of the way, previews on the scrub bar, and colours pulled from every title.</p>
+</div>
+<div class="vis rv">
+<div class="glow" aria-hidden="true"><img src="/l/19.jpg" alt=""></div>
+<div class="card tilt">
+<img src="/l/19.jpg" alt="the couch player, playing The Body with subtitles">
+</div>
+<div class="float pipc px" aria-hidden="true"><img src="/l/23.jpg" alt=""></div>
+</div>
+</div>
+
+<div class="spot">
+<div class="scopy rv">
+<p class="chan">ch 04 · up next</p>
+<h3>always finds the next one</h3>
+<p>"because you loved", next episode cards, a calendar for what's out this week.</p>
+</div>
+<div class="vis rv">
+<div class="glow" aria-hidden="true"><img src="/l/22.jpg" alt=""></div>
+<div class="card tilt">
+<img src="/l/22.jpg" alt="the up next row on couch's home screen" style="object-position: 0% 0%">
+</div>
+<div class="float calc glass px">
+<h4>calendar</h4>
+<div class="calrow"><img src="/l/04.jpg" alt=""><div><b>Paradise Hotel</b><span>tomorrow</span></div></div>
+<div class="calrow"><img src="/l/05.jpg" alt=""><div><b>The Odyssey</b><span>tuesday</span></div></div>
+</div>
+</div>
+</div>
+
+</div>
+</section>
+
+<section class="sec" id="install">
+<img class="pool" src="/l/22.jpg" alt="" aria-hidden="true" style="width: 620px; height: 480px; left: 30%; top: 120px; opacity: .22">
+<div class="wrap">
+<div class="rv">
+<p class="kick">ch 05</p>
+<h2 class="t">install in a minute</h2>
+<p class="sub">couch keeps itself up to date after this.</p>
+</div>
+<div class="steps">
+<div class="step glass tilt rv">
+<div class="num"><i>0</i>1</div>
+<h3>download</h3>
+<p>grab couch-setup.exe with the button below.</p>
+</div>
+<div class="step glass tilt rv">
+<div class="num"><i>0</i>2</div>
+<h3>run it</h3>
+<p>double-click it. no admin needed. couch opens when it's done. if windows says "protected your pc", hit more info, then run anyway.</p>
+</div>
+<div class="step glass tilt rv">
+<div class="num"><i>0</i>3</div>
+<h3>sign in with discord</h3>
+<p>you'll need to be in the midnite server.</p>
+</div>
+</div>
+<div class="req rv">
+<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>windows 10 / 11</span>
+<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>64-bit</span>
+<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>a discord account in midnite</span>
+<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>an internet connection</span>
+</div>
+<div class="instfoot rv">
+<a class="btn pri" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"></path></svg>download couch-setup.exe</a>
+<a class="lk" href="/install">open the step-by-step guide (PC, iPhone &amp; iPad)<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"></path></svg></a>
+</div>
+<p class="note rv">on the old couch? it'll offer to move you over automatically.</p>
+</div>
+</section>
+
+<section class="sec" id="faq">
+<div class="wrap faq">
+<div class="rv">
+<p class="kick">ch 06</p>
+<h2 class="t">questions</h2>
+</div>
+<div class="qs">
+<details class="glass rv"><summary>is it free?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">yes, for everyone in the midnite discord server.</p></details>
+<details class="glass rv"><summary>why do i need discord?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">couch is for the midnite crew. signing in with discord is how it knows you're one of us.</p></details>
+<details class="glass rv"><summary>i had the old couch. what happens to it?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">it's retired. open it once and it'll install the new one for you, or just download it here. your simkl history comes with you.</p></details>
+<details class="glass rv"><summary>windows says it doesn't recognise the app<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">click "more info" then "run anyway". it's not signed by a big publisher yet.</p></details>
+<details class="glass rv"><summary>iPhone or iPad?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">yes. it takes a computer and about 15 minutes the first time. <a href="/install#ios">here is the guide</a>.</p></details>
+<details class="glass rv"><summary>mac or linux?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">windows only for now.</p></details>
+</div>
+</div>
+</section>
+
+<section class="cta">
+<div class="wall" aria-hidden="true">
+<img src="/l/21.jpg" alt="">
+<img src="/l/02.jpg" alt="">
+<img src="/l/00.jpg" alt="">
+<img src="/l/12.jpg" alt="">
+<img src="/l/18.jpg" alt="">
+<img src="/l/15.jpg" alt="">
+<img src="/l/10.jpg" alt="">
+<img src="/l/17.jpg" alt="">
+<img src="/l/16.jpg" alt="">
+<img src="/l/20.jpg" alt="">
+<img src="/l/12.jpg" alt="">
+<img src="/l/21.jpg" alt="">
+<img src="/l/10.jpg" alt="">
+<img src="/l/02.jpg" alt="">
+<img src="/l/00.jpg" alt="">
+<img src="/l/17.jpg" alt="">
+<img src="/l/16.jpg" alt="">
+<img src="/l/15.jpg" alt="">
+<img src="/l/18.jpg" alt="">
+<img src="/l/20.jpg" alt="">
+</div>
+<div class="vign" aria-hidden="true"></div>
+<div class="wrap rv">
+<img class="ctamark" src="/logo.png" alt="">
+<h2>pull up a seat.</h2>
+<a class="btn pri" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"></path></svg>download couch</a>
+<p>ask someone in midnite for an invite.</p>
+</div>
+</section>
+
+<footer class="foot">
+<div class="wrap">
+<span class="brand"><img src="/logo.png" alt="">couch · midnite™</span>
+<a href="/terms">terms</a>
+</div>
+</footer>
+
+</div>
+
+<script>
+(() => {
+  const rm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const nav = document.querySelector(".nav");
+  let i = 0, t = 0, raf = 0;
+  const show = (n) => { i = n; document.querySelectorAll("[data-s]").forEach((el) => el.classList.toggle("on", el.dataset.s === String(n))); };
+  const start = () => { clearInterval(t); t = setInterval(() => show((i + 1) % 2), 8000); };
+  document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => { show(+b.dataset.go); if (!rm) start(); }));
+  if (!rm) start();
+  const onScroll = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      const y = scrollY || 0;
+      if (!rm) document.documentElement.style.setProperty("--sy", String(Math.min(y, 1400)));
+      nav && nav.classList.toggle("on", y > 40);
+    });
+  };
+  addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+  document.querySelectorAll(".tilt").forEach((el) => {
+    el.addEventListener("mousemove", (e) => {
+      if (rm) return;
+      const r = el.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+      el.style.setProperty("--ry", ((x - 0.5) * 7).toFixed(2) + "deg");
+      el.style.setProperty("--rx", ((0.5 - y) * 7).toFixed(2) + "deg");
+      el.style.setProperty("--mx", (x * 100).toFixed(1) + "%");
+      el.style.setProperty("--my", (y * 100).toFixed(1) + "%");
+    });
+    el.addEventListener("mouseleave", () => { el.style.setProperty("--ry", "0deg"); el.style.setProperty("--rx", "0deg"); });
+  });
+})();
+</script>
+
+
+</body></html>

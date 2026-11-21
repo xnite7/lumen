@@ -7,7 +7,11 @@ compatibility_date = "2025-06-01"
 
 [[rules]]
 type = "Data"
-globs = ["**/*.png"]
+globs = ["**/*.png", "**/*.jpg", "**/*.woff2"]
+
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
 
 [[durable_objects.bindings]]
 name = "CREW"
