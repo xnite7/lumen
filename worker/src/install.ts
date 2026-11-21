@@ -86,6 +86,7 @@ export const INSTALL_HTML = `<!doctype html>
   .dls { display:flex; flex-wrap:wrap; gap:10px; }
 
   .path { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:12px; font-size:15px; }
+  .path + .path { margin-top:18px; padding-top:16px; border-top:1px dashed var(--line); }
   .path span { background:var(--card2); border:1px solid var(--line); padding:6px 12px; border-radius:10px; font-weight:600; }
   .path i { color:var(--dim); font-style:normal; }
 
