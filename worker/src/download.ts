@@ -1,5 +1,7 @@
 // The client's one page. Layout only: the look gets designed later, so the
 // styles here are just structure (sections, grid, spacing) on plain colours.
+import { ic } from "./icons";
+
 const ZIP = "https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe";
 
 export const DOWNLOAD_HTML = `<!doctype html>
@@ -44,7 +46,11 @@ export const DOWNLOAD_HTML = `<!doctype html>
   /* features */
   .grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; margin-top:40px; }
   .feat { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:24px; }
-  .feat .ico { width:40px; height:40px; border-radius:10px; background:var(--line); margin-bottom:16px; }
+  .feat .ico { width:40px; height:40px; border-radius:10px; background:var(--line); margin-bottom:16px; display:grid; place-items:center; }
+  .feat .ico .ic { width:22px; height:22px; }
+  .ic { display:inline-flex; width:1.15em; height:1.15em; vertical-align:-.22em; }
+  .ic svg { width:100%; height:100%; fill:currentColor; }
+  .btn .ic { margin-right:6px; }
   .feat h3 { font-size:17px; margin-bottom:6px; }
   .feat p { color:var(--dim); font-size:14px; }
 
@@ -99,10 +105,10 @@ export const DOWNLOAD_HTML = `<!doctype html>
     <h1>watch together,<br>on one couch.</h1>
     <p>couch is midnite™'s streaming app. find something, press play, and the whole crew is in the room with you.</p>
     <div class="cta">
-      <a class="btn" href="${ZIP}">download for windows</a>
+      <a class="btn" href="${ZIP}">${ic("windows")} download for windows</a>
       <span class="meta">windows 10 / 11 · 64-bit · free for midnite members</span>
-      <a class="btn ghost" href="/install#ios">📱 iPhone / iPad</a>
-      <a class="meta" href="/install">first time? follow the step-by-step guide →</a>
+      <a class="btn ghost" href="/install#ios">${ic("apple")} iPhone / iPad</a>
+      <a class="meta" href="/install">first time? follow the step-by-step guide ${ic("arrow")}</a>
     </div>
     <div class="shot">[ app screenshot / trailer ]</div>
   </div>
@@ -113,12 +119,12 @@ export const DOWNLOAD_HTML = `<!doctype html>
     <h2>everything in one place</h2>
     <p class="lead">films, shows and anime, with the people you actually watch with.</p>
     <div class="grid">
-      <div class="feat"><div class="ico"></div><h3>watch parties</h3><p>one host, everyone in sync. see who's watching and react in real time.</p></div>
-      <div class="feat"><div class="ico"></div><h3>4k &amp; hdr</h3><p>picks the best stream it can find, with audio and subtitle tracks to match.</p></div>
-      <div class="feat"><div class="ico"></div><h3>immersive light</h3><p>the film's colours glow softly into the black bars.</p></div>
-      <div class="feat"><div class="ico"></div><h3>simkl sync</h3><p>your history and watchlist follow you, nothing to re-mark.</p></div>
-      <div class="feat"><div class="ico"></div><h3>on the couch</h3><p>see what your friends are watching right now and jump in.</p></div>
-      <div class="feat"><div class="ico"></div><h3>picture-in-picture</h3><p>keep it playing in a corner while you do something else.</p></div>
+      <div class="feat"><div class="ico">${ic("f_party")}</div><h3>watch parties</h3><p>one host, everyone in sync. see who's watching and react in real time.</p></div>
+      <div class="feat"><div class="ico">${ic("f_hdr")}</div><h3>4k &amp; hdr</h3><p>picks the best stream it can find, with audio and subtitle tracks to match.</p></div>
+      <div class="feat"><div class="ico">${ic("f_light")}</div><h3>immersive light</h3><p>the film's colours glow softly into the black bars.</p></div>
+      <div class="feat"><div class="ico">${ic("simkl")}</div><h3>simkl sync</h3><p>your history and watchlist follow you, nothing to re-mark.</p></div>
+      <div class="feat"><div class="ico">${ic("f_couch")}</div><h3>on the couch</h3><p>see what your friends are watching right now and jump in.</p></div>
+      <div class="feat"><div class="ico">${ic("f_pip")}</div><h3>picture-in-picture</h3><p>keep it playing in a corner while you do something else.</p></div>
     </div>
   </div>
 </section>
@@ -146,7 +152,7 @@ export const DOWNLOAD_HTML = `<!doctype html>
     <p class="lead">couch keeps itself up to date after this.</p>
     <div class="steps">
       <div class="step"><h3>download</h3><p>grab couch-setup.exe with the button below.</p></div>
-      <div class="step"><h3>run it</h3><p>double-click it. no admin needed. couch opens when it's done. if windows says "protected your pc", hit more info → run anyway.</p></div>
+      <div class="step"><h3>run it</h3><p>double-click it. no admin needed. couch opens when it's done. if windows says "protected your pc", hit more info, then run anyway.</p></div>
       <div class="step"><h3>sign in with discord</h3><p>you'll need to be in the midnite server.</p></div>
     </div>
     <div class="req"><span>windows 10 / 11</span><span>64-bit</span><span>a discord account in midnite</span><span>an internet connection</span></div>
