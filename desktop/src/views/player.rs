@@ -2796,6 +2796,7 @@ impl Render for PlayerView {
                             .justify_center()
                             .child(
                                 div()
+                                    .w(px((f32::from(vw) - g * 2.).clamp(700., 1200.)))
                                     .h(px(62.))
                                     .px(px(9.))
                                     .occlude()
