@@ -16,6 +16,7 @@
 @font-face { font-family: "BioRhyme"; src: url("/fonts/BioRhyme.ttf"); font-display: swap; }
 
 :root {
+  --font-emoji: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
   --bg: #000;
   --surface: #0a0809;
   --surface2: #141113;
@@ -39,7 +40,7 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body {
   margin: 0; height: 100%; background: var(--bg); color: var(--text);
-  font-family: "Satoshi", -apple-system, system-ui, sans-serif; font-weight: 500;
+  font-family: "Satoshi", -apple-system, system-ui, var(--font-emoji); font-weight: 500;
   -webkit-font-smoothing: antialiased; overscroll-behavior: none;
   -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }

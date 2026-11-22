@@ -25,6 +25,7 @@
   import { posterMenu } from "../lib/actions";
   import { greeting } from "../lib/stores/theme.svelte";
   import { tvFocus } from "../lib/tvfocus";
+  import { pb } from "../lib/stores/playback.svelte";
 
 
 
@@ -111,19 +112,20 @@
     trailer = null;
     clip = null;
     trailerOn = false;
-    if (!slides.length) return;
+    const moviePage = kind === "movie";
+    if (!slides.length || pb.open || app.playing || moviePage || !isActive(page)) return;
     if (held) return;
     // After sitting at the top for a moment, the slide's trailer takes over.
     if (app.settings.general.heroTrailers && !app.playing && !ui.phone) {
       dwell = setTimeout(async () => {
         const m = cur;
-        if (!m || scrollY > 200) return;
+        if (!m || scrollY > 200 || pb.open || app.playing || moviePage || !isActive(page)) return;
         // the billboard is cinematic: teaser (trailer if none). Scene clips are
         // for the previews.
         // IMDb titles: only couch's checked pick (official, wide, no Shorts);
         // the title's own trailer field only for titles couch can't look up
         const k = m.id.startsWith("tt") ? await api.trailer(m.type, m.id).catch(() => null) : (m.trailer ?? m.trailers?.[0]?.source ?? null);
-        if (k && cur?.id === m.id) {
+        if (k && cur?.id === m.id && scrollY <= 200 && !pb.open && !app.playing && !moviePage && isActive(page)) {
           trailer = k;
           muted = savedMute();
         }
@@ -264,9 +266,9 @@
           <img class="bg" src={img(bg, "original")} alt="" use:fallback={[imdbArt(cur.id, "background")]} />
         {/key}
         {#if clip}
-          <Clip src={clip} {muted} paused={below} onplaying={() => (trailerOn = true)} onended={() => (trailerOn = false)} />
+          <Clip src={clip} {muted} paused={below || !isActive(page)} onplaying={() => (trailerOn = true)} onended={() => (trailerOn = false)} />
         {:else if trailer}
-          <YouTube id={trailer} {muted} fill paused={below} onplaying={() => (trailerOn = true)} onended={() => (trailerOn = false)} />
+          <YouTube id={trailer} {muted} fill paused={below || !isActive(page)} onplaying={() => (trailerOn = true)} onended={() => (trailerOn = false)} />
         {/if}
       </div>
       <div class="hero-shade"></div>
