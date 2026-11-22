@@ -132,22 +132,160 @@ fn ts(t: &str) -> Option<f64> {
     Some(h * 3600. + m * 60. + s)
 }
 
+/// Strip SDH, music, speaker tags, and ASS/HTML markup before cue matching.
+pub fn clean_subtitle_text(raw: &str) -> Option<String> {
+    let mut s = String::new();
+    let mut bracket = 0usize;
+    let mut paren = 0usize;
+    let mut markup = 0usize;
+    for ch in raw.replace("\\N", "\n").replace("\\n", "\n").chars() {
+        match ch {
+            '{' | '<' => markup += 1,
+            '}' | '>' if markup > 0 => markup -= 1,
+            '[' => bracket += 1,
+            ']' => bracket = bracket.saturating_sub(1),
+            '(' => paren += 1,
+            ')' => paren = paren.saturating_sub(1),
+            '♪' | '♫' => {}
+            _ if bracket == 0 && paren == 0 && markup == 0 => s.push(ch),
+            _ => {}
+        }
+    }
+    let trimmed = s.trim();
+    let without_speaker = if let Some((prefix, rest)) = trimmed.split_once(':') {
+        if !prefix.is_empty() && prefix.len() <= 20 && prefix.chars().all(|c| c.is_alphabetic() || c.is_whitespace() || c == '_' || c == '-') {
+            rest.trim()
+        } else {
+            trimmed
+        }
+    } else {
+        trimmed
+    };
+    let normalized: String = without_speaker.chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    (!normalized.is_empty()).then_some(normalized)
+}
+
+#[derive(Debug, Clone)]
+pub struct SubtitleCue {
+    pub start_ms: i64,
+    pub end_ms: i64,
+    pub text: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SpeechSegment {
+    pub start_ms: i64,
+    pub end_ms: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct SyncResult {
+    pub offset_ms: i64,
+    pub confidence: f32,
+}
+
+fn subtitle_cues(raw: &[u8]) -> Vec<(f64, f64)> {
+    let text = String::from_utf8_lossy(raw);
+    let mut out = Vec::new();
+    let mut block: Vec<&str> = Vec::new();
+    for line in text.lines().chain(std::iter::once("")) {
+        if line.trim().is_empty() {
+            if !block.is_empty() {
+                let mut lines = block.iter().copied();
+                let first = lines.next().unwrap_or("").trim().trim_end_matches('\r');
+                let timing = if first.contains("-->") { first } else { lines.next().unwrap_or("").trim() };
+                if let Some((a, b)) = timing.split_once("-->") {
+                    if let (Some(start), Some(end)) = (ts(a), ts(b.trim().split_whitespace().next().unwrap_or(""))) {
+                        let cue_text = lines.collect::<Vec<_>>().join("\n");
+                        if end > start && clean_subtitle_text(&cue_text).is_some() {
+                            out.push((start, end));
+                        }
+                    }
+                }
+                block.clear();
+            }
+        } else {
+            block.push(line);
+        }
+    }
+    out
+}
+
+fn score_offset(cues: &[&SubtitleCue], speech_segments: &[SpeechSegment], offset_ms: i64) -> f64 {
+    if cues.is_empty() || speech_segments.is_empty() {
+        return 0.;
+    }
+    let mut total = 0.;
+    for cue in cues {
+        let start = cue.start_ms + offset_ms;
+        let end = (cue.end_ms + offset_ms).max(start + 50);
+        let mut overlap = 0i64;
+        for segment in speech_segments {
+            let overlap_start = start.max(segment.start_ms);
+            let overlap_end = end.min(segment.end_ms);
+            if overlap_end > overlap_start {
+                overlap += overlap_end - overlap_start;
+            }
+        }
+        let ratio = (overlap as f64 / (end - start).max(1) as f64).min(1.);
+        total += if overlap == 0 { ratio - 0.15 } else { ratio };
+    }
+    total / cues.len() as f64
+}
+
+pub fn auto_sync_subtitles(
+    cues: &[SubtitleCue],
+    speech_segments: &[SpeechSegment],
+    search_range_ms: i64,
+) -> Option<SyncResult> {
+    let speech_cues: Vec<&SubtitleCue> = cues.iter()
+        .filter(|cue| clean_subtitle_text(&cue.text).is_some())
+        .collect();
+    if speech_cues.is_empty() || speech_segments.is_empty() {
+        return None;
+    }
+    let step = (speech_cues.len() / 250).max(1);
+    let sampled: Vec<&SubtitleCue> = speech_cues.iter().step_by(step).copied().collect();
+    let mut best_offset = 0i64;
+    let mut best_score = f64::NEG_INFINITY;
+    let mut second_score = f64::NEG_INFINITY;
+    let mut offset = -search_range_ms;
+    while offset <= search_range_ms {
+        let score = score_offset(&sampled, speech_segments, offset);
+        if score > best_score {
+            second_score = best_score;
+            best_score = score;
+            best_offset = offset;
+        } else if score > second_score {
+            second_score = score;
+        }
+        offset += 100;
+    }
+    let fine_min = (best_offset - 250).max(-search_range_ms);
+    let fine_max = (best_offset + 250).min(search_range_ms);
+    let mut offset = fine_min;
+    while offset <= fine_max {
+        let score = score_offset(&sampled, speech_segments, offset);
+        if score > best_score {
+            best_score = score;
+            best_offset = offset;
+        }
+        offset += 25;
+    }
+    let margin = (best_score - second_score.max(0.)).clamp(0., 1.);
+    let confidence = ((best_score.clamp(0., 1.) * 0.7) + (margin * 0.3)).clamp(0., 1.);
+    Some(SyncResult { offset_ms: best_offset, confidence: confidence as f32 })
+}
+
 fn fmt(t: f64, vtt: bool) -> String {
     let ms = (t.max(0.) * 1000.).round() as i64;
     format!("{:02}:{:02}:{:02}{}{:03}", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, if vtt { '.' } else { ',' }, ms % 1000)
-}
-
-/// the cue times in an SRT / VTT file
-fn cues(raw: &[u8]) -> Vec<(f64, f64)> {
-    String::from_utf8_lossy(raw)
-        .lines()
-        .filter_map(|l| {
-            let (a, b) = l.split_once("-->")?;
-            let b = b.trim().split_whitespace().next()?;
-            Some((ts(a)?, ts(b)?))
-        })
-        .filter(|(a, b)| b > a)
-        .collect()
 }
 
 /// the same file with every timestamp moved (text untouched, byte for byte)
@@ -255,7 +393,7 @@ pub fn run_embedded(src: &Source, stream: i64) -> AppResult<f64> {
     if out.stdout.is_empty() {
         return Err(AppError::msg("these subtitles are pictures (not text), so they can't be synced by listening"));
     }
-    let all: Vec<(f64, f64)> = cues(&out.stdout);
+    let all: Vec<(f64, f64)> = subtitle_cues(&out.stdout);
     let mut st = start;
     let near = |st: f64| all.iter().filter(|(a, _)| *a > st - SEARCH && *a < st + WINDOW + SEARCH).count();
     let mut talk = speech(&ff, src, st)?;
@@ -288,7 +426,7 @@ pub fn add_http(cmd: &mut std::process::Command, src: &Source) {
 
 pub fn run(src: &Source, raw: &[u8], cache: &std::path::Path) -> AppResult<Found> {
     let ff = ffmpeg().ok_or_else(|| AppError::msg("auto-sync needs ffmpeg, which comes with the next couch update"))?;
-    let all = cues(raw);
+    let all = subtitle_cues(raw);
     if all.len() < 10 {
         return Err(AppError::msg("that subtitle file has almost no lines to match"));
     }
@@ -338,7 +476,7 @@ mod tests {
         let raw = b"1\r\n00:00:01,000 --> 00:00:02,500\r\n\xC7\xE1\r\n\r\n";
         let out = super::retime(raw, 1.0, 1.5);
         assert_eq!(out, b"1\r\n00:00:02,500 --> 00:00:04,000\r\n\xC7\xE1\r\n\r\n".to_vec());
-        assert_eq!(super::cues(raw), vec![(1.0, 2.5)]);
+        assert_eq!(super::subtitle_cues(raw), vec![(1.0, 2.5)]);
     }
     #[test]
     fn finds_a_shift() {

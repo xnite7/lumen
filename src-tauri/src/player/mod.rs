@@ -355,7 +355,7 @@ impl Player {
             if let Some(stream) = src.embedded {
                 let d = tokio::task::spawn_blocking(move || subsync::run_embedded(&src, stream)).await.map_err(|e| AppError::msg(e.to_string()))??;
                 self.backend.set_sub_delay(d)?;
-                return Ok(serde_json::json!({ "offset": d, "ratio": 1.0, "builtIn": true }));
+                return Ok(serde_json::json!({ "offset": d, "ratio": 1.0, "builtIn": true, "confidence": 0.8 }));
             }
             let raw: Vec<u8> = if src.sub.starts_with("http") {
                 let r = self.core.http.client().get(&src.sub).timeout(std::time::Duration::from_secs(15)).send().await.map_err(|e| AppError::msg(format!("couldn't fetch the subtitles: {e}")))?;
@@ -366,7 +366,8 @@ impl Player {
             let cache = self.core.cache_dir.clone();
             let found = tokio::task::spawn_blocking(move || subsync::run(&src, &raw, &cache)).await.map_err(|e| AppError::msg(e.to_string()))??;
             self.backend.add_synced(&found.file)?;
-            return Ok(serde_json::json!({ "offset": found.offset, "ratio": found.ratio, "z": found.z }));
+            let confidence = (found.z / 10.).clamp(0., 1.);
+            return Ok(serde_json::json!({ "offset": found.offset, "ratio": found.ratio, "z": found.z, "confidence": confidence }));
         }
         #[cfg(not(desktop))]
         {

@@ -36,6 +36,7 @@ pub struct PlayerView {
     stills_gen: u64,
     vol_hud: Option<Instant>,
     last_move: Instant,
+    last_mouse_pos: Option<gpui::Point<Pixels>>,
     /// where the pointer is (height), and the window's height
     mouse_y: f32,
     mouse_now: f32,
@@ -197,7 +198,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), stills_gen: 0, vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), glow: None, glow_prev: None, glow_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, finale_cd: None, finale_off: None, blur_sent: 0., ate_click: false, next_x: Default::default() }
+        Self { pb, menu: None, stills: Default::default(), stills_gen: 0, vol_hud: None, last_move: Instant::now(), last_mouse_pos: None, mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), glow: None, glow_prev: None, glow_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, finale_cd: None, finale_off: None, blur_sent: 0., ate_click: false, next_x: Default::default() }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -212,6 +213,18 @@ impl PlayerView {
             self.shown = true;
             cx.notify();
         }
+    }
+
+    fn poke_genuine(&mut self, e: &MouseMoveEvent, cx: &mut Context<Self>) {
+        if let Some(prev) = self.last_mouse_pos {
+            let dx = (e.position.x - prev.x).abs();
+            let dy = (e.position.y - prev.y).abs();
+            if dx < px(1.0) && dy < px(1.0) {
+                return;
+            }
+        }
+        self.last_mouse_pos = Some(e.position);
+        self.poke(cx);
     }
 }
 
@@ -1339,14 +1352,16 @@ impl PlayerView {
                                 Ok(v) => {
                                     let off = v["offset"].as_f64().unwrap_or(0.);
                                     let ratio = v["ratio"].as_f64().unwrap_or(1.);
+                                    let confidence = v["confidence"].as_f64().unwrap_or(1.);
+                                    let low = if confidence < 0.5 { " (low confidence — use the ±0.1 / ±0.5 nudge)" } else { "" };
                                     if v["builtIn"] == true && off.abs() >= 0.1 {
-                                        format!("built-in subtitles synced: {:.1} s {}", off.abs(), if off < 0. { "earlier" } else { "later" })
+                                        format!("built-in subtitles synced: {:.1} s {}{}", off.abs(), if off < 0. { "earlier" } else { "later" }, low)
                                     } else if (ratio - 1.).abs() > 1e-4 {
-                                        format!("subtitles synced (they were made for a different frame rate, {:+.1} s)", off)
+                                        format!("subtitles synced (they were made for a different frame rate, {:+.1} s){}", off, low)
                                     } else if off.abs() < 0.1 {
-                                        "subtitles were already in sync".to_string()
+                                        format!("subtitles were already in sync{}", low)
                                     } else {
-                                        format!("subtitles synced: moved {:.1} s {}", off.abs(), if off < 0. { "earlier" } else { "later" })
+                                        format!("subtitles synced: moved {:.1} s {}{}", off.abs(), if off < 0. { "earlier" } else { "later" }, low)
                                     }
                                 }
                                 Err(e) => e,
@@ -1370,6 +1385,8 @@ impl PlayerView {
                     .child(div().flex_1().text_size(px(12.)).text_color(theme::label3()).child(format!("subtitle timing {}{:.1} s", if d > 0. { "+" } else { "" }, d)))
                     .child(nudge("sd-minus", "−0.1", -0.1))
                     .child(nudge("sd-plus", "+0.1", 0.1))
+                    .child(nudge("sd-minus-half", "−0.5", -0.5))
+                    .child(nudge("sd-plus-half", "+0.5", 0.5))
                     .child(sync_btn);
                 (
                     470.,
@@ -1935,7 +1952,7 @@ impl Render for PlayerView {
                         v.finish_drag(cx);
                     }
                 }
-                v.poke(cx)
+                v.poke_genuine(e, cx)
             }))
             // holding the picture down: 2× while held
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(|v, e: &gpui::MouseDownEvent, _, cx| {
@@ -2294,19 +2311,6 @@ impl Render for PlayerView {
         };
         if ct < 0.62 {
             window.request_animation_frame();
-        }
-        // the bar's glass: the film blurred behind it, drawn by mpv in the
-        // bar's exact place (it slides and fades with the bar)
-        {
-            let vs = window.viewport_size();
-            let (fw, fh) = (f32::from(vs.width).max(1.), f32::from(vs.height).max(1.));
-            let bx = theme::GUTTER - 6.;
-            let by = fh + (1. - ca) * 48. - 24. - 62.;
-            // mpv's finished picture is just the film (not the black bars): the
-            // bar's place, measured inside it
-            let [vx, vy, vw2, vh2] = VID_RECT.with(|r| r.get());
-            let (x, y, w, h) = (bx / fw, by / fh, (fw - 2. * bx) / fw, 62. / fh);
-            bar_glass(&self.pb, [(x - vx) / vw2.max(0.01), (y - vy) / vh2.max(0.01), w / vw2.max(0.01), h / vh2.max(0.01), (31. / fh) / vh2.max(0.01), ca], cx);
         }
         // paused: which episode, big, bottom left; each part rises in after the last
         // (not in picture-in-picture: too small for it)
@@ -2783,18 +2787,25 @@ impl Render for PlayerView {
                     .child(div().absolute().left_0().bottom_0().w_full().h(px(100.)).occlude().on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation()))
                     .child(
                         div()
-                            // no background of its own: the film, blurred, behind it
-                            // (mpv draws that in the bar's place), like Apple TV's
-                            .bg(theme::black(0.04))
-                            .border_1()
-                            .border_color(theme::white(0.06))
                             .absolute()
-                            .left(px(g - 6.))
-                            .right(px(g - 6.))
+                            .left_0()
+                            .right_0()
                             .bottom(px(24.))
-                            .h(px(62.))
-                            .px(px(9.))
-                            .occlude()
+                            .px(px(4.))
+                            .flex()
+                            .justify_center()
+                            .child(
+                                div()
+                                    .h(px(62.))
+                                    .px(px(9.))
+                                    .occlude()
+                                    .rounded_full()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(2.))
+                                    .bg(gpui::rgba(0x141418e6))
+                                    .border_1()
+                                    .border_color(gpui::rgba(0xffffff1a))
                             // a press on the bar itself (not a button): any open menu closes
                             .on_mouse_down(gpui::MouseButton::Left, cx.listener(|v, _, _, cx| {
                                 cx.stop_propagation();
@@ -2804,10 +2815,6 @@ impl Render for PlayerView {
                                     cx.notify();
                                 }
                             }))
-                            .rounded_full()
-                            .flex()
-                            .items_center()
-                            .gap(px(2.))
                             .when(!guest, |d| d.child(bar_btn("pl-play", play_pause(paused, 28., window), false).on_click(
                                 move |_, _, cx| {
                                     kick("pl-play");
@@ -3192,6 +3199,7 @@ impl Render for PlayerView {
                                 kick("pl-full");
                                 window.toggle_fullscreen()
                             })),
+                            ),
                     ),
             )
             // over everything else: the open menu, and what's next
