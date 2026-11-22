@@ -132,6 +132,8 @@ impl Render for Planner {
             .child(
                 div()
                     .id("plan-sheet")
+                    // the sheet takes its own presses (the scrim behind it closes it)
+                    .occlude()
                     .relative()
                     .w(px(760.))
                     .p(px(22.))

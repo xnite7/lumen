@@ -1,3 +1,4 @@
+pub mod pblur;
 pub mod ambient;
 pub mod zoom;
 pub mod card;

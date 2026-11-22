@@ -558,6 +558,11 @@ impl Render for Detail {
         let m = self.meta();
         let g = theme::GUTTER;
         let art = m.background.clone().or(m.poster.clone()).map(|u| crate::net::fit(&sized(&u, "original"), crate::ui::view_w()));
+        // the same picture blurring gradually towards the bottom (fades in once made)
+        let soft = m.background.clone().and_then(|u| crate::ui::pblur::get(&sized(&u, "original"), cx));
+        if soft.as_ref().map_or(false, |x| x.1 < 1.) {
+            window.request_animation_frame();
+        }
         let logo = m.logo.clone().map(|u| crate::net::logo(&sized(&u, "large"), 480.));
         let ex = self.extra.clone().unwrap_or(Value::Null);
         let full = self.full.clone();
@@ -618,6 +623,13 @@ impl Render for Detail {
         if unavailable {
             plabel = "Unavailable".into();
             psub = String::new();
+        }
+        // playing right now (in the corner, say): the button goes back to it
+        let now_playing = crate::playback::playing_title(&m.id, cx);
+        if now_playing {
+            plabel = "Continue watching".into();
+            psub = String::new();
+            pvideo = None;
         }
         let flagged = self.item.as_ref().map_or(false, |i| crate::api::flag(&i["state"]["flaggedWatched"]));
         // in My List, or in any of your couch lists
@@ -733,7 +745,7 @@ impl Render for Detail {
                         .into_any_element()]
                 }
                 (_, Some((p, a))) => crate::ui::video::layers(art.clone(), p, *a, 0.),
-                _ => art.clone().map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).into_any_element()).into_iter().collect(),
+                _ => art.clone().map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).into_any_element()).into_iter().chain(soft.clone().map(|(im, a)| img(im).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(a).into_any_element())).collect(),
             }))
             // the shade and the melt come in with the picture, and then simply stay
             .child(div().absolute().top_0().left_0().w_full().h(art_h).opacity((1. - th) * grow).bg(linear_gradient(90., linear_color_stop(theme::black(0.85), 0.), linear_color_stop(theme::black(0.0), 0.7))))
@@ -743,7 +755,7 @@ impl Render for Detail {
             .when(th_on, |d| {
                 let o = towner.clone();
                 let waiting = tframe.is_none();
-                let spin = waiting.then(|| crate::couch_spin_frame(self.theater.map_or(0., |t| t.0.elapsed().as_secs_f32()))).flatten();
+                let spin = waiting.then(crate::couch_loading_frame).flatten();
                 if waiting {
                     window.request_animation_frame();
                 }
@@ -824,6 +836,21 @@ impl Render for Detail {
                             .relative()
                             .flex()
                             .opacity(if flying_logo { 0. } else if op.is_some() { rz[0].0 } else { 1. })
+                            .id("d-title")
+                            // right-click: copies "Name (Year)"
+                            .on_mouse_down(gpui::MouseButton::Right, {
+                                let name = m.name.clone();
+                                let year = full.as_ref().and_then(|f| f["year"].as_str().or(f["releaseInfo"].as_str()).or(f["released"].as_str()).map(|y| y.chars().take(4).collect::<String>()));
+                                move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    let t = match year.as_ref().filter(|y| !y.is_empty()) {
+                                        Some(y) => format!("{name} ({y})"),
+                                        None => name.clone(),
+                                    };
+                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(t.clone()));
+                                    Nav::toast(format!("copied \"{t}\""), cx);
+                                }
+                            })
                             .child(crate::ui::zoom::track_target())
                             .child(match logo.clone() {
                                 Some(u) => img(u)
@@ -863,7 +890,7 @@ impl Render for Detail {
                                     .text_size(px(18.))
                                     .cursor_pointer()
                                     // nothing found to play: dimmed (still tries, in case it shows up)
-                                    .when(unavailable, |d| d.opacity(0.4))
+                                    .when(unavailable && !now_playing, |d| d.opacity(0.4))
                                     .hover(|s| s.opacity(0.88))
                                     .on_click({
                                         let m = m.clone();
@@ -872,6 +899,10 @@ impl Render for Detail {
                                             // "Rewatch" is your say-so: Simkl may log this as a rewatch (if that's on)
                                             if again {
                                                 let _ = couch::state::get().core.db.set("simkl_rewatch_for", &m.id.split(':').next().unwrap_or("").to_string());
+                                            }
+                                            if now_playing {
+                                                Nav::go(crate::Route::Player, cx);
+                                                return;
                                             }
                                             match &pvideo {
                                             Some(v) => Nav::play_episode(&m, v["id"].as_str().unwrap_or("").to_string(), cx),
@@ -883,7 +914,7 @@ impl Render for Detail {
                                     .child(plabel.clone())
                                     .children((!psub.is_empty()).then(|| div().text_size(px(15.)).font_weight(FontWeight::MEDIUM).opacity(0.6).child(psub))),
                             )
-                            .child(act("d-seen", icon(if all_seen { "checkCircle" } else { "eye" }, 22.), if all_seen { "Watched" } else { "Mark watched" }).on_click(
+                            .when(!now_playing, |d| d.child(act("d-seen", icon(if all_seen { "checkCircle" } else { "eye" }, 22.), if all_seen { "Watched" } else { "Mark watched" }).on_click(
                                 cx.listener(move |d, _, _, cx| {
                                     let Some(f) = d.full.clone() else { return };
                                     // a show: every released episode at once, on or off
@@ -921,7 +952,7 @@ impl Render for Detail {
                                     })
                                     .detach();
                                 }),
-                            ))
+                            )))
                             .child(act("d-list", icon(if owned { "check" } else { "plus" }, 22.), "My List").on_click({
                                 // My List, your couch lists, or a new one
                                 let m = m.clone();
@@ -985,6 +1016,8 @@ impl Render for Detail {
                                 move |_, _, cx| Nav::plan_party(&m, cx)
                             }))
                     )
+                    // a little more air between the buttons and the words
+                    .child(div().h(px(14.)))
                     .children(ex["tagline"].as_str().map(|t| div().relative().top(px(rz[4].1)).opacity(rz[4].0).text_size(px(17.)).italic().text_color(theme::label2()).child(t.to_string())))
                     .children(m.description.clone().or(ex["overview"].as_str().map(|s| s.to_string())).map(|d| {
                         div().relative().top(px(rz[5].1)).opacity(rz[5].0).max_w(px(600.)).text_size(px(17.)).line_height(px(25.)).line_clamp(4).text_ellipsis().text_color(theme::white(0.88)).child(d)

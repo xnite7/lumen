@@ -89,8 +89,10 @@ impl Render for Menu {
         let x = f32::from(at.x).min(f32::from(vs.width) - w - 12.);
         let y = f32::from(at.y).min(f32::from(vs.height) - h - 12.);
         let (seen, listed) = crate::seen::status(&m.id);
+        // playing it right now (maybe in the corner): back to it, and no "watched" yet
+        let now_playing = crate::playback::playing_title(&m.id, cx);
         let mut items: Vec<(&'static str, &'static str, Box<dyn Fn(&Meta, &mut gpui::App)>)> = vec![
-            ("play", "play", Box::new(|m, cx| Nav::play(m, cx))),
+            if now_playing { ("play", "continue watching", Box::new(|_m, cx| Nav::go(crate::Route::Player, cx))) } else { ("play", "play", Box::new(|m, cx| Nav::play(m, cx))) },
             ("info", "open", Box::new(|m, cx| Nav::detail(m, cx))),
             if listed { ("check", "added", Box::new(|m, cx| Nav::add(m, cx))) } else { ("plus", "add to…", Box::new(|m, cx| Nav::add(m, cx))) },
             (
@@ -132,6 +134,9 @@ impl Render for Menu {
                 }),
             ),
         ];
+        if now_playing {
+            items.retain(|x| x.1 != "mark watched" && x.1 != "unwatch");
+        }
         if self.in_cw {
             items.push((
                 "close",

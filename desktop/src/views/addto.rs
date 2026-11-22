@@ -153,6 +153,8 @@ impl Render for AddTo {
             .child(
                 div()
                     .id("at-sheet")
+                    // the sheet takes its own presses (the scrim behind it closes it)
+                    .occlude()
                     .relative()
                     .w(px(440.))
                     .max_h(px(560.))

@@ -83,6 +83,13 @@ pub struct Playback {
 pub struct PlaybackHandle(pub Entity<Playback>);
 impl Global for PlaybackHandle {}
 
+/// This title is playing right now (full screen or in the corner)?
+pub fn playing_title(id: &str, cx: &App) -> bool {
+    let base = |s: &str| s.split(':').next().unwrap_or("").to_string();
+    let p = get(cx).read(cx);
+    p.open && p.error.is_empty() && p.meta.as_ref().map_or(false, |m| base(&m.id) == base(id))
+}
+
 pub fn get(cx: &App) -> Entity<Playback> {
     cx.global::<PlaybackHandle>().0.clone()
 }
