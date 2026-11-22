@@ -32,6 +32,8 @@ pub struct PlayerView {
     menu_at: Instant,
     /// seek-bar stills, every 10 s of the film
     stills: std::collections::HashMap<i64, Option<std::sync::Arc<gpui::Image>>>,
+    /// which film (and which load of it) the stills are from
+    stills_gen: u64,
     vol_hud: Option<Instant>,
     last_move: Instant,
     /// where the pointer is (height), and the window's height
@@ -113,7 +115,8 @@ impl PlayerView {
                 // resting on the controls keeps them up a while longer, not forever
                 // (a pointer left lying at the bottom of the screen kept them up)
                 let idle = v.last_move.elapsed();
-                let held = (on_bar || busy) && idle < Duration::from_secs(10);
+                // an open menu counts as busy (scrolling it keeps it up)
+                let held = (on_bar || busy || v.menu.is_some()) && idle < Duration::from_secs(10);
                 // paused and left alone a while: the controls go too (the title stays)
                 let paused_fresh = paused && (idle < Duration::from_secs(4) || held);
                 // (an open menu doesn't hold them up: when they go, it goes too)
@@ -173,7 +176,7 @@ impl PlayerView {
         // ambient mode: every second, a small, very soft still of what's on
         // screen; it cross-fades in around the picture (like YouTube's)
         cx.spawn(async move |this, cx| loop {
-            crate::timer::after(Duration::from_millis(1000)).await;
+            crate::timer::after(Duration::from_millis(3000)).await;
             let Ok(want) = this.update(cx, |v, cx| {
                 let p = v.pb.read(cx);
                 let on = couch::state::get().core.db.get::<bool>("gpui_immersive").unwrap_or(true);
@@ -194,7 +197,7 @@ impl PlayerView {
         .detach();
         let reactions = cx.new(super::reactions::Reactions::new);
         cx.observe(&reactions, |_, _, cx| cx.notify()).detach();
-        Self { pb, menu: None, stills: Default::default(), vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), glow: None, glow_prev: None, glow_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, finale_cd: None, finale_off: None, blur_sent: 0., ate_click: false, next_x: Default::default() }
+        Self { pb, menu: None, stills: Default::default(), stills_gen: 0, vol_hud: None, last_move: Instant::now(), mouse_y: -1., mouse_now: -1., view_h: 0., shown: true, hover_x: None, reactions, next_hover: false, vol_acc: 0., vol_target: None, drag: false, track_w: 1., vol_open: false, click_gen: 0, vol_since: None, vol_pinned: false, next_since: None, scrub_at: std::rc::Rc::new(std::cell::Cell::new((0., 600.))), chrome_on: true, chrome_at: Instant::now(), glow: None, glow_prev: None, glow_at: Instant::now(), pause_on: false, pause_at: Instant::now(), menu_seen: None, menu_at: Instant::now(), tint: None, vol_x: Default::default(), born: Instant::now(), ms: Default::default(), aspect: match couch::state::get().core.settings().playback.aspect.as_str() { "fill" => "fill", "stretch" => "stretch", _ => "fit" }, ep_season: None, signal: None, countdown: None, countdown_off: None, finale_cd: None, finale_off: None, blur_sent: 0., ate_click: false, next_x: Default::default() }
     }
 
     /// the controls are tucked away (the film alone on screen)
@@ -610,14 +613,11 @@ fn rainbow(t: f32) -> impl IntoElement {
     .size_full()
 }
 
-/// The progress fill: the title's colours as a living mesh, waves of them
-/// drifting through each other, film grain over it, a few sparks riding along.
+/// The progress fill ("shimmer"): the title's colours as slow liquid light,
+/// two waves of them warping through each other, lit from above like glass,
+/// a soft glint drifting along and the playhead's end glowing a little.
+/// (Drawn column by column, the way a fragment shader would.)
 fn mesh(c1: gpui::Hsla, c2: gpui::Hsla, t: f32) -> impl IntoElement {
-    mesh_with(c1, c2, None, t, true)
-}
-
-/// (`third`: a third colour; none = a deeper shade of the first; `sparks`: the riding lights)
-fn mesh_with(c1: gpui::Hsla, c2: gpui::Hsla, third: Option<gpui::Hsla>, t: f32, sparks: bool) -> impl IntoElement {
     gpui::canvas(
         |_, _, _| (),
         move |b, _, window, _| {
@@ -628,45 +628,32 @@ fn mesh_with(c1: gpui::Hsla, c2: gpui::Hsla, third: Option<gpui::Hsla>, t: f32, 
             }
             let a = c1.to_rgb();
             let bb = c2.to_rgb();
-            // a third, deeper shade between them
-            let c3 = third.unwrap_or(gpui::hsla((c1.h + 0.94) % 1., c1.s, (c1.l * 0.7).max(0.3), 1.)).to_rgb();
-            let mixc = |p: &gpui::Rgba, q: &gpui::Rgba, k: f32| gpui::Rgba { r: p.r + (q.r - p.r) * k, g: p.g + (q.g - p.g) * k, b: p.b + (q.b - p.b) * k, a: 1. };
-            // grain changes at 24 fps, like film
-            let frame = (t * 24.) as u32;
-            let hash = |x: u32, y: u32| {
-                let mut v = x.wrapping_mul(374761393) ^ y.wrapping_mul(668265263) ^ frame.wrapping_mul(2246822519);
-                v = (v ^ (v >> 13)).wrapping_mul(1274126177);
-                ((v ^ (v >> 16)) & 1023) as f32 / 1023.
-            };
-            let cw = 3.;
-            let rows = if h >= 6. { 2 } else { 1 };
-            let rh = h / rows as f32;
-            let cols = (w / cw).ceil() as u32;
-            for i in 0..cols {
-                let x = i as f32 * cw;
-                for r in 0..rows {
-                    let y = r as f32 * rh;
-                    // two slow waves across the bar, a third that breathes
-                    let u = 0.5 + 0.5 * (x * 0.011 + t * 1.1 + y * 0.4).sin() * (x * 0.0037 - t * 0.55).cos();
-                    let v = 0.5 + 0.5 * (x * 0.006 - t * 0.8 + 1.7 + y * 0.3).sin();
-                    let mut c = mixc(&mixc(&a, &bb, u), &c3, v * 0.45);
-                    let g = (hash(i, r as u32) - 0.5) * 0.16;
-                    c.r = (c.r + g).clamp(0., 1.);
-                    c.g = (c.g + g).clamp(0., 1.);
-                    c.b = (c.b + g).clamp(0., 1.);
-                    let cell = gpui::Bounds::new(gpui::point(px(x0 + x), px(y0 + y)), gpui::size(px(cw.min(w - x) + 0.5), px(rh + 0.5)));
-                    window.paint_quad(gpui::fill(cell, c));
-                }
-            }
-            // sparks: a few soft lights riding the waves
-            for k in 0..if sparks { 12u32 } else { 0 } {
-                let sp = 0.035 + (k as f32 * 0.37).fract() * 0.06;
-                let px_ = ((k as f32 * 0.618 + t * sp).fract()) * w;
-                let life = 0.5 + 0.5 * (t * (1.3 + k as f32 * 0.21) + k as f32).sin();
-                let sz = (h * 0.55).clamp(1.5, 3.);
-                let py = y0 + h / 2. - sz / 2. + (t * 2. + k as f32).sin() * h * 0.2;
-                let spark = gpui::Bounds::new(gpui::point(px(x0 + px_), px(py)), gpui::size(px(sz), px(sz)));
-                window.paint_quad(gpui::fill(spark, gpui::hsla(0., 0., 1., 0.25 + 0.5 * life * life)).corner_radii(px(sz / 2.)));
+            let c3 = gpui::hsla((c1.h + 0.94) % 1., c1.s, (c1.l * 0.72).max(0.3), 1.).to_rgb();
+            let mix = |p: gpui::Rgba, q: gpui::Rgba, k: f32| gpui::Rgba { r: p.r + (q.r - p.r) * k, g: p.g + (q.g - p.g) * k, b: p.b + (q.b - p.b) * k, a: 1. };
+            let lift = |p: gpui::Rgba, k: f32| mix(p, gpui::Rgba { r: 1., g: 1., b: 1., a: 1. }, k);
+            let smooth = |x: f32| x * x * (3. - 2. * x);
+            // the glint: a soft bright patch that drifts along every ~8 s
+            let gx = ((t * 0.125).fract()) * (w + 240.) - 120.;
+            let step = 2f32;
+            let mut x = 0f32;
+            while x < w {
+                // in fixed pixels, so a longer bar is more waves, not stretched ones
+                let u = (x0 + x) / 260.;
+                let warp = 1.3 * (u * 2.1 - t * 0.35).sin();
+                let f1 = smooth(0.5 + 0.5 * (u * 6.0 + t * 0.55 + warp).sin());
+                let f2 = smooth(0.5 + 0.5 * (u * 3.7 - t * 0.42 + 2.0).sin());
+                let mut col = mix(mix(a, bb, f1), c3, 0.35 * f2);
+                // the glint, and the head of the fill
+                let dg = (x - gx) / 70.;
+                let glint = (-dg * dg).exp() * 0.28;
+                let head = ((x - (w - 36.)) / 36.).clamp(0., 1.);
+                col = lift(col, glint + head * head * 0.22);
+                // glass: brighter on top, deeper at the bottom
+                let top = lift(col, 0.22);
+                let bot = mix(col, gpui::Rgba { r: 0., g: 0., b: 0., a: 1. }, 0.18);
+                let bounds = gpui::Bounds::new(gpui::point(px(x0 + x), px(y0)), gpui::size(px(step.min(w - x) + 0.5), px(h)));
+                window.paint_quad(gpui::fill(bounds, linear_gradient(180., linear_color_stop(top, 0.), linear_color_stop(bot, 1.))));
+                x += step;
             }
         },
     )
@@ -1161,6 +1148,12 @@ impl PlayerView {
     }
 
     fn want_still(&mut self, t: f64, cx: &mut Context<Self>) -> Option<std::sync::Arc<gpui::Image>> {
+        // another film (or another stream of it): the old stills go
+        let g = self.pb.read(cx).load_gen;
+        if g != self.stills_gen {
+            self.stills_gen = g;
+            self.stills.clear();
+        }
         // (the stills are made per 2 s)
         let k = (t / 2.).floor() as i64;
         // not there yet: the nearest one that is (never an empty box)
@@ -1175,6 +1168,10 @@ impl PlayerView {
         cx.spawn(async move |this, cx| {
             let r = api_still(k as f64 * 2. + 1.).await;
             let _ = this.update(cx, |v, cx| {
+                // asked for the film before this one: not this one's
+                if v.stills_gen != g {
+                    return;
+                }
                 match r {
                     Some(i) => {
                         v.stills.insert(k, Some(i));
@@ -1958,6 +1955,7 @@ impl Render for PlayerView {
             .on_scroll_wheel(cx.listener(|v, e: &gpui::ScrollWheelEvent, w, cx| {
                 // scroll = volume (not while a menu is open: that scrolls the menu)
                 if v.menu.is_some() {
+                    v.last_move = Instant::now();
                     return;
                 }
                 // 5% a notch. A mouse wheel sends whole notches (sometimes as 3
@@ -2065,7 +2063,7 @@ impl Render for PlayerView {
             };
             if on && !starting && !crate::pip::is_on() && !bars.is_empty() {
                 if let Some(cur) = self.glow.clone() {
-                    let fade = (self.glow_at.elapsed().as_secs_f32() / 1.0).min(1.);
+                    let fade = (self.glow_at.elapsed().as_secs_f32() / 2.5).min(1.);
                     let fade = fade * fade * (3. - 2. * fade);
                     if fade < 1. {
                         window.request_animation_frame();
@@ -2468,7 +2466,7 @@ impl Render for PlayerView {
         let ending = !guest
             && !hosting
             && next.is_none()
-            && st.duration > 600.
+            && st.duration > 60.
             && (matches!(segment.as_ref().map(|x| x.0.as_str()), Some("credits")) || st.duration - st.pos < 30.)
             && self.finale_off.as_deref() != Some(vid_now.as_str());
         // straight into "watch next" (the film shrinks into the corner)
