@@ -8,6 +8,14 @@ use gpui::{div, img, linear_color_stop, linear_gradient, prelude::*, px, AnyElem
 type Click = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 
 pub fn hero(m: &Meta, height: Pixels, clip: Option<(crate::ui::video::Pic, f32)>, on_play: Click, on_info: Click, on_add: Click) -> AnyElement {
+    let q = clip.as_ref().map_or(0., |c| c.1);
+    hero_quiet(m, height, clip, q, on_play, on_info, on_add)
+}
+
+/// `quiet` (0..1): how far the blurb has folded away (while a trailer plays)
+pub fn hero_quiet(m: &Meta, height: Pixels, clip: Option<(crate::ui::video::Pic, f32)>, quiet: f32, on_play: Click, on_info: Click, on_add: Click) -> AnyElement {
+    let ease = |x: f32| if x < 0.5 { 4. * x * x * x } else { 1. - (-2. * x + 2.).powi(3) / 2. };
+    let open = 1. - ease(quiet.clamp(0., 1.));
     let art = m.background.clone().or(m.poster.clone()).map(|u| crate::net::fit(&sized(&u, "original"), crate::ui::view_w().max(f32::from(height) * 16. / 9.)));
     let logo = m.logo.clone().map(|u| crate::net::logo(&sized(&u, "large"), 460.));
     let mut facts: Vec<String> = vec![if m.kind == "series" { "Series".into() } else { "Movie".into() }];
@@ -65,8 +73,11 @@ pub fn hero(m: &Meta, height: Pixels, clip: Option<(crate::ui::video::Pic, f32)>
                         dot.into_iter().map(|d| d.into_any_element()).chain(std::iter::once(div().child(f).into_any_element()))
                     }),
                 ))
-                .children(m.description.clone().map(|d| {
-                    div().max_w(px(560.)).text_size(px(17.)).line_height(px(25.)).line_clamp(4).text_ellipsis().text_color(theme::white(0.88)).child(d)
+                .children(m.description.clone().filter(|_| open > 0.01).map(|d| {
+                    // four lines tall, folding to nothing while a trailer plays
+                    div().max_h(px(100. * open)).overflow_hidden().opacity(open).child(
+                        div().max_w(px(560.)).text_size(px(17.)).line_height(px(25.)).line_clamp(4).text_ellipsis().text_color(theme::white(0.88)).child(d),
+                    )
                 }))
                 .child(
                     div()

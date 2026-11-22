@@ -26,6 +26,8 @@ pub struct Home {
     away: Option<Option<std::time::Instant>>,
     /// the clip picked up again here: fade it back in from this moment
     resumed: Option<std::time::Instant>,
+    /// when the billboard's trailer finished (the blurb opens back up)
+    clip_end: Option<std::time::Instant>,
     hero: Option<Meta>,
     rows: Vec<Row>,
     /// streaming services: (TMDB provider id, name, logo)
@@ -56,7 +58,7 @@ impl Home {
     /// scope: "all" (Home), "series" (Shows) or "movie" (Movies)
     pub fn new(scope: &'static str, cx: &mut Context<Self>) -> Self {
         cx.observe(&crate::ui::video::get(cx), |_, _, cx| cx.notify()).detach();
-        let me = Self { scope, away: None, resumed: None, clip: None, hero: None, rows: vec![], services: vec![], browse: vec![], genres: (None, vec![]), live: vec![], feed: vec![], streaks: vec![], scroll: ScrollHandle::new() };
+        let me = Self { scope, away: None, resumed: None, clip_end: None, clip: None, hero: None, rows: vec![], services: vec![], browse: vec![], genres: (None, vec![]), live: vec![], feed: vec![], streaks: vec![], scroll: ScrollHandle::new() };
         if scope == "all" {
             cx.spawn(async move |this, cx| {
                 let mut n = 0u32;
@@ -337,11 +339,19 @@ impl Render for Home {
                 let waiting = self.away.is_some();
                 let resumed = self.resumed;
                 // the clip: resume it if we came back to this page
+                // the trailer got to its end: once is enough, back to the picture
+                if let Some((owner, _)) = &self.clip {
+                    if vid.read(cx).ended == *owner {
+                        self.clip = None;
+                        self.clip_end = Some(std::time::Instant::now());
+                    }
+                }
                 let clip = match &self.clip {
                     Some((owner, url)) => {
                         if vid.read(cx).owner.is_empty() {
+                            // (coming back to the page: carry on, still just once)
                             let (o, u) = (owner.clone(), url.clone());
-                            vid.update(cx, |x, cx| x.play(&o, &u, cx));
+                            vid.update(cx, |x, cx| x.play_once(&o, &u, cx));
                         }
                         let owner = owner.clone();
                         vid.update(cx, |x, _| {
@@ -360,11 +370,24 @@ impl Render for Home {
                 if clip.as_ref().map_or(false, |c| c.1 < 1.) {
                     window.request_animation_frame();
                 }
-                page = page.child(hero::hero(
+                // the blurb folds away while the trailer plays, and opens again after
+                let quiet = match (&clip, self.clip_end) {
+                    (Some((_, a)), _) => *a,
+                    (None, Some(t)) => {
+                        let k = 1. - (t.elapsed().as_secs_f32() / 0.6).min(1.);
+                        if k > 0. {
+                            window.request_animation_frame();
+                        }
+                        k
+                    }
+                    _ => 0.,
+                };
+                page = page.child(hero::hero_quiet(
                     m,
                     // a taller billboard: more picture above the title
                     vh * 0.94,
                     clip,
+                    quiet,
                     Box::new(move |_, _, cx| Nav::play(&a, cx)),
                     Box::new(move |_, _, cx| Nav::detail(&b, cx)),
                     Box::new(move |_, _, cx| Nav::add(&c, cx)),

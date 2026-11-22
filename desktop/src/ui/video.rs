@@ -34,6 +34,8 @@ pub struct Video {
     pub paused: bool,
     /// this clip plays once (the billboard), not on a loop
     once: bool,
+    /// the last play-once clip that got to its end (its owner): not started again
+    pub ended: String,
 }
 
 /// One sound switch for the billboard and the previews: on (sound) unless
@@ -180,6 +182,7 @@ pub fn init(cx: &mut App) {
             ready_tx: Some(tx),
             paused: false,
             once: false,
+            ended: String::new(),
         }
     });
     cx.set_global(VideoHandle(v));
@@ -231,6 +234,7 @@ impl Video {
                 if let Some(n) = &v.native {
                     if n.is_ready() && n.ended() {
                         n.stop();
+                        v.ended = v.owner.clone();
                         v.owner.clear();
                         v.since = None;
                         cx.notify();
