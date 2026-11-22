@@ -120,8 +120,9 @@
   --shelf-gap: 44px;
 
   /* ------------------------------------------------------------- type */
-  --font-text: -apple-system, "SF Pro Text", "Inter Variable", "Segoe UI Variable Text", system-ui, sans-serif;
-  --font-display: "Satoshi", -apple-system, "SF Pro Display", "Inter Variable", system-ui, sans-serif;
+  --font-emoji: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  --font-text: -apple-system, "SF Pro Text", "Inter Variable", "Segoe UI Variable Text", system-ui, var(--font-emoji);
+  --font-display: "Satoshi", -apple-system, "SF Pro Display", "Inter Variable", system-ui, var(--font-emoji);
   --font-round: "Satoshi", ui-rounded, "SF Pro Rounded", var(--font-display);
   --font-bump: var(--font-text); /* was a mono face; one font everywhere now */
   --fs-xl: 48px;
