@@ -990,6 +990,7 @@ fn read_tracks(mpv: &libmpv2::Mpv) -> Value {
                 "external": b(i, "external"),
                 "default": b(i, "default"),
                 "forced": b(i, "forced"),
+                "visualImpaired": b(i, "visual-impaired"),
                 "channels": mpv.get_property::<i64>(&format!("track-list/{i}/demux-channel-count")).ok(),
                 "width": mpv.get_property::<i64>(&format!("track-list/{i}/demux-w")).ok(),
                 "height": mpv.get_property::<i64>(&format!("track-list/{i}/demux-h")).ok(),
@@ -1204,10 +1205,16 @@ vec4 hook() {
     vec4 b = acc / n;
     // contrast for what sits on it: bright scenes dim, dark ones lift a little
     // (the controls stay readable on anything), and a touch more colour
+    // (bright: scaled down; dark: a neutral grey lift, never multiplied up,
+    // which would blow the faint colour noise in dark scenes into green/blue)
     float l = dot(b.rgb, vec3(0.299, 0.587, 0.114));
-    float want = clamp(l, 0.10, 0.42);
-    b.rgb *= mix(1.0, want / max(l, 0.001), 0.75);
-    b.rgb = mix(vec3(dot(b.rgb, vec3(0.299, 0.587, 0.114))), b.rgb, 1.18);
+    if (l > 0.42)
+        b.rgb *= mix(1.0, 0.42 / l, 0.75);
+    b.rgb += vec3(max(0.0, 0.10 - l) * 0.6);
+    // a little more colour, only where there's real colour
+    float l2 = dot(b.rgb, vec3(0.299, 0.587, 0.114));
+    float chroma = max(max(b.r, b.g), b.b) - min(min(b.r, b.g), b.b);
+    b.rgb = mix(vec3(l2), b.rgb, 1.0 + 0.12 * smoothstep(0.08, 0.25, chroma));
     // the rim catches the light: bright along the top edge, faint around the rest
     float rim = 1.0 - smoothstep(0.0, 2.2 * u + 1.0, -d);
     float top = clamp(-nrm.y, 0.0, 1.0);

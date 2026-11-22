@@ -485,6 +485,22 @@ fn need_mbps(s: &Value, rt: &Value) -> f64 {
     }
 }
 
+/// An audio track that isn't the film's own sound: a commentary, or audio
+/// description for the blind (Some(what to call it)).
+pub fn track_extra(t: &Value) -> Option<&'static str> {
+    let title = t["title"].as_str().unwrap_or("").to_lowercase();
+    if t["commentary"] == true || title.contains("commentary") || title.contains("comment") || title.contains("director's") || title.contains("directors") || title.contains("cast and crew") || title.contains("cast & crew") {
+        return Some("commentary");
+    }
+    if t["visualImpaired"] == true || title.contains("audio description") || title.contains("descriptive") || title.contains("described") || title.contains(" ad ") || title.ends_with(" ad") {
+        return Some("audio description");
+    }
+    if title.contains("isolated score") || title.contains("music only") {
+        return Some("music only");
+    }
+    None
+}
+
 /// A bonus file, not the film: a featurette, interview, trailer, sample...
 /// (packs often carry these, and a small one can look like the "best fit").
 pub fn is_extra(s: &Value) -> bool {
@@ -660,6 +676,19 @@ impl Playback {
         if since.elapsed().as_secs() > 20 {
             self.langs_pending = None;
             return;
+        }
+        // started on a commentary (or audio description) track: the film's own
+        // sound in the same language instead
+        {
+            let lang = |t: &Value| t["lang"].as_str().unwrap_or("").to_lowercase();
+            let list: Vec<&Value> = self.tracks.iter().filter(|t| t["type"] == "audio").collect();
+            if let Some(on) = list.iter().find(|t| t["selected"] == true).filter(|t| track_extra(t).is_some()) {
+                let l = lang(on);
+                let better = list.iter().filter(|t| track_extra(t).is_none()).max_by_key(|t| (lang(t) == l) as u8 * 2 + (t["default"] == true) as u8).and_then(|t| t["id"].as_i64());
+                if let Some(id) = better {
+                    self.cmd("aid", json!({ "value": id }));
+                }
+            }
         }
         let Some(key) = self.meta.as_ref().map(|m| m.id.clone()) else { return };
         let all = couch::state::get().core.db.get::<serde_json::Map<String, Value>>(LANGS_KEY).unwrap_or_default();

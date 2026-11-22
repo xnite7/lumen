@@ -773,6 +773,11 @@ fn named(list: &[serde_json::Value]) -> Vec<(serde_json::Value, String)> {
             let n = seen.entry(l.clone()).or_insert(0);
             *n += 1;
             let label = if total[&l] > 1 { format!("{l} {n}") } else { l };
+            // not the film's own sound: say what it is
+            let label = match (t["type"] == "audio").then(|| crate::playback::track_extra(t)).flatten() {
+                Some(x) => format!("{label} · {x}"),
+                None => label,
+            };
             (t.clone(), label)
         })
         .collect()
