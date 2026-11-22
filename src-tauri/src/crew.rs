@@ -128,10 +128,8 @@ pub fn playing(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f6
     if server(core).is_none() {
         static BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         if !BUSY.swap(true, std::sync::atomic::Ordering::Relaxed) {
-            let h = core.app.clone();
-            tauri::async_runtime::spawn(async move {
-                use tauri::Manager;
-                let c = h.state::<crate::state::AppState>().core.clone();
+            crate::rt::spawn(async move {
+                let c = crate::state::get().core.clone();
                 let _ = login(&c).await;
                 BUSY.store(false, std::sync::atomic::Ordering::Relaxed);
             });
@@ -170,7 +168,7 @@ pub fn playing(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f6
     });
     let client = core.http.client();
     let (u2, c2) = (url.clone(), code.clone());
-    tauri::async_runtime::spawn(async move {
+    crate::rt::spawn(async move {
         let _ = client.put(format!("{url}/v1/presence")).header("authorization", code).json(&body).timeout(Duration::from_secs(8)).send().await;
     });
     if !gate && !paused {
@@ -190,17 +188,15 @@ fn send_frame(core: &Core, url: String, code: String) {
         }
         *last = Some(Instant::now());
     }
-    let app = core.app.clone();
     let client = core.http.client();
-    tauri::async_runtime::spawn(async move {
-        use tauri::Manager;
+    crate::rt::spawn(async move {
         let path = std::env::temp_dir().join("couch-frame.jpg");
         let _ = std::fs::remove_file(&path);
-        let player = app.state::<crate::state::AppState>().player.clone();
+        let player = crate::state::player();
         if player.command("snap", &json!({ "path": path.to_string_lossy() })).is_err() {
             return;
         }
-        let img = tauri::async_runtime::spawn_blocking(move || -> Option<String> {
+        let img = crate::rt::spawn_blocking(move || -> Option<String> {
             // mpv writes the file a moment after the command returns
             for _ in 0..20 {
                 if path.metadata().map_or(false, |m| m.len() > 0) {
@@ -228,15 +224,26 @@ fn send_frame(core: &Core, url: String, code: String) {
 /// Playback ended: leave the couch row.
 pub fn stopped(core: &Core) {
     *LAST.lock() = None;
-    SHARED.store(false, std::sync::atomic::Ordering::Relaxed);
-    if HOSTING.swap(false, std::sync::atomic::Ordering::Relaxed) {
-        let id = member_id(core);
-        let _ = send(core, reqwest::Method::DELETE, &format!("/v1/room/{id}"), None);
+    // the next episode is a stop too: the room only ends if nothing plays again
+    // soon (guests ride along to the next one instead of being dropped)
+    // (the computer app ends the room itself, when its player really closes)
+    if HOSTING.load(std::sync::atomic::Ordering::Relaxed) && !ENDS_ITSELF.load(std::sync::atomic::Ordering::Relaxed) {
+        let g = PLAY_GEN.load(std::sync::atomic::Ordering::Relaxed);
+        crate::rt::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(25)).await;
+            if PLAY_GEN.load(std::sync::atomic::Ordering::Relaxed) != g || !HOSTING.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
+            SHARED.store(false, std::sync::atomic::Ordering::Relaxed);
+            let core = crate::state::get().core.clone();
+            let id = member_id(&core);
+            let _ = send(&core, reqwest::Method::DELETE, &format!("/v1/room/{id}"), None);
+        });
     }
     let Some((url, code)) = server(core) else { return };
     let id = member_id(core);
     let client = core.http.client();
-    tauri::async_runtime::spawn(async move {
+    crate::rt::spawn(async move {
         let _ = client.delete(format!("{url}/v1/presence/{id}")).header("authorization", code).timeout(Duration::from_secs(8)).send().await;
     });
 }
@@ -272,13 +279,47 @@ static HOSTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::n
 /// the host lets everyone in the room pause / play / seek
 pub static SHARED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static LAST_ROOM: Mutex<Option<Instant>> = Mutex::new(None);
+/// bumped on every playing tick: a stop followed by more playing isn't an end
+static PLAY_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The crew server's permanent invite (public: for people not in it yet).
+pub async fn server_invite(core: &Core) -> Option<String> {
+    static CACHE: Mutex<Option<String>> = Mutex::new(None);
+    if let Some(u) = CACHE.lock().clone() {
+        return Some(u);
+    }
+    let r = core.http.client().get(format!("{}/v1/invite", CREW_URL.trim_end_matches('/'))).timeout(Duration::from_secs(8)).send().await.ok()?;
+    let v: Value = r.json().await.ok()?;
+    let u = v.get("url").and_then(|u| u.as_str()).filter(|u| u.starts_with("https://discord.gg/"))?.to_string();
+    *CACHE.lock() = Some(u.clone());
+    Some(u)
+}
+
+/// the app ends rooms itself (crew_end_room): a stop never ends one by itself
+pub static ENDS_ITSELF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Something is playing (called every tick, whatever's on): a stop followed
+/// by this isn't the end of the room. (It used to be counted only for titles
+/// Simkl knew, so the next episode of an unknown one ended the room 25 s in.)
+pub fn alive() {
+    PLAY_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Host closed the player for real: end the room now (guests are told).
+pub fn end_room(core: &Core) {
+    if HOSTING.swap(false, std::sync::atomic::Ordering::Relaxed) {
+        SHARED.store(false, std::sync::atomic::Ordering::Relaxed);
+        let id = member_id(core);
+        let _ = send(core, reqwest::Method::DELETE, &format!("/v1/room/{id}"), None);
+    }
+}
 
 /// Fire-and-forget request to the crew server.
 fn send(core: &Core, method: reqwest::Method, path: &str, body: Option<Value>) -> Option<()> {
     let (url, code) = server(core)?;
     let client = core.http.client();
     let path = path.to_string();
-    tauri::async_runtime::spawn(async move {
+    crate::rt::spawn(async move {
         let mut r = client.request(method, format!("{url}{path}")).header("authorization", code).timeout(Duration::from_secs(8));
         if let Some(b) = body {
             r = r.json(&b);
@@ -327,8 +368,8 @@ fn host_tick(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f64,
         "shared": SHARED.load(std::sync::atomic::Ordering::Relaxed),
     });
     let client = core.http.client();
-    let app = core.app.clone();
-    tauri::async_runtime::spawn(async move {
+    let host = core.host.clone();
+    crate::rt::spawn(async move {
         if let Ok(r) = client.put(format!("{url}/v1/room")).header("authorization", code).json(&body).timeout(Duration::from_secs(5)).send().await {
             if r.status().as_u16() == 404 {
                 HOSTING.store(false, std::sync::atomic::Ordering::Relaxed); // everyone left
@@ -336,9 +377,8 @@ fn host_tick(core: &Core, known: &Known, meta: &Value, video_id: &str, pos: f64,
             }
             // guests steering (shared control): the player does what they asked
             if let Ok(v) = r.json::<Value>().await {
-                use tauri::Emitter;
                 for c in v.get("cmds").and_then(|c| c.as_array()).into_iter().flatten() {
-                    let _ = app.emit("together-cmd", c);
+                    host.emit("together-cmd", c.clone());
                 }
             }
         }

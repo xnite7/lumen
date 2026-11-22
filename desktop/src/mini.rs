@@ -1,0 +1,377 @@
+//! The mini player: going back from the player keeps the film playing in a
+//! corner of couch while you browse. mpv draws into a little host window of
+//! our own; full size it sits under couch's UI, mini it moves into a small
+//! rounded popup over the bottom-right corner.
+#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+
+static VIDEO: AtomicIsize = AtomicIsize::new(0);
+/// the GPU clip player's window (billboard, previews, trailers)
+static CLIP: AtomicIsize = AtomicIsize::new(0);
+static MAIN: AtomicIsize = AtomicIsize::new(0);
+static ON: AtomicBool = AtomicBool::new(false);
+/// the popup was clicked: back to full size
+pub static CLICKED: AtomicBool = AtomicBool::new(false);
+/// its ✕ was clicked: stop the film
+pub static CLOSE: AtomicBool = AtomicBool::new(false);
+/// the pointer is on the picture
+static HOVER: AtomicBool = AtomicBool::new(false);
+
+/// is the pointer on the mini picture? ("watch next" turns the film up then)
+pub fn hovered() -> bool {
+    is_on() && HOVER.load(Ordering::Relaxed)
+}
+
+/// logical size and margin of the mini picture
+pub const W: f32 = 400.;
+pub const H: f32 = 225.;
+pub const M: f32 = 24.;
+/// the gap under it: none, it sits on the window's bottom edge
+pub const MB: f32 = 0.;
+/// room under the picture for the controls (couch draws them there)
+pub const BAR: f32 = 92.;
+
+pub fn is_on() -> bool {
+    ON.load(Ordering::Relaxed)
+}
+
+/// mpv's parent window (the host), or 0 before it exists
+pub fn video_hwnd() -> isize {
+    VIDEO.load(Ordering::Relaxed)
+}
+
+/// where the clip window goes (client pixels) and what part of it shows
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct ClipPlace {
+    pub x: i32,
+    pub y: i32,
+    pub w: i32,
+    pub h: i32,
+    /// the visible part, relative to the window
+    pub vis: (i32, i32, i32, i32),
+    pub r: i32,
+}
+
+/// the UI clip player's window, or 0
+pub fn clip_hwnd() -> isize {
+    CLIP.load(Ordering::Relaxed)
+}
+
+/// couch's own window
+pub fn main_hwnd() -> isize {
+    MAIN.load(Ordering::Relaxed)
+}
+
+#[cfg(target_os = "windows")]
+mod imp {
+    use super::*;
+    use windows::core::w;
+    use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+    use windows::Win32::Graphics::Gdi::{ClientToScreen, CreateSolidBrush, HBRUSH};
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::WindowsAndMessaging::*;
+
+    unsafe extern "system" fn popup_proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+        match msg {
+            WM_LBUTTONUP => {
+                CLICKED.store(true, Ordering::Relaxed);
+                LRESULT(0)
+            }
+            // the pointer on the picture: the ✕ shows (until it leaves)
+            WM_MOUSEMOVE => {
+                HOVER.store(true, Ordering::Relaxed);
+                let x = XBTN.load(Ordering::Relaxed);
+                if x != 0 {
+                    unsafe {
+                        let _ = ShowWindow(hw(x), SW_SHOWNOACTIVATE);
+                        let _ = SetWindowPos(hw(x), Some(HWND_TOP), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                        let mut t = windows::Win32::UI::Input::KeyboardAndMouse::TRACKMOUSEEVENT {
+                            cbSize: std::mem::size_of::<windows::Win32::UI::Input::KeyboardAndMouse::TRACKMOUSEEVENT>() as u32,
+                            dwFlags: windows::Win32::UI::Input::KeyboardAndMouse::TME_LEAVE,
+                            hwndTrack: h,
+                            dwHoverTime: 0,
+                        };
+                        let _ = windows::Win32::UI::Input::KeyboardAndMouse::TrackMouseEvent(&mut t);
+                    }
+                }
+                LRESULT(0)
+            }
+            // left the picture (not onto the ✕): it hides
+            0x02A3 /* WM_MOUSELEAVE */ => {
+                let x = XBTN.load(Ordering::Relaxed);
+                if x != 0 {
+                    unsafe {
+                        let mut pt = POINT::default();
+                        let _ = windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt);
+                        let mut r = RECT::default();
+                        let _ = GetWindowRect(hw(x), &mut r);
+                        let on_x = pt.x >= r.left && pt.x < r.right && pt.y >= r.top && pt.y < r.bottom;
+                        HOVER.store(on_x, Ordering::Relaxed);
+                        if !on_x {
+                            let _ = ShowWindow(hw(x), SW_HIDE);
+                        }
+                    }
+                }
+                LRESULT(0)
+            }
+            WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE as isize),
+            _ => unsafe { DefWindowProcW(h, msg, wp, lp) },
+        }
+    }
+
+    /// the ✕ over the picture: a dark circle with a cross, drawn by Windows
+    unsafe extern "system" fn x_proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+        use windows::Win32::Graphics::Gdi::*;
+        match msg {
+            WM_PAINT => unsafe {
+                let mut ps = PAINTSTRUCT::default();
+                let dc = BeginPaint(h, &mut ps);
+                let mut r = RECT::default();
+                let _ = GetClientRect(h, &mut r);
+                let bg = CreateSolidBrush(windows::Win32::Foundation::COLORREF(0x00181818));
+                let _ = FillRect(dc, &r, bg);
+                let _ = DeleteObject(bg.into());
+                let pen = CreatePen(PS_SOLID, ((r.right as f32) / 14.).max(2.) as i32, windows::Win32::Foundation::COLORREF(0x00ffffff));
+                let old = SelectObject(dc, pen.into());
+                let (a, b) = (r.right * 34 / 100, r.right * 66 / 100);
+                let _ = MoveToEx(dc, a, a, None);
+                let _ = LineTo(dc, b, b);
+                let _ = MoveToEx(dc, b, a, None);
+                let _ = LineTo(dc, a, b);
+                SelectObject(dc, old);
+                let _ = DeleteObject(pen.into());
+                let _ = EndPaint(h, &ps);
+                LRESULT(0)
+            },
+            WM_LBUTTONUP => {
+                CLOSE.store(true, Ordering::Relaxed);
+                LRESULT(0)
+            }
+            WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE as isize),
+            _ => unsafe { DefWindowProcW(h, msg, wp, lp) },
+        }
+    }
+
+    static XBTN: AtomicIsize = AtomicIsize::new(0);
+
+    unsafe extern "system" fn host_proc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
+        unsafe { DefWindowProcW(h, msg, wp, lp) }
+    }
+
+    static POPUP: AtomicIsize = AtomicIsize::new(0);
+
+    fn hw(v: isize) -> HWND {
+        HWND(v as *mut _)
+    }
+
+    /// make the host window inside couch's window (once)
+    pub fn init(main: isize) -> isize {
+        if VIDEO.load(Ordering::Relaxed) != 0 {
+            return VIDEO.load(Ordering::Relaxed);
+        }
+        MAIN.store(main, Ordering::Relaxed);
+        unsafe {
+            let inst = GetModuleHandleW(None).unwrap_or_default();
+            let black: HBRUSH = CreateSolidBrush(windows::Win32::Foundation::COLORREF(0));
+            let wc = WNDCLASSW { lpfnWndProc: Some(host_proc), hInstance: inst.into(), lpszClassName: w!("couch-video"), hbrBackground: black, ..Default::default() };
+            RegisterClassW(&wc);
+            let pc = WNDCLASSW { lpfnWndProc: Some(popup_proc), hInstance: inst.into(), lpszClassName: w!("couch-mini"), hbrBackground: black, hCursor: LoadCursorW(None, IDC_HAND).unwrap_or_default(), ..Default::default() };
+            RegisterClassW(&pc);
+            let mut r = RECT::default();
+            let _ = GetClientRect(hw(main), &mut r);
+            let v = CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                w!("couch-video"),
+                w!(""),
+                WS_CHILD | WS_VISIBLE | WS_DISABLED | WS_CLIPCHILDREN,
+                0,
+                0,
+                r.right.max(1),
+                r.bottom.max(1),
+                Some(hw(main)),
+                None,
+                Some(inst.into()),
+                None,
+            );
+            let Ok(v) = v else { return 0 };
+            let _ = SetWindowPos(v, Some(HWND_BOTTOM), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+            VIDEO.store(v.0 as isize, Ordering::Relaxed);
+            // the clip window: hidden until a spot asks for it
+            if let Ok(c) = CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                w!("couch-video"),
+                w!(""),
+                WS_CHILD | WS_DISABLED | WS_CLIPCHILDREN,
+                0,
+                0,
+                16,
+                16,
+                Some(hw(main)),
+                None,
+                Some(inst.into()),
+                None,
+            ) {
+                CLIP.store(c.0 as isize, Ordering::Relaxed);
+            }
+            let p = CreateWindowExW(
+                WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                w!("couch-mini"),
+                w!("couch"),
+                WS_POPUP | WS_CLIPCHILDREN,
+                0,
+                0,
+                400,
+                225,
+                Some(hw(main)),
+                None,
+                Some(inst.into()),
+                None,
+            );
+            if let Ok(p) = p {
+                POPUP.store(p.0 as isize, Ordering::Relaxed);
+                // the ✕, round, over the picture's top right (shown on hover)
+                let xc = WNDCLASSW { lpfnWndProc: Some(x_proc), hInstance: inst.into(), lpszClassName: w!("couch-mini-x"), hCursor: LoadCursorW(None, IDC_HAND).unwrap_or_default(), ..Default::default() };
+                RegisterClassW(&xc);
+                if let Ok(x) = CreateWindowExW(WINDOW_EX_STYLE(0), w!("couch-mini-x"), w!(""), WS_CHILD | WS_CLIPSIBLINGS, 0, 0, 30, 30, Some(p), None, Some(inst.into()), None) {
+                    XBTN.store(x.0 as isize, Ordering::Relaxed);
+                }
+                // rounded corners (Windows 11)
+                // (square: fit() rounds just the top corners itself, the bar
+                // under it carries on from its bottom edge)
+                let pref: u32 = 1; // DWMWCP_DONOTROUND
+                let _ = windows::Win32::Graphics::Dwm::DwmSetWindowAttribute(p, windows::Win32::Graphics::Dwm::DWMWA_WINDOW_CORNER_PREFERENCE, &pref as *const u32 as *const _, 4);
+            }
+            v.0 as isize
+        }
+    }
+
+    static LAST: parking_lot::Mutex<Option<ClipPlace>> = parking_lot::Mutex::new(None);
+
+    /// Put the clip window under its see-through spot (client pixels), or hide it.
+    pub fn place_clip(at: Option<ClipPlace>) {
+        let c = CLIP.load(Ordering::Relaxed);
+        if c == 0 {
+            return;
+        }
+        let mut last = LAST.lock();
+        if *last == at {
+            return;
+        }
+        let prev = *last;
+        *last = at;
+        unsafe {
+            match at {
+                None => {
+                    let _ = ShowWindow(hw(c), SW_HIDE);
+                }
+                Some(p) => {
+                    use windows::Win32::Graphics::Gdi::{CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, SetWindowRgn, RGN_AND};
+                    let _ = SetWindowPos(hw(c), Some(HWND_TOP), p.x, p.y, p.w.max(1), p.h.max(1), SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                    // rounded corners, cut to the part that's on screen
+                    let shape = if p.r > 0 { CreateRoundRectRgn(0, 0, p.w + 1, p.h + 1, p.r * 2, p.r * 2) } else { CreateRectRgn(0, 0, p.w, p.h) };
+                    let (vx, vy, vw, vh) = p.vis;
+                    let vis = CreateRectRgn(vx, vy, vx + vw, vy + vh);
+                    let _ = CombineRgn(Some(shape), Some(shape), Some(vis), RGN_AND);
+                    let _ = DeleteObject(vis.into());
+                    // the window owns the region from here
+                    let _ = SetWindowRgn(hw(c), Some(shape), true);
+                }
+            }
+        }
+        let moved = at.is_some() && prev.map_or(true, |q| (q.w, q.h) != (at.unwrap().w, at.unwrap().h));
+        drop(last);
+        // mpv's own window inside follows when the size changes
+        if moved {
+            couch::player::refit_video(Some(c));
+        }
+    }
+
+    /// keep the host the size of couch's window (full size), or the popup (mini)
+    pub fn fit(scale: f32) {
+        let (v, main, pop) = (VIDEO.load(Ordering::Relaxed), MAIN.load(Ordering::Relaxed), POPUP.load(Ordering::Relaxed));
+        if v == 0 {
+            return;
+        }
+        unsafe {
+            let mut r = RECT::default();
+            let _ = GetClientRect(hw(main), &mut r);
+            if ON.load(Ordering::Relaxed) && pop != 0 {
+                let (w, h, m) = ((W * scale) as i32, (H * scale) as i32, (M * scale) as i32);
+                let bar = (BAR * scale) as i32;
+                let mb = (MB * scale) as i32;
+                let mut pt = POINT { x: r.right - w - m, y: r.bottom - h - mb - bar };
+                let _ = ClientToScreen(hw(main), &mut pt);
+                let _ = SetWindowPos(hw(pop), None, pt.x, pt.y, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
+                // the top corners round, the bottom ones meet the bar below square
+                {
+                    let rad = (18. * scale) as i32;
+                    let rg = windows::Win32::Graphics::Gdi::CreateRoundRectRgn(0, 0, w + 1, h + 1 + rad * 2, rad * 2, rad * 2);
+                    let _ = windows::Win32::Graphics::Gdi::SetWindowRgn(hw(pop), Some(rg), true);
+                }
+                let _ = SetWindowPos(hw(v), None, 0, 0, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
+                let x = XBTN.load(Ordering::Relaxed);
+                if x != 0 {
+                    let xs = (30. * scale) as i32;
+                    let pad = (10. * scale) as i32;
+                    let _ = SetWindowPos(hw(x), Some(HWND_TOP), w - xs - pad, pad, xs, xs, SWP_NOACTIVATE);
+                    // round
+                    let rg = windows::Win32::Graphics::Gdi::CreateEllipticRgn(0, 0, xs + 1, xs + 1);
+                    let _ = windows::Win32::Graphics::Gdi::SetWindowRgn(hw(x), Some(rg), true);
+                }
+                // the picture's own window doesn't draw over its siblings (the ✕)
+                let st = GetWindowLongW(hw(v), GWL_STYLE) as u32;
+                if st & WS_CLIPSIBLINGS.0 == 0 {
+                    let _ = SetWindowLongW(hw(v), GWL_STYLE, (st | WS_CLIPSIBLINGS.0) as i32);
+                }
+            } else {
+                let _ = SetWindowPos(hw(v), Some(HWND_BOTTOM), 0, 0, r.right.max(1), r.bottom.max(1), SWP_NOACTIVATE);
+            }
+            // mpv's own window inside the host doesn't always notice the host
+            // changed size (it caught up on the next focus change): size it too
+            let mut hr = RECT::default();
+            let _ = GetClientRect(hw(v), &mut hr);
+            let mut child = FindWindowExW(Some(hw(v)), None, None, None).unwrap_or_default();
+            while !child.is_invalid() {
+                let _ = SetWindowPos(child, None, 0, 0, hr.right.max(1), hr.bottom.max(1), SWP_NOACTIVATE | SWP_NOZORDER | SWP_ASYNCWINDOWPOS);
+                child = FindWindowExW(Some(hw(v)), Some(child), None, None).unwrap_or_default();
+            }
+        }
+        couch::player::refit_video(Some(v));
+    }
+
+    pub fn set(on: bool, scale: f32) {
+        HOVER.store(false, Ordering::Relaxed);
+        let (v, main, pop) = (VIDEO.load(Ordering::Relaxed), MAIN.load(Ordering::Relaxed), POPUP.load(Ordering::Relaxed));
+        if v == 0 || pop == 0 || ON.swap(on, Ordering::Relaxed) == on {
+            return;
+        }
+        unsafe {
+            if on {
+                let _ = SetParent(hw(v), Some(hw(pop)));
+                fit(scale);
+                let _ = ShowWindow(hw(pop), SW_SHOWNOACTIVATE);
+            } else {
+                let _ = ShowWindow(hw(pop), SW_HIDE);
+                let _ = SetParent(hw(v), Some(hw(main)));
+                fit(scale);
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+pub use imp::{fit, init, place_clip, set};
+
+#[cfg(not(target_os = "windows"))]
+pub fn init(main: isize) -> isize {
+    MAIN.store(main, Ordering::Relaxed);
+    0
+}
+#[cfg(not(target_os = "windows"))]
+pub fn fit(_scale: f32) {}
+#[cfg(not(target_os = "windows"))]
+pub fn place_clip(_at: Option<ClipPlace>) {}
+#[cfg(not(target_os = "windows"))]
+pub fn set(on: bool, _scale: f32) {
+    ON.store(on, Ordering::Relaxed);
+}

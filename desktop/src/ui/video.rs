@@ -1,0 +1,594 @@
+//! UI video (billboard clips, card previews, trailers). On Windows it plays
+//! on the graphics card: its own mpv draws into a little window that sits
+//! under a see-through spot in couch's UI (see `spot` and `paint_bg`).
+//! Elsewhere (and as a fallback) it's one mpv rendered in software and shown
+//! like an image. Whoever asked last owns it.
+use futures::StreamExt;
+use gpui::{canvas, div, img, prelude::*, px, AnyElement, App, AppContext, Bounds, Context, Entity, Global, ObjectFit, Pixels, RenderImage, Window};
+use std::cell::Cell;
+use std::sync::Arc;
+use std::time::Instant;
+
+/// What a clip shows right now.
+#[derive(Clone)]
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub enum Pic {
+    /// a frame drawn by couch (software)
+    Image(Arc<RenderImage>),
+    /// the GPU window is showing it under a see-through spot
+    Native,
+}
+
+pub struct Video {
+    surface: Option<Arc<couch::player::surface::Surface>>,
+    #[cfg(target_os = "windows")]
+    native: Option<Arc<couch::player::clip::Clip>>,
+    /// who's showing ("hero:tt…", "card:tt…", "trailer:tt…")
+    pub owner: String,
+    image: Option<Arc<RenderImage>>,
+    serial: u64,
+    /// when the first frame of this clip arrived
+    pub since: Option<Instant>,
+    old: Vec<Arc<RenderImage>>,
+    ready_tx: Option<futures::channel::mpsc::UnboundedSender<()>>,
+    pub paused: bool,
+    /// this clip plays once (the billboard), not on a loop
+    once: bool,
+    /// the last play-once clip that got to its end (its owner): not started again
+    pub ended: String,
+}
+
+/// One sound switch for the billboard and the previews: on (sound) unless
+/// you turned it off, and it stays how you left it, next time too.
+// (a new key: clips start with sound again for everyone, then remember your choice)
+const MUTED_KEY: &str = "gpui_clips_muted_v2";
+static MUTED: std::sync::OnceLock<std::sync::atomic::AtomicBool> = std::sync::OnceLock::new();
+
+fn muted_flag() -> &'static std::sync::atomic::AtomicBool {
+    MUTED.get_or_init(|| std::sync::atomic::AtomicBool::new(couch::state::try_get().and_then(|s| s.core.db.get::<bool>(MUTED_KEY)).unwrap_or(false)))
+}
+
+/// Is this kind of clip muted? (trailers never)
+pub fn is_muted(owner: &str) -> bool {
+    !owner.starts_with("trailer:") && muted_flag().load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The speaker on the billboard / a preview: flips the sound switch (kept).
+pub fn toggle_sound(_owner: &str, cx: &mut App) {
+    let muted = !muted_flag().load(std::sync::atomic::Ordering::Relaxed);
+    muted_flag().store(muted, std::sync::atomic::Ordering::Relaxed);
+    let _ = couch::state::get().core.db.set(MUTED_KEY, &muted);
+    let vid = get(cx);
+    vid.update(cx, |x, cx| {
+        if !x.owner.starts_with("trailer:") {
+            x.set_muted(muted);
+        }
+        cx.notify();
+    });
+    cx.refresh_windows();
+}
+
+/// A round speaker button for a playing clip.
+pub fn sound_button(owner: String, size: f32) -> impl IntoElement {
+    let muted = is_muted(&owner);
+    div()
+        .id(gpui::SharedString::from(format!("snd-{owner}")))
+        .size(px(size))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded_full()
+        // no ring, no plate: just the speaker, a light glass behind it on hover
+        .cursor_pointer()
+        .hover(|s| s.bg(crate::theme::white(0.16)))
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_click(move |_, _, cx| {
+            cx.stop_propagation();
+            toggle_sound(&owner, cx)
+        })
+        .child(crate::ui::icon(if muted { "mute" } else { "volume" }, size * 0.48))
+}
+
+thread_local! {
+    /// which home page is on screen ("all", "movie", "series"), or "" for any other page
+    static SCOPE: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+}
+
+/// The page on screen changed: a billboard from another page stops.
+pub fn set_home_scope(scope: &str, cx: &mut App) {
+    let changed = SCOPE.with(|s| {
+        let mut s = s.borrow_mut();
+        if *s == scope {
+            return false;
+        }
+        *s = scope.to_string();
+        true
+    });
+    if changed {
+        let keep = format!("hero:{scope}:");
+        let v = get(cx);
+        let o = v.read(cx).owner.clone();
+        if o.starts_with("hero:") && !o.starts_with(&keep) {
+            v.update(cx, |v, cx| v.stop(&o, cx));
+        }
+    }
+}
+
+fn home_scope() -> String {
+    SCOPE.with(|s| s.borrow().clone())
+}
+
+pub struct VideoHandle(pub Entity<Video>);
+impl Global for VideoHandle {}
+
+pub fn get(cx: &App) -> Entity<Video> {
+    cx.global::<VideoHandle>().0.clone()
+}
+
+/// The film is starting: no card or billboard clip keeps running behind it
+/// (it would show in a screen share, and keep using the network).
+pub fn stop_all(cx: &mut App) {
+    if !cx.has_global::<VideoHandle>() {
+        return;
+    }
+    get(cx).update(cx, |v, cx| {
+        let o = v.owner.clone();
+        if !o.is_empty() {
+            v.stop(&o, cx);
+        }
+    });
+}
+
+pub fn init(cx: &mut App) {
+    let v = cx.new(|cx: &mut Context<Video>| {
+        let (tx, mut rx) = futures::channel::mpsc::unbounded::<()>();
+        // the software surface is made only when there's no GPU path
+        let surface = if cfg!(target_os = "windows") { None } else { couch::player::surface::Surface::new(640, 360).map_err(|e| log::warn!("ui video off: {e}")).ok() };
+        if let Some(s) = &surface {
+            let tx = tx.clone();
+            s.on_frame(move || {
+                let _ = tx.unbounded_send(());
+            });
+        }
+        cx.spawn(async move |this, cx| {
+            while rx.next().await.is_some() {
+                // a burst of frames is one repaint
+                while rx.try_recv().is_ok() {}
+                if this
+                    .update(cx, |v, cx| {
+                        let _ = &v; // (used on Windows)
+                        #[cfg(target_os = "windows")]
+                        if v.since.is_none() && v.native.as_ref().map_or(false, |n| n.is_ready()) {
+                            v.since = Some(Instant::now());
+                        }
+                        cx.notify()
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+        Video {
+            surface,
+            #[cfg(target_os = "windows")]
+            native: None,
+            owner: String::new(),
+            image: None,
+            serial: 0,
+            since: None,
+            old: vec![],
+            ready_tx: Some(tx),
+            paused: false,
+            once: false,
+            ended: String::new(),
+        }
+    });
+    cx.set_global(VideoHandle(v));
+}
+
+impl Video {
+    /// the GPU player, made the first time it's needed (the window must exist)
+    #[cfg(target_os = "windows")]
+    fn native(&mut self) -> Option<Arc<couch::player::clip::Clip>> {
+        if self.native.is_none() {
+            let host = crate::mini::clip_hwnd();
+            if host == 0 {
+                return None;
+            }
+            match couch::player::clip::Clip::new(host as i64) {
+                Ok(c) => {
+                    if let Some(tx) = self.ready_tx.clone() {
+                        c.on_ready(move || {
+                            let _ = tx.unbounded_send(());
+                        });
+                    }
+                    self.native = Some(c);
+                }
+                Err(e) => log::warn!("gpu clips off: {e}"),
+            }
+        }
+        self.native.clone()
+    }
+
+    /// Play `url` for `owner` (looping). Trailers have sound; the billboard
+    /// and previews follow their sound switch (the speaker button on them).
+    pub fn play(&mut self, owner: &str, url: &str, cx: &mut Context<Self>) {
+        self.play_with(owner, url, true, cx)
+    }
+
+    /// The billboard plays its trailer once, then goes back to its picture.
+    pub fn play_once(&mut self, owner: &str, url: &str, cx: &mut Context<Self>) {
+        self.play_with(owner, url, false, cx);
+        // watch for its end (nothing else redraws the page when it just stops)
+        let o = owner.to_string();
+        cx.spawn(async move |this, cx| loop {
+            crate::timer::after(std::time::Duration::from_millis(500)).await;
+            let Ok(go) = this.update(cx, |v, cx| {
+                let _ = &cx; // (used on Windows)
+                if v.owner != o {
+                    return false;
+                }
+                #[cfg(target_os = "windows")]
+                if let Some(n) = &v.native {
+                    if n.is_ready() && n.ended() {
+                        n.stop();
+                        v.ended = v.owner.clone();
+                        v.owner.clear();
+                        v.since = None;
+                        cx.notify();
+                        return false;
+                    }
+                }
+                true
+            }) else {
+                break;
+            };
+            if !go {
+                break;
+            }
+        })
+        .detach();
+    }
+
+    /// Is `owner`'s clip showing pictures yet?
+    pub fn showing(&self, owner: &str) -> bool {
+        if self.owner != owner {
+            return false;
+        }
+        #[cfg(target_os = "windows")]
+        if let Some(n) = &self.native {
+            return n.is_ready();
+        }
+        self.image.is_some()
+    }
+
+    fn play_with(&mut self, owner: &str, url: &str, looping: bool, cx: &mut Context<Self>) {
+        // the billboard only plays while its page is the one on screen
+        if owner.starts_with("hero:") && !owner.starts_with(&format!("hero:{}:", home_scope())) {
+            return;
+        }
+        let muted = is_muted(owner);
+        self.once = !looping;
+        self.paused = false;
+        self.owner = owner.to_string();
+        self.since = None;
+        if let Some(i) = self.image.take() {
+            self.old.push(i);
+        }
+        #[cfg(target_os = "windows")]
+        if let Some(n) = self.native() {
+            n.play_with(url, muted, looping);
+            cx.notify();
+            return;
+        }
+        if self.surface.is_none() {
+            self.surface = couch::player::surface::Surface::new(640, 360).map_err(|e| log::warn!("ui video off: {e}")).ok();
+            if let (Some(s), Some(tx)) = (&self.surface, self.ready_tx.clone()) {
+                s.on_frame(move || {
+                    let _ = tx.unbounded_send(());
+                });
+            }
+        }
+        let Some(s) = &self.surface else { return };
+        s.set_muted(muted);
+        // the billboard gets a sharper picture than a card
+        if owner.starts_with("hero:") || owner.starts_with("trailer:") {
+            s.set_size(1280, 720);
+        } else {
+            s.set_size(640, 360);
+        }
+        s.play(url, None);
+        cx.notify();
+    }
+
+    /// Stop, if `owner` is still the one showing.
+    pub fn stop(&mut self, owner: &str, cx: &mut Context<Self>) {
+        if self.owner != owner {
+            return;
+        }
+        self.owner.clear();
+        self.since = None;
+        #[cfg(target_os = "windows")]
+        if let Some(n) = &self.native {
+            n.stop();
+        }
+        if let Some(s) = &self.surface {
+            s.stop();
+        }
+        if let Some(i) = self.image.take() {
+            self.old.push(i);
+        }
+        cx.notify();
+    }
+
+    /// Stop whatever's showing if its owner starts with `prefix` (leaving a page).
+    pub fn stop_prefix(&mut self, prefix: &str, cx: &mut Context<Self>) {
+        if self.owner.starts_with(prefix) {
+            let o = self.owner.clone();
+            self.stop(&o, cx);
+        }
+    }
+
+    /// Pause / resume, if `owner` is the one showing.
+    pub fn set_paused(&mut self, owner: &str, paused: bool) {
+        if self.owner != owner || self.paused == paused {
+            return;
+        }
+        self.paused = paused;
+        #[cfg(target_os = "windows")]
+        if let Some(n) = &self.native {
+            n.set_paused(paused);
+        }
+        if let Some(s) = &self.surface {
+            s.set_paused(paused);
+        }
+    }
+
+    pub fn set_muted(&self, muted: bool) {
+        #[cfg(target_os = "windows")]
+        if let Some(n) = &self.native {
+            n.set_muted(muted);
+        }
+        if let Some(s) = &self.surface {
+            s.set_muted(muted);
+        }
+    }
+
+    /// What `owner`'s clip shows now (None while loading or not theirs).
+    pub fn frame(&mut self, owner: &str, window: &mut Window) -> Option<Pic> {
+        // free the frames that were replaced (GPU atlas)
+        for i in self.old.drain(..) {
+            let _ = window.drop_image(i);
+        }
+        if self.owner != owner {
+            return None;
+        }
+        #[cfg(target_os = "windows")]
+        if let Some(n) = &self.native {
+            // played once and done: back to the picture
+            if self.once && n.is_ready() && n.ended() {
+                n.stop();
+                self.owner.clear();
+                self.since = None;
+                return None;
+            }
+            return n.is_ready().then_some(Pic::Native);
+        }
+        let s = self.surface.as_ref()?;
+        let serial = s.serial.load(std::sync::atomic::Ordering::Relaxed);
+        if serial != self.serial {
+            self.serial = serial;
+            if let Some(f) = s.frame() {
+                if let Some(buf) = image::RgbaImage::from_raw(f.width, f.height, f.bgra.clone()) {
+                    let img = Arc::new(RenderImage::new(smallvec::smallvec![image::Frame::new(buf)]));
+                    if let Some(prev) = self.image.replace(img) {
+                        let _ = window.drop_image(prev);
+                    }
+                    if self.since.is_none() {
+                        self.since = Some(Instant::now());
+                    }
+                }
+            }
+        }
+        self.image.clone().map(Pic::Image)
+    }
+}
+
+// ------------------------------------------------- the see-through spot
+// The element that shows a GPU clip leaves a hole in couch's background;
+// the clip's window is moved under it after the frame is painted.
+
+thread_local! {
+    /// (the clip's whole area, the part of it on screen, corner radius)
+    static HOLE: Cell<Option<(Bounds<Pixels>, Bounds<Pixels>, f32)>> = const { Cell::new(None) };
+}
+
+/// Start of a frame: no spot yet.
+pub fn begin_frame() {
+    HOLE.with(|h| h.set(None));
+}
+
+/// Where the GPU clip shows: fills its parent; `radius` rounds its corners.
+pub fn spot(radius: f32) -> impl IntoElement {
+    canvas(
+        move |bounds, window, _| {
+            let visible = bounds.intersect(&window.content_mask().bounds);
+            if visible.size.width > px(1.) && visible.size.height > px(1.) {
+                HOLE.with(|h| h.set(Some((bounds, visible, radius))));
+            }
+        },
+        |_, _, _, _| {},
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+}
+
+/// where a clip is showing through the window right now (nothing may paint there)
+pub fn hole() -> Option<Bounds<Pixels>> {
+    HOLE.with(|h| h.get()).map(|(_, visible, _)| visible)
+}
+
+/// couch's background, with the hole where a GPU clip shows; then the
+/// clip's window goes under it (or away when nothing's showing).
+pub fn paint_bg(color: gpui::Hsla) -> impl IntoElement {
+    canvas(
+        |_, _, _| (),
+        move |bounds, _, window, cx| {
+            let hole = HOLE.with(|h| h.get());
+            match hole {
+                None => window.paint_quad(gpui::fill(bounds, color)),
+                Some((full, r, radius)) => {
+                    let (o, s) = (bounds.origin, bounds.size);
+                    let quads = [
+                        Bounds::new(o, gpui::size(s.width, r.top() - o.y)),
+                        Bounds::new(gpui::point(o.x, r.bottom()), gpui::size(s.width, o.y + s.height - r.bottom())),
+                        Bounds::new(gpui::point(o.x, r.top()), gpui::size(r.left() - o.x, r.size.height)),
+                        Bounds::new(gpui::point(r.right(), r.top()), gpui::size(o.x + s.width - r.right(), r.size.height)),
+                    ];
+                    for q in quads {
+                        if q.size.width > px(0.) && q.size.height > px(0.) {
+                            window.paint_quad(gpui::fill(q, color));
+                        }
+                    }
+                    // round the spot's corners: a ring in the background colour
+                    if radius > 0. {
+                        let d = px(radius);
+                        window.paint_quad(gpui::quad(
+                            full.dilate(d),
+                            px(radius * 2.),
+                            gpui::transparent_black(),
+                            d,
+                            color,
+                            gpui::BorderStyle::Solid,
+                        ));
+                    }
+                }
+            }
+            // the clip window follows (after this frame; it messages the window)
+            let scale = window.scale_factor();
+            // the window covers the whole clip (so it doesn't squash while
+            // half off screen); its shape is just the part that shows
+            let place = hole.map(|(full, r, rad)| {
+                let p = |v: Pixels| (f32::from(v) * scale).round() as i32;
+                crate::mini::ClipPlace {
+                    x: p(full.origin.x),
+                    y: p(full.origin.y),
+                    w: p(full.size.width),
+                    h: p(full.size.height),
+                    vis: (p(r.origin.x - full.origin.x), p(r.origin.y - full.origin.y), p(r.size.width), p(r.size.height)),
+                    r: (rad * scale).round() as i32,
+                }
+            });
+            cx.defer(move |_| crate::mini::place_clip(place));
+        },
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+}
+
+/// The clip on top of a picture, as children of the element that shows it:
+/// software frames fade in over the art; a GPU clip leaves a spot and the
+/// art fades out on top of it.
+pub fn layers(art: Option<String>, pic: &Pic, a: f32, radius: f32) -> Vec<AnyElement> {
+    let art_img = |op: f32| art.clone().map(|u| img(u).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(op).into_any_element());
+    match pic {
+        Pic::Image(f) => art_img(1.).into_iter().chain(std::iter::once(img(f.clone()).absolute().top_0().left_0().size_full().object_fit(ObjectFit::Cover).opacity(a).into_any_element())).collect(),
+        Pic::Native => std::iter::once(spot(radius).into_any_element()).chain(art_img(1. - a)).collect(),
+    }
+}
+
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+pub fn is_native(p: &Option<Pic>) -> bool {
+    matches!(p, Some(Pic::Native))
+}
+
+#[allow(dead_code)]
+fn _unused() -> gpui::Div {
+    div()
+}
+
+// ---------------------------------------------------------- card previews
+// Rest on a card for a moment and it plays a clip in place. Each hover starts
+// fresh; leaving the card stops it.
+
+struct Pending(String);
+
+thread_local! {
+    /// when a clip last failed to show (then trailers only, for a while)
+    static CLIPS_BAD: Cell<Option<Instant>> = const { Cell::new(None) };
+}
+
+/// how long to rest on a card before it grows and plays (seconds)
+pub fn dwell_secs() -> f32 {
+    (couch::state::get().core.settings().general.hover_delay_ms as f32 / 2000.).clamp(0.45, 0.9)
+}
+impl Global for Pending {}
+
+pub fn hover(m: &crate::api::Meta, on: bool, cx: &mut App) {
+    let owner = format!("card:{}", m.id);
+    if !on {
+        if cx.try_global::<Pending>().map_or(false, |p| p.0 == owner) {
+            cx.set_global(Pending(String::new()));
+        }
+        get(cx).update(cx, |v, cx| v.stop(&owner, cx));
+        return;
+    }
+    // previews on hover: off in settings (or a right-click menu is up)
+    if !couch::state::get().core.settings().general.hover_previews || crate::views::menu::is_open() {
+        return;
+    }
+    cx.set_global(Pending(owner.clone()));
+    // rest on it a moment (passing over a row doesn't set every card off)
+    let delay = (dwell_secs() * 1000.) as u64;
+    let (id, name, year, kind) = (m.id.clone(), m.name.clone(), m.year(), m.kind.clone());
+    cx.spawn(async move |cx| {
+        crate::timer::after(std::time::Duration::from_millis(delay)).await;
+        let still = cx.update(|cx| cx.try_global::<Pending>().map_or(false, |p| p.0 == owner));
+        if !still {
+            return;
+        }
+        // clips that wouldn't load lately (ClipCafe's daily limit): straight to the trailer
+        let skip_clips = CLIPS_BAD.with(|c| c.get().map_or(false, |t| t.elapsed().as_secs() < 30 * 60));
+        let url = match std::env::var("COUCH_TEST_CLIP") {
+            Ok(f) => Some(f),
+            Err(_) if skip_clips => None,
+            Err(_) => crate::api::call::<Option<String>>("clip_url", serde_json::json!({ "id": id, "title": name, "year": year })).await.ok().flatten(),
+        };
+        // no clip for it (Money Heist, The Matrix…): its trailer instead
+        let url = match url {
+            Some(u) => Some(u),
+            None => crate::api::call::<Option<String>>("trailer_get", serde_json::json!({ "kind": kind, "id": id })).await.ok().flatten().filter(|k| !k.is_empty()).map(|k| format!("https://www.youtube.com/watch?v={k}")),
+        };
+        let Some(url) = url else { return };
+        let clip = !url.contains("youtube.com");
+        let _ = cx.update(|cx| {
+            if cx.try_global::<Pending>().map_or(false, |p| p.0 == owner) {
+                get(cx).update(cx, |v, cx| v.play(&owner, &url, cx));
+            }
+        });
+        // a clip that never shows up (the clip server couldn't fetch it): the trailer
+        if clip {
+            crate::timer::after(std::time::Duration::from_millis(3500)).await;
+            let stuck = cx.update(|cx| cx.try_global::<Pending>().map_or(false, |p| p.0 == owner) && !get(cx).read(cx).showing(&owner));
+            if stuck {
+                CLIPS_BAD.with(|c| c.set(Some(Instant::now())));
+                let t = crate::api::call::<Option<String>>("trailer_get", serde_json::json!({ "kind": kind, "id": id })).await.ok().flatten().filter(|k| !k.is_empty());
+                if let Some(k) = t {
+                    let url = format!("https://www.youtube.com/watch?v={k}");
+                    let _ = cx.update(|cx| {
+                        if cx.try_global::<Pending>().map_or(false, |p| p.0 == owner) {
+                            get(cx).update(cx, |v, cx| v.play(&owner, &url, cx));
+                        }
+                    });
+                }
+            }
+        }
+    })
+    .detach();
+}

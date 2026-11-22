@@ -14,6 +14,7 @@ pub enum AppError {
     Db(#[from] rusqlite::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    #[cfg(feature = "tauri-app")]
     #[error(transparent)]
     Tauri(#[from] tauri::Error),
     #[error(transparent)]

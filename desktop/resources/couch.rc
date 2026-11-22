@@ -1,0 +1,3 @@
+// couch's icon (id 1: GPUI uses it for the window and the taskbar).
+// The manifest (DPI awareness, common controls) comes from GPUI.
+1 ICON "couch.ico"

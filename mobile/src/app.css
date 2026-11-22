@@ -1,0 +1,81 @@
+/* couch on iPhone and iPad: the same night-time look as the PC app.
+   Deep black, warm white type, neon pink, lamp orange, liquid glass. */
+@font-face { font-family: "Satoshi"; src: url("/fonts/Satoshi-Variable.woff2") format("woff2"); font-weight: 300 900; font-display: swap; }
+@font-face { font-family: "Tempo"; src: url("/fonts/DisplayName-Tempo.ttf"); font-display: swap; }
+@font-face { font-family: "Sakura"; src: url("/fonts/DisplayName-Sakura.ttf"); font-display: swap; }
+@font-face { font-family: "Jellybean"; src: url("/fonts/DisplayName-Jellybean.ttf"); font-display: swap; }
+@font-face { font-family: "Modern"; src: url("/fonts/DisplayName-Modern.ttf"); font-display: swap; }
+@font-face { font-family: "Medieval"; src: url("/fonts/DisplayName-Medieval.otf"); font-display: swap; }
+@font-face { font-family: "8Bit"; src: url("/fonts/DisplayName-8Bit.ttf"); font-display: swap; }
+@font-face { font-family: "Vampyre"; src: url("/fonts/DisplayName-Vampyre.ttf"); font-display: swap; }
+@font-face { font-family: "Monkey Bars"; src: url("/fonts/DisplayName-MonkeyBars.ttf"); font-display: swap; }
+@font-face { font-family: "Mainframe"; src: url("/fonts/DisplayName-Mainframe.ttf"); font-display: swap; }
+@font-face { font-family: "Headbang"; src: url("/fonts/DisplayName-Headbang.ttf"); font-display: swap; }
+@font-face { font-family: "Journal"; src: url("/fonts/DisplayName-Journal.ttf"); font-display: swap; }
+@font-face { font-family: "Bangers"; src: url("/fonts/Bangers-Regular.ttf"); font-display: swap; }
+@font-face { font-family: "BioRhyme"; src: url("/fonts/BioRhyme.ttf"); font-display: swap; }
+
+:root {
+  --bg: #000;
+  --surface: #0a0809;
+  --surface2: #141113;
+  --text: #f4eaf0;
+  --label2: rgba(244, 234, 240, 0.6);
+  --label3: rgba(244, 234, 240, 0.34);
+  --neon: #e0309a;
+  --neon-soft: #ff6ec4;
+  --lamp: #ffb25c;
+  --g: 20px; /* page gutter */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  color-scheme: dark;
+}
+@media (min-width: 900px) {
+  :root { --g: 40px; }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0; height: 100%; background: var(--bg); color: var(--text);
+  font-family: "Satoshi", -apple-system, system-ui, sans-serif; font-weight: 500;
+  -webkit-font-smoothing: antialiased; overscroll-behavior: none;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+#app { height: 100%; }
+img { display: block; -webkit-user-drag: none; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+input { font: inherit; color: inherit; -webkit-user-select: text; user-select: text; }
+
+/* liquid glass: a real blur of what's behind, a pale fill, a bright rim and grain */
+.glass {
+  position: relative;
+  background: rgba(30, 24, 28, 0.42);
+  -webkit-backdrop-filter: blur(28px) saturate(170%);
+  backdrop-filter: blur(28px) saturate(170%);
+  border: 0.5px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.35), inset 0 0.5px 0 rgba(255, 255, 255, 0.22);
+}
+.glass::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; opacity: 0.05;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+.btn {
+  height: 50px; padding: 0 24px; border-radius: 999px; display: inline-flex; align-items: center; gap: 9px;
+  font-weight: 700; font-size: 17px; transition: transform 0.2s var(--ease), opacity 0.2s;
+}
+.btn:active { transform: scale(0.96); }
+.btn.primary { background: var(--text); color: #000; }
+.btn.round { width: 50px; padding: 0; justify-content: center; }
+.row-title { font-size: 21px; font-weight: 800; padding: 0 var(--g); margin: 26px 0 12px; letter-spacing: -0.01em; }
+.scroller { display: flex; gap: 12px; overflow-x: auto; padding: 0 var(--g); scroll-snap-type: x proximity; scrollbar-width: none; }
+.scroller::-webkit-scrollbar, .page::-webkit-scrollbar { display: none; }
+.scroller > * { scroll-snap-align: start; scroll-margin-left: var(--g); }
+.muted { color: var(--label2); }
+.faint { color: var(--label3); }
+.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.clamp3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.page { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding-bottom: calc(110px + var(--safe-b)); scrollbar-width: none; }
+.press { transition: transform 0.25s var(--ease); }
+.press:active { transform: scale(0.97); }

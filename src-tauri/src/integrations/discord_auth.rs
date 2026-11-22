@@ -147,7 +147,7 @@ async fn welcome(core: &Core, tok: &Value) -> AppResult<Value> {
 
 #[cfg(desktop)]
 pub async fn desktop_app(core: &Core) -> AppResult<Value> {
-    let code = tauri::async_runtime::spawn_blocking(ipc_authorize).await.map_err(|e| AppError::msg(e.to_string()))??;
+    let code = crate::rt::spawn_blocking(ipc_authorize).await.map_err(|e| AppError::msg(e.to_string()))??;
     let r = core
         .http
         .client()

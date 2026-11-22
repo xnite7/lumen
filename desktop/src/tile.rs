@@ -1,0 +1,234 @@
+//! The Windows 10 live tile. couch.exe gets an app identity from a small
+//! signed "sparse" package (couch.msix, shipped beside it): registered once
+//! (trusting its certificate is the one admin prompt), after which couch can
+//! feed its Start tile. The tile flips through the crew's latest (with their
+//! face peeking in), what you're in the middle of and something from your
+//! plan to watch, and keeps doing so after couch is closed.
+#![cfg_attr(not(target_os = "windows"), allow(dead_code))]
+#[cfg(target_os = "windows")]
+use std::time::Duration;
+use crate::api;
+use gpui::App;
+use serde_json::{json, Value};
+
+/// Get going: register the package if it's shipped and not done yet, then
+/// keep the tile fresh (every 20 minutes while couch runs).
+pub fn start(cx: &mut App) {
+    #[cfg(target_os = "windows")]
+    cx.spawn(async move |cx| {
+        crate::timer::after(Duration::from_secs(8)).await;
+        // the tile belongs to the installed (packaged) couch
+        if !crate::packaged::is_packaged() {
+            return;
+        }
+        loop {
+            let tiles = content().await;
+            if !tiles.is_empty() {
+                let _ = couch::rt::spawn_blocking(move || imp::push(&tiles)).await;
+            }
+            crate::timer::after(Duration::from_secs(20 * 60)).await;
+        }
+    })
+    .detach();
+    #[cfg(not(target_os = "windows"))]
+    let _ = cx;
+}
+
+/// Does couch run with its package identity (the tile is live)?
+pub fn live() -> bool {
+    crate::packaged::is_packaged()
+}
+
+/// the package's manifest version (resources/package/AppxManifest.xml)
+const PKG_VER: &str = "1.0.2.0";
+
+fn esc(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+}
+
+/// a picture the tile can fetch (http pictures must stay small)
+fn pic(u: Option<&str>, size: &str) -> Option<String> {
+    let u = u?;
+    if !u.starts_with("https://") {
+        return None;
+    }
+    let s = api::sized(u, size);
+    // metahub's big backdrops are too heavy for a tile
+    if s.contains("metahub.space/background") {
+        return None;
+    }
+    Some(s)
+}
+
+struct Tile {
+    art: Option<String>,
+    peek: Option<String>,
+    top: String,
+    title: String,
+    sub: String,
+}
+
+impl Tile {
+    fn xml(&self) -> String {
+        let art = self.art.as_ref().map(|a| format!(r#"<image src="{}" placement="background" hint-overlay="45"/>"#, esc(a))).unwrap_or_default();
+        let peek = self.peek.as_ref().map(|p| format!(r#"<image src="{}" placement="peek" hint-crop="circle"/>"#, esc(p))).unwrap_or_default();
+        let (top, title, sub) = (esc(&self.top), esc(&self.title), esc(&self.sub));
+        format!(
+            r#"<tile><visual branding="name" displayName="couch">
+<binding template="TileMedium" hint-textStacking="bottom">{art}{peek}<text hint-style="captionSubtle" hint-wrap="true" hint-maxLines="1">{top}</text><text hint-style="caption" hint-wrap="true" hint-maxLines="2">{title}</text></binding>
+<binding template="TileWide" hint-textStacking="bottom">{art}{peek}<text hint-style="captionSubtle">{top}</text><text hint-style="body">{title}</text><text hint-style="captionSubtle">{sub}</text></binding>
+<binding template="TileLarge" hint-textStacking="bottom">{art}{peek}<text hint-style="captionSubtle">{top}</text><text hint-style="subtitle" hint-wrap="true" hint-maxLines="2">{title}</text><text hint-style="bodySubtle" hint-wrap="true" hint-maxLines="3">{sub}</text></binding>
+</visual></tile>"#
+        )
+    }
+}
+
+/// up to five tiles, all your own: what you're in the middle of (up to three),
+/// then from your plan to watch
+async fn content() -> Vec<String> {
+    // only your own titles (no faces, nothing from the crew)
+    let mut out: Vec<Tile> = vec![];
+    if let Ok(cw) = api::call::<Vec<Value>>("continue_watching", json!({})).await {
+        for v in cw.iter().take(3) {
+            let vid = v["state"]["video_id"].as_str().unwrap_or("");
+            let p: Vec<&str> = vid.split(':').collect();
+            out.push(Tile {
+                art: pic(v["background"].as_str(), "w300").or_else(|| pic(v["poster"].as_str(), "w342")),
+                peek: None,
+                top: "pick up where you left off".into(),
+                title: v["name"].as_str().unwrap_or("").to_string(),
+                sub: if p.len() == 3 { format!("S{} E{}", p[1], p[2]) } else { String::new() },
+            });
+        }
+    }
+    // something from the plan to watch (Simkl), else what couch would feature
+    let cats = api::call::<Vec<Value>>("catalogs_list", json!({})).await.unwrap_or_default();
+    if let Some(c) = cats.iter().find(|c| c["id"] == "simkl-plantowatch").cloned() {
+        if let Ok(items) = api::call::<Vec<Value>>("catalog_fetch", json!({ "catalog": c, "extra": [] })).await {
+            let n = items.len();
+            let k = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()) / 1200) as usize;
+            for step in 0..n.min(2) {
+                let v = &items[(k + step * (n / 2).max(1)) % n];
+                out.push(Tile {
+                    art: pic(v["background"].as_str(), "w300").or_else(|| pic(v["poster"].as_str(), "w342")),
+                    peek: None,
+                    top: "on your plan to watch".into(),
+                    title: v["name"].as_str().unwrap_or("").to_string(),
+                    sub: v["releaseInfo"].as_str().unwrap_or("").to_string(),
+                });
+            }
+        }
+    }
+    out.into_iter().take(5).map(|t| t.xml()).collect()
+}
+
+#[cfg(target_os = "windows")]
+mod imp {
+    use std::os::windows::process::CommandExt;
+    use windows::core::HSTRING;
+    use windows::Data::Xml::Dom::XmlDocument;
+    use windows::UI::Notifications::{TileNotification, TileUpdateManager};
+
+    const NO_WINDOW: u32 = 0x0800_0000;
+
+    pub fn has_identity() -> bool {
+        let mut len = 0u32;
+        let r = unsafe { windows::Win32::Storage::Packaging::Appx::GetCurrentPackageFullName(&mut len, None) };
+        // 15700 = APPMODEL_ERROR_NO_PACKAGE
+        r.0 != 15700
+    }
+
+    fn ps(cmd: &str) -> bool {
+        std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", cmd])
+            .creation_flags(NO_WINDOW)
+            .status()
+            .map_or(false, |s| s.success())
+    }
+
+    /// Register couch.msix (beside the exe) with the exe's folder as its
+    /// content. Once per shipped package; true when it just got registered.
+    pub fn register() -> bool {
+        let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) else { return false };
+        let msix = dir.join("couch.msix");
+        let cer = dir.join("couch.cer");
+        if !msix.exists() {
+            log(&dir, "no couch.msix beside couch.exe (the build had no signing key)");
+            return false;
+        }
+        // only when couch has no identity yet. Re-registering a newer package
+        // while couch runs (deferred to its next start) left Windows unable to
+        // start couch.exe at all, so a registered package is left alone
+        let db = &couch::state::get().core.db;
+        if has_identity() {
+            return false;
+        }
+        let stamp = super::PKG_VER;
+        let q = |p: &std::path::Path| p.display().to_string().replace('\'', "''");
+        let add = format!("Add-AppxPackage -Path '{}' -ExternalLocation '{}' -ForceUpdateFromAnyVersion -ErrorAction Stop", q(&msix), q(&dir));
+        let (mut ok, mut why) = ps_out(&add);
+        log(&dir, &format!("register: {} {why}", if ok { "ok" } else { "failed" }));
+        if !ok && cer.exists() {
+            // Windows doesn't trust couch's certificate yet: one admin prompt to
+            // add it to Trusted People, then try again
+            let trust = format!(
+                "Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile','-Command','Import-Certificate -FilePath ''{}'' -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople'",
+                q(&cer).replace('\'', "''")
+            );
+            let trusted = ps(&trust);
+            log(&dir, &format!("trust the certificate (admin prompt): {}", if trusted { "done" } else { "declined or failed" }));
+            (ok, why) = ps_out(&add);
+            log(&dir, &format!("register again: {} {why}", if ok { "ok" } else { "failed" }));
+        }
+        if ok {
+            let _ = db.set("tile_pkg", &stamp.to_string());
+        }
+        if ok {
+            // the package has its own Start entry now: the old shortcut would be a twin
+            if let Some(programs) = dirs::data_dir().map(|a| a.join("Microsoft\\Windows\\Start Menu\\Programs")) {
+                let _ = std::fs::remove_file(programs.join("midnite couch (new).lnk"));
+            }
+            let _ = db.set("tile_live", &true);
+        }
+        ok
+    }
+
+    /// what happened, in tile.log beside couch.exe (for when the tile doesn't show)
+    fn log(dir: &std::path::Path, line: &str) {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("tile.log")) {
+            let _ = writeln!(f, "{} {line}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+        }
+    }
+
+    fn ps_out(cmd: &str) -> (bool, String) {
+        match std::process::Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", cmd]).creation_flags(NO_WINDOW).output() {
+            Ok(o) => (o.status.success(), String::from_utf8_lossy(&o.stderr).lines().filter(|l| !l.trim().is_empty()).take(3).collect::<Vec<_>>().join(" | ")),
+            Err(e) => (false, e.to_string()),
+        }
+    }
+
+    pub fn push(tiles: &[String]) {
+        unsafe {
+            let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED);
+        }
+        let go = || -> windows::core::Result<()> {
+            let up = TileUpdateManager::CreateTileUpdaterForApplication()?;
+            up.EnableNotificationQueue(true)?;
+            up.Clear()?;
+            for (i, x) in tiles.iter().enumerate() {
+                let doc = XmlDocument::new()?;
+                doc.LoadXml(&HSTRING::from(x.as_str()))?;
+                let n = TileNotification::CreateTileNotification(&doc)?;
+                n.SetTag(&HSTRING::from(format!("c{i}")))?;
+                up.Update(&n)?;
+            }
+            Ok(())
+        };
+        if let Err(e) = go() {
+            if let Some(dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
+                log(&dir, &format!("tile update failed: {e}"));
+            }
+        }
+    }
+}

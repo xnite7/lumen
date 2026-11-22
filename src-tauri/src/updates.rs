@@ -6,6 +6,10 @@ use crate::core::Core;
 use crate::error::{AppError, AppResult};
 use serde_json::{json, Value};
 
+#[cfg(feature = "tauri-app")]
+mod imp {
+use super::*;
+
 #[cfg(desktop)]
 async fn find(app: &tauri::AppHandle, core: &Core) -> AppResult<Option<tauri_plugin_updater::Update>> {
     use tauri_plugin_updater::UpdaterExt;
@@ -21,7 +25,8 @@ async fn find(app: &tauri::AppHandle, core: &Core) -> AppResult<Option<tauri_plu
 }
 
 /// { current, available: version | null, notes }
-pub async fn check(app: &tauri::AppHandle, core: &Core) -> AppResult<Value> {
+pub async fn check(core: &Core) -> AppResult<Value> {
+    let app = &crate::tauri_host::app();
     let current = app.package_info().version.to_string();
     #[cfg(desktop)]
     {
@@ -36,9 +41,10 @@ pub async fn check(app: &tauri::AppHandle, core: &Core) -> AppResult<Value> {
 }
 
 /// Download, install and restart into the new version.
-pub async fn install(app: &tauri::AppHandle, core: &Core) -> AppResult<()> {
+pub async fn install(core: &Core) -> AppResult<()> {
     #[cfg(desktop)]
     {
+        let app = &crate::tauri_host::app();
         let Some(u) = find(app, core).await? else { return Ok(()) };
         let h = app.clone();
         u.download_and_install(
@@ -54,7 +60,7 @@ pub async fn install(app: &tauri::AppHandle, core: &Core) -> AppResult<()> {
     }
     #[cfg(not(desktop))]
     {
-        let _ = (app, core);
+        let _ = core;
         Err(AppError::msg("on iPhone, updates come through SideStore"))
     }
 }
@@ -65,9 +71,10 @@ pub async fn install(app: &tauri::AppHandle, core: &Core) -> AppResult<()> {
 static PENDING: parking_lot::Mutex<Option<(tauri_plugin_updater::Update, Vec<u8>)>> = parking_lot::Mutex::new(None);
 
 /// Fetch the update in the background and keep it for the moment the app closes.
-pub async fn install_on_exit(app: &tauri::AppHandle, core: &Core) -> AppResult<()> {
+pub async fn install_on_exit(core: &Core) -> AppResult<()> {
     #[cfg(desktop)]
     {
+        let app = &crate::tauri_host::app();
         let Some(u) = find(app, core).await? else { return Ok(()) };
         let h = app.clone();
         let bytes = u
@@ -85,7 +92,7 @@ pub async fn install_on_exit(app: &tauri::AppHandle, core: &Core) -> AppResult<(
     }
     #[cfg(not(desktop))]
     {
-        let _ = (app, core);
+        let _ = core;
         Err(AppError::msg("on iPhone, updates come through SideStore"))
     }
 }
@@ -99,3 +106,22 @@ pub fn install_pending() {
         }
     }
 }
+}
+#[cfg(feature = "tauri-app")]
+pub use imp::*;
+
+// Without Tauri (the GPUI app) updates aren't wired yet.
+#[cfg(not(feature = "tauri-app"))]
+pub async fn check(_core: &Core) -> AppResult<Value> {
+    Ok(json!({ "current": env!("CARGO_PKG_VERSION"), "available": null }))
+}
+#[cfg(not(feature = "tauri-app"))]
+pub async fn install(_core: &Core) -> AppResult<()> {
+    Err(AppError::msg("updates aren't in this build yet"))
+}
+#[cfg(not(feature = "tauri-app"))]
+pub async fn install_on_exit(_core: &Core) -> AppResult<()> {
+    Err(AppError::msg("updates aren't in this build yet"))
+}
+#[cfg(not(feature = "tauri-app"))]
+pub fn install_pending() {}

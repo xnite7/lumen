@@ -182,6 +182,9 @@ pub fn set_watched(core: &Core, meta: &Value, video_id: Option<&str>, watched: b
             if watched {
                 item["state"]["timesWatched"] = json!(item["state"]["timesWatched"].as_i64().unwrap_or(0).max(1));
                 item["state"]["timeOffset"] = json!(0);
+            } else {
+                // unwatched means unwatched: no "seen it before" left behind to say otherwise
+                item["state"]["timesWatched"] = json!(0);
             }
         }
     }

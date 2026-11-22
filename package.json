@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "dev:mobile": "vite --config mobile/vite.config.ts",
+    "build:mobile": "vite build --config mobile/vite.config.ts",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "tauri": "tauri",

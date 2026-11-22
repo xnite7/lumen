@@ -52,7 +52,7 @@ impl Torrents {
                 let port = listener.socket().local_addr()?.port();
                 let api = Api::new(session.clone(), None, None);
                 let http = HttpApi::new(api, Some(HttpApiOptions { read_only: true, ..Default::default() }));
-                tauri::async_runtime::spawn(async move {
+                crate::rt::spawn(async move {
                     if let Err(e) = http.make_http_api_and_run(listener, None).await {
                         log::error!("torrent http: {e:#}");
                     }

@@ -104,7 +104,7 @@ pub fn descriptor() -> AddonDescriptor {
             id: "com.midnite.couch.builtin".into(),
             version: env!("CARGO_PKG_VERSION").into(),
             name: "couch".into(),
-            description: Some("Simkl lists, TMDB browse rows, Top 10 and richer artwork — built in.".into()),
+            description: Some("Simkl lists, TMDB browse rows, Top 10 and richer artwork, built in.".into()),
             logo: None,
             background: None,
             types: vec!["movie".into(), "series".into(), "all".into()],

@@ -9,5 +9,17 @@ fn main() {
         println!("cargo:rustc-link-search=native={dir}");
         println!("cargo:rerun-if-env-changed=MPV_LIB_DIR");
     }
-    tauri_build::build()
+    #[cfg(feature = "tauri-app")]
+    tauri_build::build();
+    // without Tauri, set the same desktop/mobile switches it would
+    #[cfg(not(feature = "tauri-app"))]
+    {
+        println!("cargo::rustc-check-cfg=cfg(desktop)");
+        println!("cargo::rustc-check-cfg=cfg(mobile)");
+        if target == "ios" || target == "android" {
+            println!("cargo:rustc-cfg=mobile");
+        } else {
+            println!("cargo:rustc-cfg=desktop");
+        }
+    }
 }

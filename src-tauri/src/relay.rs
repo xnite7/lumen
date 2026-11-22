@@ -17,11 +17,15 @@ use tokio::net::{TcpListener, TcpStream};
 struct Target {
     url: String,
     headers: Vec<(String, String)>,
+    /// the same film, whoever registered it: one id (the shared cache's key)
+    id: u64,
 }
 
 pub struct Relay {
     port: u16,
     targets: Mutex<HashMap<String, Arc<Target>>>,
+    /// pieces of films on disk, shared by everyone reading them
+    cache: Mutex<Option<Arc<crate::stream_cache::ChunkCache>>>,
 }
 
 impl Relay {
@@ -33,14 +37,14 @@ impl Relay {
         let client = Arc::new(client);
         let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
         let port = listener.local_addr()?.port();
-        let relay = Arc::new(Self { port, targets: Mutex::new(HashMap::new()) });
+        let relay = Arc::new(Self { port, targets: Mutex::new(HashMap::new()), cache: Mutex::new(None) });
         let r = relay.clone();
-        tauri::async_runtime::spawn(async move {
+        crate::rt::spawn(async move {
             loop {
                 let Ok((sock, _)) = listener.accept().await else { continue };
                 let r = r.clone();
                 let http = client();
-                tauri::async_runtime::spawn(async move {
+                crate::rt::spawn(async move {
                     if let Err(e) = r.serve(http, sock).await {
                         log::debug!("relay: {e}");
                     }
@@ -51,6 +55,18 @@ impl Relay {
         Ok(relay)
     }
 
+    /// Keep pieces of films in this folder (shared by the player, the Atmos
+    /// decoder and the seek-bar stills).
+    pub fn use_cache(&self, dir: &std::path::Path) {
+        let mut c = self.cache.lock();
+        if c.is_none() {
+            match crate::stream_cache::ChunkCache::open(dir) {
+                Ok(k) => *c = Some(k),
+                Err(e) => log::warn!("stream cache unavailable: {e}"),
+            }
+        }
+    }
+
     /// Register a stream; returns the local address the player should open.
     pub fn register(&self, url: &str, headers: &[(String, String)]) -> String {
         let token = format!("{:016x}", rand_u64());
@@ -59,7 +75,13 @@ impl Relay {
         if t.len() > 64 {
             t.clear();
         }
-        t.insert(token.clone(), Arc::new(Target { url: url.to_string(), headers: headers.to_vec() }));
+        let id = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            url.hash(&mut h);
+            h.finish()
+        };
+        t.insert(token.clone(), Arc::new(Target { url: url.to_string(), headers: headers.to_vec(), id }));
         format!("http://127.0.0.1:{}/s/{token}/video.{ext}", self.port)
     }
 
@@ -94,6 +116,15 @@ impl Relay {
             return Ok(());
         };
 
+        // through the shared cache when the film's server takes ranges
+        let cache = self.cache.lock().clone();
+        if let Some(cache) = cache {
+            let t = crate::stream_cache::Target { id: target.id, url: &target.url, headers: &target.headers };
+            let known = cache.size(target.id).is_some() || cache.learn_size(&client, &t).await.is_ok();
+            if known {
+                return cache.serve(&client, &t, &mut sock, range.as_deref(), method == "HEAD").await;
+            }
+        }
         let mut req = if method == "HEAD" { client.head(&target.url) } else { client.get(&target.url) };
         for (k, v) in &target.headers {
             req = req.header(k.as_str(), v.as_str());

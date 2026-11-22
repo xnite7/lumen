@@ -43,6 +43,17 @@ pub async fn get(core: &Core, path: &str, params: &str, ttl: Duration) -> AppRes
     core.http.get_json_cached(&u, ttl, T).await
 }
 
+/// A title's logo from TMDB, by its IMDb id (tries series, then movie).
+pub async fn logo_for_imdb(core: &Core, imdb: &str) -> Option<String> {
+    for kind in ["tv", "movie"] {
+        if let Ok(Some(tid)) = tmdb_id_for_imdb(core, imdb, kind).await {
+            let v = get(core, &format!("/{kind}/{tid}/images"), "&include_image_language=en,null", DAY).await.ok()?;
+            return v.pointer("/logos/0/file_path").and_then(|p| p.as_str()).and_then(|p| img(Some(p), "w500"));
+        }
+    }
+    None
+}
+
 pub async fn tmdb_id_for_imdb(core: &Core, imdb: &str, kind: &str) -> AppResult<Option<u64>> {
     let v = get(core, &format!("/find/{imdb}"), "&external_source=imdb_id", MONTH).await?;
     let key = if kind == "tv" { "tv_results" } else { "movie_results" };
@@ -597,7 +608,7 @@ fn today() -> String {
 }
 
 /// A date `offset` days from today, as YYYY-MM-DD.
-fn day_str(offset: i64) -> String {
+pub fn day_str(offset: i64) -> String {
     let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() / 86_400).unwrap_or(0) as i64 + offset;
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
@@ -660,6 +671,8 @@ pub async fn calendar(core: &Core, mine: Vec<(String, String)>, follows: Vec<Val
         t["date"] = json!(d);
         t["label"] = json!(if en == 1 { if sn == 1 { "series premiere".to_string() } else { format!("season {sn} premiere") } } else { format!("S{sn} E{en}") });
         t["episode"] = json!(pick.get("name"));
+        t["season"] = json!(sn);
+        t["number"] = json!(en);
         t["still"] = json!(img(pick.get("still_path").and_then(|v| v.as_str()), "w780"));
         t["source"] = json!(src);
         if let Some(imdb) = full.pointer("/external_ids/imdb_id").and_then(|v| v.as_str()) {
@@ -808,7 +821,28 @@ pub async fn follow_feed(core: &Core, follows: &[Value]) -> Vec<Value> {
     let mut all: Vec<(String, Value)> = lists.into_iter().flatten().collect();
     all.sort_by(|a, b| b.0.cmp(&a.0));
     let mut seen = std::collections::HashSet::new();
-    all.into_iter().filter(|(_, t)| seen.insert(t["id"].as_str().unwrap_or("").to_string())).map(|(_, t)| t).take(40).collect()
+    let picked: Vec<Value> = all.into_iter().filter(|(_, t)| seen.insert(t["id"].as_str().unwrap_or("").to_string())).map(|(_, t)| t).take(40).collect();
+    // their title logos, like every other row: TMDB's own (new releases have
+    // one there first), else metahub's through the IMDb id
+    futures::stream::iter(picked)
+        .map(|mut t| async move {
+            let kind = t["tmdbKind"].as_str().unwrap_or("movie").to_string();
+            if let Some(tid) = t["tmdbId"].as_u64() {
+                let own = get(core, &format!("/{kind}/{tid}/images"), "&include_image_language=en,null", DAY)
+                    .await
+                    .ok()
+                    .and_then(|v| v.pointer("/logos/0/file_path").and_then(|p| p.as_str()).map(String::from));
+                if let Some(l) = own {
+                    t["logo"] = json!(img(Some(&l), "w500"));
+                } else if let Ok(Some(imdb)) = imdb_for_tmdb(core, &kind, tid).await {
+                    t["logo"] = json!(format!("https://images.metahub.space/logo/medium/{imdb}/img"));
+                }
+            }
+            t
+        })
+        .buffered(8)
+        .collect()
+        .await
 }
 
 pub async fn catalog(core: &Core, def: &CatalogDef, stremio_type: &str, genre: Option<&str>, skip: u32) -> AppResult<Vec<Value>> {

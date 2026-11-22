@@ -13,6 +13,18 @@
 pub mod depth3d;
 #[cfg(desktop)]
 mod mpv;
+#[cfg(desktop)]
+pub mod subsync;
+#[cfg(desktop)]
+pub mod headphones;
+#[cfg(desktop)]
+pub mod atmos;
+#[cfg(desktop)]
+pub mod ear;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub mod surface;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub mod clip;
 mod session;
 
 use crate::core::CoreRef;
@@ -83,12 +95,17 @@ impl Player {
     /// address to open and whether request headers were absorbed.
     async fn route(&self, url: &str, headers: &[(String, String)]) -> (String, bool) {
         let remote = url.starts_with("http") && !url.starts_with("http://127.0.0.1") && !url.starts_with("http://localhost");
-        if !remote || !self.core.settings.read().network.doh {
+        if !remote {
             return (url.to_string(), false);
         }
         let core = self.core.clone();
         match self.relay.get_or_try_init(|| crate::relay::Relay::start(move || core.http.client())).await {
-            Ok(r) => (r.register(url, headers), true),
+            Ok(r) => {
+                // (the computer app: pieces are shared, so a film is fetched once)
+                #[cfg(desktop)]
+                r.use_cache(&self.core.cache_dir.join("streams"));
+                (r.register(url, headers), true)
+            }
             Err(e) => {
                 log::warn!("relay unavailable: {e}");
                 (url.to_string(), false)
@@ -104,7 +121,7 @@ impl Player {
         self.session.lock().clone()
     }
 
-    async fn resolve_url(&self, stream: &Value) -> AppResult<Option<String>> {
+    pub async fn resolve_url(&self, stream: &Value) -> AppResult<Option<String>> {
         if let Some(u) = stream.get("url").and_then(|u| u.as_str()) {
             return Ok(Some(u.to_string()));
         }
@@ -159,7 +176,7 @@ impl Player {
             let vid = req.video_id.clone();
             let filename = req.stream.pointer("/behaviorHints/filename").and_then(|f| f.as_str()).map(|s| s.to_string());
             let size = req.stream.pointer("/behaviorHints/videoSize").and_then(|s| s.as_u64());
-            tauri::async_runtime::spawn(async move {
+            crate::rt::spawn(async move {
                 let mut extra = vec![];
                 if let Some(f) = filename {
                     extra.push(("filename".to_string(), f));
@@ -167,12 +184,22 @@ impl Player {
                 if let Some(s) = size {
                     extra.push(("videoSize".to_string(), s.to_string()));
                 }
-                let addons = crate::state::addons(&this.core.app);
+                let addons = crate::state::addons();
                 let subs = addons.subtitles(&kind, &vid, &extra).await;
                 this.backend.add_subtitles(&subs);
                 this.core.emit("player://subtitles", subs);
             });
             session::spawn_tracker(self.clone());
+            // the seek-bar still-maker opens the film too, a few seconds in
+            // (after the picture's going), so the first point at the bar is quick
+            {
+                let this = self.clone();
+                let at = start.unwrap_or(0.0);
+                crate::rt::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    let _ = crate::rt::spawn_blocking(move || this.backend.thumbs_warm(at)).await;
+                });
+            }
             Ok(OpenResult { mode: "native", url: Some(play_url), yt_id: None, start_at: start, start_pct, headers: None })
         }
         #[cfg(not(desktop))]
@@ -235,6 +262,116 @@ impl Player {
         {
             let _ = t;
             None
+        }
+    }
+
+    /// The intro ("intro") or credits ("credits") of the episode playing, by
+    /// ear (for shows TheIntroDB doesn't know). Null when not found.
+    pub async fn ear(&self, kind: &str) -> AppResult<Value> {
+        #[cfg(desktop)]
+        {
+            use serde_json::json;
+            let vid = self.session().map(|s| s.req.video_id.clone()).unwrap_or_default();
+            let parts: Vec<&str> = vid.split(':').collect();
+            if parts.len() != 3 {
+                return Ok(Value::Null);
+            }
+            let db = &self.core.db;
+            let seg_key = format!("ear_seg:{vid}:{kind}");
+            if let Some(v) = db.get::<Value>(&seg_key) {
+                return Ok(v);
+            }
+            let (src, dur, rate) = self.backend.film_source()?;
+            // a film too heavy to read ahead twice (a 4K remux): not now
+            if dur < 600.0 || rate > 3.5e6 {
+                return Ok(Value::Null);
+            }
+            let show_key = format!("ear:{}:{}", parts[0], parts[1]);
+            let (start, len, min) = if kind == "intro" { (0.0, (dur * 0.35).min(420.0), 150) } else { ((dur - 360.0).max(0.0), 360.0f64.min(dur), 200) };
+            let fp = tokio::task::spawn_blocking(move || ear::listen(&src, start, len)).await.map_err(|e| AppError::msg(e.to_string()))??;
+            let mut show: Value = db.get(&show_key).unwrap_or_else(|| json!({}));
+            let sig_name = format!("{kind}Sig");
+            let mut found: Option<(usize, usize)> = None;
+            if let Some(sig) = show[&sig_name].as_array().map(|a| a.iter().filter_map(|x| x.as_u64().map(|v| v as u16)).collect::<Vec<u16>>()) {
+                if let Some(p) = ear::find(&fp, &sig) {
+                    found = Some((p, sig.len()));
+                }
+            }
+            if found.is_none() {
+                // compare with earlier episodes' (the first match becomes the show's signature)
+                let list_name = format!("{kind}s");
+                let others: Vec<(String, Vec<u16>)> = show[&list_name]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter(|e| e["vid"].as_str() != Some(vid.as_str()))
+                    .map(|e| (e["vid"].as_str().unwrap_or("").to_string(), e["fp"].as_array().map(|a| a.iter().filter_map(|x| x.as_u64().map(|v| v as u16)).collect()).unwrap_or_default()))
+                    .collect();
+                let fp2 = fp.clone();
+                let hit = tokio::task::spawn_blocking(move || others.iter().find_map(|(_, o)| ear::common(&fp2, o, min).filter(|c| c.2 <= 1800))).await.ok().flatten();
+                if let Some((a, _, l)) = hit {
+                    show[&sig_name] = json!(fp[a..a + l]);
+                    found = Some((a, l));
+                }
+                // this episode's, for the next one to compare with (the last two kept)
+                let mut list: Vec<Value> = show[&list_name].as_array().cloned().unwrap_or_default();
+                list.retain(|e| e["vid"].as_str() != Some(vid.as_str()));
+                list.push(json!({ "vid": vid, "fp": fp }));
+                if list.len() > 2 {
+                    list.remove(0);
+                }
+                show[&list_name] = json!(list);
+                let _ = db.set(&show_key, &show);
+            }
+            let out = match found {
+                Some((p, l)) => {
+                    let a = start + p as f64 * ear::STEP;
+                    let mut b = a + l as f64 * ear::STEP;
+                    // credits that run (nearly) to the end: to the end
+                    if kind != "intro" && dur - b < 30.0 {
+                        b = dur;
+                    }
+                    json!({ "start": a, "end": b })
+                }
+                None => Value::Null,
+            };
+            if !out.is_null() {
+                let _ = db.set(&seg_key, &out);
+            }
+            return Ok(out);
+        }
+        #[cfg(not(desktop))]
+        {
+            let _ = kind;
+            Ok(Value::Null)
+        }
+    }
+
+    /// Line the chosen subtitle file up with the film's talking (ffmpeg listens).
+    pub async fn subs_autosync(&self) -> AppResult<Value> {
+        #[cfg(desktop)]
+        {
+            let src = self.backend.sync_source()?;
+            if let Some(stream) = src.embedded {
+                let d = tokio::task::spawn_blocking(move || subsync::run_embedded(&src, stream)).await.map_err(|e| AppError::msg(e.to_string()))??;
+                self.backend.set_sub_delay(d)?;
+                return Ok(serde_json::json!({ "offset": d, "ratio": 1.0, "builtIn": true, "confidence": 0.8 }));
+            }
+            let raw: Vec<u8> = if src.sub.starts_with("http") {
+                let r = self.core.http.client().get(&src.sub).timeout(std::time::Duration::from_secs(15)).send().await.map_err(|e| AppError::msg(format!("couldn't fetch the subtitles: {e}")))?;
+                r.bytes().await.map_err(|e| AppError::msg(e.to_string()))?.to_vec()
+            } else {
+                std::fs::read(src.sub.trim_start_matches("file://")).map_err(|e| AppError::msg(format!("couldn't read the subtitles: {e}")))?
+            };
+            let cache = self.core.cache_dir.clone();
+            let found = tokio::task::spawn_blocking(move || subsync::run(&src, &raw, &cache)).await.map_err(|e| AppError::msg(e.to_string()))??;
+            self.backend.add_synced(&found.file)?;
+            let confidence = (found.z / 10.).clamp(0., 1.);
+            return Ok(serde_json::json!({ "offset": found.offset, "ratio": found.ratio, "z": found.z, "confidence": confidence }));
+        }
+        #[cfg(not(desktop))]
+        {
+            Err(AppError::msg("auto-sync is on the computer app"))
         }
     }
 

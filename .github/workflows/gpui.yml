@@ -1,0 +1,159 @@
+name: Build couch (GPUI)
+
+on:
+  push:
+    branches: [gpui]
+  workflow_dispatch:
+
+env:
+  COUCH_TMDB_KEY: ${{ secrets.COUCH_TMDB_KEY }}
+  COUCH_TIDB_KEY: ${{ secrets.COUCH_TIDB_KEY }}
+  COUCH_MOTN_KEY: ${{ secrets.COUCH_MOTN_KEY }}
+  COUCH_AI_KEY: ${{ secrets.COUCH_AI_KEY }}
+  COUCH_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+  COUCH_ROLES: ${{ secrets.ALLOWED_ROLE_IDS }}
+  # the new app's own version line (the webview app is 0.3.x)
+  COUCH_VERSION: 0.9.${{ github.run_number }}
+
+concurrency:
+  group: gpui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # a quick look at whether the smart bar's model answers (status codes only)
+  ai-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/ai-check.py
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+          # keep GPUI (a path crate) and the engine's build too, not just crates.io ones
+          cache-workspace-crates: "true"
+          cache-all-crates: "true"
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Fetch GPUI (Zed's official source, the tag in desktop/Cargo.toml)
+        shell: bash
+        run: ./scripts/fetch-zed.sh
+      - name: Fetch libmpv
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/fetch-mpv.ps1
+      - name: Build
+        working-directory: desktop
+        run: cargo build --release
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item desktop/target/release/couch.exe dist/
+          Copy-Item src-tauri/mpv/libmpv-2.dll dist/
+          # Start menu tile (Windows 10): couch's colour + mark
+          Copy-Item desktop/resources/couch.VisualElementsManifest.xml dist/
+          # flat (the installers in older couch builds don't make folders)
+          Copy-Item desktop/resources/tiles/*.png dist/
+          # the live tile package reads its pictures from couch's folder
+          Copy-Item desktop/resources/package/*.png dist/
+          # Figtree for subtitles mpv draws itself
+          New-Item -ItemType Directory -Force dist/fonts | Out-Null
+          Copy-Item desktop/assets/fonts/Figtree-*.ttf dist/fonts/
+          # subtitle auto-sync listens to the film through ffmpeg (LGPL build, from
+          # BtbN's GitHub builds; its licence goes along)
+          Invoke-WebRequest https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg-x -Force
+          $ff = Get-ChildItem ffmpeg-x -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          Copy-Item $ff.FullName dist/
+          $lic = Get-ChildItem ffmpeg-x -Recurse -Filter LICENSE.txt | Select-Object -First 1
+          if ($lic) { Copy-Item $lic.FullName dist/ffmpeg-LICENSE.txt }
+          # headphone surround's room responses (SADIE II): their notice goes along
+          Copy-Item src-tauri/src/player/assets/SADIE-NOTICE.txt dist/
+          Copy-Item src-tauri/src/player/assets/SADIE-LICENSE.txt dist/
+          # trailers (YouTube) play through yt-dlp
+          Invoke-WebRequest https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile dist/yt-dlp.exe
+      - name: Package (MSIX, signed)
+        # couch as a packaged app: Windows' own installer, uninstall from Start.
+        # Signed with COUCH_SIGN_PFX (base64 .pfx, subject "CN=midnite couch")
+        # and COUCH_SIGN_PASS; couch.cer is its public half (trusted once per PC).
+        shell: pwsh
+        env:
+          PFX: ${{ secrets.COUCH_SIGN_PFX }}
+          PFX_PASS: ${{ secrets.COUCH_SIGN_PASS }}
+        run: |
+          if (-not $env:PFX) { Write-Host "::warning::COUCH_SIGN_PFX not set; no package"; exit 0 }
+          $kit = Get-Item "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64" | Where-Object { Test-Path (Join-Path $_.FullName makeappx.exe) } | Sort-Object { [version]$_.Parent.Name } -Descending | Select-Object -First 1
+          $makeappx = Join-Path $kit.FullName makeappx.exe
+          $signtool = Join-Path $kit.FullName signtool.exe
+          New-Item -ItemType Directory -Force pkg | Out-Null
+          Copy-Item dist/* pkg/ -Recurse
+          (Get-Content desktop/resources/msix/AppxManifest.xml -Raw).Replace('VERSION', "$env:COUCH_VERSION.0") | Set-Content pkg/AppxManifest.xml -Encoding utf8
+          # the resource index: lets Windows pick the unplated taskbar icons
+          # (pkg-Square44x44Logo.targetsize-N_altform-unplated.png) instead of
+          # a small couch on a coloured square
+          $makepri = Join-Path $kit.FullName makepri.exe
+          & $makepri createconfig /cf priconfig.xml /dq en-US /pv 10.0.0 /o
+          & $makepri new /pr pkg /cf priconfig.xml /mn pkg/AppxManifest.xml /of pkg/resources.pri /o
+          if ($LASTEXITCODE) { Write-Host "::warning::makepri failed; plain icons"; Remove-Item pkg/resources.pri -ErrorAction SilentlyContinue }
+          & $makeappx pack /d pkg /p couch.msix /o
+          if ($LASTEXITCODE) { exit 1 }
+          $pfx = Join-Path $env:RUNNER_TEMP sign.pfx
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX))
+          & $signtool sign /fd SHA256 /f $pfx /p $env:PFX_PASS couch.msix
+          $signed = $LASTEXITCODE -eq 0
+          if ($signed) {
+            $c = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfx, $env:PFX_PASS)
+            [IO.File]::WriteAllBytes("couch.cer", $c.Export('Cert'))
+          }
+          Remove-Item $pfx
+          if (-not $signed) { exit 1 }
+      - name: Installer (couch-setup.exe)
+        # what the download page hands out: one file, double-click, done
+        shell: pwsh
+        env:
+          PFX: ${{ secrets.COUCH_SIGN_PFX }}
+          PFX_PASS: ${{ secrets.COUCH_SIGN_PASS }}
+        run: |
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { choco install innosetup -y --no-progress | Out-Null; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
+          & $iscc "/DVersion=$env:COUCH_VERSION" desktop/resources/setup.iss
+          if ($LASTEXITCODE) { exit 1 }
+          if ($env:PFX) {
+            $kit = Get-Item "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.*\x64" | Where-Object { Test-Path (Join-Path $_.FullName signtool.exe) } | Sort-Object { [version]$_.Parent.Name } -Descending | Select-Object -First 1
+            $pfx = Join-Path $env:RUNNER_TEMP sign2.pfx
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX))
+            & (Join-Path $kit.FullName signtool.exe) sign /fd SHA256 /f $pfx /p $env:PFX_PASS couch-setup.exe
+            Remove-Item $pfx
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: couch-gpui-windows
+          path: dist/
+      - name: Publish (beta channel)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Compress-Archive -Path dist/* -DestinationPath couch-gpui.zip -Force
+          $notes = git log -1 --pretty=%s
+          # the zip stays: the app's own updater reads it
+          $files = @("couch-gpui.zip")
+          if (Test-Path couch-setup.exe) { $files += @("couch-setup.exe") }
+          if (Test-Path couch.msix) { $files += @("couch.msix", "couch.cer") }
+          gh release create "gpui-$env:COUCH_VERSION" @files --repo "${{ github.repository }}" --prerelease --target "${{ github.sha }}" --title "couch (new) $env:COUCH_VERSION" --notes "$notes"
+          # a fixed "couch" release that always holds the newest build, so this link never goes stale:
+          # https://github.com/xnite7/lumen/releases/download/couch/couch-gpui.zip
+          # (prerelease, so GitHub's "latest" stays on the old app, whose updater reads it)
+          gh release view couch --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create couch --repo "${{ github.repository }}" --prerelease --target "${{ github.sha }}" --title "couch download" --notes "always the newest couch build."
+          }
+          gh release upload couch @files --repo "${{ github.repository }}" --clobber
+          gh release edit couch --repo "${{ github.repository }}" --notes "always the newest couch build. this one: $env:COUCH_VERSION"

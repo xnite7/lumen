@@ -1,0 +1,6 @@
+# GPUI comes from Zed's official repository (tag in Cargo.toml). A shallow
+# copy of that tag sits in ../zed-src (CI clones it; so do you, see
+# scripts/fetch-zed.sh) so builds don't pull Zed's whole history.
+[patch."https://github.com/zed-industries/zed"]
+gpui = { path = "../zed-src/crates/gpui" }
+gpui_platform = { path = "../zed-src/crates/gpui_platform" }

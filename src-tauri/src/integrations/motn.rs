@@ -91,6 +91,7 @@ pub async fn top(core: &Core, stremio_type: &str) -> AppResult<Vec<Value>> {
             "poster": trust.then(|| pick(r.pointer("/imageSet/verticalPoster"), &["w480", "w600", "w360"])).flatten()
                 .unwrap_or_else(|| format!("https://images.metahub.space/poster/medium/{imdb}/img")),
             "posterShape": "poster",
+            "logo": format!("https://images.metahub.space/logo/medium/{imdb}/img"),
             "background": trust.then(|| pick(r.pointer("/imageSet/horizontalBackdrop"), &["w1440", "w1080"])).flatten(),
             "releaseInfo": r.get("releaseYear").map(|y| y.to_string()),
             "description": r.get("overview"),
