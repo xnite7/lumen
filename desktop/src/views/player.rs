@@ -628,7 +628,8 @@ fn mesh(c1: gpui::Hsla, c2: gpui::Hsla, t: f32) -> impl IntoElement {
             }
             let a = c1.to_rgb();
             let bb = c2.to_rgb();
-            let c3 = gpui::hsla((c1.h + 0.94) % 1., c1.s, (c1.l * 0.72).max(0.3), 1.).to_rgb();
+            // a third: a deeper shade of the first (the same colour, no new hue)
+            let c3 = gpui::hsla(c1.h, c1.s, (c1.l * 0.62).max(0.22), 1.).to_rgb();
             let mix = |p: gpui::Rgba, q: gpui::Rgba, k: f32| gpui::Rgba { r: p.r + (q.r - p.r) * k, g: p.g + (q.g - p.g) * k, b: p.b + (q.b - p.b) * k, a: 1. };
             let lift = |p: gpui::Rgba, k: f32| mix(p, gpui::Rgba { r: 1., g: 1., b: 1., a: 1. }, k);
             let smooth = |x: f32| x * x * (3. - 2. * x);
@@ -663,25 +664,56 @@ fn mesh(c1: gpui::Hsla, c2: gpui::Hsla, t: f32) -> impl IntoElement {
 
 /// two colours for the progress bar from a picture: its liveliest one, and a neighbour
 pub fn tint_of(bytes: &[u8]) -> Option<[gpui::Hsla; 2]> {
+    // the logo's own colours (not its white or black): weighed by hue, in 12 bins
     let im = image::load_from_memory(bytes).ok()?.to_rgba8();
-    let small = image::imageops::resize(&im, 32, 32, image::imageops::FilterType::Triangle);
-    let mut best: Option<(f32, gpui::Hsla)> = None;
+    let small = image::imageops::resize(&im, 40, 40, image::imageops::FilterType::Triangle);
+    let mut bins = [(0f32, 0f32, 0f32, 0f32); 12]; // (weight, sum s, sum l, sum h-vec x/y packed later)
+    let mut hx = [0f32; 12];
+    let mut hy = [0f32; 12];
     for p in small.pixels() {
         if p[3] < 160 {
             continue;
         }
         let c: gpui::Hsla = gpui::Rgba { r: p[0] as f32 / 255., g: p[1] as f32 / 255., b: p[2] as f32 / 255., a: 1. }.into();
-        let score = c.s * (1. - (c.l - 0.55).abs() * 1.6);
-        if best.map_or(true, |b| score > b.0) {
-            best = Some((score, c));
+        // greys, near-white and near-black aren't colours
+        if c.s < 0.25 || c.l < 0.12 || c.l > 0.9 {
+            continue;
         }
+        let w = c.s * (1. - (c.l - 0.5).abs());
+        let k = ((c.h * 12.).floor() as usize) % 12;
+        bins[k].0 += w;
+        bins[k].1 += c.s * w;
+        bins[k].2 += c.l * w;
+        let a = c.h * std::f32::consts::TAU;
+        hx[k] += a.cos() * w;
+        hy[k] += a.sin() * w;
     }
-    let (score, c) = best?;
-    if score < 0.18 {
+    let colour = |k: usize| {
+        let w = bins[k].0.max(1e-6);
+        let h = (hy[k].atan2(hx[k]) / std::f32::consts::TAU).rem_euclid(1.);
+        (h, bins[k].1 / w, bins[k].2 / w)
+    };
+    let total: f32 = bins.iter().map(|b| b.0).sum();
+    let first = (0..12).max_by(|a, b| bins[*a].0.partial_cmp(&bins[*b].0).unwrap())?;
+    if total < 1.5 || bins[first].0 < total * 0.12 {
         return None;
     }
-    let a = gpui::hsla(c.h, c.s.max(0.55), c.l.clamp(0.5, 0.65), 1.);
-    let b = gpui::hsla((c.h + 0.09) % 1., (c.s * 0.9).max(0.5), (c.l + 0.08).clamp(0.55, 0.75), 1.);
+    let (h1, s1, l1) = colour(first);
+    let a = gpui::hsla(h1, s1.max(0.55), l1.clamp(0.48, 0.62), 1.);
+    // a second colour only if the logo really has one (a different hue, a fair share of it)
+    let near = |k: usize| {
+        let d = (k as i32 - first as i32).rem_euclid(12);
+        d <= 1 || d >= 11
+    };
+    let second = (0..12).filter(|k| !near(*k)).max_by(|a, b| bins[*a].0.partial_cmp(&bins[*b].0).unwrap()).filter(|k| bins[*k].0 > bins[first].0 * 0.25);
+    let b = match second {
+        Some(k) => {
+            let (h2, s2, l2) = colour(k);
+            gpui::hsla(h2, s2.max(0.5), l2.clamp(0.48, 0.66), 1.)
+        }
+        // one colour: it and a deep shade of it (red: red into dark red)
+        None => gpui::hsla(h1, (s1 * 0.95).max(0.5), (a.l * 0.5).max(0.2), 1.),
+    };
     Some([a, b])
 }
 
@@ -2748,9 +2780,9 @@ impl Render for PlayerView {
                         div()
                             // no background of its own: the film, blurred, behind it
                             // (mpv draws that in the bar's place), like Apple TV's
-                            .bg(theme::black(0.10))
+                            .bg(theme::black(0.04))
                             .border_1()
-                            .border_color(theme::white(0.07))
+                            .border_color(theme::white(0.06))
                             .absolute()
                             .left(px(g - 6.))
                             .right(px(g - 6.))
@@ -2797,7 +2829,7 @@ impl Render for PlayerView {
                             // a guest: whose remote it is, instead of the buttons
                             .when(guest, |d| d.child(couch_chip(cx)))
                             // the time, the bar, the time left
-                            .child(div().ml(px(10.)).w(px(64.)).flex_none().flex().justify_end().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::white(0.5)).child(clock(st.pos)))
+                            .child(div().ml(px(10.)).w(px(64.)).flex_none().flex().justify_end().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::white(0.38)).child(clock(st.pos)))
                             .child(
                                 div()
                                     .id("pl-scrub")
@@ -2924,7 +2956,7 @@ impl Render for PlayerView {
                                     })),
                             )
                             )
-                            .child(div().w(px(64.)).flex_none().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::white(0.5)).child(if st.duration > 0. { format!("-{}", clock(st.duration - st.pos)) } else { String::new() }))
+                            .child(div().w(px(64.)).flex_none().text_size(px(14.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::white(0.38)).child(if st.duration > 0. { format!("-{}", clock(st.duration - st.pos)) } else { String::new() }))
                             .children(next.clone().filter(|_| !narrow2 && !guest).map(|_| {
                                 let pb = self.pb.clone();
                                 let nx = self.next_x.clone();
@@ -3100,7 +3132,7 @@ impl Render for PlayerView {
                                                                         .detach();
                                                                         cx.notify();
                                                                     }))
-                                                                    .child(div().text_size(px(17.)).text_color(if on { gpui::rgb(0x000000) } else { gpui::rgb(0xffffff) }).child("🎧")),
+                                                                    .child(icon("surround", 22.).text_color(if on { gpui::rgb(0x000000) } else { gpui::rgb(0xffffff) })),
                                                             )
                                                         })
 ,

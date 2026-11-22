@@ -29,6 +29,9 @@ thread_local! {
     /// the row the pointer is over (its arrows show); arrows are drawn
     /// deferred, where a group hover can't reach them
     static OVER: RefCell<Option<String>> = const { RefCell::new(None) };
+    /// the arrow the pointer is on (the arrow covers the row, so the row
+    /// itself reads as "not hovered" then: the arrow keeps itself showing)
+    static ON_ARROW: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 /// Was the last press a drag? (cards ignore the click then)
@@ -65,7 +68,7 @@ pub fn scroller(key: impl ToString, inner: Stateful<Div>) -> AnyElement {
             .when(!left, |d| d.right(px(8.)))
             .flex()
             .items_center()
-            .opacity(if show && OVER.with(|o| o.borrow().as_deref() == Some(key.as_str())) { 1. } else { 0. })
+            .opacity(if show && (OVER.with(|o| o.borrow().as_deref() == Some(key.as_str())) || ON_ARROW.with(|o| o.borrow().as_deref() == Some(key.as_str()))) { 1. } else { 0. })
             .child(
                 div()
                     .id(gpui::SharedString::from(format!("{id}-{key}")))
@@ -79,6 +82,20 @@ pub fn scroller(key: impl ToString, inner: Stateful<Div>) -> AnyElement {
                     .hover(|s| s.bg(theme::black(0.88)))
                     // the card under it doesn't take the pointer (no grow, no preview)
                     .when(show, |d| d.occlude())
+                    .on_hover({
+                        let k = key.clone();
+                        move |on, window, _| {
+                            ON_ARROW.with(|o| {
+                                let mut o = o.borrow_mut();
+                                if *on {
+                                    *o = Some(k.clone());
+                                } else if o.as_deref() == Some(k.as_str()) {
+                                    *o = None;
+                                }
+                            });
+                            window.refresh();
+                        }
+                    })
                     .when(show, |d| {
                         d.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()).on_click(move |_, window, _| {
                             let (cur, max) = pos(&h);

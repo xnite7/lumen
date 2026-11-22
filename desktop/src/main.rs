@@ -1025,12 +1025,11 @@ impl Root {
             .absolute()
             .right(px(mini::M))
             // under the picture (the picture sits above it, see mini::BAR)
-            .bottom(px(mini::M - (1. - a) * 16.))
+            .bottom(px(mini::MB - (1. - a) * 16.))
             // right under the picture, one piece with it: the progress line is the seam
             .h(px(mini::BAR))
             .opacity(a)
             .w(px(mini::W))
-            .rounded_b(px(18.))
             .overflow_hidden()
             // clicks on it stay on it (nothing behind it gets them)
             .id("mini-card")
@@ -1050,6 +1049,9 @@ impl Root {
                 let layer = |im: std::sync::Arc<gpui::Image>, o: f32| gpui::img(im).absolute().top_0().left_0().size_full().object_fit(gpui::ObjectFit::Cover).opacity(o).into_any_element();
                 prev.filter(|_| f < 1.).map(|p| layer(p, 1. - f)).into_iter().chain(now.map(|n| layer(n, f)))
             })
+            // the same glass as the player's bar: grain on it, a touch of shade for the words
+            .child(gpui::img("ui/grain.png").absolute().top_0().left_0().size_full().object_fit(gpui::ObjectFit::Cover).opacity(0.07))
+            .child(div().absolute().top_0().left_0().size_full().bg(gpui::linear_gradient(180., gpui::linear_color_stop(theme::black(0.12), 0.), gpui::linear_color_stop(theme::black(0.34), 1.))))
             .flex()
             .flex_col()
             .child(

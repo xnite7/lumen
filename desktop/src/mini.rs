@@ -26,6 +26,8 @@ pub fn hovered() -> bool {
 pub const W: f32 = 400.;
 pub const H: f32 = 225.;
 pub const M: f32 = 24.;
+/// the gap under it: none, it sits on the window's bottom edge
+pub const MB: f32 = 0.;
 /// room under the picture for the controls (couch draws them there)
 pub const BAR: f32 = 92.;
 
@@ -296,7 +298,8 @@ mod imp {
             if ON.load(Ordering::Relaxed) && pop != 0 {
                 let (w, h, m) = ((W * scale) as i32, (H * scale) as i32, (M * scale) as i32);
                 let bar = (BAR * scale) as i32;
-                let mut pt = POINT { x: r.right - w - m, y: r.bottom - h - m - bar };
+                let mb = (MB * scale) as i32;
+                let mut pt = POINT { x: r.right - w - m, y: r.bottom - h - mb - bar };
                 let _ = ClientToScreen(hw(main), &mut pt);
                 let _ = SetWindowPos(hw(pop), None, pt.x, pt.y, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
                 // the top corners round, the bottom ones meet the bar below square

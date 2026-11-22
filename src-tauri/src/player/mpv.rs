@@ -1180,20 +1180,44 @@ vec4 hook() {
     if (d > 1.5)
         return c;
     float inside = clamp(0.5 - d / 1.5, 0.0, 1.0) * couch_ba;
-    float r = 22.0 * HOOKED_size.y / 1080.0;
-    vec4 acc = c;
+    float u = HOOKED_size.y / 1080.0;
+    // liquid glass: near the rim the picture bends inward, like a thick lens
+    vec2 ctr = lo + sz * 0.5;
+    vec2 e = vec2(1.0, 0.0);
+    #define SDF(P) (length(max(abs((P) - ctr) - (sz * 0.5 - vec2(rad)), 0.0)) + min(max(abs((P) - ctr).x - (sz.x * 0.5 - rad), abs((P) - ctr).y - (sz.y * 0.5 - rad)), 0.0) - rad)
+    vec2 nrm = normalize(vec2(SDF(px + e.xy) - SDF(px - e.xy), SDF(px + e.yx) - SDF(px - e.yx)) + 1e-5);
+    float band = 16.0 * u;
+    float edge = 1.0 - smoothstep(0.0, band, -d);
+    vec2 bend = -nrm * edge * edge * 14.0 * u;
+    vec2 at = HOOKED_pos + bend * HOOKED_pt;
+    // frosted: a soft disc blur of the bent picture
+    float r = 26.0 * u;
+    vec4 acc = HOOKED_tex(at);
     float n = 1.0;
-    for (int i = 1; i < 48; i++) {
+    for (int i = 1; i < 56; i++) {
         float fi = float(i);
-        float rr = sqrt(fi / 48.0) * r;
+        float rr = sqrt(fi / 56.0) * r;
         float a = fi * 2.39996323;
-        acc += HOOKED_tex(HOOKED_pos + vec2(cos(a), sin(a)) * rr * HOOKED_pt);
+        acc += HOOKED_tex(at + vec2(cos(a), sin(a)) * rr * HOOKED_pt);
         n += 1.0;
     }
     vec4 b = acc / n;
-    // frosted: a touch brighter and less saturated
+    // contrast for what sits on it: bright scenes dim, dark ones lift a little
+    // (the controls stay readable on anything), and a touch more colour
     float l = dot(b.rgb, vec3(0.299, 0.587, 0.114));
-    b.rgb = mix(b.rgb, vec3(l), 0.18) * 1.06 + 0.015;
+    float want = clamp(l, 0.10, 0.42);
+    b.rgb *= mix(1.0, want / max(l, 0.001), 0.75);
+    b.rgb = mix(vec3(dot(b.rgb, vec3(0.299, 0.587, 0.114))), b.rgb, 1.18);
+    // the rim catches the light: bright along the top edge, faint around the rest
+    float rim = 1.0 - smoothstep(0.0, 2.2 * u + 1.0, -d);
+    float top = clamp(-nrm.y, 0.0, 1.0);
+    b.rgb += rim * (0.06 + 0.22 * top);
+    // and a light inner sheen at the top
+    b.rgb += (1.0 - smoothstep(0.0, sz.y * 0.5, px.y - lo.y)) * 0.035;
+    // film grain on the glass
+    float g = fract(sin(dot(floor(px), vec2(12.9898, 78.233))) * 43758.5453);
+    b.rgb += (g - 0.5) * 0.06;
+    b = clamp(b, 0.0, 1.0);
     return mix(c, b, inside);
 }
 "#;
