@@ -478,8 +478,25 @@ fn need_mbps(s: &Value, rt: &Value) -> f64 {
     }
 }
 
+/// A bonus file, not the film: a featurette, interview, trailer, sample...
+/// (packs often carry these, and a small one can look like the "best fit").
+pub fn is_extra(s: &Value) -> bool {
+    let t = [&s["name"], &s["title"], &s["description"]]
+        .iter()
+        .filter_map(|v| v.as_str())
+        .chain(s.pointer("/behaviorHints/filename").and_then(|v| v.as_str()))
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    const WORDS: [&str; 16] = [
+        "featurette", "behind the scenes", "behind.the.scenes", "behind-the-scenes", "interview", "trailer", "teaser", "sample",
+        "making of", "making.of", "deleted scene", "deleted.scene", "bonus", "extras", "b-roll", "press conference",
+    ];
+    WORDS.iter().any(|w| t.contains(w))
+}
+
 /// Playable-now first, then what fits the connection (best first), the
-/// rest smallest first; cams only ever last.
+/// rest smallest first; cams only ever last, bonus files after them.
 pub fn rank(streams: Vec<Value>, mbps: f64, rt: &Value) -> Vec<Value> {
     let ok: Vec<Value> = streams
         .into_iter()
@@ -496,6 +513,7 @@ pub fn rank(streams: Vec<Value>, mbps: f64, rt: &Value) -> Vec<Value> {
     };
     let cam = |s: &Value| s["_couch"]["cam"].as_bool() == Some(true);
     let num = |s: &Value, k: &str| s["_couch"][k].as_f64().unwrap_or(0.);
+    let (extras, ok): (Vec<Value>, Vec<Value>) = ok.into_iter().partition(is_extra);
     let (cams, real): (Vec<Value>, Vec<Value>) = ok.into_iter().partition(|s| cam(s));
     let (mut fits, mut rest): (Vec<Value>, Vec<Value>) =
         real.into_iter().partition(|s| need_mbps(s, rt) <= budget && s["_couch"]["threeD"].as_bool() != Some(true));
@@ -511,7 +529,26 @@ pub fn rank(streams: Vec<Value>, mbps: f64, rt: &Value) -> Vec<Value> {
     });
     let mut cams = cams;
     cams.sort_by(|a, b| num(b, "score").partial_cmp(&num(a, "score")).unwrap_or(std::cmp::Ordering::Equal));
-    fits.into_iter().chain(rest).chain(cams).collect()
+    fits.into_iter().chain(rest).chain(cams).chain(extras).collect()
+}
+
+/// Starting on a lower quality than what was found, because the connection
+/// measured slow right now: say so (and where the better ones are).
+fn why_lower(order: &[Value], first: &Value, mbps: f64, rt: &Value) -> Option<String> {
+    let r = |s: &Value| s["_couch"]["resRank"].as_f64().unwrap_or(0.);
+    let best = order.iter().filter(|s| !is_extra(s) && s["_couch"]["cam"].as_bool() != Some(true)).max_by(|a, b| r(a).partial_cmp(&r(b)).unwrap_or(std::cmp::Ordering::Equal))?;
+    if r(best) <= r(first) || r(first) == 0. || need_mbps(best, rt) <= mbps * 0.7 {
+        return None;
+    }
+    let res = |s: &Value| s["_couch"]["res"].as_str().unwrap_or("?").to_string();
+    Some(format!(
+        "playing {} because your connection measured {:.0} Mbps just now ({} needs about {:.0}). something else using the internet? pick {} from streams",
+        res(first),
+        mbps,
+        res(best),
+        need_mbps(best, rt),
+        res(best)
+    ))
 }
 
 /// Every addon's streams for one video, gathered for up to `ms`.
@@ -1023,9 +1060,19 @@ pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f6
                 _ => ranked(full["type"].as_str().unwrap_or("movie").to_string(), vid.clone(), rt.clone(), prefer.clone()).await,
             };
             let mut order = order;
+            let note = match order.first() {
+                Some(first) if prefer.is_none() => {
+                    let mbps = api::call::<f64>("net_speed", json!({ "fresh": false })).await.unwrap_or(25.);
+                    why_lower(&order, first, mbps, &rt)
+                }
+                _ => None,
+            };
             let _ = this.update(cx, |p, cx| {
                 if !p.open || p.load_gen != g {
                     return;
+                }
+                if let Some(n) = note {
+                    crate::Nav::toast(n, cx);
                 }
                 p.full = Some(full);
                 p.video_id = vid;

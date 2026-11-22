@@ -26,6 +26,9 @@ thread_local! {
     /// (when a drag last ended: only the click that very press makes is ignored;
     /// a stale flag used to swallow the next click on any page without rows)
     static DRAGGED: Cell<Option<Instant>> = const { Cell::new(None) };
+    /// the row the pointer is over (its arrows show); arrows are drawn
+    /// deferred, where a group hover can't reach them
+    static OVER: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 /// Was the last press a drag? (cards ignore the click then)
@@ -62,8 +65,7 @@ pub fn scroller(key: impl ToString, inner: Stateful<Div>) -> AnyElement {
             .when(!left, |d| d.right(px(8.)))
             .flex()
             .items_center()
-            .opacity(0.)
-            .group_hover("row", |s| s.opacity(if show { 1. } else { 0. }))
+            .opacity(if show && OVER.with(|o| o.borrow().as_deref() == Some(key.as_str())) { 1. } else { 0. })
             .child(
                 div()
                     .id(gpui::SharedString::from(format!("{id}-{key}")))
@@ -89,9 +91,21 @@ pub fn scroller(key: impl ToString, inner: Stateful<Div>) -> AnyElement {
                     .child(crate::ui::icon("chevronWide", 30.).when(left, |s| s.with_transformation(gpui::Transformation::rotate(gpui::radians(std::f32::consts::PI))))),
             )
     };
+    let kh = key.clone();
     div()
+        .id(gpui::SharedString::from(format!("row-{key}")))
         .relative()
-        .group("row")
+        .on_hover(move |on, window, _| {
+            OVER.with(|o| {
+                let mut o = o.borrow_mut();
+                if *on {
+                    *o = Some(kh.clone());
+                } else if o.as_deref() == Some(kh.as_str()) {
+                    *o = None;
+                }
+            });
+            window.refresh();
+        })
         .child(
             inner
                 .track_scroll(&h)
@@ -185,7 +199,8 @@ pub fn scroller(key: impl ToString, inner: Stateful<Div>) -> AnyElement {
             .absolute()
             .size_0(),
         )
-        .child(arrow("rl", true, cur > 1., key.clone(), h.clone()))
-        .child(arrow("rr", false, cur < max - 1., key.clone(), h.clone()))
+        // above a grown card (that's deferred too), so it can't cover them
+        .child(gpui::deferred(arrow("rl", true, cur > 1., key.clone(), h.clone())).with_priority(3))
+        .child(gpui::deferred(arrow("rr", false, cur < max - 1., key.clone(), h.clone())).with_priority(3))
         .into_any_element()
 }

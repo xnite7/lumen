@@ -1038,8 +1038,18 @@ impl Root {
             .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .on_mouse_down(gpui::MouseButton::Right, |_, _, cx| cx.stop_propagation())
             .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
-            .bg(gpui::linear_gradient(180., gpui::linear_color_stop(gpui::rgba(0x1d181cf2), 0.), gpui::linear_color_stop(gpui::rgba(0x0e0b0df2), 1.)))
+            // no background of its own: the bottom of the picture, blurred, carries on under it
+            .bg(theme::black(0.9))
             .shadow(vec![gpui::BoxShadow { color: theme::black(0.55), offset: gpui::point(px(0.), px(14.)), blur_radius: px(36.), spread_radius: px(0.), inset: false }])
+            .children({
+                let (now, prev, at) = views::player::MINI_BG.lock().clone();
+                let f = at.map_or(1., |t| (t.elapsed().as_secs_f32() / 0.8).min(1.));
+                if f < 1. {
+                    window.request_animation_frame();
+                }
+                let layer = |im: std::sync::Arc<gpui::Image>, o: f32| gpui::img(im).absolute().top_0().left_0().size_full().object_fit(gpui::ObjectFit::Cover).opacity(o).into_any_element();
+                prev.filter(|_| f < 1.).map(|p| layer(p, 1. - f)).into_iter().chain(now.map(|n| layer(n, f)))
+            })
             .flex()
             .flex_col()
             .child(
@@ -1708,6 +1718,7 @@ fn main() {
         tile::start(cx);
         media::start(cx);
         notify::start(cx);
+        views::player::mini_backdrop(cx);
         // billboard + previews play with sound in the new couch (once; the speaker button changes it)
         {
             let core = couch::state::get().core.clone();

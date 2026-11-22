@@ -417,6 +417,53 @@ fn denied_sign(cx: &mut Context<PlayerView>, window: &mut Window) -> Option<gpui
 
 
 /// a still of the film, shrunk and blurred to a soft wash of its colours
+/// The mini player's bar backdrop: the bottom of what's on screen, blurred,
+/// so the picture seems to carry on under the controls. (new, previous, when)
+pub static MINI_BG: parking_lot::Mutex<(Option<std::sync::Arc<gpui::Image>>, Option<std::sync::Arc<gpui::Image>>, Option<Instant>)> = parking_lot::Mutex::new((None, None, None));
+
+fn bottom_blur(pic: &std::sync::Arc<gpui::Image>) -> Option<std::sync::Arc<gpui::Image>> {
+    let im = image::load_from_memory(&pic.bytes).ok()?.to_rgba8();
+    let (w, h) = im.dimensions();
+    let cut = image::imageops::crop_imm(&im, 0, h - h / 3, w, h / 3).to_image();
+    let small = image::imageops::resize(&cut, 64, 22, image::imageops::FilterType::Triangle);
+    let mut soft = image::imageops::blur(&small, 3.);
+    for p in soft.pixels_mut() {
+        for c in 0..3 {
+            p[c] = (p[c] as f32 * 0.7) as u8;
+        }
+        p[3] = 255;
+    }
+    let mut out = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(soft).write_to(&mut out, image::ImageFormat::Png).ok()?;
+    Some(std::sync::Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, out.into_inner())))
+}
+
+/// Keeps MINI_BG fresh while the film's in the corner (once a second).
+pub fn mini_backdrop(cx: &mut gpui::App) {
+    cx.spawn(async move |cx| loop {
+        crate::timer::after(Duration::from_millis(1000)).await;
+        let want = cx.update(|cx| {
+            let p = crate::playback::get(cx).read(cx);
+            (crate::mini::is_on() && p.open && !p.loading && p.state.duration > 0.).then_some(p.state.pos)
+        });
+        let Some(pos) = want else {
+            if MINI_BG.lock().0.is_some() && !crate::mini::is_on() {
+                *MINI_BG.lock() = (None, None, None);
+            }
+            continue;
+        };
+        let Some(pic) = api_still(pos + 0.3).await else { continue };
+        let Some(soft) = couch::rt::spawn_blocking(move || bottom_blur(&pic)).await.ok().flatten() else { continue };
+        {
+            let mut g = MINI_BG.lock();
+            let prev = g.0.take();
+            *g = (Some(soft), prev, Some(Instant::now()));
+        }
+        cx.update(|cx| cx.refresh_windows());
+    })
+    .detach();
+}
+
 fn soft_light(pic: &std::sync::Arc<gpui::Image>) -> Option<std::sync::Arc<gpui::Image>> {
     let im = image::load_from_memory(&pic.bytes).ok()?;
     let small = image::imageops::resize(&im.to_rgba8(), 48, 27, image::imageops::FilterType::Triangle);
@@ -1562,10 +1609,12 @@ impl PlayerView {
                     let text = [&s["name"], &s["title"], &s["description"], &s["_addonName"]].iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(" ");
                     text.contains('🦆') || text.to_lowercase().contains("aiostreams")
                 };
+                // only hide them when there are others to show
+                let any_plain = p.all.iter().any(|s| !duck(s));
                 let rows = p
                     .all
                     .iter()
-                    .filter(|s| !duck(s))
+                    .filter(|s| !any_plain || !duck(s))
                     .take(40)
                     .enumerate()
                     .map(|(i, s)| {
@@ -1583,7 +1632,8 @@ impl PlayerView {
                         } else if let Some(n) = c["seeders"].as_u64() {
                             bits.push(format!("{n} seeds"));
                         }
-                        let from = s["_addonName"].as_str().unwrap_or("").to_string();
+                        let file = s.pointer("/behaviorHints/filename").and_then(|v| v.as_str()).or(s["title"].as_str()).or(s["description"].as_str()).unwrap_or("").lines().next().unwrap_or("").to_string();
+                        let from = [s["_addonName"].as_str().unwrap_or(""), file.as_str()].iter().filter(|x| !x.is_empty()).cloned().collect::<Vec<_>>().join(" · ");
                         let key = playback::stream_key(s);
                         let on = key == cur;
                         let pb = self.pb.clone();
@@ -2274,7 +2324,8 @@ impl Render for PlayerView {
                     div()
                         .absolute()
                         .left(px(g))
-                        .bottom(px(150.))
+                        // the controls gone: it settles a little lower
+                        .bottom(px(150. - (1. - ca) * 18.))
                         .max_w(px(900.))
                         .flex()
                         .flex_col()
@@ -2696,11 +2747,12 @@ impl Render for PlayerView {
                     // the strip the bar sits in (beside and under it): a press there isn't a pause
                     .child(div().absolute().left_0().bottom_0().w_full().h(px(100.)).occlude().on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation()))
                     .child(
-                        glass(div())
-                            // frosted glass: a lighter tint (mpv blurs the film under it), grain, a sheen
-                            .bg(gpui::rgba(0x15111452))
-                            .child(img("ui/grain.png").absolute().top_0().left_0().size_full().rounded_full().object_fit(ObjectFit::Cover).opacity(0.035))
-                            .child(div().absolute().top_0().left_0().w_full().h(px(30.)).rounded_t(px(31.)).bg(linear_gradient(180., linear_color_stop(theme::white(0.09), 0.), linear_color_stop(theme::white(0.), 1.))))
+                        div()
+                            // no background of its own: the film, blurred, behind it
+                            // (mpv draws that in the bar's place), like Apple TV's
+                            .bg(theme::black(0.10))
+                            .border_1()
+                            .border_color(theme::white(0.07))
                             .absolute()
                             .left(px(g - 6.))
                             .right(px(g - 6.))
