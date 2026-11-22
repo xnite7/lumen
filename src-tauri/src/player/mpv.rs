@@ -1244,9 +1244,14 @@ vec4 hook() {
     vec4 c = HOOKED_tex(HOOKED_pos);
     if (couch_blur <= 0.001)
         return c;
-    // 0 at the bottom left corner, 1 at the top right
-    float d = (HOOKED_pos.x + (1.0 - HOOKED_pos.y)) * 0.5;
-    float w = 0.3 + 0.7 * (1.0 - smoothstep(0.1, 0.85, d));
+    // a blur that fades in towards the bottom (like the title pages): sharp
+    // down to ~40% of the height, then softer and softer, a little more on the
+    // left where the title sits
+    float y = HOOKED_pos.y;
+    float w = smoothstep(0.38, 0.98, y) * (0.8 + 0.2 * (1.0 - HOOKED_pos.x));
+    w = w * w * (3.0 - 2.0 * w);
+    if (w < 0.01)
+        return c;
     // (on the film itself, before it's scaled and before any black bars: the
     // edges blur into themselves, never into black, so no dark rim)
     float r = couch_blur * w * 26.0 * HOOKED_size.x / 1920.0;
