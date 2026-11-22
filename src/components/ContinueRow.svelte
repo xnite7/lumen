@@ -80,7 +80,8 @@
 
   function resume(it: LibraryItem) {
     closePreview();
-    go({ name: "detail", type: it.type, id: it._id, preview: { ...asMeta(it), autoplay: it.state.video_id } });
+    // its page, with Resume ready (not straight into the film)
+    go({ name: "detail", type: it.type, id: it._id, preview: asMeta(it) });
   }
 
   let timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -109,6 +110,8 @@
       {#each items as it (it._id)}
         {@const wide = art[it._id]}
         {@const p = it.state.duration ? it.state.timeOffset / it.state.duration : 0}
+        {@const ep = it._simkl ? it._label ?? "" : episodeLabel(it.state.video_id)}
+        {@const left = it._simkl ? "up next" : it.state.duration ? remaining(it.state.timeOffset / 1000, it.state.duration / 1000) : ""}
         <button
           class="card press"
           onclick={() => resume(it)}
@@ -126,11 +129,12 @@
             {/if}
             <span class="play glass clear"><Icon name="play" size={18} /></span>
           </div>
-          {#if it._simkl}
-            {#if it._label}<span class="next-ep">{it._label}</span>{/if}
-          {:else}
-            <div class="bar" title={[episodeLabel(it.state.video_id), remaining(it.state.timeOffset / 1000, it.state.duration / 1000)].filter(Boolean).join("  ·  ")}><span style:width="{Math.max(3, p * 100)}%"></span></div>
-          {/if}
+          <!-- one line: the episode, the progress, the time left ("left" dropped when it's long) -->
+          <div class="line">
+            {#if ep}<span class="ep">{ep}</span>{/if}
+            <div class="bar"><span style:width="{it._simkl ? 0 : Math.max(3, p * 100)}%"></span></div>
+            {#if left}<span class="left">{left.includes("h") ? left.replace(" left", "") : left}</span>{/if}
+          </div>
         </button>
       {/each}
     </div>
@@ -272,5 +276,26 @@
       width: 36px;
       height: 36px;
     }
+  }
+  .line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    font-size: 13px;
+  }
+  .line .ep {
+    flex: none;
+    font-weight: 600;
+    color: var(--label-2);
+  }
+  .line .bar {
+    flex: 1;
+    width: auto;
+    margin: 0;
+  }
+  .line .left {
+    flex: none;
+    color: var(--label-3);
   }
 </style>

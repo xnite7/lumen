@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { flagFor } from "../lib/tint";
   import { trimLogo } from "../lib/trimlogo";
   import { fallback, imdbArt, imdbEpisode } from "../lib/fallback";
   import { img, type Meta } from "../lib/api";
@@ -38,6 +39,8 @@
 
   const src = $derived(img(landscape ? (meta.background ?? meta.poster) : meta.poster, landscape ? "w780" : "medium"));
   const owned = $derived(inLibrary(meta.id));
+  // not in English: its country's flag, top right
+  const flag = $derived(flagFor((meta as any).originalLanguage ?? (meta as any).original_language));
 
   // Each poster on its own: a rest on it opens its preview after the full
   // wait; landing on another poster puts any open preview away first.
@@ -85,6 +88,7 @@
     {#if hidden}
       <div class="veil"><Icon name="eyeOff" size={22} /></div>
     {/if}
+    {#if flag}<img class="flag" src={flag} alt="" loading="lazy" />{/if}
     {#if owned && !landscape}
       <span class="badge" title="In your library"><Icon name="check" size={15} /></span>
     {/if}
@@ -269,5 +273,16 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .flag {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 22px;
+    height: 15px;
+    border-radius: 3px;
+    object-fit: cover;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.3);
+    z-index: 2;
   }
 </style>
