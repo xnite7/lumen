@@ -9,6 +9,27 @@ fn main() {
         println!("cargo:rustc-link-search=native={dir}");
         println!("cargo:rerun-if-env-changed=MPV_LIB_DIR");
     }
+    // the Mac's film view (mpv's render API in an OpenGL layer under the UI)
+    if target == "macos" {
+        let mut b = cc::Build::new();
+        b.file("mac/video.m").file("mac/system.m").flag("-fobjc-arc").flag("-Wno-deprecated-declarations");
+        // mpv's headers (Homebrew's, or MPV_INCLUDE_DIR)
+        for d in [std::env::var("MPV_INCLUDE_DIR").ok(), Some("/opt/homebrew/include".into()), Some("/usr/local/include".into())].into_iter().flatten() {
+            b.include(d);
+        }
+        b.compile("couchmacvideo");
+        println!("cargo:rustc-link-lib=framework=Cocoa");
+        println!("cargo:rustc-link-lib=framework=QuartzCore");
+        println!("cargo:rustc-link-lib=framework=OpenGL");
+        println!("cargo:rustc-link-lib=framework=MediaPlayer");
+        println!("cargo:rustc-link-lib=framework=IOKit");
+        for d in ["/opt/homebrew/lib", "/usr/local/lib"] {
+            println!("cargo:rustc-link-search=native={d}");
+        }
+        println!("cargo:rerun-if-changed=mac/video.m");
+        println!("cargo:rerun-if-changed=mac/system.m");
+        println!("cargo:rerun-if-env-changed=MPV_INCLUDE_DIR");
+    }
     #[cfg(feature = "tauri-app")]
     tauri_build::build();
     // without Tauri, set the same desktop/mobile switches it would

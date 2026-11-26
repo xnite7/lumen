@@ -18,6 +18,7 @@ pub enum Press {
     Next,
     Back10,
     Stop,
+    Fwd10,
 }
 
 static TX: OnceLock<std::sync::Mutex<Sender<Press>>> = OnceLock::new();
@@ -49,6 +50,63 @@ pub fn start(cx: &mut App) {
         }
     })
     .detach();
+    // a Mac: Now Playing (Control Centre, the media keys, AirPods) and staying awake
+    #[cfg(target_os = "macos")]
+    {
+        extern "C" fn press(n: i32) {
+            send(match n {
+                1 => Press::Play,
+                2 => Press::Pause,
+                3 => Press::Next,
+                4 => Press::Back10,
+                5 => Press::Stop,
+                6 => Press::Fwd10,
+                _ => Press::PlayPause,
+            });
+        }
+        couch::macsys::on_press(press);
+        cx.spawn(async move |cx| {
+            let mut last = Shown::default();
+            let mut last_pos = -1f64;
+            loop {
+                crate::timer::after(std::time::Duration::from_millis(500)).await;
+                let (now, pos, dur, next) = cx.update(|cx| {
+                    let p = playback::get(cx).read(cx);
+                    let m = p.meta.clone();
+                    let parts: Vec<&str> = p.video_id.split(':').collect();
+                    let sub = if parts.len() == 3 {
+                        let ep = if p.episode_title.is_empty() { String::new() } else { format!(" · {}", p.episode_title) };
+                        format!("S{} E{}{ep}", parts[1], parts[2])
+                    } else {
+                        "midnite couch".into()
+                    };
+                    let shown = Shown { open: p.open, paused: p.state.paused, title: m.as_ref().map(|m| m.name.clone()).unwrap_or_default(), sub, art: m.and_then(|m| m.background.or(m.poster)) };
+                    (shown, p.state.pos, p.state.duration, p.next_video().is_some())
+                });
+                if (now.open && !now.paused) != (last.open && !last.paused) {
+                    couch::macsys::stay_awake(now.open && !now.paused);
+                }
+                // the clock only when it jumps (a seek); the Mac counts on by itself
+                let jumped = (pos - last_pos).abs() > 2.;
+                if now != last || jumped {
+                    couch::macsys::now_playing(now.open, now.paused, &now.title, &now.sub, pos, dur, next);
+                    if now.art != last.art {
+                        if let Some(u) = now.art.clone() {
+                            let core = couch::state::get().core.clone();
+                            couch::rt::spawn(async move {
+                                if let Ok((b, _)) = couch::images::load(&core, &u).await {
+                                    couch::macsys::artwork(&b);
+                                }
+                            });
+                        }
+                    }
+                    last = now;
+                }
+                last_pos = pos;
+            }
+        })
+        .detach();
+    }
     #[cfg(target_os = "windows")]
     {
         // a moment after the window exists (the taskbar button has to be there first)
@@ -113,6 +171,11 @@ fn act(p: Press, cx: &mut App) {
         Press::Next => {
             if pb.read(cx).next_video().is_some() && crate::views::player::may("episode", None, cx) {
                 pb.update(cx, |p, cx| p.play_next(cx));
+            }
+        }
+        Press::Fwd10 => {
+            if crate::views::player::may("seek", Some(pos + 10.), cx) {
+                pb.read(cx).cmd("seek", json!({ "to": 10, "relative": true }));
             }
         }
         Press::Stop => {

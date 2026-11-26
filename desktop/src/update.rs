@@ -22,6 +22,9 @@ enum Via {
     Files,
     Package(std::path::PathBuf),
     MoveTo { msix: std::path::PathBuf, cer: std::path::PathBuf },
+    /// a Mac: the new couch.app, zipped (swapped in on restart)
+    #[allow(dead_code)]
+    MacApp(std::path::PathBuf),
 }
 static VIA: parking_lot::Mutex<Option<Via>> = parking_lot::Mutex::new(None);
 
@@ -106,6 +109,23 @@ pub fn start(cx: &mut App) {
             }
             // the signed package for it, when there is one: installed couch
             // updates with it; a loose-folder couch moves over to it
+            // a Mac: the zipped couch.app of that version
+            #[cfg(target_os = "macos")]
+            {
+                let via = crate::packaged::fetch(&crate::packaged::asset_url(&v, "couch-mac.zip"), &format!("couch-mac-{v}.zip")).await.map(Via::MacApp);
+                let ok = via.is_some();
+                *VIA.lock() = via;
+                if ok {
+                    have = v.clone();
+                    let _ = cx.update(|cx| {
+                        cx.set_global(Ready(Some(v)));
+                        cx.refresh_windows();
+                    });
+                }
+                let _ = &dir;
+                continue;
+            }
+            #[allow(unreachable_code)]
             let msix = crate::packaged::fetch(&crate::packaged::asset_url(&v, "couch.msix"), &format!("couch-{v}.msix")).await;
             let via = match (msix, crate::packaged::is_packaged()) {
                 (Some(m), true) => Some(Via::Package(m)),
@@ -160,6 +180,32 @@ pub fn restart(cx: &mut App) {
                 });
             })
             .detach();
+        }
+        Some(Via::MacApp(zip)) => {
+            // unzip next to the running app, then (once this couch has quit) swap
+            // the bundles and open the new one
+            let Some(app) = std::env::current_exe().ok().and_then(|e| e.ancestors().nth(3).map(|p| p.to_path_buf())).filter(|p| p.extension().map_or(false, |x| x == "app")) else {
+                crate::Nav::toast("couldn't find couch.app to update".into(), cx);
+                return;
+            };
+            let tmp = std::env::temp_dir().join("couch-update");
+            let _ = std::fs::remove_dir_all(&tmp);
+            let _ = std::fs::create_dir_all(&tmp);
+            let ok = std::process::Command::new("/usr/bin/ditto").args(["-x", "-k"]).arg(&zip).arg(&tmp).status().map_or(false, |s| s.success());
+            let new_app = tmp.join("couch.app");
+            if !ok || !new_app.exists() {
+                crate::Nav::toast("the update didn't unpack, it'll try again".into(), cx);
+                return;
+            }
+            let script = format!(
+                "while kill -0 {pid} 2>/dev/null; do sleep 0.2; done; rm -rf '{app}.old'; mv '{app}' '{app}.old' && mv '{new}' '{app}' && rm -rf '{app}.old'; open '{app}' --args --after-update",
+                pid = std::process::id(),
+                app = app.display(),
+                new = new_app.display()
+            );
+            if std::process::Command::new("/bin/sh").args(["-c", &script]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().is_ok() {
+                cx.quit();
+            }
         }
         _ => {
             let Some(d) = dir() else { return };

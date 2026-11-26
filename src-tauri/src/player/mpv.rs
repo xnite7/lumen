@@ -238,10 +238,15 @@ impl Mpv {
         let langs = s.subtitles.languages.join(",");
         let alang = p.audio_languages.join(",");
         let log_path = self.core.cache_dir.join("mpv.log").to_string_lossy().to_string();
+        // (on a Mac the film is drawn through mpv's render API instead, see macvideo)
+        #[cfg(target_os = "macos")]
+        let wid: Option<i64> = None;
         let mpv = libmpv2::Mpv::with_initializer(|init| {
             if let Some(wid) = wid {
                 init.set_property("wid", wid)?;
             }
+            #[cfg(target_os = "macos")]
+            init.set_property("vo", "libmpv")?;
             let opts: Vec<(&str, String)> = vec![
                 // Fall back to the older renderer, then allow a software GL
                 // context, rather than failing playback outright.
@@ -293,6 +298,9 @@ impl Mpv {
             if std::env::var("LUMEN_MPV_LOG").is_ok() {
                 opts.push(("log-file", log_path.clone()));
             }
+            // a Mac draws through the render API: its vo stays libmpv
+            #[cfg(target_os = "macos")]
+            let opts: Vec<(&str, String)> = opts.into_iter().filter(|(k, _)| *k != "vo" && *k != "force-window").collect();
             for (k, v) in opts {
                 // Unknown options (older libmpv) are skipped, not fatal.
                 let _ = init.set_property(k, v.as_str());
@@ -310,6 +318,8 @@ impl Mpv {
             };
             let _ = mpv.observe_property(name, f, i as u64);
         }
+        #[cfg(target_os = "macos")]
+        super::macvideo::set_mpv(mpv.ctx.as_ptr() as *mut std::ffi::c_void);
         let mpv = Arc::new(mpv);
         *self.inner.lock() = Some(mpv.clone());
         self.spawn_events(mpv.clone());

@@ -1,0 +1,135 @@
+name: Build couch (Mac)
+
+# The Mac app: the new couch (GPUI) with mpv drawn through its render API,
+# bundled as couch.app with its own mpv/ffmpeg libraries, signed with a
+# Developer ID and notarized when the Apple secrets are set:
+#   MACOS_CERT_P12       base64 of the "Developer ID Application" .p12
+#   MACOS_CERT_PASSWORD  its password
+#   APPLE_ID             the Apple account's email
+#   APPLE_APP_PASSWORD   an app-specific password for it (appleid.apple.com)
+#   APPLE_TEAM_ID        the 10-character team id
+# Without them it's an unsigned build (right-click → Open the first time).
+
+on:
+  push:
+    branches: [mac]
+  workflow_dispatch:
+
+env:
+  COUCH_TMDB_KEY: ${{ secrets.COUCH_TMDB_KEY }}
+  COUCH_TIDB_KEY: ${{ secrets.COUCH_TIDB_KEY }}
+  COUCH_MOTN_KEY: ${{ secrets.COUCH_MOTN_KEY }}
+  COUCH_AI_KEY: ${{ secrets.COUCH_AI_KEY }}
+  COUCH_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+  COUCH_ROLES: ${{ secrets.ALLOWED_ROLE_IDS }}
+  COUCH_VERSION: 0.9.${{ github.run_number }}
+
+concurrency:
+  group: mac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+          cache-workspace-crates: "true"
+          cache-all-crates: "true"
+      - name: Fetch GPUI (Zed's official source, the tag in desktop/Cargo.toml)
+        run: ./scripts/fetch-zed.sh
+      - name: libmpv, ffmpeg and the bundling tools
+        run: |
+          brew install mpv ffmpeg dylibbundler
+          echo "MPV_INCLUDE_DIR=$(brew --prefix)/include" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=$(brew --prefix)/lib" >> $GITHUB_ENV
+      - name: Build
+        working-directory: desktop
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
+        run: cargo build --release
+      - name: couch.app
+        run: |
+          set -e
+          APP=dist/couch.app
+          mkdir -p $APP/Contents/MacOS $APP/Contents/Resources $APP/Contents/Frameworks
+          cp desktop/target/release/couch $APP/Contents/MacOS/couch
+          sed "s/__VERSION__/$COUCH_VERSION/g" desktop/resources/mac/Info.plist > $APP/Contents/Info.plist
+          # the icon
+          mkdir couch.iconset
+          for s in 16 32 128 256 512; do
+            sips -z $s $s desktop/resources/mac/icon-1024.png --out couch.iconset/icon_${s}x${s}.png >/dev/null
+            sips -z $((s*2)) $((s*2)) desktop/resources/mac/icon-1024.png --out couch.iconset/icon_${s}x${s}@2x.png >/dev/null
+          done
+          iconutil -c icns couch.iconset -o $APP/Contents/Resources/couch.icns
+          # subtitles in Figtree; headphone surround's notices
+          mkdir -p $APP/Contents/MacOS/fonts
+          cp desktop/assets/fonts/Figtree-*.ttf $APP/Contents/MacOS/fonts/
+          cp src-tauri/src/player/assets/SADIE-NOTICE.txt src-tauri/src/player/assets/SADIE-LICENSE.txt $APP/Contents/Resources/
+          # subtitle auto-sync listens through ffmpeg; trailers come through yt-dlp
+          cp "$(brew --prefix)/bin/ffmpeg" $APP/Contents/MacOS/ffmpeg
+          curl -sL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos -o $APP/Contents/MacOS/yt-dlp
+          chmod +x $APP/Contents/MacOS/yt-dlp $APP/Contents/MacOS/ffmpeg
+          # every library they need goes inside the app
+          dylibbundler -cd -of -b -x $APP/Contents/MacOS/couch -x $APP/Contents/MacOS/ffmpeg -d $APP/Contents/Frameworks/ -p @executable_path/../Frameworks/
+          # nothing left pointing at Homebrew
+          if otool -L $APP/Contents/MacOS/couch $APP/Contents/Frameworks/*.dylib | grep -E "/opt/homebrew|/usr/local/(opt|Cellar)"; then echo "::error::libraries still point at Homebrew"; exit 1; fi
+          du -sh $APP
+      - name: Sign and notarize
+        env:
+          P12: ${{ secrets.MACOS_CERT_P12 }}
+          P12_PASS: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -e
+          APP=dist/couch.app
+          if [ -z "$P12" ]; then
+            echo "::warning::no Developer ID secrets: unsigned build (right-click → Open the first time)"
+            codesign --force --deep --sign - $APP
+            exit 0
+          fi
+          KC=$RUNNER_TEMP/couch.keychain-db
+          security create-keychain -p ci $KC
+          security set-keychain-settings -lut 21600 $KC
+          security unlock-keychain -p ci $KC
+          echo "$P12" | base64 --decode > $RUNNER_TEMP/cert.p12
+          security import $RUNNER_TEMP/cert.p12 -P "$P12_PASS" -A -t cert -f pkcs12 -k $KC
+          security list-keychain -d user -s $KC $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci $KC >/dev/null
+          ID=$(security find-identity -v -p codesigning $KC | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
+          echo "signing as: $ID"
+          # inside out: libraries, helpers, then the app (hardened runtime for notarizing)
+          for f in $APP/Contents/Frameworks/*.dylib $APP/Contents/MacOS/ffmpeg $APP/Contents/MacOS/yt-dlp; do
+            codesign --force --timestamp --options runtime --sign "$ID" "$f"
+          done
+          codesign --force --timestamp --options runtime --entitlements desktop/resources/mac/entitlements.plist --sign "$ID" $APP
+          codesign --verify --deep --strict --verbose=2 $APP
+          ditto -c -k --keepParent $APP $RUNNER_TEMP/notarize.zip
+          xcrun notarytool submit $RUNNER_TEMP/notarize.zip --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --timeout 30m
+          xcrun stapler staple $APP
+          spctl --assess --type execute --verbose $APP
+      - name: DMG and zip
+        run: |
+          set -e
+          # the zip: what couch's own updater downloads
+          ditto -c -k --keepParent dist/couch.app dist/couch-mac.zip
+          # the dmg: drag couch to Applications
+          mkdir dmg && cp -R dist/couch.app dmg/ && ln -s /Applications dmg/Applications
+          hdiutil create -volname "midnite couch" -srcfolder dmg -ov -format UDZO dist/couch.dmg
+          if [ -n "${{ secrets.MACOS_CERT_P12 }}" ]; then
+            xcrun notarytool submit dist/couch.dmg --apple-id "${{ secrets.APPLE_ID }}" --password "${{ secrets.APPLE_APP_PASSWORD }}" --team-id "${{ secrets.APPLE_TEAM_ID }}" --wait --timeout 30m && xcrun stapler staple dist/couch.dmg || true
+          fi
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: couch-mac
+          path: |
+            dist/couch.dmg
+            dist/couch-mac.zip

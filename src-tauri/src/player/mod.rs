@@ -13,6 +13,8 @@
 pub mod depth3d;
 #[cfg(desktop)]
 mod mpv;
+#[cfg(target_os = "macos")]
+pub mod macvideo;
 #[cfg(desktop)]
 pub mod subsync;
 #[cfg(desktop)]

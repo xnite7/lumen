@@ -17,6 +17,7 @@ required-features = ["tauri-app"]
 
 [build-dependencies]
 tauri-build = { version = "2.7", features = [], optional = true }
+cc = "1"
 
 [dependencies]
 tauri-plugin-couch-native = { path = "plugins/couch-native", optional = true }

@@ -53,7 +53,7 @@ impl Surface {
             i.set_property("ytdl", "yes")?;
             i.set_property("ytdl-format", "bestvideo[height<=720]+bestaudio/best[height<=720]/best")?;
             // trailers come from YouTube: yt-dlp ships next to couch
-            if let Some(y) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("yt-dlp.exe"))).filter(|p| p.exists()) {
+            if let Some(y) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf())).and_then(|d| ["yt-dlp.exe", "yt-dlp"].iter().map(|n| d.join(n)).find(|p| p.exists())) {
                 i.set_property("script-opts", format!("ytdl_hook-ytdl_path={}", y.to_string_lossy()))?;
             }
             i.set_property("audio-display", "no")?;

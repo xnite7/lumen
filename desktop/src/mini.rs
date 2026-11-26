@@ -375,3 +375,18 @@ pub fn place_clip(_at: Option<ClipPlace>) {}
 pub fn set(on: bool, _scale: f32) {
     ON.store(on, Ordering::Relaxed);
 }
+
+/// A Mac: where the film's view is (whole window, the corner, hidden),
+/// told only when it changes.
+#[cfg(target_os = "macos")]
+pub fn mac_sync(visible: bool, mini: bool, vw: f32, vh: f32) {
+    thread_local! {
+        static LAST: std::cell::Cell<Option<(bool, bool, i32, i32)>> = const { std::cell::Cell::new(None) };
+    }
+    let key = (visible, mini, vw as i32, vh as i32);
+    if LAST.with(|l| l.replace(Some(key))) == Some(key) {
+        return;
+    }
+    let at = mini.then(|| (vw - M - W, vh - MB - BAR - H, W, H, 18.));
+    couch::player::macvideo::place(at, visible);
+}

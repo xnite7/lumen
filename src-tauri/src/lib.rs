@@ -1,5 +1,7 @@
 pub mod addons;
 pub mod beta;
+#[cfg(target_os = "macos")]
+pub mod macsys;
 pub mod commands;
 pub mod core;
 pub mod db;

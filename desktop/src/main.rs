@@ -24,6 +24,8 @@ mod ui;
 mod views;
 mod seen;
 mod tour;
+#[cfg(target_os = "macos")]
+mod macapp;
 
 thread_local! {
     static FPS_ON: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -1387,6 +1389,13 @@ impl Render for Root {
             let s = window.scale_factor();
             cx.defer(move |_| mini::set(want_mini, s));
         }
+        // a Mac: the film's view goes full window, to the corner, or away
+        #[cfg(target_os = "macos")]
+        {
+            let open = playback::get(cx).read(cx).open;
+            let vs = window.viewport_size();
+            mini::mac_sync(open && (self.route == Route::Player || want_mini), want_mini, f32::from(vs.width), f32::from(vs.height));
+        }
         let playing = self.route == Route::Player;
         let tv_on = self.tv.read(cx).on;
         if playing {
@@ -1676,7 +1685,9 @@ fn main() {
     // if couch ever crashes, say why in a file (%LOCALAPPDATA%\\midnite couch (new)\\crash.log)
     std::panic::set_hook(Box::new(|info| {
         // (the installed couch's own folder is read-only: its log goes to %LOCALAPPDATA%\\midnite couch)
-        let dir = if packaged::is_packaged() {
+        let dir = if cfg!(target_os = "macos") {
+            dirs::home_dir().map(|h| h.join("Library/Logs/couch")).unwrap_or_else(std::env::temp_dir)
+        } else if packaged::is_packaged() {
             dirs::data_local_dir().map(|d| d.join("midnite couch")).unwrap_or_else(std::env::temp_dir)
         } else {
             std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())).unwrap_or_else(std::env::temp_dir)
@@ -1699,8 +1710,19 @@ fn main() {
     let host = Arc::new(host);
     let st = couch::engine::boot(host.clone(), data_dir, cache_dir).expect("couch engine");
 
-    gpui_platform::application().with_assets(assets::Assets).run(move |cx: &mut App| {
+    let app = gpui_platform::application().with_assets(assets::Assets);
+    // a Mac: couch: links (Discord sign-in, shared titles) arrive here, and go
+    // the way a second couch's would (the page they ask for)
+    #[cfg(target_os = "macos")]
+    app.on_open_urls(|urls| {
+        for u in urls {
+            jump::forward(Some(&u));
+        }
+    });
+    app.run(move |cx: &mut App| {
         cx.text_system().add_fonts(assets::fonts()).expect("fonts");
+        #[cfg(target_os = "macos")]
+        macapp::init(cx);
         {
             use gpui::KeyBinding;
             use ui::input::*;
@@ -1774,6 +1796,16 @@ fn main() {
                             if let RawWindowHandle::Win32(w) = h.as_raw() {
                                 host.hwnd.store(w.hwnd.get(), std::sync::atomic::Ordering::Relaxed);
                                 mini::init(w.hwnd.get());
+                            }
+                        }
+                    }
+                    // a Mac: the film's view goes just under this window's own view
+                    #[cfg(target_os = "macos")]
+                    {
+                        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                        if let Ok(h) = HasWindowHandle::window_handle(window) {
+                            if let RawWindowHandle::AppKit(a) = h.as_raw() {
+                                couch::player::macvideo::attach(a.ns_view.as_ptr() as isize);
                             }
                         }
                     }
