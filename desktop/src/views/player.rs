@@ -2312,6 +2312,26 @@ impl Render for PlayerView {
         if ct < 0.62 {
             window.request_animation_frame();
         }
+        // the bar's glass: the film blurred behind it, drawn by mpv in the
+        // bar's exact place (it slides and fades with the bar). mpv can only
+        // draw on the film itself: with the bar in a letterbox's black band
+        // (a wide film), the glass is off and the bar has a dark glass of its own
+        let bar_on_film = {
+            let vs = window.viewport_size();
+            let (fw, fh) = (f32::from(vs.width).max(1.), f32::from(vs.height).max(1.));
+            let bx = theme::GUTTER - 6.;
+            let by = fh + (1. - ca) * 48. - 24. - 62.;
+            let [vx, vy, vw2, vh2] = VID_RECT.with(|r| r.get());
+            let (x, y, w, h) = (bx / fw, by / fh, (fw - 2. * bx) / fw, 62. / fh);
+            // the whole bar inside the film's picture?
+            let inside = vh2 > 0.01 && y >= vy - 0.002 && y + h <= vy + vh2 + 0.002 && x >= vx - 0.002 && x + w <= vx + vw2 + 0.002;
+            if inside {
+                bar_glass(&self.pb, [(x - vx) / vw2.max(0.01), (y - vy) / vh2.max(0.01), w / vw2.max(0.01), h / vh2.max(0.01), (31. / fh) / vh2.max(0.01), ca], cx);
+            } else {
+                glass_off(cx);
+            }
+            inside
+        };
         // paused: which episode, big, bottom left; each part rises in after the last
         // (not in picture-in-picture: too small for it)
         let want_pause = st.paused && !starting && self.pb.read(cx).error.is_empty() && self.menu.is_none() && !crate::pip::is_on() && f32::from(vw) >= 640.;
@@ -2787,26 +2807,23 @@ impl Render for PlayerView {
                     .child(div().absolute().left_0().bottom_0().w_full().h(px(100.)).occlude().on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation()))
                     .child(
                         div()
+                            // the film, blurred, behind it (mpv draws that in the bar's place);
+                            // when the bar sits in a letterbox's black band (no film behind
+                            // it to blur) a dark glass of its own instead
+                            .bg(if bar_on_film { theme::black(0.04) } else { gpui::rgba(0x161216b8).into() })
+                            .border_1()
+                            .border_color(theme::white(if bar_on_film { 0.06 } else { 0.10 }))
                             .absolute()
-                            .left_0()
-                            .right_0()
+                            .left(px(g - 6.))
+                            .right(px(g - 6.))
                             .bottom(px(24.))
-                            .px(px(4.))
+                            .h(px(62.))
+                            .px(px(9.))
+                            .occlude()
+                            .rounded_full()
                             .flex()
-                            .justify_center()
-                            .child(
-                                div()
-                                    .w(px((f32::from(vw) - g * 2.).clamp(700., 1200.)))
-                                    .h(px(62.))
-                                    .px(px(9.))
-                                    .occlude()
-                                    .rounded_full()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(2.))
-                                    .bg(gpui::rgba(0x141418e6))
-                                    .border_1()
-                                    .border_color(gpui::rgba(0xffffff1a))
+                            .items_center()
+                            .gap(px(2.))
                             // a press on the bar itself (not a button): any open menu closes
                             .on_mouse_down(gpui::MouseButton::Left, cx.listener(|v, _, _, cx| {
                                 cx.stop_propagation();
@@ -3200,7 +3217,6 @@ impl Render for PlayerView {
                                 kick("pl-full");
                                 window.toggle_fullscreen()
                             })),
-                            ),
                     ),
             )
             // over everything else: the open menu, and what's next

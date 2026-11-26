@@ -346,7 +346,10 @@ impl Render for Home {
                         self.clip_end = Some(std::time::Instant::now());
                     }
                 }
+                // something's playing (full size or in the corner): the billboard stays a picture
+                let film_on = crate::playback::get(cx).read(cx).open;
                 let clip = match &self.clip {
+                    Some(_) if film_on => None,
                     Some((owner, url)) => {
                         if vid.read(cx).owner.is_empty() {
                             // (coming back to the page: carry on, still just once)

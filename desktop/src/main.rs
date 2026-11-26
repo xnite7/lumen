@@ -952,9 +952,8 @@ impl Root {
                 .left_0()
                 .size_full()
                 .occlude()
-                .w_full()
-                .h_full()
-                .bg(gpui::rgb(0x09090b))
+                // black, fading out as the couch zooms away
+                .bg(theme::black((1. - e * 1.05).clamp(0., 1.)))
                 .flex()
                 .items_center()
                 .justify_center()
@@ -1547,7 +1546,8 @@ impl Render for Root {
             .when(mini::is_on(), |d| d.child(gpui::deferred(self.mini_bar(window, cx)).with_priority(2)))
             .children(if playing { None } else { update::card(cx).map(|c| gpui::deferred(c).with_priority(2)) })
             .children(ui::zoom::overlay(window, cx).map(|o| gpui::deferred(o).with_priority(6)))
-            .children(self.intro(window))
+            // over everything, the top bar and window buttons too
+            .children(self.intro(window).map(|i| gpui::deferred(i).with_priority(10)))
             .when(self.locked, |d| d.child(gpui::deferred(self.lock_screen(cx)).with_priority(9)))
             .children({
                 // the first time on Home (signed in, intro over): the tour
