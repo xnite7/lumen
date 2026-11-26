@@ -595,8 +595,21 @@ p{color:#9C8A96;margin:18px 24px 0}
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" } });
 }
 
+/** one of your own devices (couch on a PC, a Mac, an iPhone), Spotify-style */
+type Dev = {
+  id: string;
+  name: string;
+  kind: string;
+  playing: any;
+  at: number;
+  /** what another of your devices asked it to do, waiting for it to collect */
+  cmds: { cmd: string; pos?: number; from?: string; at: number }[];
+};
+
 export class Crew {
   members = new Map<string, Member>();
+  /** each person's devices, by person then device id (in memory, like presence) */
+  devices = new Map<string, Map<string, Dev>>();
   asks = new Map<string, Ask>();
   rooms = new Map<string, Room>();
   /** live lines per room: the host's socket and each guest's */
@@ -1281,6 +1294,76 @@ export class Crew {
         duration: num(b.duration),
         at: Date.now(),
       });
+      return json({ ok: true });
+    }
+
+    // your devices: each says what it's playing every few seconds and collects
+    // what your other devices asked it to do (pause, seek, stop, hand over)
+    if (req.method === "PUT" && url.pathname === "/v1/me/device") {
+      let b: any;
+      try {
+        b = await req.json();
+      } catch {
+        return json({ error: "bad json" }, 400);
+      }
+      const id = str(b?.id, 64);
+      if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) return json({ error: "bad device" }, 400);
+      const mine = this.devices.get(who.id) ?? new Map<string, Dev>();
+      this.devices.set(who.id, mine);
+      const pl = b.playing && typeof b.playing === "object" ? b.playing : null;
+      let stream: any = undefined;
+      if (pl?.stream && typeof pl.stream === "object") {
+        const raw = JSON.stringify(pl.stream);
+        if (raw.length <= 6000) stream = pl.stream;
+      }
+      const prev = mine.get(id);
+      const d: Dev = {
+        id,
+        name: str(b.name, 60) ?? "couch",
+        kind: str(b.kind, 20) ?? "pc",
+        playing: pl && {
+          metaId: str(pl.metaId, 100),
+          type: str(pl.type, 20),
+          title: str(pl.title, 200),
+          episode: str(pl.episode, 200),
+          videoId: str(pl.videoId, 120),
+          poster: str(pl.poster, 500),
+          background: str(pl.background, 500),
+          logo: str(pl.logo, 500),
+          pos: num(pl.pos),
+          duration: num(pl.duration),
+          paused: !!pl.paused,
+          stream,
+        },
+        at: Date.now(),
+        cmds: [],
+      };
+      const cmds = prev?.cmds ?? [];
+      mine.set(id, d);
+      // gone quiet for a minute: not online anymore
+      for (const [k, v] of mine) if (Date.now() - v.at > 60_000) mine.delete(k);
+      const devices = [...mine.values()].map((v) => ({ id: v.id, name: v.name, kind: v.kind, playing: v.playing, at: v.at, me: v.id === id }));
+      return json({ devices, cmds: cmds.filter((c) => Date.now() - c.at < 30_000) });
+    }
+    const dc = url.pathname.match(/^\/v1\/me\/device\/([A-Za-z0-9_-]{1,64})\/cmd$/);
+    if (req.method === "POST" && dc) {
+      let b: any;
+      try {
+        b = await req.json();
+      } catch {
+        return json({ error: "bad json" }, 400);
+      }
+      const cmd = str(b?.cmd, 20);
+      if (!cmd || !["pause", "play", "seek", "stop", "next"].includes(cmd)) return json({ error: "bad command" }, 400);
+      const d = this.devices.get(who.id)?.get(dc[1]);
+      if (!d) return json({ error: "that device isn't online" }, 404);
+      d.cmds.push({ cmd, pos: typeof b.pos === "number" ? b.pos : undefined, from: str(b.from, 64), at: Date.now() });
+      if (d.cmds.length > 20) d.cmds.splice(0, d.cmds.length - 20);
+      return json({ ok: true });
+    }
+    const dd = url.pathname.match(/^\/v1\/me\/device\/([A-Za-z0-9_-]{1,64})$/);
+    if (req.method === "DELETE" && dd) {
+      this.devices.get(who.id)?.delete(dd[1]);
       return json({ ok: true });
     }
 

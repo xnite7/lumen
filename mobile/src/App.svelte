@@ -12,6 +12,8 @@
   import Player from "$old/views/Player.svelte";
   import { nav, back, tab, go, type Page } from "./lib/nav.svelte";
   import Nav from "./ui/Nav.svelte";
+  import DeviceBar from "./ui/DeviceBar.svelte";
+  import { startDevices } from "./lib/devices.svelte";
   import Home from "./views/Home.svelte";
   import Search from "./views/Search.svelte";
   import Couch from "./views/Couch.svelte";
@@ -47,6 +49,7 @@
       loadLibrary();
       startCrew();
       startLive();
+      startDevices();
       checkGate();
     })();
     listen<string>("deeplink", link);
@@ -110,6 +113,7 @@
       </div>
     {/each}
     <Nav />
+    <DeviceBar />
   {:else}
     <div class="boot"><b>midnite<span>™</span> couch</b></div>
   {/if}

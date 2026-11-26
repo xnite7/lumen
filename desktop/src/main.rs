@@ -24,6 +24,7 @@ mod ui;
 mod views;
 mod seen;
 mod tour;
+mod devices;
 #[cfg(target_os = "macos")]
 mod macapp;
 
@@ -1554,6 +1555,8 @@ impl Render for Root {
             })
             .when(mini::is_on(), |d| d.child(gpui::deferred(self.mini_bar(window, cx)).with_priority(2)))
             .children(if playing { None } else { update::card(cx).map(|c| gpui::deferred(c).with_priority(2)) })
+            // another of your devices is playing: "playing on …" with play here
+            .children(if playing || self.route == Route::SignIn { None } else { devices::bar(cx).map(|b| gpui::deferred(b).with_priority(2)) })
             .children(ui::zoom::overlay(window, cx).map(|o| gpui::deferred(o).with_priority(6)))
             // over everything, the top bar and window buttons too
             .children(self.intro(window).map(|i| gpui::deferred(i).with_priority(10)))
@@ -1752,6 +1755,7 @@ fn main() {
         tile::start(cx);
         media::start(cx);
         notify::start(cx);
+        devices::start(cx);
         views::player::mini_backdrop(cx);
         // billboard + previews play with sound in the new couch (once; the speaker button changes it)
         {
