@@ -416,7 +416,7 @@ async function serverInvite(env: Env): Promise<Response> {
 }
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     // the couch mark: the favicon and every logo on the site. /logo.png is the old name
     // (and Discord's small image); /couch.png is the one the pages use, so browsers
@@ -457,7 +457,7 @@ export default {
       const w = await verify(env, `Bearer ${url.searchParams.get("t") ?? ""}`);
       if (!w) return new Response("sign in again", { status: 401 });
       if (w.pro === false) return new Response("couch pro", { status: 402 });
-      return clipStream(env, clipFile[1], req, url.searchParams.get("title"), url.searchParams.get("year"));
+      return clipStream(env, clipFile[1], req, ctx, url.searchParams.get("title"), url.searchParams.get("year"));
     }
     // a game round's scene: asked for by game and round, so the address
     // doesn't say which film it is
@@ -469,7 +469,7 @@ export default {
       const r = await stub.fetch(new Request(`https://couch.internal/internal/game-clip?g=${gameClip[1]}&n=${gameClip[2]}&u=${encodeURIComponent(w.id)}`));
       if (!r.ok) return new Response("that game is over", { status: 404 });
       const { id } = (await r.json()) as { id: string };
-      const out = await clipStream(env, id, req);
+      const out = await clipStream(env, id, req, ctx);
       const h = new Headers(out.headers);
       h.set("cache-control", "private, no-store"); // the address is per game
       return new Response(out.body, { status: out.status, headers: h });
@@ -505,7 +505,7 @@ export default {
     if (clipAsk) {
       if (who.pro === false) return json({ clip: false, pro: true }, 402);
       // already fetched once: it plays from the cache, no request needed
-      if (await caches.default.match(new Request(`https://couch.clips/file2/${clipAsk[1]}.mp4`))) return json({ clip: true });
+      if (await caches.default.match(new Request(`https://couch.clips/file3/${clipAsk[1]}.mp4`))) return json({ clip: true });
       // out of ClipCafe requests today: no clip (the app plays a trailer)
       if (await clipsOut()) return json({ clip: false, out: true });
       return json({ clip: !!(await clipPick(env, clipAsk[1], url.searchParams.get("title"), url.searchParams.get("year"))) });
@@ -619,25 +619,35 @@ async function clipDownloadUrls(env: Env, pick: NonNullable<Clip>): Promise<{ ur
   return out;
 }
 
-async function clipStream(env: Env, imdb: string, req: Request, title?: string | null, year?: string | null): Promise<Response> {
+/** The whole file or the part asked for (players on iPhone ask in ranges
+ *  and need a proper 206 back, or they refuse to play). */
+function ranged(buf: ArrayBuffer, req: Request, extra: Record<string, string> = {}): Response {
+  const size = buf.byteLength;
+  const h: Record<string, string> = { "content-type": "video/mp4", "accept-ranges": "bytes", "cache-control": `public, max-age=${CLIP_DAYS * 86400}`, ...extra };
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get("range") ?? "");
+  if (m && (m[1] || m[2])) {
+    let start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2]));
+    let end = m[1] && m[2] ? Math.min(Number(m[2]), size - 1) : size - 1;
+    if (start >= size || start > end) return new Response(null, { status: 416, headers: { "content-range": `bytes */${size}` } });
+    return new Response(buf.slice(start, end + 1), { status: 206, headers: { ...h, "content-range": `bytes ${start}-${end}/${size}`, "content-length": String(end - start + 1) } });
+  }
+  return new Response(buf, { headers: { ...h, "content-length": String(size) } });
+}
+
+const CLIP_MAX = 60 << 20;
+
+async function clipStream(env: Env, imdb: string, req: Request, ctx: ExecutionContext, title?: string | null, year?: string | null): Promise<Response> {
   const cache = caches.default;
-  const fileKey = `https://couch.clips/file2/${imdb}.mp4`;
-  // ranges (seeking) are answered straight from the cache
-  const cached = await cache.match(new Request(fileKey, { headers: req.headers.get("range") ? { range: req.headers.get("range")! } : {} }));
-  if (cached) return cached;
+  const fileKey = `https://couch.clips/file3/${imdb}.mp4`;
+  // our own copy first: Cloudflare's cache, then the bucket (kept for good)
+  const cached = await cache.match(new Request(fileKey));
+  if (cached) return ranged(await cached.arrayBuffer(), req, { "x-clip-via": "cache" });
   if (env.CLIPS) {
-    const obj = await env.CLIPS.get(`${imdb}.mp4`, { range: req.headers });
-    if (obj && "body" in obj) {
-      const h = new Headers({ "content-type": "video/mp4", "accept-ranges": "bytes", "cache-control": `public, max-age=${CLIP_DAYS * 86400}` });
-      const rg = obj.range as { offset?: number; length?: number } | undefined;
-      if (req.headers.get("range") && rg && typeof rg.offset === "number") {
-        const n = rg.length ?? obj.size - rg.offset;
-        h.set("content-range", `bytes ${rg.offset}-${rg.offset + n - 1}/${obj.size}`);
-        h.set("content-length", String(n));
-        return new Response(obj.body, { status: 206, headers: h });
-      }
-      h.set("content-length", String(obj.size));
-      return new Response(obj.body, { headers: h });
+    const obj = await env.CLIPS.get(`${imdb}.mp4`);
+    if (obj) {
+      const buf = await obj.arrayBuffer();
+      ctx.waitUntil(cache.put(new Request(fileKey), new Response(buf.slice(0), { headers: { "content-type": "video/mp4", "content-length": String(buf.byteLength), "cache-control": `public, max-age=${CLIP_DAYS * 86400}` } })));
+      return ranged(buf, req, { "x-clip-via": "bucket" });
     }
   }
   const pick = await clipPick(env, imdb, title, year);
@@ -662,18 +672,15 @@ async function clipStream(env: Env, imdb: string, req: Request, title?: string |
     console.log(`clip ${imdb}: no download${why}`);
     return new Response(`clip unavailable${why}`, { status: 502 });
   }
-  // straight through to the player while a copy goes into the cache (no
-  // holding the whole file in memory first)
-  const [a, rest] = r.body.tee();
-  const [b, c] = rest.tee();
   void type;
-  const headers = { "content-type": "video/mp4", "cache-control": `public, max-age=${CLIP_DAYS * 86400}`, "accept-ranges": "bytes" };
-  const len = r.headers.get("content-length");
-  const h2: Record<string, string> = len ? { ...headers, "content-length": len } : headers;
-  cache.put(new Request(fileKey), new Response(b, { headers: h2 })).catch(() => {});
-  if (env.CLIPS && len) env.CLIPS.put(`${imdb}.mp4`, c.pipeThrough(new FixedLengthStream(Number(len))), { httpMetadata: { contentType: "video/mp4" } }).catch(() => {});
-  else c.cancel().catch(() => {});
-  return new Response(a, { headers: { ...h2, "x-clip-via": via, ...(why ? { "x-clip-why": why.replace(/[^\x20-\x7e]/g, " ").slice(0, 300) } : {}) } });
+  // the whole clip (they're a few MB), kept on our side so ClipCafe is asked
+  // once: waitUntil makes sure the copies are saved after the answer is sent
+  if (Number(r.headers.get("content-length") ?? 0) > CLIP_MAX) return new Response("clip too big", { status: 502 });
+  const buf = await r.arrayBuffer();
+  if (buf.byteLength < 1000 || buf.byteLength > CLIP_MAX) return new Response("clip unavailable", { status: 502 });
+  ctx.waitUntil(cache.put(new Request(fileKey), new Response(buf.slice(0), { headers: { "content-type": "video/mp4", "content-length": String(buf.byteLength), "cache-control": `public, max-age=${CLIP_DAYS * 86400}` } })));
+  if (env.CLIPS) ctx.waitUntil(env.CLIPS.put(`${imdb}.mp4`, buf.slice(0), { httpMetadata: { contentType: "video/mp4" } }));
+  return ranged(buf, req, { "x-clip-via": via, ...(why ? { "x-clip-why": why.replace(/[^\x20-\x7e]/g, " ").slice(0, 300) } : {}) });
 }
 
 /** Is ClipCafe answering couch's key? Never shows the key or a download link. */
@@ -1377,7 +1384,7 @@ export class Crew {
     }
     // from the worker only (it never forwards /internal/ from outside)
     if (url.pathname === "/internal/game-clip") {
-      const c = this.game.clipOf(url.searchParams.get("g") ?? "", Number(url.searchParams.get("n")), url.searchParams.get("u") ?? "");
+      const c = await this.game.clipOf(url.searchParams.get("g") ?? "", Number(url.searchParams.get("n")), url.searchParams.get("u") ?? "");
       return c ? json(c) : json({ error: "gone" }, 404);
     }
     let who: Who;
