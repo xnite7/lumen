@@ -143,20 +143,22 @@ struct DetailView: View {
                     Text(r.left).font(.caption).foregroundStyle(Theme.dim)
                 }
             }
-            HStack(spacing: 10) {
+            HStack(spacing: 0) {
                 Button {
                     withAnimation(.snappy) { lib.toggleList(m.preview) }
                 } label: {
-                    Label("My List", systemImage: lib.inList(m.id) ? "checkmark" : "plus").contentTransition(.symbolEffect(.replace))
+                    StackedAction(symbol: lib.inList(m.id) ? "checkmark" : "plus", title: "My List")
                 }
-                .buttonStyle(PillButton(primary: false))
                 if let yt = m.trailerStreams?.compactMap(\.ytId).first {
-                    Button { trailer = yt } label: { Label("Trailer", systemImage: "film") }
-                        .buttonStyle(PillButton(primary: false))
+                    Button { trailer = yt } label: { StackedAction(symbol: "film", title: "Trailer") }
                 }
-                Button { showStreams = StreamTarget(meta: m, episode: next) } label: { Label("Streams", systemImage: "list.bullet") }
-                    .buttonStyle(PillButton(primary: false))
+                Button { showStreams = StreamTarget(meta: m, episode: next) } label: { StackedAction(symbol: "list.bullet", title: "Streams") }
+                ShareLink(item: URL(string: "\(crewURL)/t/\(m.type.rawValue)/\(m.id)")!) {
+                    StackedAction(symbol: "square.and.arrow.up", title: "Share")
+                }
             }
+            .buttonStyle(PressScale())
+            .foregroundStyle(.white)
         }
     }
 

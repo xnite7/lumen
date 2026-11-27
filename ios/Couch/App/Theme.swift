@@ -25,7 +25,9 @@ struct PillButton: ButtonStyle {
     func makeBody(configuration c: Configuration) -> some View {
         c.label
             .font(.system(size: 16, weight: .semibold))
-            .padding(.horizontal, 22)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .padding(.horizontal, 14)
             .frame(height: 46)
             .frame(maxWidth: .infinity)
             .foregroundStyle(primary ? Color.black : Color.white)
@@ -39,6 +41,24 @@ struct PillButton: ButtonStyle {
             .opacity(c.isPressed ? 0.75 : 1)
             .scaleEffect(c.isPressed ? 0.98 : 1)
             .animation(.easeOut(duration: 0.15), value: c.isPressed)
+    }
+}
+
+/// Icon over a small label (My List, Trailer, Streams), Netflix style.
+struct StackedAction: View {
+    let symbol: String
+    let title: String
+    var body: some View {
+        VStack(spacing: 5) {
+            Image(systemName: symbol)
+                .font(.system(size: 20, weight: .medium))
+                .frame(height: 24)
+                .contentTransition(.symbolEffect(.replace))
+            Text(title).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.dim).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 52)
+        .contentShape(Rectangle())
     }
 }
 

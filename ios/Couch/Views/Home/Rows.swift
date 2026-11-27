@@ -127,7 +127,7 @@ struct RankCard: View {
 
     var body: some View {
         NavigationLink(value: meta) {
-            HStack(alignment: .bottom, spacing: -18) {
+            HStack(alignment: .bottom, spacing: -12) {
                 Text("\(rank)")
                     .font(.system(size: 110, weight: .black, design: .rounded))
                     .foregroundStyle(.black)
