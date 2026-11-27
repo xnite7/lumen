@@ -22,7 +22,7 @@ import logo from "./logo.png";
 import { TERMS_HTML } from "./terms";
 import { PRIVACY_HTML } from "./privacy";
 import { appStorePro } from "./appstore";
-import { Game } from "./game";
+import { Game, POOL_IDS } from "./game";
 import { DOWNLOAD_HTML } from "./download";
 import { INSTALL_HTML } from "./install";
 import { LANDING_HTML, INSTALL_PAGE, LANDING_FILES } from "./landing/landing";
@@ -41,6 +41,8 @@ export interface Env {
   DISCORD_BOT_TOKEN?: string;
   /** ClipCafe PRO key: scene clips for billboard / preview (instead of trailers) */
   CLIPCAFE_KEY?: string;
+  /** "1": clips only for the scenes game's films */
+  CLIPS_POOL_ONLY?: string;
   /** "1": no clip source right now (previews off, the scenes game paused) */
   CLIPS_PAUSED?: string;
   /** optional R2 bucket: clips kept for good, so each is downloaded from
@@ -558,6 +560,8 @@ async function clipsOut(): Promise<boolean> {
 
 async function clipPick(env: Env, imdb: string, title?: string | null, year?: string | null): Promise<Clip> {
   if (!env.CLIPCAFE_KEY || env.CLIPS_PAUSED) return null;
+  // only the films the scenes game uses (what ClipCafe agreed to)
+  if (env.CLIPS_POOL_ONLY && !POOL_IDS.has(imdb)) return null;
   const cache = caches.default;
   const key = new Request(`https://couch.clips/pick4/${imdb}`);
   const hit = await cache.match(key);
@@ -598,16 +602,11 @@ async function clipPick(env: Env, imdb: string, title?: string | null, year?: st
   return pick;
 }
 
-/** the download address for a clip, with a key that's fresh right now */
-async function clipDownloadUrl(env: Env, pick: NonNullable<Clip>): Promise<string | null> {
-  const r = await clipSearch(env, `slug=${encodeURIComponent(pick.slug)}&size=1`);
-  const c = r.clips.find((x: any) => x.slug === pick.slug) ?? r.clips[0];
-  const dl = String(c?.download ?? pick.download ?? "");
-  if (!dl) return null;
-  const k = encodeURIComponent(env.CLIPCAFE_KEY ?? "");
-  if (/^https?:/.test(dl)) return dl.includes("api_key=") ? dl : `${dl}${dl.includes("?") ? "&" : "?"}api_key=${k}`;
-  // a bare download key
-  return `https://api.clip.cafe/?api_key=${k}&slug=${encodeURIComponent(pick.slug)}&key=${encodeURIComponent(dl)}`;
+/** Where a clip's video is. ClipCafe closed its API (Nov 2026) and allowed
+ *  couch (account xnite7) to fetch the ~200 clips it needs from the site
+ *  itself: each one is fetched once and kept on our side, never re-shared. */
+async function clipDownloadUrl(_env: Env, pick: NonNullable<Clip>): Promise<string | null> {
+  return /^[a-z0-9-]{1,200}$/i.test(pick.slug) ? `https://clip.cafe/videos/${pick.slug}.mp4` : null;
 }
 
 async function clipStream(env: Env, imdb: string, req: Request, title?: string | null, year?: string | null): Promise<Response> {
@@ -635,7 +634,7 @@ async function clipStream(env: Env, imdb: string, req: Request, title?: string |
   if (!pick) return new Response("no clip", { status: 404 });
   const dl = await clipDownloadUrl(env, pick);
   if (!dl) return new Response("clip unavailable", { status: 502 });
-  const r = await fetch(dl);
+  const r = await fetch(dl, { headers: { "user-agent": "midnite-couch/1.0 (clip.cafe account xnite7; with permission)" } });
   const type = r.headers.get("content-type") ?? "";
   if (!r.ok || !r.body || type.includes("json") || type.includes("html")) {
     // say what ClipCafe answered (never the address: it carries the key)

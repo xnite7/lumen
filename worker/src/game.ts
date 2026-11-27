@@ -45,6 +45,8 @@ const POOL: string[][] = [
    tt1675434 tt0118799`,
 ].map((s) => s.trim().split(/\s+/));
 
+export const POOL_IDS = new Set(POOL.flat());
+
 type Title = { n: string; y: string; p?: string };
 type Round = { id: string; options: string[]; stage: number; at: number; done: boolean };
 type Run = {
