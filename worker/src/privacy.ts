@@ -30,6 +30,7 @@ ${STYLE}</head><body><main>
 <tr><td>What you're watching, shown to your crew</td><td>couch server, in memory</td><td>About 2 minutes after you stop</td></tr>
 <tr><td>Watch-together rooms, asks, reactions</td><td>couch server, in memory</td><td>Minutes</td></tr>
 <tr><td>Favourites, reviews, ratings, "finished" posts</td><td>couch server</td><td>Until you delete them</td></tr>
+<tr><td>Scenes game: scores, streak, leaderboard name and picture</td><td>couch server</td><td>Until you ask us to delete them</td></tr>
 <tr><td>Settings, history, downloads, sign-in tokens</td><td>Your device only</td><td>Until you delete the app</td></tr>
 <tr><td>Lists and watch history</td><td>Simkl, only if you connect it</td><td>Under Simkl's privacy policy</td></tr>
 <tr><td>Smart bar questions</td><td>Sent to Google Gemini to answer</td><td>Under Google's terms</td></tr>
