@@ -41,6 +41,9 @@ export interface Env {
   DISCORD_BOT_TOKEN?: string;
   /** ClipCafe PRO key: scene clips for billboard / preview (instead of trailers) */
   CLIPCAFE_KEY?: string;
+  /** optional R2 bucket: clips kept for good, so each is downloaded from
+   *  ClipCafe once ever (Cloudflare's cache alone is per region and can forget) */
+  CLIPS?: R2Bucket;
   /** access code for App Review's demo login (no Discord needed). Unset = off */
   REVIEW_CODE?: string;
   /** read-only GitHub token for the app's releases (updates) */
@@ -609,6 +612,21 @@ async function clipStream(env: Env, imdb: string, req: Request, title?: string |
   // ranges (seeking) are answered straight from the cache
   const cached = await cache.match(new Request(fileKey, { headers: req.headers.get("range") ? { range: req.headers.get("range")! } : {} }));
   if (cached) return cached;
+  if (env.CLIPS) {
+    const obj = await env.CLIPS.get(`${imdb}.mp4`, { range: req.headers });
+    if (obj && "body" in obj) {
+      const h = new Headers({ "content-type": "video/mp4", "accept-ranges": "bytes", "cache-control": `public, max-age=${CLIP_DAYS * 86400}` });
+      const rg = obj.range as { offset?: number; length?: number } | undefined;
+      if (req.headers.get("range") && rg && typeof rg.offset === "number") {
+        const n = rg.length ?? obj.size - rg.offset;
+        h.set("content-range", `bytes ${rg.offset}-${rg.offset + n - 1}/${obj.size}`);
+        h.set("content-length", String(n));
+        return new Response(obj.body, { status: 206, headers: h });
+      }
+      h.set("content-length", String(obj.size));
+      return new Response(obj.body, { headers: h });
+    }
+  }
   const pick = await clipPick(env, imdb, title, year);
   if (!pick) return new Response("no clip", { status: 404 });
   const dl = await clipDownloadUrl(env, pick);
@@ -623,11 +641,14 @@ async function clipStream(env: Env, imdb: string, req: Request, title?: string |
   }
   // straight through to the player while a copy goes into the cache (no
   // holding the whole file in memory first)
-  const [a, b] = r.body.tee();
+  const [a, rest] = r.body.tee();
+  const [b, c] = rest.tee();
   const headers = { "content-type": "video/mp4", "cache-control": `public, max-age=${CLIP_DAYS * 86400}`, "accept-ranges": "bytes" };
   const len = r.headers.get("content-length");
   const h2: Record<string, string> = len ? { ...headers, "content-length": len } : headers;
   cache.put(new Request(fileKey), new Response(b, { headers: h2 })).catch(() => {});
+  if (env.CLIPS && len) env.CLIPS.put(`${imdb}.mp4`, c.pipeThrough(new FixedLengthStream(Number(len))), { httpMetadata: { contentType: "video/mp4" } }).catch(() => {});
+  else c.cancel().catch(() => {});
   return new Response(a, { headers: h2 });
 }
 
