@@ -5,13 +5,13 @@ name = "midnite-couch"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
 
-# ClipCafe closed its API (2026-11-27) but allowed couch to fetch the ~200
-# clips the scenes game needs from the site (account xnite7), kept on our side.
-# CLIPS_POOL_ONLY: clips (and previews) only for the game's films.
+# ClipCafe gave couch its own API key (2026-11-27, no limits); the file on
+# their site is the fallback (allowed for account xnite7).
+# CLIPS_POOL_ONLY = "1": clips (and previews) only for the game's films.
 # CLIPS_PAUSED = "1" switches clips and the game off.
 [vars]
 CLIPS_PAUSED = ""
-CLIPS_POOL_ONLY = "1"
+CLIPS_POOL_ONLY = ""
 
 [[rules]]
 type = "Data"

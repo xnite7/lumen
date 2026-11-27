@@ -69,7 +69,8 @@ type Stats = { streak: number; best: number; last: string; run: number; played: 
 
 export type Who = { id: string; name: string; avatar?: string };
 type Storage = DurableObjectStorage;
-type HasClip = (id: string, title: string, year: string) => Promise<boolean>;
+/** null = couldn't tell (ClipCafe didn't answer): not held against the film */
+type HasClip = (id: string, title: string, year: string) => Promise<boolean | null>;
 
 const j = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 const today = () => new Date().toISOString().slice(0, 10);
@@ -123,11 +124,12 @@ export class Game {
   private async pick(order: string[], used: string[]): Promise<string | null> {
     for (const id of order) {
       if (used.includes(id)) continue;
-      if ((await this.storage.get(`gx:${id}`)) === true) continue;
+      if ((await this.storage.get(`gx2:${id}`)) === true) continue;
       const t = await this.title(id);
       if (!t) continue;
-      if (await this.hasClip(id, t.n, t.y)) return id;
-      await this.storage.put(`gx:${id}`, true);
+      const has = await this.hasClip(id, t.n, t.y);
+      if (has) return id;
+      if (has === false) await this.storage.put(`gx2:${id}`, true);
     }
     return null;
   }
