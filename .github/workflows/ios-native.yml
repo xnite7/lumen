@@ -27,6 +27,8 @@ concurrency:
 jobs:
   ios:
     runs-on: macos-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Newest Xcode
@@ -62,6 +64,39 @@ jobs:
         with:
           name: couch-ios-native
           path: couch.ipa
+      - name: Publish the sideload .ipa
+        if: github.ref == 'refs/heads/gpui'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          R=couch-ios
+          gh release view $R >/dev/null 2>&1 || gh release create $R --prerelease --target "$GITHUB_SHA" --title "couch for iPhone / iPad" --notes "unsigned .ipa, sideload with AltStore or Sideloadly."
+          gh release upload $R couch.ipa --clobber
+          gh release edit $R --notes "unsigned .ipa, sideload with AltStore or Sideloadly. this one: $COUCH_VERSION"
+      - name: Simulator screenshots (test branch only)
+        if: github.ref == 'refs/heads/ios-native'
+        working-directory: ios
+        run: |
+          set +e
+          xcodebuild -project Couch.xcodeproj -scheme Couch -configuration Debug -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath simbuild ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            -skipPackagePluginValidation -skipMacroValidation CODE_SIGNING_ALLOWED=NO build > sim.log 2>&1
+          grep -q "BUILD SUCCEEDED" sim.log || { echo "COUCH-ERRORS-BEGIN"; grep -E ": error:|error: |ld: |Undefined symbols" sim.log | cut -c1-400 | sort -u | head -40; echo "COUCH-ERRORS-END"; exit 0; }
+          APP=$(find simbuild/Build/Products -name "Couch.app" -maxdepth 3 | head -1)
+          DEV=$(xcrun simctl list devices available | grep -E "iPhone 1[6-9]|iPhone Air" | grep -v -i "plus\|max\|e)" | head -1 | grep -oE "[0-9A-F-]{36}")
+          echo "simulator: $DEV"
+          xcrun simctl boot "$DEV"; xcrun simctl bootstatus "$DEV" -b
+          xcrun simctl install "$DEV" "$APP"
+          shot() {
+            xcrun simctl io "$DEV" screenshot "$1.png" >/dev/null 2>&1
+            sips -Z 900 -s format jpeg -s formatOptions 45 "$1.png" --out "$1.jpg" >/dev/null 2>&1
+            echo "COUCH-SHOT-BEGIN $1"; base64 -i "$1.jpg" | fold -w 200; echo "COUCH-SHOT-END $1"
+          }
+          xcrun simctl launch "$DEV" com.midnite.couch; sleep 25; shot home
+          xcrun simctl openurl "$DEV" "couch://title/series/tt0903747"; sleep 14; shot title
+          xcrun simctl openurl "$DEV" "couch://pro"; sleep 5; shot pro
+          xcrun simctl spawn "$DEV" log show --last 2m --predicate 'process == "Couch"' --style compact 2>/dev/null | grep -i -E "fatal|crash|error" | head -15
+          exit 0
       - name: Signed build → App Store Connect (TestFlight / App Store)
         if: github.ref == 'refs/heads/gpui'
         working-directory: ios

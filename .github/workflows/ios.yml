@@ -5,17 +5,8 @@ name: Build couch (iPhone / iPad)
 # Sideloadly re-sign it with your Apple ID), always at:
 # https://github.com/xnite7/lumen/releases/download/couch-ios/couch.ipa
 
+# Replaced by the native app (ios-native.yml). Kept for manual runs only.
 on:
-  push:
-    branches: [gpui]
-    paths:
-      - "mobile/**"
-      - "src/lib/**"
-      - "src-tauri/**"
-      - "scripts/ios-project.py"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/ios.yml"
   workflow_dispatch:
 
 env:

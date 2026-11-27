@@ -75,6 +75,40 @@ async function discordToken(req: Request, env: Env, kind: "exchange" | "refresh"
   return new Response(r.body, { status: r.status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
 }
 
+// ------------------------------------------------------------- demo source
+const DEMO: Record<string, { name: string; url: string; size: number }> = {
+  tt1254207: { name: "Big Buck Bunny", url: "https://archive.org/download/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.mp4", size: 61878609 },
+  tt1727587: { name: "Sintel", url: "https://archive.org/download/Sintel/sintel-2048-surround.mp4", size: 310674005 },
+};
+
+function demoSource(url: URL): Response {
+  const cors = { "access-control-allow-origin": "*", "cache-control": "public, max-age=3600" };
+  const path = url.pathname.replace(/^\/demo/, "");
+  if (path === "" || path === "/" || path === "/manifest.json") {
+    return json(
+      {
+        id: "app.midnite.couch.demo",
+        version: "1.0.0",
+        name: "couch demo",
+        description: "Open movies from the Blender Foundation (Creative Commons): Big Buck Bunny and Sintel.",
+        logo: `${url.origin}/couch.png`,
+        types: ["movie"],
+        idPrefixes: ["tt"],
+        resources: ["stream"],
+        catalogs: [],
+      },
+      200,
+      cors,
+    );
+  }
+  const m = path.match(/^\/stream\/movie\/(tt\d+)\.json$/);
+  if (m) {
+    const d = DEMO[m[1]];
+    return json({ streams: d ? [{ name: "couch demo\n720p", title: `${d.name} (Blender Foundation, CC BY)`, url: d.url, behaviorHints: { videoSize: d.size, filename: d.url.split("/").pop() } }] : [] }, 200, cors);
+  }
+  return json({ streams: [] }, 200, cors);
+}
+
 // ------------------------------------------------------------- updates
 // The app asks /v1/update/<target>/<arch>/<current>; this reads the newest
 // GitHub release's latest.json and answers with it when it's newer (204
@@ -329,8 +363,8 @@ const isEmoji = (e: unknown): e is string =>
 const ASK_TTL = 120_000;
 const ROOM_TTL = 90_000;
 
-const json = (v: unknown, status = 200) =>
-  new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+const json = (v: unknown, status = 200, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...headers } });
 
 function safeEqual(a: string, b: string) {
   if (!a || !b || a.length !== b.length) return false;
@@ -391,6 +425,9 @@ export default {
       return new Response(INSTALL_PAGE, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
     }
     if (url.pathname === "/join") return joinPage(url);
+    // a demo source for the App Store app: open movies anyone may stream
+    // (Blender Foundation, Creative Commons). Shows how "Add a source" works.
+    if (url.pathname.startsWith("/demo")) return demoSource(url);
     if (url.pathname === "/privacy") {
       return new Response(PRIVACY_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
     }

@@ -82,6 +82,8 @@ struct SettingsView: View {
     }
 }
 
+let demoSource = "\(crewURL)/demo"
+
 /// Your sources: add a server by its address, reorder (top = preferred), switch off, remove.
 struct SourcesView: View {
     @State private var sources = Sources.shared
@@ -110,6 +112,19 @@ struct SourcesView: View {
             }
             Section {
                 Button { adding = true } label: { Label("Add a source", systemImage: "plus") }
+                if !sources.list.contains(where: { $0.base == demoSource }) {
+                    Button {
+                        busy = true
+                        Task {
+                            do { _ = try await sources.add(demoSource) } catch { self.error = error.localizedDescription }
+                            busy = false
+                        }
+                    } label: {
+                        Label("Try the demo source", systemImage: "play.circle")
+                    }
+                }
+            } footer: {
+                Text("The demo source has two open movies (Big Buck Bunny and Sintel) so you can see how sources work.")
             }
         }
         .navigationTitle("Sources")
