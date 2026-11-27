@@ -508,6 +508,8 @@ const TABS: &[(&str, fn() -> Route)] = &[
     ("Couch", || Route::Couch),
 ];
 
+const SCENES_TAB: &[(&str, fn() -> Route)] = &[("Scenes", || Route::Scenes)];
+
 impl Root {
     fn nav_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let route = self.route.clone();
@@ -579,7 +581,8 @@ impl Root {
                                 .on_click(|_, _, cx| Nav::go(Route::Search, cx))
                                 .child(icon("search", 20.).text_color(theme::label2())),
                         )
-                        .children(TABS.iter().map(|(label, r)| {
+                        // (Scenes joins the tabs while the game is switched on)
+                        .children(TABS.iter().chain(SCENES_TAB.iter().filter(|_| views::scenes::on())).map(|(label, r)| {
                             let target = r();
                             let on = route == target || (matches!(route, Route::Detail(_)) && target == Route::Home && false);
                             div()

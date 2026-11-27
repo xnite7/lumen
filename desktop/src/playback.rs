@@ -575,7 +575,15 @@ fn why_lower(order: &[Value], first: &Value, mbps: f64, rt: &Value) -> Option<St
 }
 
 /// Every addon's streams for one video, gathered for up to `ms`.
+/// what the sources answered in the last search (shown when nothing was found)
+static ASKED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+pub fn asked() -> String {
+    let a = ASKED.lock().unwrap();
+    if a.is_empty() { "no source answered in time".into() } else { a.join(" · ") }
+}
+
 pub async fn gather(kind: &str, id: &str, ms: u64) -> Vec<Value> {
+    ASKED.lock().unwrap().clear();
     let req = format!("g{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
     let mut rx = host::listen("streams");
     let _ = api::call::<Value>("streams_fetch", json!({ "kind": kind, "id": id, "reqId": req })).await;
@@ -592,6 +600,14 @@ pub async fn gather(kind: &str, id: &str, ms: u64) -> Vec<Value> {
                 }
                 if c["finished"].as_bool() == Some(true) {
                     break;
+                }
+                // what each source said, for the "couldn't find a stream" message
+                if let Some(name) = c["addonName"].as_str().filter(|n| !n.is_empty()) {
+                    let said = match (c["error"].as_str(), c["streams"].as_array().map_or(0, |a| a.len())) {
+                        (Some(e), _) => format!("{name}: {}", e.chars().take(70).collect::<String>()),
+                        (None, n) => format!("{name}: {n}"),
+                    };
+                    ASKED.lock().unwrap().push(said);
                 }
                 got.extend(c["streams"].as_array().cloned().unwrap_or_default());
             }
@@ -1115,7 +1131,7 @@ pub fn quick_play_with(base: Meta, video_id: Option<String>, start_at: Option<f6
                 p.episode_title = ep_title;
                 if order.is_empty() {
                     p.loading = false;
-                    p.error = "couldn't find a stream for that one".into();
+                    p.error = format!("couldn't find a stream for that one ({})", asked());
                     cx.notify();
                     return;
                 }
