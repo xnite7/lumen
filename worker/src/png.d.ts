@@ -14,3 +14,7 @@ declare module "*.html" {
   const text: string;
   export default text;
 }
+declare module "*.webp" {
+  const data: ArrayBuffer;
+  export default data;
+}

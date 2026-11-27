@@ -1,563 +1,1074 @@
-<!DOCTYPE html>
-<html lang="en"><head><style data-dc-design-system-vars="">@layer{:root{--room-0:#000000;--room-1:#0a0809;--room-2:#141113;--room-3:#1d181b;--broadcast:#050304;--plum:#7a3b5e;--ink:#f4eaf0;--ink-2:#f4eaf099;--ink-3:#f4eaf057;--ink-4:#f4eaf029;--lamp:#ffb25c;--on-lamp:#120a06;--neon:#e0309a;--neon-soft:#ff6ec4;--neon-core:#ffe3f3;--on-ink:#000000;--fill:#786e764d;--good:#7fd6a0;--danger:#ff5a5a;--glow-neon:0 0 18px -2px #e0309a8c, 0 0 46px -6px #e0309a66;--glow-lamp:0 0 22px -4px #ffb25c8c, 0 0 60px -10px #ffb25c59;--lift:0 2px 10px 0 #0000008c;--float:0 14px 34px -10px #00000099;--drop:0 18px 36px -12px #000000cc;--s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;--s7:32px;--s8:44px;--gutter:56px;--r-xs:8px;--r-sm:12px;--r-card:14px;--r-md:16px;--r-lg:22px;--r-xl:30px;--r-pill:999px;--d-tap:120ms;--d-quick:200ms;--d-turn:320ms;--d-channel:460ms;--d-settle:560ms;--d-lamp:800ms;--d-beat:550ms;--d-neon:1300ms;--d-room:4000ms;--ease-lamp:cubic-bezier(0.25, 1, 0.5, 1);--ease-out:cubic-bezier(0.33, 1, 0.68, 1);--ease-in-out:cubic-bezier(0.65, 0, 0.35, 1);--ease-in:cubic-bezier(0.32, 0, 0.67, 0);--spring-bouncy:linear(0, 0.19, 0.51, 0.79, 0.96, 1.04, 1.05, 1.04, 1.02, 1.01, 1);--spring-glide:linear(0, 0.09, 0.26, 0.44, 0.59, 0.71, 0.8, 0.86, 0.91, 0.94, 0.97, 0.99, 1);--font-satoshi:"Satoshi", "Segoe UI Variable Display", -apple-system, system-ui, sans-serif;--text-sign:900 210px/200px var(--font-satoshi);--text-display:900 132px/130px var(--font-satoshi);--text-hero:900 72px/72px var(--font-satoshi);--text-title1:900 34px/39px var(--font-satoshi);--text-title2:700 24px/30px var(--font-satoshi);--text-title3:600 20px/25px var(--font-satoshi);--text-aside:500 19px/28px var(--font-satoshi);--text-kick:700 18px/24px var(--font-satoshi);--text-headline:600 17px/22px var(--font-satoshi);--text-osd:900 16px/20px var(--font-satoshi);--text-body:500 15px/22px var(--font-satoshi);--text-foot:600 13px/18px var(--font-satoshi);--text-caption:600 12px/16px var(--font-satoshi);}}</style>
-
-
+<!doctype html>
+<!-- couch · landing page · serve at "/" · images and the font are in l/ · couch.png is the logo -->
+<html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
 <title>couch · midnite™</title>
-<meta name="description" content="couch is midnite™'s streaming app. watch together, on one couch.">
+<meta name="description" content="couch is midnite™’s streaming app. watch together, on one couch.">
 <meta property="og:title" content="couch · midnite™">
-<meta property="og:description" content="couch is midnite™'s streaming app. watch together, on one couch.">
+<meta property="og:description" content="couch is midnite™’s streaming app. watch together, on one couch.">
 <meta property="og:image" content="/couch.png">
-<link rel="icon" href="/couch.png">
-
-
+<link rel="icon" type="image/png" href="/couch.png">
 <style>
 @font-face{font-family:"Satoshi";src:url("/l/satoshi.woff2") format("woff2");font-weight:300 900;font-display:swap}
 
+/* the room */
+:root{
+--k0:#000;--k1:#0a0809;--k2:#141113;--k3:#1d181b;
+--i1:#f4eaf0;--i2:#f4eaf099;--i3:#f4eaf057;--i4:#f4eaf029;
+--rim:rgba(244,234,240,.09);
+--e-lamp:cubic-bezier(.25,1,.5,1);--e-out:cubic-bezier(.33,1,.68,1);--e-in:cubic-bezier(.32,0,.67,0);
+--e-bouncy:cubic-bezier(.35,.6,.15,1.25);
+--e-glide:cubic-bezier(.25,.2,.25,.95);
+--gut:clamp(20px,4.4vw,64px);--wrap:clamp(1240px,82vw,1680px);
+--title:#f698c2;
+}
+/* the springs as drawn in the design system, where the browser can do them; the curves above are the closest plain ones (older iPhones) */
+@supports (transition-timing-function:linear(0,1)){:root{--e-bouncy:linear(0,.19,.51,.79,.96,1.04,1.05,1.04,1.02,1.01,1);--e-glide:linear(0,.09,.26,.44,.59,.71,.8,.86,.91,.94,.97,.99,1)}}
+html{background:#000;color-scheme:dark;scroll-behavior:smooth;scrollbar-color:rgba(244,234,240,.22) #000}
+body{margin:0;background:var(--k0);color:var(--i1);font-family:"Satoshi","Segoe UI Variable Display",-apple-system,system-ui,sans-serif;font-weight:500;font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;-webkit-text-size-adjust:100%}
+*,*::before,*::after{box-sizing:border-box}
+img{display:block;max-width:100%}
+a{color:var(--i1);text-decoration:none}a:hover{color:#fff}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+h1,h2,h3,h4,p,ol,ul,figure{margin:0}
+ol,ul{padding:0;list-style:none}
+::selection{background:var(--i1);color:#000}
+:focus-visible{outline:2px solid var(--i1);outline-offset:3px;border-radius:14px}
+[id]{scroll-margin-top:96px}
+.pg{position:relative;overflow-x:clip;background:var(--k0)}
+@supports not (overflow:clip){.pg{overflow-x:hidden}}
+.wrap{position:relative;width:min(var(--wrap),calc(100% - 2 * var(--gut)));margin-inline:auto}
 
-:root{--ink:#f4eaf0;--ink2:rgba(244,234,240,.6);--ink3:rgba(244,234,240,.34);--ink4:rgba(244,234,240,.12);--r1:#0a0809;--r2:#141113;
---glass:rgba(28,22,26,.42);--rim:rgba(244,234,240,.09);
---lamp:cubic-bezier(.25,1,.5,1);--glide:linear(0,.09,.26,.44,.59,.71,.8,.86,.91,.94,.97,.99,1);--bouncy:linear(0,.19,.51,.79,.96,1.04,1.05,1.04,1.02,1.01,1);
---gut:clamp(16px,4.2vw,56px)}
-html{background:#000;scroll-behavior:smooth}
-body{margin:0;background:#000;color:var(--ink);font-family:"Satoshi","Segoe UI Variable Display",-apple-system,system-ui,sans-serif;font-weight:500;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-a{color:var(--ink);text-decoration:none}a:hover{color:#fff}
-*{box-sizing:border-box}
-img{display:block}
-:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:999px}
-.pg{position:relative;overflow-x:clip;background:#000;min-height:100vh}
-.wrap{position:relative;z-index:2;max-width:1240px;margin:0 auto;padding:0 var(--gut)}
-
-/* grain */
-.grain{position:fixed;inset:-50%;width:200%;height:200%;z-index:60;pointer-events:none;opacity:.07;mix-blend-mode:overlay;animation:grain 1s steps(24) infinite}
-@keyframes grain{0%{transform:translate(0,0)}10%{transform:translate(-3%,2%)}20%{transform:translate(2%,-4%)}30%{transform:translate(-4%,-1%)}40%{transform:translate(3%,3%)}50%{transform:translate(-2%,4%)}60%{transform:translate(4%,-2%)}70%{transform:translate(-1%,-3%)}80%{transform:translate(2%,1%)}90%{transform:translate(-3%,3%)}100%{transform:translate(0,0)}}
+/* film grain: a new scatter 24 times a second */
+.grain{position:fixed;inset:-128px;z-index:120;pointer-events:none;opacity:.07;background:url("/l/grain.png") 0 0/256px 256px;animation:grain .5s steps(1) infinite}
+@keyframes grain{0%{transform:translate3d(0,0,0)}8.33%{transform:translate3d(-61px,37px,0)}16.66%{transform:translate3d(43px,-88px,0)}25%{transform:translate3d(-104px,-19px,0)}33.33%{transform:translate3d(77px,96px,0)}41.66%{transform:translate3d(-23px,-64px,0)}50%{transform:translate3d(112px,11px,0)}58.33%{transform:translate3d(-86px,83px,0)}66.66%{transform:translate3d(19px,-117px,0)}75%{transform:translate3d(-47px,52px,0)}83.33%{transform:translate3d(94px,-41px,0)}91.66%{transform:translate3d(-9px,108px,0)}}
 
 /* glass */
-.glass{background:var(--glass);-webkit-backdrop-filter:blur(30px) saturate(170%);backdrop-filter:blur(30px) saturate(170%);border:1px solid var(--rim);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 14px 34px -10px rgba(0,0,0,.6)}
+.glass{background:rgba(26,21,24,.46);-webkit-backdrop-filter:blur(26px) saturate(180%);backdrop-filter:blur(26px) saturate(180%);box-shadow:inset 0 0 0 1px rgba(244,234,240,.1),inset 0 1px 0 0 rgba(255,255,255,.1),0 14px 34px -10px rgba(0,0,0,.6)}
 
-/* nav */
-.nav{position:fixed;top:0;left:0;right:0;z-index:50;padding:14px var(--gut);padding-top:max(14px,env(safe-area-inset-top));display:flex;justify-content:center;pointer-events:none}
-.navin{pointer-events:auto;width:100%;max-width:1240px;display:flex;align-items:center;gap:8px;padding:8px 8px 8px 18px;border-radius:999px;border:1px solid transparent;transition:background .6s var(--lamp),border-color .6s var(--lamp),backdrop-filter .6s var(--lamp),max-width .7s var(--glide)}
-.nav.on .navin{background:rgba(20,16,19,.5);-webkit-backdrop-filter:blur(30px) saturate(170%);backdrop-filter:blur(30px) saturate(170%);border-color:var(--rim);max-width:880px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:19px;letter-spacing:-.02em;margin-right:auto}
-.brand img{width:34px;height:34px;object-fit:contain}
-.nl{font-weight:700;font-size:15px;color:var(--ink2);padding:10px 14px;border-radius:999px;transition:color .2s,background .2s}
-.nl:hover{color:var(--ink);background:rgba(244,234,240,.07)}
-
-/* buttons */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:54px;padding:0 26px;border-radius:999px;font-weight:700;font-size:16px;letter-spacing:-.01em;white-space:nowrap;transition:transform .63s var(--bouncy),background .2s,color .2s}
+/* pills */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:50px;padding:0 24px;border-radius:999px;font-weight:700;font-size:16px;letter-spacing:-.01em;white-space:nowrap;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;transition:transform .63s var(--e-bouncy),background-color .2s,color .2s}
 .btn svg{width:20px;height:20px;flex:none}
-.btn:active{transform:scale(.95);transition-duration:.12s}
-.btn.pri{background:var(--ink);color:#000}.btn.pri:hover{background:#fff;color:#000;transform:scale(1.03)}
-.btn.alt{color:var(--ink)}.btn.alt:hover{background:rgba(60,50,56,.55);transform:scale(1.03)}
-.btn.sm{height:40px;padding:0 18px;font-size:14px}
-.lk{display:inline-flex;align-items:center;gap:8px;font-weight:700;color:var(--ink2);font-size:15px;transition:color .2s,gap .3s var(--lamp)}
-.lk svg{width:18px;height:18px}.lk:hover{color:var(--ink);gap:12px}
+.btn:active{transform:scale(.96);transition-duration:.12s,.2s,.2s}
+.btn.pri{background:var(--i1);color:#000}.btn.pri:hover{background:#fff;color:#000}
+.btn.tint{background:rgba(244,234,240,.12);color:var(--i1)}.btn.tint:hover{background:rgba(244,234,240,.2);color:var(--i1)}
+.btn.onart{background:rgba(30,24,27,.42);-webkit-backdrop-filter:blur(26px) saturate(180%);backdrop-filter:blur(26px) saturate(180%);box-shadow:inset 0 0 0 1px rgba(244,234,240,.14),inset 0 1px 0 0 rgba(255,255,255,.12)}
+.btn.onart:hover{background:rgba(70,58,64,.5)}
+.btn.lg{height:56px;padding:0 28px;font-size:17px}
+.btn.sm{height:40px;padding:0 18px;font-size:14.5px}
+.lk{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:15px;color:var(--i2);transition:color .2s,gap .45s var(--e-lamp)}
+.lk svg{width:18px;height:18px;flex:none}.lk:hover{color:var(--i1);gap:13px}
 
-/* hero */
-.hero{position:relative;height:100svh;min-height:640px;max-height:1100px;overflow:hidden;z-index:2}
-.stage{position:absolute;inset:-6% 0 0 0;transform:translate3d(0,calc(var(--sy,0) * .32px),0);will-change:transform}
-.slide{position:absolute;inset:0;opacity:0;transition:opacity 1.6s var(--lamp)}
-.slide img{width:100%;height:100%;object-fit:cover;transform:scale(1.1);transition:transform 9s linear}
-.slide.on{opacity:1}.slide.on img{transform:scale(1)}
-.scrim{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,0) 22%,rgba(0,0,0,0) 42%,rgba(0,0,0,.75) 78%,#000 100%),linear-gradient(90deg,rgba(0,0,0,.72) 0%,rgba(0,0,0,.2) 55%,rgba(0,0,0,0) 100%)}
-.dim{position:absolute;inset:0;background:#000;opacity:calc(var(--sy,0) / 900);pointer-events:none}
-.hcopy{position:absolute;left:0;right:0;bottom:0;z-index:3;padding-bottom:clamp(40px,8vh,96px);transform:translate3d(0,calc(var(--sy,0) * -.12px),0);opacity:calc(1 - var(--sy,0) / 700)}
-.eyebrow{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;color:var(--ink2);letter-spacing:.01em;margin:0 0 22px}
-.eyebrow img{width:22px;height:22px;object-fit:contain;opacity:.9}
-h1.big{margin:0;font-weight:900;font-size:clamp(52px,9vw,136px);line-height:.9;letter-spacing:-.055em;max-width:11ch;text-shadow:0 2px 30px rgba(0,0,0,.35)}
-h1.big span{display:block}
-.lede{margin:26px 0 0;max-width:30em;font-size:clamp(17px,1.5vw,20px);line-height:1.5;color:var(--ink2)}
-.ctas{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:34px}
-.fine{margin:18px 0 0;font-size:13px;font-weight:600;color:var(--ink2)}
-.now{position:absolute;right:var(--gut);bottom:clamp(40px,8vh,96px);z-index:3;display:flex;flex-direction:column;align-items:flex-end;gap:14px;opacity:calc(1 - var(--sy,0) / 500)}
-.nowlabel{font-size:12px;font-weight:700;color:var(--ink2);letter-spacing:.02em}
-.nowlogo{position:relative;width:240px;height:72px}
-.nowlogo img{position:absolute;right:0;bottom:0;max-width:240px;max-height:72px;object-fit:contain;opacity:0;transform:translateY(10px);transition:opacity .9s var(--lamp),transform .9s var(--lamp);filter:drop-shadow(0 2px 14px rgba(0,0,0,.5))}
-.nowlogo img.on{opacity:1;transform:none}
-.segs{display:flex;gap:6px}
-.seg{position:relative;width:34px;height:6px;border-radius:999px;border:0;padding:0;background:rgba(244,234,240,.22);overflow:hidden;cursor:pointer}
-.seg::before{content:"";position:absolute;inset:-19px -4px}
-.seg i{position:absolute;inset:0;background:var(--ink);transform-origin:left;transform:scaleX(0);border-radius:999px}
-.seg.on{width:56px;transition:width .5s var(--glide)}
-.seg.on i{animation:segfill 8s linear forwards}
+/* nav: a floating glass capsule */
+.nav{position:fixed;z-index:90;top:max(14px,env(safe-area-inset-top));left:0;right:0;display:flex;justify-content:center;padding:0 var(--gut);pointer-events:none}
+.navin{pointer-events:auto;position:relative;display:flex;align-items:center;height:54px;padding:0 7px 0 15px;border-radius:999px;transition:background-color .6s var(--e-lamp)}
+.brand{display:flex;align-items:center;gap:9px;margin-right:12px;font-weight:900;font-size:18px;letter-spacing:-.03em}
+.brand img{width:34px;height:34px;object-fit:contain}
+.nl{position:relative;z-index:1;display:inline-flex;align-items:center;height:40px;padding:0 15px;border-radius:999px;font-weight:700;font-size:14.5px;color:var(--i2);transition:color .25s}
+.nl:hover{color:var(--i1)}
+.nhl{position:absolute;z-index:0;left:0;top:7px;height:40px;width:var(--w,0px);border-radius:999px;background:rgba(244,234,240,.11);transform:translate3d(var(--x,0px),0,0);opacity:var(--o,0);pointer-events:none;transition:transform .53s var(--e-glide),width .53s var(--e-glide),opacity .25s}
+.nav .btn{margin-left:8px}
+.scrolled .navin{background-color:rgba(20,16,19,.6)}
+.nav-ios{display:none}
+.ios .nav-ios{display:inline-flex}.ios .nav-win{display:none}
+
+/* type */
+.kick{display:flex;align-items:center;gap:10px;margin-bottom:20px;font-weight:900;font-size:13px;letter-spacing:.07em;color:var(--i2)}
+.kick::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--i1);flex:none}
+.h2{font-weight:900;font-size:clamp(36px,4.8vw,76px);line-height:.98;letter-spacing:-.047em;text-wrap:balance}
+.lead{margin-top:22px;max-width:31em;font-size:clamp(17px,1.36vw,19px);line-height:1.5;color:var(--i2);text-wrap:pretty}
+.sx{position:relative;padding:clamp(84px,11vw,170px) 0}
+.head2{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:clamp(24px,5vw,80px);align-items:end}
+.head2 .lead{margin-top:0;justify-self:end}
+
+/* arrivals warm up (lamp) */
+.rv{transition:opacity .8s var(--e-lamp) calc(var(--i,0) * 90ms),translate .8s var(--e-lamp) calc(var(--i,0) * 90ms)}
+.btn.rv{transition:opacity .8s var(--e-lamp) calc(var(--i,0) * 90ms),translate .8s var(--e-lamp) calc(var(--i,0) * 90ms),transform .63s var(--e-bouncy),background-color .2s,color .2s}
+.js [data-sx]:not(.in) .rv{opacity:0;translate:0 14px}
+
+/* ----------- the scene: hero, then the camera pulls back into the room ----------- */
+.scene{position:relative;--vh:100vh;--p:0}
+.stage{position:relative;isolation:isolate}
+.hero{position:relative;display:flex;align-items:flex-end;min-height:clamp(620px,100vh,920px);min-height:clamp(620px,100svh,920px)}
+.trav{position:absolute;z-index:0;left:0;right:0;top:0;height:88%;overflow:hidden;background:#000}
+.slides{position:absolute;inset:0;animation:screenon 1.9s var(--e-lamp) both}
+@keyframes screenon{from{opacity:0}to{opacity:1}}
+.slide{position:absolute;inset:0;overflow:hidden;opacity:0;transition:opacity 1.8s var(--e-lamp)}
+.slide.on{opacity:1}
+.slide img{position:absolute;left:0;top:0;width:100%;height:100%;max-width:none;object-fit:cover;transform:scale(1.06);transition:transform 0s linear 1.8s}
+.slide.on img{transform:scale(1);transition:transform 11s linear}
+.s-body img{width:118%;height:118%;top:-7%;object-position:0% 30%}
+.s-scrubs img{object-position:0% 0%}
+.trav .s-scrubs{transform:translate3d(0,8%,0)}
+.trav .s-scrubs::after{content:"";position:absolute;left:0;right:0;top:0;height:16%;background:linear-gradient(#000,rgba(0,0,0,0))}
+.melt{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.5) 0,rgba(0,0,0,0) 20%,rgba(0,0,0,0) 46%,rgba(0,0,0,.8) 79%,#000 100%),linear-gradient(90deg,rgba(0,0,0,.66) 0,rgba(0,0,0,.3) 34%,rgba(0,0,0,0) 60%)}
+.dim{position:absolute;inset:0;pointer-events:none;background:#000;opacity:calc(var(--sy,0) / 900)}
+.hero-in{z-index:2;display:flex;align-items:flex-end;justify-content:space-between;gap:40px;padding:150px 0 clamp(40px,7.4vh,78px)}
+.h1{font-weight:900;font-size:clamp(46px,6.5vw,104px);line-height:.93;letter-spacing:-.052em}
+.h1 span{display:block}
+.hlede{margin-top:26px;max-width:29.5em;font-size:clamp(17px,1.4vw,19.5px);line-height:1.5;color:rgba(244,234,240,.72)}
+.ctas{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-top:32px}
+.ios .cta-ios{order:-1}
+.fine{margin-top:20px;font-size:13px;font-weight:600;color:var(--i2)}
+.guide{margin-top:12px}
+.lampin{animation:lampin .9s var(--e-lamp) both;animation-delay:calc(var(--i,0) * 110ms + 500ms)}
+@keyframes lampin{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:none}}
+.now{flex:none;display:flex;flex-direction:column;align-items:flex-end;gap:16px;padding-bottom:4px}
+.nowlabel{font-size:12px;font-weight:700;letter-spacing:.03em;color:var(--i2)}
+.nowlogo{position:relative;width:250px;height:76px}
+.nowlogo img{position:absolute;right:0;bottom:0;max-width:250px;max-height:76px;object-fit:contain;opacity:0;transform:translate3d(0,10px,0);filter:drop-shadow(0 2px 10px rgba(0,0,0,.55));transition:opacity .9s var(--e-lamp),transform .9s var(--e-lamp)}
+.nowlogo img.on{opacity:1;transform:none;transition-delay:.35s}
+.segs{display:flex;gap:7px;align-items:center}
+.seg{position:relative;width:7px;height:7px;border-radius:999px;background:rgba(244,234,240,.34);overflow:hidden;transition:width .53s var(--e-glide),background-color .3s}
+.seg::before{content:"";position:absolute;inset:-19px -5px}
+.seg i{position:absolute;inset:0;border-radius:999px;background:var(--i1);transform-origin:0 50%;transform:scaleX(0)}
+.seg.on{width:46px;background:rgba(244,234,240,.26)}
+.seg.on i{animation:segfill var(--slide-s,9s) linear forwards}
 @keyframes segfill{to{transform:scaleX(1)}}
 
-/* ambient spill from the hero art */
-.spill{position:absolute;left:-10%;right:-10%;top:calc(100svh - 260px);height:1100px;z-index:0;pointer-events:none;opacity:.55}
-.spill img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(110px) saturate(1.5);opacity:0;transition:opacity 4s var(--lamp)}
-.spill img.on{opacity:1}
-.spill::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0),#000 92%)}
+/* the room */
+.room{position:relative;padding:clamp(48px,8vw,120px) 0 clamp(40px,6vw,80px)}
+.roomgrid{display:grid;grid-template-columns:minmax(0,1.78fr) minmax(0,1fr);gap:clamp(32px,5.4vw,84px);align-items:center}
+.set{position:relative}
+.glow{position:absolute;z-index:0;left:-26%;right:-26%;top:-34%;bottom:-18%;pointer-events:none;-webkit-mask-image:radial-gradient(closest-side,#000 22%,rgba(0,0,0,0) 100%);mask-image:radial-gradient(closest-side,#000 22%,rgba(0,0,0,0) 100%)}
+.glow img{position:absolute;inset:0;width:100%;height:100%;max-width:none;opacity:0;transition:opacity 4s var(--e-lamp)}
+.glow img.on{opacity:.82}
+.tv{position:relative;z-index:1;aspect-ratio:var(--tv-ar,1.83);border-radius:22px;overflow:hidden;background:var(--k2);box-shadow:0 30px 80px -30px #000}
+.rxs{position:absolute;z-index:3;left:14%;right:14%;top:0;bottom:118px;pointer-events:none}
+.rx{position:absolute;left:var(--x,50%);bottom:0;width:42px;height:42px;margin-left:-21px;border-radius:50%;display:grid;place-items:center;color:var(--i1);background:rgba(26,21,24,.5);-webkit-backdrop-filter:blur(14px) saturate(170%);backdrop-filter:blur(14px) saturate(170%);box-shadow:inset 0 0 0 1px rgba(244,234,240,.14);opacity:0}
+.rx svg{width:21px;height:21px;display:none}
+.rx.k-heart .g-heart,.rx.k-flame .g-flame,.rx.k-laugh .g-laugh,.rx.k-skull .g-skull,.rx.k-spark .g-spark{display:block}
+.rx.ga{animation:risea 3.4s var(--e-out) both}.rx.gb{animation:riseb 3.4s var(--e-out) both}
+@keyframes risea{0%{opacity:0;transform:translate3d(0,14px,0) scale(.4)}14%{opacity:1;transform:translate3d(0,-26px,0) scale(1)}72%{opacity:.9}100%{opacity:0;transform:translate3d(var(--dx,10px),var(--rise,-250px),0) scale(.86)}}
+@keyframes riseb{0%{opacity:0;transform:translate3d(0,14px,0) scale(.4)}14%{opacity:1;transform:translate3d(0,-26px,0) scale(1)}72%{opacity:.9}100%{opacity:0;transform:translate3d(var(--dx,10px),var(--rise,-250px),0) scale(.86)}}
+.bench{position:relative;z-index:2;display:flex;justify-content:center;gap:clamp(10px,2.2vw,26px);width:min(88%,540px);margin:-30px auto 0;padding:0 22px 13px;border-radius:26px}
+.seat{display:flex;flex-direction:column;align-items:center;gap:7px;margin-top:-27px;font-size:12px;font-weight:600;color:var(--i2)}
+.seat img,.seat i{width:54px;height:54px;border-radius:50%}
+.seat img{object-fit:cover;box-shadow:0 0 0 2px rgba(8,6,7,.85),0 8px 18px -6px rgba(0,0,0,.9)}
+.seat.you{color:var(--i1);transition:transform .63s var(--e-bouncy)}
+.seat.you i{display:grid;place-items:center;border:1.5px dashed rgba(244,234,240,.5);background:rgba(8,6,7,.55);transition:background-color .2s,border-color .2s}
+.seat.you svg{width:20px;height:20px}
+.seat.you:hover i{background:var(--i1);border-color:var(--i1);color:#000}
+.seat.you:active{transform:scale(.94)}
+.react{position:relative;z-index:2;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:18px}
+.react span{margin-right:6px;font-size:13px;font-weight:600;color:var(--i2)}
+.rb{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:rgba(244,234,240,.09);color:var(--i1);transition:transform .63s var(--e-bouncy),background-color .2s}
+.rb svg{width:20px;height:20px}
+.rb:hover{background:rgba(244,234,240,.18)}
+.rb:active{transform:scale(.88);transition-duration:.12s,.2s}
 
-/* sections */
-.sec{position:relative;padding:clamp(80px,12vw,160px) 0}
-.kick{font-size:14px;font-weight:700;color:var(--ink2);margin:0 0 14px;letter-spacing:.01em}
-h2.t{margin:0;font-weight:900;font-size:clamp(40px,6vw,84px);line-height:.95;letter-spacing:-.045em}
-.sub{margin:20px 0 0;max-width:32em;font-size:clamp(17px,1.4vw,19px);line-height:1.55;color:var(--ink2)}
+/* live: the hero art is the tv; scroll pulls the camera back */
+.scene.live{height:calc(var(--vh) * 2.12)}
+.scene.live .stage{position:sticky;top:0;height:var(--vh);overflow:clip}
+.scene.live .hero{position:absolute;inset:0;min-height:0}
+.scene.live .room{position:absolute;inset:0;display:grid;align-content:center;padding:54px 0 0}
+.scene.live .trav{z-index:1;left:-48px;right:-48px;top:-48px;height:calc(var(--vh) * .88 + 48px);border-radius:48px;transform-origin:0 0;transform:translate3d(calc(var(--p) * var(--tx,0) * 1px),calc(var(--p) * var(--ty,0) * 1px),0) scale(calc(1 + var(--p) * (var(--ts,1) - 1)));will-change:transform}
+.scene.live .trav .s-scrubs{transform:translate3d(0,calc((1 - var(--p)) * 8%),0)}
+.scene.live .trav .s-scrubs::after{opacity:calc(1 - var(--p) * 1.6)}
+.scene.live .melt{opacity:calc(1 - var(--p) * 1.7)}
+.scene.live .dim{display:none}
+.scene.live .hero-in{z-index:4}
+.scene.live .hcopy,.scene.live .now{opacity:calc(1 - var(--p) * 3);transform:translate3d(0,calc(var(--p) * -70px),0)}
+.scene.live .tv{visibility:hidden}
+.scene.live .tv.rv{translate:none}
+.scene.live .glow{opacity:calc((var(--p) - .35) * 1.7)}
+.scene.live .rfade{opacity:calc((var(--p) - .8) * 5.4);transform:translate3d(0,calc((1 - var(--p)) * 56px),0)}
+.scene.live .rlate{opacity:calc((var(--p) - .86) * 7.4);transform:translate3d(0,calc((1 - var(--p)) * 70px),0)}
+.scene.live .rxs{opacity:calc((var(--p) - .8) * 6)}
+.scene.live .rv{transition:none}
+.scene:not(.live) .slides{transform:translate3d(0,calc(var(--sy,0) * .14px),0)}
+.scene.live:not(.late) .room{pointer-events:none}
+.scene.live:not(.late) .bench,.scene.live:not(.late) .react{visibility:hidden}
+.scene.live.late .hero-in{pointer-events:none;visibility:hidden}
+/* short laptop windows: the same scene, with the hero set a little tighter */
+@media (max-height:639px){
+.scene.live .hero-in{padding-top:92px;padding-bottom:34px}
+.scene.live .h1{font-size:clamp(46px,min(6.5vw,11.6vh),104px)}
+.scene.live .hlede{margin-top:18px}
+.scene.live .ctas{margin-top:24px}
+.scene.live .fine{margin-top:14px}
+}
 
-/* features */
-.fgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:56px}
-.ft{position:relative;border-radius:28px;padding:28px;min-height:250px;display:flex;flex-direction:column;overflow:hidden}
-.ico{width:52px;height:52px;border-radius:16px;display:grid;place-items:center;background:rgba(244,234,240,.08);border:1px solid var(--rim)}
-.ico svg{width:24px;height:24px}
-.ft h3{margin:auto 0 0;padding-top:40px;font-weight:900;font-size:26px;letter-spacing:-.03em;line-height:1.1}
-.ft p{margin:10px 0 0;font-size:15px;line-height:1.5;color:var(--ink2)}
-.with{position:absolute;top:30px;right:28px;font-size:12px;font-weight:700;color:var(--ink2);padding:6px 11px;border-radius:999px;border:1px solid var(--rim)}
-.pool{position:absolute;pointer-events:none;z-index:0;filter:blur(120px) saturate(1.5);opacity:.32;border-radius:50%;object-fit:cover}
+/* ----------- everything in one place ----------- */
+.bento{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px;margin-top:clamp(40px,5vw,72px)}
+.tile{position:relative;display:flex;flex-direction:column;justify-content:flex-end;min-height:330px;border-radius:30px;background:var(--k1);overflow:hidden;isolation:isolate;box-shadow:inset 0 0 0 1px var(--rim)}
+.t-a{grid-column:1/9;min-height:400px}.t-b{grid-column:9/13;grid-row:1/3}.t-c{grid-column:1/5;min-height:350px}.t-d{grid-column:5/9;min-height:350px}.t-e{grid-column:1/6;min-height:360px}.t-f{grid-column:6/13;min-height:360px}
+.tx{position:relative;z-index:3;padding:54px 28px 28px;background:linear-gradient(to top,var(--k1) 54%,rgba(10,8,9,.8) 76%,rgba(10,8,9,0))}
+.tx h3{font-weight:900;font-size:25px;line-height:1.1;letter-spacing:-.032em}
+.tx p{margin-top:8px;max-width:27em;font-size:15px;line-height:1.47;color:var(--i2);text-wrap:pretty}
+.vg{position:absolute;inset:0;z-index:1}
+.par{transform:translate3d(calc(var(--px,0) * var(--d,10px)),calc(var(--py,0) * var(--d,10px)),0);transition:transform .7s var(--e-glide)}
 
-/* tilt cards (tvOS focus) */
-.tilt{position:relative;border-radius:22px;transform:perspective(1100px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translate3d(0,var(--ly,0px),0) scale(var(--sc,1));transition:transform .6s var(--glide),box-shadow .6s var(--glide);box-shadow:0 18px 36px -12px rgba(0,0,0,.8);transform-style:preserve-3d}
-.tilt:hover{--ly:-8px;--sc:1.025;box-shadow:0 40px 70px -20px rgba(0,0,0,.95)}
-.tilt::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:5;background:radial-gradient(circle at var(--mx,50%) var(--my,0%),rgba(255,255,255,.2),rgba(255,255,255,0) 45%),linear-gradient(115deg,rgba(255,255,255,0) 35%,rgba(255,255,255,.07) 48%,rgba(255,255,255,0) 60%);opacity:0;transition:opacity .4s var(--lamp)}
-.tilt:hover::after{opacity:1}
-.ft.tilt{border-radius:28px}
+/* tvOS focus: lift, tilt toward the pointer, a sheen on the glass */
+.focus{transform:perspective(1400px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translate3d(0,var(--ly,0px),0) scale(var(--sc,1));transition:transform .7s var(--e-glide)}
+.focus.rv{transition:opacity .8s var(--e-lamp) calc(var(--i,0) * 90ms),translate .8s var(--e-lamp) calc(var(--i,0) * 90ms),transform .7s var(--e-glide)}
+.focus::after{content:"";position:absolute;inset:0;z-index:6;border-radius:inherit;pointer-events:none;background:radial-gradient(560px circle at var(--mx,50%) var(--my,0%),rgba(255,255,255,.1),rgba(255,255,255,0) 62%);opacity:0;transition:opacity .5s var(--e-lamp)}
+@media (hover:hover) and (pointer:fine){
+.focus:hover{--ly:-6px;--sc:1.014;z-index:3}
+.focus:hover::after{opacity:1}
+}
 
-/* spotlights */
-.spot{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:clamp(32px,6vw,96px);align-items:center;padding:clamp(56px,8vw,110px) 0}
-.spot.flip{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
-.spot.flip .scopy{order:2}
-.scopy h3{margin:0;font-weight:900;font-size:clamp(34px,4.2vw,58px);line-height:.98;letter-spacing:-.04em}
-.scopy p{margin:20px 0 0;font-size:clamp(17px,1.4vw,19px);line-height:1.55;color:var(--ink2);max-width:26em}
-.chan{font-size:13px;font-weight:900;color:var(--ink3);letter-spacing:.04em;margin:0 0 18px}
-.vis{position:relative}
-.glow{position:absolute;inset:-14% -12%;z-index:0;pointer-events:none}
-.glow img{width:100%;height:100%;object-fit:cover;filter:blur(80px) saturate(1.6);opacity:.6;border-radius:50%}
-.card{position:relative;z-index:1;overflow:hidden;aspect-ratio:16/10;background:var(--r2)}
-.card>img{width:100%;height:100%;object-fit:cover}
-.float{position:absolute;z-index:3}
+/* immersive light */
+.il{position:absolute;right:6.5%;top:50%;width:min(55%,470px);translate:0 -50%}
+.t-a .tx{max-width:38%;background:none}
+.il-out{position:absolute;inset:-78% -52%;-webkit-mask-image:radial-gradient(closest-side,#000 12%,rgba(0,0,0,0) 100%);mask-image:radial-gradient(closest-side,#000 12%,rgba(0,0,0,0) 100%);opacity:.9}
+.il-win{position:relative;aspect-ratio:16/9;border-radius:16px;overflow:hidden;background:#000;box-shadow:inset 0 0 0 1px rgba(244,234,240,.1),0 24px 60px -24px #000}
+.il-bars{position:absolute;inset:0;opacity:.8}
+.il-film{position:absolute;left:0;right:0;top:50%;aspect-ratio:2.39/1;translate:0 -50%;overflow:hidden}
+.il img{position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover}
+.il-out img,.il-bars img{object-fit:fill}
+.x1{animation:xf 14s infinite}.x2{opacity:0;animation:xf 14s -7s infinite}
+@keyframes xf{0%,42%{opacity:1}50%,92%{opacity:0}100%{opacity:1}}
 
-/* crew couch */
-.crew{position:absolute;left:14px;right:14px;bottom:14px;z-index:4;border-radius:22px;padding:12px 12px 12px 14px;display:flex;align-items:center;gap:14px}
-.sofa{position:relative;display:flex;align-items:flex-end;padding:6px 10px 8px;border-radius:16px 16px 12px 12px;background:rgba(244,234,240,.06);border:1px solid var(--rim)}
-.sofa::before,.sofa::after{content:"";position:absolute;bottom:0;width:8px;height:26px;border-radius:6px;background:rgba(244,234,240,.12)}
-.sofa::before{left:-4px}.sofa::after{right:-4px}
-.av{width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid rgba(10,8,9,.9);margin-left:-8px;animation:bob 3.6s ease-in-out infinite}
-.av:first-child{margin-left:0}
-@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
-.crewtxt{min-width:0;flex:1}
-.crewtxt b{display:block;font-weight:900;font-size:15px;letter-spacing:-.01em}
-.crewtxt span{display:block;font-size:13px;font-weight:600;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.live{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ink);margin-right:6px;vertical-align:1px;animation:pulse 2.4s ease-in-out infinite}
-@keyframes pulse{50%{opacity:.35}}
-.rxs{position:absolute;right:8%;bottom:84px;width:120px;height:72%;z-index:4;pointer-events:none}
-.rx{position:absolute;bottom:0;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:var(--ink);background:rgba(20,16,19,.45);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--rim);opacity:0;animation:rise 6.4s var(--lamp) infinite}
-.rx svg{width:19px;height:19px}
-@keyframes rise{0%{opacity:0;transform:translate3d(0,0,0) scale(.6)}12%{opacity:1;transform:translate3d(0,-30px,0) scale(1)}70%{opacity:.85}100%{opacity:0;transform:translate3d(var(--dx,10px),-300px,0) scale(.9)}}
+/* watch parties */
+.wp{display:flex;flex-direction:column;gap:10px;padding:22px 22px 0}
+.wp-s{position:relative;aspect-ratio:1.9/1;border-radius:14px;overflow:hidden;background:var(--k2);box-shadow:inset 0 0 0 1px rgba(244,234,240,.08)}
+.wp-s>img{width:100%;height:100%;object-fit:cover;object-position:50% 26%}
+.wp-s::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.62),rgba(0,0,0,0) 46%);border-radius:inherit;box-shadow:inset 0 0 0 1px rgba(244,234,240,.08)}
+.wp-who{position:absolute;z-index:1;left:10px;bottom:11px;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700}
+.wp-who img{width:22px;height:22px;border-radius:50%;object-fit:cover}
+.wp-who em{font-style:normal;font-weight:600;color:var(--i2)}
+.wp-t{position:absolute;z-index:1;right:11px;bottom:11px;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
+.wp-p{position:absolute;z-index:1;left:0;bottom:0;height:3px;width:88.3%;background:var(--i1)}
 
-/* player / up next extras */
-.pipc{width:38%;right:-5%;bottom:-9%;border-radius:14px;overflow:hidden;aspect-ratio:464/286;box-shadow:0 30px 60px -16px rgba(0,0,0,.95);border:1px solid var(--rim)}
-.pipc img{width:100%;height:100%;object-fit:cover}
-.calc{left:-6%;bottom:-10%;width:min(250px,44%);border-radius:20px;padding:14px;display:flex;flex-direction:column;gap:12px}
-.calc h4{margin:0;font-weight:900;font-size:15px;letter-spacing:-.01em}
-.calrow{display:flex;gap:10px;align-items:center}
-.calrow img{width:72px;height:41px;border-radius:8px;object-fit:cover;flex:none}
-.calrow b{display:block;font-size:13px;font-weight:700}
-.calrow span{display:block;font-size:12px;font-weight:600;color:var(--ink2)}
+/* 4k & hdr */
+.sq{display:flex;flex-direction:column;gap:6px;padding:24px 24px 0}
+.sq-row{position:relative;z-index:1;display:flex;align-items:center;justify-content:space-between;height:44px;padding:0 16px;border-radius:14px;font-size:14px;font-weight:700;color:var(--i2)}
+.sq-row svg{width:16px;height:16px;opacity:0}
+.sq-row.best{color:#000}.sq-row.best svg{opacity:1}
+.sq-hl{position:absolute;z-index:0;left:24px;right:24px;top:24px;height:44px;border-radius:14px;background:var(--i1)}
+.js [data-sx]:not(.in) .sq-hl{transform:translate3d(0,100px,0)}
+.sq-hl{transition:transform 1.1s var(--e-glide) .5s}
+.js [data-sx]:not(.in) .sq-row.best{color:var(--i2)}
+.sq-row.best{transition:color .3s 1.1s}
+.sq-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.sq-chips span{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:999px;font-size:12px;font-weight:600;color:var(--i2);background:rgba(120,110,118,.22)}
 
-/* install */
-.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:56px}
-.step{border-radius:28px;padding:28px;min-height:260px;display:flex;flex-direction:column}
-.num{font-weight:900;font-size:64px;line-height:1;letter-spacing:-.05em}
-.num i{font-style:normal;color:var(--ink4)}
-.step h3{margin:auto 0 0;padding-top:32px;font-weight:900;font-size:24px;letter-spacing:-.03em}
-.step p{margin:10px 0 0;font-size:15px;line-height:1.55;color:var(--ink2)}
-.req{display:flex;flex-wrap:wrap;gap:8px;margin-top:28px}
-.chip{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 15px;border-radius:999px;font-size:14px;font-weight:700;color:var(--ink2);border:1px solid var(--rim);background:rgba(244,234,240,.04)}
-.chip svg{width:16px;height:16px;color:var(--ink)}
-.instfoot{display:flex;flex-wrap:wrap;align-items:center;gap:14px 24px;margin-top:32px}
-.note{font-size:14px;font-weight:600;color:var(--ink2);margin:20px 0 0}
+/* real screens peeking into a tile */
+.peek{position:absolute;left:24px;top:24px;border-radius:14px 0 0 0;overflow:hidden;box-shadow:0 0 0 1px rgba(244,234,240,.09),0 20px 50px -20px #000}
+.peek img{width:100%;height:auto}
+.t-d .peek{width:142%;top:-28px;border-radius:0}.t-e .peek{width:128%}
+.t-c .tx{padding-top:26px;background:none}
 
-/* faq */
-.faq{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,7fr);gap:clamp(32px,6vw,96px);align-items:start}
-.qs{display:flex;flex-direction:column;gap:10px}
-details{border-radius:22px;overflow:hidden;transition:background .3s}
-summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 24px;font-weight:700;font-size:18px;letter-spacing:-.015em;min-height:64px}
-summary::-webkit-details-marker{display:none}
-.pl{width:32px;height:32px;flex:none;border-radius:50%;display:grid;place-items:center;background:rgba(244,234,240,.08);transition:transform .5s var(--bouncy)}
-.pl svg{width:16px;height:16px}
-details[open] .pl{transform:rotate(45deg)}
-details[open]{background:rgba(40,32,37,.5)}
-.ans{padding:0 24px 24px;margin:0;font-size:16px;line-height:1.6;color:var(--ink2);max-width:40em}
-.ans a{color:var(--ink);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--ink3)}
+/* picture-in-picture */
+.pp-doc{position:absolute;left:28px;top:28px;right:34%;bottom:120px;display:flex;flex-direction:column;gap:11px;padding:20px;border-radius:16px;box-shadow:inset 0 0 0 1px rgba(244,234,240,.08)}
+.pp-doc i{display:block;height:9px;border-radius:9px;background:rgba(244,234,240,.09)}
+.pp-pip{position:absolute;right:26px;bottom:26px;width:min(44%,330px)}
+.pp-glow{position:absolute;inset:-60% -50%;-webkit-mask-image:radial-gradient(closest-side,#000 6%,rgba(0,0,0,0) 100%);mask-image:radial-gradient(closest-side,#000 6%,rgba(0,0,0,0) 100%);opacity:.75}
+.pp-glow img{width:100%;height:100%;max-width:none}
+.pp-win{position:relative;border-radius:12px;overflow:hidden;box-shadow:0 0 0 1px rgba(244,234,240,.12),0 26px 50px -18px #000}
+.pp-win img{width:100%;height:auto}
+.t-f .tx{max-width:56%;background:none}
 
-/* final cta */
-.cta{position:relative;overflow:hidden;padding:clamp(120px,16vw,220px) 0;text-align:center}
-.wall{position:absolute;inset:-30% -20%;z-index:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:18px;transform:rotate(-9deg);opacity:.42;animation:drift 60s linear infinite alternate}
-.wall img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:12px}
-@keyframes drift{to{transform:rotate(-9deg) translate3d(0,-14%,0)}}
-.vign{position:absolute;inset:0;z-index:1;background:radial-gradient(ellipse 55% 60% at 50% 50%,rgba(0,0,0,.55),#000 78%),linear-gradient(180deg,#000,rgba(0,0,0,0) 30%,rgba(0,0,0,0) 70%,#000)}
-.cta .wrap{display:flex;flex-direction:column;align-items:center}
-.cta h2{margin:0 0 34px;font-weight:900;font-size:clamp(56px,10vw,150px);line-height:.9;letter-spacing:-.055em}
-.cta p{margin:20px 0 0;font-size:15px;color:var(--ink2)}
-.ctamark{width:64px;height:64px;object-fit:contain;margin-bottom:26px;opacity:.95}
+/* ----------- the player ----------- */
+.pl-wrap{position:relative;margin-top:clamp(40px,5vw,72px)}
+.pl-glow{position:absolute;inset:-22% -16% -26%;pointer-events:none;-webkit-mask-image:radial-gradient(closest-side,#000 30%,rgba(0,0,0,0) 100%);mask-image:radial-gradient(closest-side,#000 30%,rgba(0,0,0,0) 100%);opacity:.6}
+.pl-glow img{width:100%;height:100%;max-width:none}
+.player{position:relative;aspect-ratio:1440/793;border-radius:28px;overflow:hidden;background:#000;box-shadow:0 0 0 1px rgba(244,234,240,.08),0 40px 100px -40px #000;touch-action:pan-y}
+.pl-frame{width:100%;height:100%;object-fit:cover}
+.pl-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.42),rgba(0,0,0,0) 22%,rgba(0,0,0,0) 62%,rgba(0,0,0,.6));transition:opacity .7s var(--e-lamp)}
+.pl-top{position:absolute;left:26px;right:28px;top:24px;display:flex;align-items:center;gap:16px;transition:opacity .6s var(--e-lamp),transform .6s var(--e-lamp)}
+.pl-back{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;flex:none}
+.pl-back svg{width:20px;height:20px}
+.pl-title{height:42px;width:auto}
+.pl-q{margin-left:auto;font-weight:900;font-size:19px;letter-spacing:-.04em}
+.pl-bar{position:absolute;left:22px;right:22px;bottom:20px;display:flex;align-items:center;gap:4px;height:60px;padding:0 14px;border-radius:999px;transition:opacity .6s var(--e-lamp),transform .6s var(--e-lamp)}
+.pl-ic{width:42px;height:42px;display:grid;place-items:center;flex:none;color:var(--i1)}
+.pl-ic svg{width:22px;height:22px}
+.pl-time{flex:none;min-width:50px;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--i2);text-align:center}
+.pl-track{position:relative;flex:1;height:42px;display:flex;align-items:center;cursor:pointer;touch-action:none}
+.pl-rail{position:relative;width:100%;height:5px;border-radius:5px;background:rgba(244,234,240,.2)}
+.pl-fill{position:absolute;left:0;top:0;bottom:0;width:88.3%;border-radius:5px;background:var(--title)}
+.pl-knob{position:absolute;left:88.3%;top:50%;width:15px;height:15px;margin:-7.5px 0 0 -7.5px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+.pl-ghost{position:absolute;left:var(--sx,50%);top:50%;width:2px;height:15px;margin:-7.5px 0 0 -1px;border-radius:2px;background:#fff;opacity:0;transition:opacity .2s}
+.pl-prev{position:absolute;left:clamp(96px,var(--sx,50%),calc(100% - 96px));bottom:52px;width:184px;margin-left:-92px;padding:5px 5px 8px;border-radius:16px;text-align:center;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;opacity:0;transform:translate3d(0,8px,0) scale(.96);transform-origin:50% 100%;pointer-events:none;transition:opacity .25s var(--e-lamp),transform .45s var(--e-glide)}
+.pl-thumbs{position:relative;aspect-ratio:16/9;margin-bottom:7px;border-radius:11px;overflow:hidden;background:#000}
+.pl-thumbs img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .25s}
+.player.th0 .pt0,.player.th1 .pt1,.player.th2 .pt2{opacity:1}
+.player.scrub .pl-prev{opacity:1;transform:none}
+.player.scrub .pl-ghost{opacity:1}
+.player.idle .pl-top{opacity:0;transform:translate3d(0,-10px,0)}
+.player.idle .pl-bar{opacity:0;transform:translate3d(0,12px,0)}
+.player.idle .pl-shade{opacity:0}
+.player.idle{cursor:none}
+.aside{margin-top:22px;text-align:center;font-size:15px;color:var(--i2)}
 
-/* footer */
-.foot{position:relative;z-index:2;border-top:1px solid var(--ink4);padding:28px 0 calc(28px + env(safe-area-inset-bottom))}
-.foot .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:14px;font-weight:600;color:var(--ink2)}
-.foot .brand{font-size:15px;font-weight:700;color:var(--ink2);margin:0}
-.foot .brand img{width:24px;height:24px}
-.foot a{color:var(--ink2)}.foot a:hover{color:var(--ink)}
+/* ----------- up next: the real screens ----------- */
+.collage{position:relative;margin-top:clamp(44px,5.4vw,80px);aspect-ratio:1240/664}
+.c-glow{position:absolute;inset:-14% -10% -18%;pointer-events:none;-webkit-mask-image:radial-gradient(closest-side,#000 26%,rgba(0,0,0,0) 100%);mask-image:radial-gradient(closest-side,#000 26%,rgba(0,0,0,0) 100%)}
+.c-glow img{position:absolute;inset:0;width:100%;height:100%;max-width:none;opacity:0;transition:opacity 1.6s var(--e-lamp)}
+.c-glow img.on{opacity:.62}
+.win{position:absolute;transition:transform .7s var(--e-glide),opacity .6s var(--e-lamp),filter .6s var(--e-lamp)}
+.win figure{position:relative;border-radius:18px;overflow:hidden;background:var(--k2);box-shadow:0 0 0 1px rgba(244,234,240,.1),0 40px 80px -30px #000}
+.win figure img{width:100%;height:auto}
+.win figcaption{position:absolute;left:14px;bottom:14px;display:inline-flex;align-items:center;height:32px;padding:0 13px;border-radius:999px;font-size:13px;font-weight:700}
+.w-up figcaption{left:12%;bottom:auto;top:1.6%}
+.w-up{left:0;top:0;width:62.5%;z-index:1;--d:8px}
+.w-sm{right:0;top:13%;width:48%;z-index:2;--d:18px}
+.w-cal{left:7%;bottom:0;width:27.5%;z-index:3;--d:28px}
+@media (hover:hover) and (pointer:fine){
+.collage.hov.f0 .w-sm,.collage.hov.f0 .w-cal,.collage.hov.f1 .w-up,.collage.hov.f1 .w-cal,.collage.hov.f2 .w-up,.collage.hov.f2 .w-sm{filter:brightness(.5) saturate(.75)}
+.collage.hov.f0 .w-up,.collage.hov.f1 .w-sm,.collage.hov.f2 .w-cal{--sc:1.025}
+}
+.win{transform:translate3d(calc(var(--px,0) * var(--d,10px)),calc(var(--py,0) * var(--d,10px)),0) scale(var(--sc,1))}
 
-/* scroll-driven reveals + parallax, only where the browser has it */
+/* ----------- install ----------- */
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:clamp(40px,5vw,72px);border-top:1px solid var(--i4)}
+.st{position:relative;padding:30px clamp(18px,2.6vw,36px) 6px 0}
+.st+.st{padding-left:clamp(18px,2.6vw,36px);border-left:1px solid var(--i4)}
+.st::before{content:"";position:absolute;left:-4px;top:-4px;width:7px;height:7px;border-radius:50%;background:var(--i1)}
+.st+.st::before{left:-4px}
+.num{font-weight:900;font-size:clamp(64px,7.4vw,104px);line-height:.9;letter-spacing:-.06em;font-variant-numeric:tabular-nums}
+.num i{font-style:normal;color:var(--i4)}
+.st h3{margin-top:26px;font-weight:900;font-size:24px;letter-spacing:-.03em;line-height:1.15}
+.st p{margin-top:10px;max-width:24em;font-size:15.5px;line-height:1.52;color:var(--i2);text-wrap:pretty}
+.req{display:flex;flex-wrap:wrap;gap:8px;margin-top:clamp(36px,4vw,56px)}
+.chip{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px 0 12px;border-radius:999px;font-size:14px;font-weight:600;color:var(--i2);background:rgba(120,110,118,.2)}
+.chip svg{width:15px;height:15px;color:var(--i1);flex:none}
+.instfoot{display:flex;flex-wrap:wrap;align-items:center;gap:16px 28px;margin-top:30px}
+.note{margin-top:22px;font-size:14px;font-weight:600;color:var(--i2)}
+
+/* ----------- questions ----------- */
+.faqgrid{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,7fr);gap:clamp(28px,6vw,96px);align-items:start}
+.faqhead{position:sticky;top:110px}
+.q{border-top:1px solid var(--i4)}
+.q:last-child{border-bottom:1px solid var(--i4)}
+.q summary{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:76px;padding:20px 2px;cursor:pointer;list-style:none;font-weight:700;font-size:clamp(18px,1.6vw,21px);letter-spacing:-.02em;line-height:1.25;transition:color .2s}
+.q summary::-webkit-details-marker{display:none}
+.q summary:focus-visible{border-radius:10px}
+.pl{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgba(244,234,240,.09);transition:transform .63s var(--e-bouncy),background-color .2s,color .2s}
+.pl svg{width:15px;height:15px}
+.q[open] .pl{transform:rotate(45deg);background:var(--i1);color:#000}
+.q summary:hover .pl{background:rgba(244,234,240,.18)}
+.q[open] summary:hover .pl{background:#fff}
+.ans{max-width:38em;padding:0 2px 28px;font-size:16.5px;line-height:1.6;color:var(--i2);animation:lampin2 .5s var(--e-lamp)}
+@keyframes lampin2{from{opacity:0;transform:translate3d(0,-6px,0)}to{opacity:1;transform:none}}
+.ans a{color:var(--i1);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--i3)}
+
+/* ----------- sign-off ----------- */
+.cta{position:relative;overflow:hidden;padding:clamp(90px,12vw,170px) 0 clamp(96px,13vw,190px);text-align:center}
+.cta-light{position:absolute;left:50%;top:1%;width:min(1100px,150%);aspect-ratio:16/9;translate:-50% 0;pointer-events:none;-webkit-mask-image:radial-gradient(closest-side,#000 8%,rgba(0,0,0,0) 100%);mask-image:radial-gradient(closest-side,#000 8%,rgba(0,0,0,0) 100%);opacity:.62}
+.cta-light img{position:absolute;inset:0;width:100%;height:100%;max-width:none}
+.cta-in{display:flex;flex-direction:column;align-items:center}
+.mascot img{width:clamp(150px,17vw,236px);height:auto}
+.mega{margin:clamp(22px,3vw,40px) 0 clamp(30px,3.6vw,48px);font-weight:900;font-size:clamp(58px,12.2vw,184px);line-height:.86;letter-spacing:-.065em}
+.cta p{margin-top:22px;font-size:15px;color:var(--i2)}
+
+/* ----------- footer ----------- */
+.foot{position:relative;border-top:1px solid var(--i4);padding:26px 0 calc(26px + env(safe-area-inset-bottom))}
+.foot .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:14px;font-weight:600;color:var(--i2)}
+.fbrand{display:flex;align-items:center;gap:10px}
+.fbrand img{width:26px;height:26px;object-fit:contain}
+.foot a{color:var(--i2)}.foot a:hover{color:var(--i1)}
+
+/* slow parallax, only where the browser scrolls animations itself */
 @supports (animation-timeline: view()){
-@media (prefers-reduced-motion: no-preference){
-.rv{animation:rv linear both;animation-timeline:view();animation-range:entry 0% entry 55%}
-@keyframes rv{from{opacity:0;transform:translate3d(0,24px,0)}to{opacity:1;transform:none}}
-.px{animation:px linear both;animation-timeline:view();animation-range:cover}
-@keyframes px{from{translate:0 50px}to{translate:0 -50px}}
-.pxs{animation:pxs linear both;animation-timeline:view();animation-range:cover}
-@keyframes pxs{from{translate:0 20px}to{translate:0 -20px}}
+@media (prefers-reduced-motion: no-preference) and (min-width:1024px){
+.plx{animation:plx linear both;animation-timeline:view();animation-range:cover}
+@keyframes plx{from{translate:0 calc(var(--plx,30px))}to{translate:0 calc(var(--plx,30px) * -1)}}
 }}
 
-/* responsive */
-@media (max-width:980px){
-.fgrid,.steps{grid-template-columns:repeat(2,minmax(0,1fr))}
-.spot,.spot.flip,.faq{grid-template-columns:minmax(0,1fr)}
-.spot.flip .scopy{order:0}
-.nl.hide{display:none}
+/* ----------- tablet ----------- */
+@media (max-width:1023px){
+.nowlogo{width:180px;height:56px}.nowlogo img{max-width:180px;max-height:56px}
+.roomgrid{grid-template-columns:minmax(0,1fr);gap:44px}
+.rcopy{order:-1}
+.head2{grid-template-columns:minmax(0,1fr);gap:0}
+.head2 .lead{margin-top:22px;justify-self:start}
+.t-a{grid-column:1/-1}.t-b{grid-column:7/13;grid-row:2/4}.t-c{grid-column:1/7}.t-d{grid-column:1/7}.t-e{grid-column:1/7}.t-f{grid-column:7/13}
+.il{right:auto;left:50%;top:38%;width:min(64%,440px);translate:-50% -50%}
+.t-a .tx{max-width:none}
+.t-f .tx{max-width:none;background:linear-gradient(to top,var(--k1) 46%,rgba(10,8,9,.86) 68%,rgba(10,8,9,0))}
+.pp-doc{right:28px;bottom:150px}.pp-pip{width:min(62%,300px);bottom:118px}
+.faqgrid{grid-template-columns:minmax(0,1fr)}
+.faqhead{position:static}
 }
-@media (max-width:640px){
-.fgrid,.steps{grid-template-columns:minmax(0,1fr)}
-.nl{display:none}
-.navin{padding:6px 6px 6px 14px}
-.hero{min-height:600px}
-.ctas .btn{flex:1 1 100%}
-.now{left:var(--gut);right:auto;top:calc(max(14px,env(safe-area-inset-top)) + 76px);bottom:auto;align-items:flex-start}
-.nowlogo{width:170px;height:50px}.nowlogo img{left:0;right:auto;max-width:170px;max-height:50px}
-.ft,.step{min-height:0}
-.ft h3,.step h3{padding-top:28px}
-.crew{left:10px;right:10px;bottom:10px;padding:10px;gap:10px}
-.av{width:32px;height:32px}
-.crew .btn{display:none}
-.rxs{bottom:70px;right:4%}
-.calc{left:4%;bottom:-18%;width:62%}
-.pipc{width:46%;right:-2%;bottom:-14%}
-.vis{margin-bottom:40px}
-.wall{grid-template-columns:repeat(3,minmax(0,1fr))}
-.foot .wrap{flex-direction:column;align-items:flex-start}
-summary{font-size:17px;padding:18px 18px}
-.ans{padding:0 18px 20px}
-}
-@media (hover:none){.tilt:hover{--ly:0px;--sc:1}}
-@media (prefers-reduced-motion: reduce){
-*,*::before,*::after{animation:none !important;transition-duration:.01ms !important;scroll-behavior:auto !important}
-.grain{display:none}
-.rx{opacity:0}
-.slide img{transform:none}
-}
-@media (max-width:640px){.hero{height:auto;min-height:100svh;max-height:none;display:flex;flex-direction:column;justify-content:flex-end}.hcopy{position:relative;padding-top:calc(max(14px,env(safe-area-inset-top)) + 200px)}.eyebrow{display:none}}
-</style>
 
+/* ----------- phone ----------- */
+@media (max-width:680px){
+.nl{display:none}
+.navin{padding:0 7px 0 13px;width:100%;justify-content:space-between}
+.hero{min-height:clamp(600px,100svh,880px)}
+.trav{height:64%}
+.s-body img{width:100%;height:100%;top:0;object-position:56% 26%}
+.s-scrubs img{object-position:58% 0%}
+.melt{background:linear-gradient(180deg,rgba(0,0,0,.5) 0,rgba(0,0,0,0) 22%,rgba(0,0,0,0) 46%,rgba(0,0,0,.84) 80%,#000 100%)}
+.hero-in{flex-direction:column-reverse;align-items:stretch;gap:22px;padding:0 0 calc(30px + env(safe-area-inset-bottom))}
+.now{flex-direction:row;align-items:center;justify-content:space-between}
+.nowlabel{display:none}
+.nowlogo{width:150px;height:44px}
+.nowlogo img{left:0;right:auto;max-width:150px;max-height:44px}
+.hlede{margin-top:18px}
+.ctas{margin-top:26px}
+.ctas .btn{flex:1 1 100%}
+.fine{margin-top:16px}
+.room{padding-top:56px}
+.rxs{bottom:104px;--rise:-150px}
+.rx{--rise:-150px}
+.bench{width:100%;gap:0;justify-content:space-between;padding:0 14px 12px}
+.seat img,.seat i{width:46px;height:46px}
+.seat{margin-top:-23px}
+.react span{display:none}
+.bento{grid-template-columns:minmax(0,1fr)}
+.t-a,.t-b,.t-c,.t-d,.t-e,.t-f{grid-column:1/-1;grid-row:auto;min-height:0}
+.tile{border-radius:26px}
+.tx{padding:64px 22px 24px}
+.t-a{min-height:340px}.il{width:80%;top:35%}
+.t-b .vg{position:relative}.wp{padding:18px 18px 0}
+.t-b .tx{padding-top:22px;background:none}
+.t-c{min-height:356px}.t-d{min-height:330px}.t-e{min-height:340px}.t-f{min-height:330px}
+.t-d .peek{width:520px;left:18px;top:-24px}.t-e .peek{width:560px;left:18px;top:18px}
+.pp-doc{left:18px;top:18px;right:18px;bottom:150px}
+.pp-pip{right:18px;bottom:122px;width:58%}
+.player{border-radius:18px}
+.pl-top{left:12px;right:14px;top:12px;gap:10px}
+.pl-back{width:34px;height:34px}.pl-back svg{width:16px;height:16px}
+.pl-title{height:24px}.pl-q{font-size:14px}
+.pl-bar{left:10px;right:10px;bottom:10px;height:44px;padding:0 6px;gap:0}
+.pl-ic{width:34px;height:34px}.pl-ic svg{width:18px;height:18px}
+.pl-ic.xs{display:none}
+.pl-time{min-width:40px;font-size:11.5px}
+.pl-prev{width:124px;margin-left:-62px;left:clamp(40px,var(--sx,50%),calc(100% - 40px));bottom:40px;font-size:12px}
+.collage{aspect-ratio:auto;display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;width:100vw;margin-left:calc(var(--gut) * -1);padding:0 var(--gut) 6px}
+.collage::-webkit-scrollbar{display:none}
+.c-glow{display:none}
+.win{position:relative;left:auto;right:auto;top:auto;bottom:auto;flex:none;scroll-snap-align:center;filter:none !important;transform:none}
+.w-up{width:86%}.w-sm{width:70%}.w-cal{width:56%}
+.win figure{border-radius:14px}
+.steps{grid-template-columns:minmax(0,1fr);border-top:0}
+.st,.st+.st{padding:26px 0 30px 0;border-left:0;border-top:1px solid var(--i4)}
+.st+.st::before{left:-4px}
+.st h3{margin-top:18px}
+.instfoot .btn{width:100%}
+.foot .wrap{flex-direction:column;align-items:flex-start}
+}
+
+/* reduced motion: plain quick fades, nothing travels */
+@media (prefers-reduced-motion: reduce){
+*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;animation-delay:0s !important;transition-duration:.2s !important;transition-delay:0s !important;scroll-behavior:auto !important}
+.grain{animation:none}
+.rv{translate:none !important}
+.lampin{transform:none !important}
+.slide img,.slide.on img{transform:none}
+.x2{opacity:0 !important}
+.rx{display:none}
+.focus{transform:none}
+}
+</style>
+<noscript><style>.react,.segs{display:none}</style></noscript>
 </head>
 <body>
 
+<div class="pg" id="top">
 
-
-<div class="pg">
-
-<svg class="grain" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><filter id="gn"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"></feTurbulence><feColorMatrix type="saturate" values="0"></feColorMatrix></filter><rect width="100%" height="100%" filter="url(#gn)"></rect></svg>
+<div class="grain" aria-hidden="true"></div>
 
 <header class="nav">
-<nav class="navin" aria-label="main">
+<nav class="navin glass" aria-label="main">
+<span class="nhl" aria-hidden="true"></span>
 <a class="brand" href="#top"><img src="/couch.png" alt="">couch</a>
 <a class="nl" href="#features">features</a>
-<a class="nl hide" href="/install">install guide</a>
+<a class="nl" href="/install">install guide</a>
 <a class="nl" href="#faq">faq</a>
-<a class="btn pri sm" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe">download</a>
+<a class="btn pri sm nav-win" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe">download</a>
+<a class="btn pri sm nav-ios" href="/install">install guide</a>
 </nav>
 </header>
 
-<div class="spill" aria-hidden="true">
-<img class=" on" data-s="0" src="/l/L17.jpg" alt="">
-<img class="" data-s="1" src="/l/L14.jpg" alt="">
-</div>
+<main>
 
-<section class="hero" id="top">
-<div class="stage" aria-hidden="true">
-<div class="slide on" data-s="0"><img src="/l/L17.jpg" alt="" style="object-position: 62% 30%"></div>
-<div class="slide" data-s="1"><img src="/l/L14.jpg" alt="" style="object-position: 50% 35%"></div>
+<div class="scene">
+<div class="stage">
+
+<section class="hero">
+<div class="trav" aria-hidden="true">
+<div class="slides">
+<div class="slide s-body on" data-s="0"><img fetchpriority="high" src="/l/hero-body.jpg" alt=""></div>
+<div class="slide s-scrubs" data-s="1"><img src="/l/hero-scrubs.jpg" alt=""></div>
 </div>
-<div class="scrim"></div>
+<div class="melt"></div>
 <div class="dim"></div>
-
-<div class="now">
-<span class="nowlabel">on the couch tonight</span>
-<div class="nowlogo">
-<img class=" on" data-s="0" src="/l/L18.png" alt="Scrubs">
-<img class="" data-s="1" src="/l/L06.png" alt="The Body">
 </div>
-<div class="segs">
-<button class="seg on" data-s="0" type="button" aria-label="show Scrubs" data-go="0"><i></i></button>
-<button class="seg" data-s="1" type="button" aria-label="show The Body" data-go="1"><i></i></button>
-</div>
-</div>
-
+<div class="hero-in wrap">
 <div class="hcopy">
-<div class="wrap">
-<p class="eyebrow"><img src="/couch.png" alt="">midnite™ couch</p>
-<h1 class="big"><span>watch together,</span><span>on one couch.</span></h1>
-<p class="lede">couch is midnite™'s streaming app. find something, press play, and the whole crew is in the room with you.</p>
-<div class="ctas">
-<a class="btn pri" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"></path></svg>download for windows</a>
-<a class="btn alt glass" href="/install"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="12" height="16" rx="2.5"></rect><rect x="16.5" y="9" width="5" height="11" rx="1.5"></rect></svg>iPhone / iPad</a>
+<h1 class="h1"><span class="lampin" style="--i: 0">watch together,</span><span class="lampin" style="--i: 1">on one couch.</span></h1>
+<p class="hlede lampin" style="--i: 2">couch is midnite™’s streaming app. find something, press play, and the whole crew is in the room with you.</p>
+<div class="ctas lampin" style="--i: 3">
+<a class="btn lg cta-win pri" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14"></path></svg>download for windows</a>
+<a class="btn lg cta-ios onart" href="/install#ios"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="12" height="16" rx="2.5"></rect><rect x="16.5" y="9" width="5" height="11" rx="1.5"></rect></svg>iPhone / iPad</a>
 </div>
-<p class="fine">windows 10 / 11 · 64-bit · free for midnite members</p>
-<p style="margin: 14px 0 0"><a class="lk" href="/install">first time? follow the step-by-step guide<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"></path></svg></a></p>
+<p class="fine lampin" style="--i: 4">windows 10 / 11 · 64-bit · free for midnite members</p>
+<p class="guide lampin" style="--i: 5"><a class="lk" href="/install">first time? follow the step-by-step guide<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"></path></svg></a></p>
+</div>
+<div class="now">
+<span class="nowlabel lampin" style="--i: 6">on the couch tonight</span>
+<div class="nowlogo lampin" style="--i: 6">
+<img class="on" data-s="0" src="/l/logo-body.png" alt="The Body">
+<img data-s="1" src="/l/logo-scrubs.png" alt="Scrubs">
+</div>
+<div class="segs lampin" style="--i: 7">
+<button class="seg on" type="button" aria-label="show The Body" data-s="0"><i></i></button>
+<button class="seg" type="button" aria-label="show Scrubs" data-s="1"><i></i></button>
+</div>
 </div>
 </div>
 </section>
 
-<section class="sec" id="features">
-<img class="pool" src="/l/L07.jpg" alt="" aria-hidden="true" style="width: 520px; height: 520px; right: -140px; top: 280px">
-<img class="pool" src="/l/L14.jpg" alt="" aria-hidden="true" style="width: 560px; height: 460px; left: -180px; bottom: 40px">
+<section class="room" id="party" data-sx="party">
+<div class="wrap roomgrid">
+<div class="set" data-vis="set">
+<div class="glow" aria-hidden="true">
+<img class="on" data-s="0" src="/l/amb-body.png" alt="">
+<img data-s="1" src="/l/amb-scrubs.png" alt="">
+</div>
+<div class="tv rv" aria-hidden="true">
+<div class="slide s-body on" data-s="0"><img src="/l/hero-body.jpg" alt=""></div>
+<div class="slide s-scrubs" data-s="1"><img src="/l/hero-scrubs.jpg" alt=""></div>
+</div>
+<div class="rxs" aria-hidden="true">
+<span class="rx">
+<svg class="g-heart" viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.5s-7.5-4.6-7.5-10.3A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.6c0 5.7-7.5 10.3-7.5 10.3z"></path></svg>
+<svg class="g-flame" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.5c-3.9 0-6.6-2.6-6.6-6.3 0-4 3.5-5.7 4-10 2.6 1.6 4 4.1 4.1 6.2.9-.6 1.5-1.7 1.6-2.9 2.1 1.6 3.5 4.1 3.5 6.7 0 3.7-2.7 6.3-6.6 6.3z"></path></svg>
+<svg class="g-laugh" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM7.3 10c.3-1.1 1-1.7 2-1.7s1.7.6 2 1.7l-1.1.3c-.2-.5-.5-.8-.9-.8s-.7.3-.9.8L7.3 10zm5.4 0c.3-1.1 1-1.7 2-1.7s1.7.6 2 1.7l-1.1.3c-.2-.5-.5-.8-.9-.8s-.7.3-.9.8l-1.1-.3zM7 12.8h10a5 5 0 0 1-10 0z"></path></svg>
+<svg class="g-skull" viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M12 3C7.6 3 4.5 6 4.5 10.1c0 2.3 1 4.1 2.5 5.3V18c0 .8.7 1.5 1.5 1.5h.8V18h1.4v1.5h2.6V18h1.4v1.5h.8c.8 0 1.5-.7 1.5-1.5v-2.6c1.5-1.2 2.5-3 2.5-5.3C19.5 6 16.4 3 12 3zM9.1 12.6a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zm5.8 0a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zM12 13.2l1 2h-2l1-2z"></path></svg>
+<svg class="g-spark" viewBox="0 0 24 24" fill="currentColor"><path d="M11 3.5l1.9 5.6 5.6 1.9-5.6 1.9L11 18.5l-1.9-5.6L3.5 11l5.6-1.9L11 3.5zM18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z"></path></svg>
+</span>
+</div>
+<div class="bench glass rlate rv" style="--i: 1">
+<span class="seat"><img src="/l/av-xnite.jpg" alt="">xnite</span>
+<span class="seat"><img src="/l/av-mari.jpg" alt="">mari</span>
+<span class="seat"><img src="/l/av-north.jpg" alt="">North</span>
+<span class="seat"><img src="/l/av-lx0nit.jpg" alt="">lx0nit</span>
+<a class="seat you" href="#install" aria-label="your seat: install couch"><i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></i>you</a>
+</div>
+<div class="react rlate rv" style="--i: 2">
+<span>send one</span>
+<button class="rb" type="button" aria-label="send a heart" data-rx="heart"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 20.5s-7.5-4.6-7.5-10.3A4.2 4.2 0 0 1 12 7.6a4.2 4.2 0 0 1 7.5 2.6c0 5.7-7.5 10.3-7.5 10.3z"></path></svg></button>
+<button class="rb" type="button" aria-label="send a flame" data-rx="flame"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21.5c-3.9 0-6.6-2.6-6.6-6.3 0-4 3.5-5.7 4-10 2.6 1.6 4 4.1 4.1 6.2.9-.6 1.5-1.7 1.6-2.9 2.1 1.6 3.5 4.1 3.5 6.7 0 3.7-2.7 6.3-6.6 6.3z"></path></svg></button>
+<button class="rb" type="button" aria-label="send a laugh" data-rx="laugh"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM7.3 10c.3-1.1 1-1.7 2-1.7s1.7.6 2 1.7l-1.1.3c-.2-.5-.5-.8-.9-.8s-.7.3-.9.8L7.3 10zm5.4 0c.3-1.1 1-1.7 2-1.7s1.7.6 2 1.7l-1.1.3c-.2-.5-.5-.8-.9-.8s-.7.3-.9.8l-1.1-.3zM7 12.8h10a5 5 0 0 1-10 0z"></path></svg></button>
+<button class="rb" type="button" aria-label="send a skull" data-rx="skull"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M12 3C7.6 3 4.5 6 4.5 10.1c0 2.3 1 4.1 2.5 5.3V18c0 .8.7 1.5 1.5 1.5h.8V18h1.4v1.5h2.6V18h1.4v1.5h.8c.8 0 1.5-.7 1.5-1.5v-2.6c1.5-1.2 2.5-3 2.5-5.3C19.5 6 16.4 3 12 3zM9.1 12.6a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zm5.8 0a1.9 1.9 0 1 1 0-3.8 1.9 1.9 0 0 1 0 3.8zM12 13.2l1 2h-2l1-2z"></path></svg></button>
+<button class="rb" type="button" aria-label="send a sparkle" data-rx="spark"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11 3.5l1.9 5.6 5.6 1.9-5.6 1.9L11 18.5l-1.9-5.6L3.5 11l5.6-1.9L11 3.5zM18.5 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z"></path></svg></button>
+</div>
+</div>
+<div class="rcopy rfade">
+<p class="kick rv">ch 01 · the party</p>
+<h2 class="h2 rv" style="--i: 1">the room, not just the remote</h2>
+<p class="lead rv" style="--i: 2">faces of everyone watching, custom emoji reactions floating up the screen, and an invite that’s one click away.</p>
+</div>
+</div>
+</section>
+
+</div>
+</div>
+
+<section class="sx" id="features" data-sx="features">
 <div class="wrap">
-<div class="rv">
-<p class="kick">ch 01</p>
-<h2 class="t">everything in one place</h2>
-<p class="sub">films, shows and anime, with the people you actually watch with.</p>
+<div class="head2">
+<div>
+<p class="kick rv">ch 02 · features</p>
+<h2 class="h2 rv" style="--i: 1">everything in one place</h2>
 </div>
-<div class="fgrid">
-<div class="ft glass tilt rv">
-<span class="with">with Discord</span>
-<div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"></circle><path d="M3.5 19c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6"></path><path d="M16 5.2a3 3 0 0 1 0 5.6M17.5 14.6c1.6.6 2.7 2 3 4.4"></path></svg></div>
+<p class="lead rv" style="--i: 2">films, shows and anime, with the people you actually watch with.</p>
+</div>
+
+<div class="bento">
+
+<article class="tile focus t-a rv" style="--i: 1">
+<div class="vg" aria-hidden="true">
+<div class="il">
+<div class="par" style="--d: 9px">
+<div class="il-out"><img class="x1" src="/l/amb-body.png" alt=""><img class="x2" src="/l/amb-scrubs.png" alt=""></div>
+<div class="il-win">
+<div class="il-bars"><img class="x1" src="/l/amb-body.png" alt=""><img class="x2" src="/l/amb-scrubs.png" alt=""></div>
+<div class="il-film"><img class="x1" src="/l/hero-body.jpg" alt="" style="object-position: 50% 30%"><img class="x2" src="/l/hero-scrubs.jpg" alt="" style="object-position: 60% 22%"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="tx">
+<h3>immersive light</h3>
+<p>the film’s colours glow softly into the black bars.</p>
+</div>
+</article>
+
+<article class="tile focus t-b rv" style="--i: 2" data-vis="wp">
+<div class="vg wp" aria-hidden="true">
+<div class="wp-s"><img src="/l/hero-body.jpg" alt=""><span class="wp-who"><img src="/l/av-mari.jpg" alt="">mari <em>· host</em></span><span class="wp-t">41:11</span><i class="wp-p"></i></div>
+<div class="wp-s"><img src="/l/hero-body.jpg" alt=""><span class="wp-who"><img src="/l/av-xnite.jpg" alt="">xnite</span><span class="wp-t">41:11</span><i class="wp-p"></i></div>
+<div class="wp-s"><img src="/l/hero-body.jpg" alt=""><span class="wp-who"><img src="/l/av-north.jpg" alt="">North</span><span class="wp-t">41:11</span><i class="wp-p"></i></div>
+</div>
+<div class="tx">
 <h3>watch parties</h3>
-<p>one host, everyone in sync. see who's watching and react in real time.</p>
+<p>one host, everyone in sync. see who’s watching and react in real time.</p>
 </div>
-<div class="ft glass tilt rv">
-<span class="with">with Dolby</span>
-<div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="12.5" rx="2"></rect><path d="M8 21h8M12 17v4"></path><path d="M12 7.6l.9 2 2 .9-2 .9-.9 2-.9-2-2-.9 2-.9z"></path></svg></div>
+</article>
+
+<article class="tile focus t-c rv" style="--i: 3">
+<div class="vg sq" aria-hidden="true">
+<span class="sq-hl"></span>
+<span class="sq-row best">4K · HDR<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>
+<span class="sq-row">1080p</span>
+<span class="sq-row">720p</span>
+<div class="sq-chips"><span>audio · english</span><span>subtitles · english</span></div>
+</div>
+<div class="tx">
 <h3>4k &amp; hdr</h3>
 <p>picks the best stream it can find, with audio and subtitle tracks to match.</p>
 </div>
-<div class="ft glass tilt rv">
-<span class="with">with Philips Hue</span>
-<div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18h6M10 21h4"></path><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2v.2h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"></path></svg></div>
-<h3>immersive light</h3>
-<p>the film's colours glow softly into the black bars.</p>
+</article>
+
+<article class="tile focus t-d rv" style="--i: 4">
+<div class="vg" aria-hidden="true">
+<div class="peek par" style="--d: 10px"><img src="/l/scr-lists.jpg" alt="" width="671" height="462" loading="lazy" decoding="async"></div>
 </div>
-<div class="ft glass tilt rv">
-<span class="with">with Simkl</span>
-<div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 0 1-14.3 4.9M4 12a8 8 0 0 1 14.3-4.9"></path><path d="M18.5 3v4.2h-4.2M5.5 21v-4.2h4.2"></path></svg></div>
+<div class="tx">
 <h3>simkl sync</h3>
 <p>your history and watchlist follow you, nothing to re-mark.</p>
 </div>
-<div class="ft glass tilt rv">
-<span class="with">like Apple TV</span>
-<div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 11V8a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v3"></path><path d="M3 13a2 2 0 0 1 4 0v2h10v-2a2 2 0 0 1 4 0v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M6 19v2M18 19v2"></path></svg></div>
+</article>
+
+<article class="tile focus t-e rv" style="--i: 2">
+<div class="vg" aria-hidden="true">
+<div class="peek par" style="--d: 10px"><img src="/l/scr-couch.jpg" alt="" width="768" height="482" loading="lazy" decoding="async"></div>
+</div>
+<div class="tx">
 <h3>on the couch</h3>
 <p>see what your friends are watching right now and jump in.</p>
 </div>
-<div class="ft glass tilt rv">
-<span class="with">with mpv</span>
-<div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><rect x="12" y="11.5" width="6.5" height="5" rx="1" fill="currentColor"></rect></svg></div>
+</article>
+
+<article class="tile focus t-f rv" style="--i: 3">
+<div class="vg" aria-hidden="true">
+<div class="pp-doc"><i style="width: 38%"></i><i style="width: 92%"></i><i style="width: 84%"></i><i style="width: 88%"></i><i style="width: 61%"></i></div>
+<div class="pp-pip">
+<div class="par" style="--d: 16px">
+<div class="pp-glow"><img src="/l/amb-body.png" alt=""></div>
+<div class="pp-win"><img src="/l/scr-pip.jpg" alt="" width="464" height="286" loading="lazy" decoding="async"></div>
+</div>
+</div>
+</div>
+<div class="tx">
 <h3>picture-in-picture</h3>
 <p>keep it playing in a corner while you do something else.</p>
 </div>
+</article>
+
 </div>
 </div>
 </section>
 
-<section class="sec" style="padding-top: 0">
+<section class="sx" id="player" data-sx="player" style="padding-top: 0">
 <div class="wrap">
-
-<div class="spot">
-<div class="scopy rv">
-<p class="chan">ch 02 · the party</p>
-<h3>the room, not just the remote</h3>
-<p>faces of everyone watching, custom emoji reactions floating up the screen, and an invite that's one click away.</p>
+<div class="head2">
+<div>
+<p class="kick rv">ch 03 · the player</p>
+<h2 class="h2 rv" style="--i: 1">made to feel like a cinema</h2>
 </div>
-<div class="vis rv">
-<div class="glow" aria-hidden="true"><img src="/l/L14.jpg" alt=""></div>
-<div class="card tilt" style="aspect-ratio: 4 / 3">
-<img src="/l/L14.jpg" alt="The Body playing in a watch party" style="object-position: 50% 30%">
-<div class="rxs" aria-hidden="true">
-<span class="rx" style="left: 10px; animation-delay: 0s; --dx: -14px"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path></svg></span>
-<span class="rx" style="left: 62px; animation-delay: 1.3s; --dx: 12px"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.9 3.4-5.6 3.9-9.8 2.6 1.6 4 4 4 6.1.9-.6 1.5-1.7 1.6-2.9 2 1.6 3.5 4 3.5 6.6 0 3.6-2.6 6.2-6.5 6.2z"></path></svg></span>
-<span class="rx" style="left: 30px; animation-delay: 2.6s; --dx: 20px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M8 9.8c.6-.8 1.6-.8 2.2 0M13.8 9.8c.6-.8 1.6-.8 2.2 0"></path><path d="M7.8 13.5h8.4a4.2 4.2 0 0 1-8.4 0z" fill="currentColor"></path></svg></span>
-<span class="rx" style="left: 74px; animation-delay: 3.9s; --dx: -8px"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2z"></path></svg></span>
-<span class="rx" style="left: 4px; animation-delay: 5.1s; --dx: 16px"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"></path></svg></span>
+<p class="lead rv" style="--i: 2">a quiet player that gets out of the way, previews on the scrub bar, and colours pulled from every title.</p>
 </div>
-<div class="crew glass">
-<div class="sofa">
-<img class="av" src="/l/L19.jpg" alt="xnite">
-<img class="av" src="/l/L13.jpg" alt="mari" style="animation-delay: .4s">
-<img class="av" src="/l/L00.jpg" alt="North" style="animation-delay: .9s">
-<img class="av" src="/l/L08.jpg" alt="lx0nit" style="animation-delay: 1.3s">
+<div class="pl-wrap rv" style="--i: 3">
+<div class="pl-glow" aria-hidden="true"><img src="/l/amb-body.png" alt=""></div>
+<div class="player" role="img" aria-label="the couch player, playing The Body">
+<img class="pl-frame" src="/l/hero-body.jpg" alt="">
+<div class="pl-shade"></div>
+<div class="pl-top" aria-hidden="true">
+<span class="pl-back glass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"></path></svg></span>
+<img class="pl-title" src="/l/logo-body.png" alt="">
+<span class="pl-q">FHD</span>
 </div>
-<div class="crewtxt"><b><span class="live" aria-hidden="true"></span>4 on the couch</b><span>The Body · watching together</span></div>
-<span class="btn alt sm glass" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path></svg>invite</span>
-</div>
-</div>
-</div>
-</div>
-
-<div class="spot flip">
-<div class="scopy rv">
-<p class="chan">ch 03 · the player</p>
-<h3>made to feel like a cinema</h3>
-<p>a quiet player that gets out of the way, previews on the scrub bar, and colours pulled from every title.</p>
-</div>
-<div class="vis rv">
-<div class="glow" aria-hidden="true"><img src="/l/L01.jpg" alt=""></div>
-<div class="card tilt">
-<img src="/l/L01.jpg" alt="the couch player, playing The Body with subtitles">
-</div>
-<div class="float pipc px" aria-hidden="true"><img src="/l/L09.jpg" alt=""></div>
+<div class="pl-bar glass" aria-hidden="true">
+<span class="pl-ic"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4.2" height="14" rx="1.2"></rect><rect x="13.8" y="5" width="4.2" height="14" rx="1.2"></rect></svg></span>
+<span class="pl-ic xs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.5a7 7 0 1 1-6.6 4.7"></path><path d="M12.5 2.8 9.6 5.5l2.9 2.7"></path></svg></span>
+<span class="pl-ic xs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.5a7 7 0 1 0 6.6 4.7"></path><path d="M11.5 2.8l2.9 2.7-2.9 2.7"></path></svg></span>
+<span class="pl-time">41:11</span>
+<div class="pl-track">
+<div class="pl-rail"><i class="pl-fill"></i></div>
+<i class="pl-knob"></i>
+<i class="pl-ghost"></i>
+<div class="pl-prev glass">
+<div class="pl-thumbs"><img class="pt0" src="/l/th-a.jpg" alt=""><img class="pt1" src="/l/th-b.jpg" alt=""><img class="pt2" src="/l/th-c.jpg" alt=""></div>
+<span data-scrub-t>41:11</span>
 </div>
 </div>
-
-<div class="spot">
-<div class="scopy rv">
-<p class="chan">ch 04 · up next</p>
-<h3>always finds the next one</h3>
-<p>"because you loved", next episode cards, a calendar for what's out this week.</p>
-</div>
-<div class="vis rv">
-<div class="glow" aria-hidden="true"><img src="/l/L10.jpg" alt=""></div>
-<div class="card tilt">
-<img src="/l/L10.jpg" alt="the up next row on couch's home screen" style="object-position: 0% 0%">
-</div>
-<div class="float calc glass px">
-<h4>calendar</h4>
-<div class="calrow"><img src="/l/L11.jpg" alt=""><div><b>Paradise Hotel</b><span>tomorrow</span></div></div>
-<div class="calrow"><img src="/l/L04.jpg" alt=""><div><b>The Odyssey</b><span>tuesday</span></div></div>
+<span class="pl-time">-5:28</span>
+<span class="pl-ic xs"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5.2v13.6L15.5 12z"></path><rect x="16.8" y="5" width="2.4" height="14" rx="1.2"></rect></svg></span>
+<span class="pl-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5v5h3.5l4.5 4v-13l-4.5 4z" fill="currentColor"></path><path d="M15.5 9a4.2 4.2 0 0 1 0 6M18 6.5a7.7 7.7 0 0 1 0 11"></path></svg></span>
+<span class="pl-ic xs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="2.5"></rect><path d="M7 12h4M13.5 12H17M7 15h6"></path></svg></span>
+<span class="pl-ic xs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="2.5"></rect><rect x="12" y="11.5" width="6.5" height="4.5" rx="1" fill="currentColor"></rect></svg></span>
+<span class="pl-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"></path></svg></span>
 </div>
 </div>
+<p class="aside">leave it alone for a second. the controls go away.</p>
 </div>
-
 </div>
 </section>
 
-<section class="sec" id="install">
-<img class="pool" src="/l/L10.jpg" alt="" aria-hidden="true" style="width: 620px; height: 480px; left: 30%; top: 120px; opacity: .22">
+<section class="sx" id="next" data-sx="next" style="padding-top: 0">
 <div class="wrap">
-<div class="rv">
-<p class="kick">ch 05</p>
-<h2 class="t">install in a minute</h2>
-<p class="sub">couch keeps itself up to date after this.</p>
+<div class="head2">
+<div>
+<p class="kick rv">ch 04 · up next</p>
+<h2 class="h2 rv" style="--i: 1">always finds the next one</h2>
 </div>
-<div class="steps">
-<div class="step glass tilt rv">
+<p class="lead rv" style="--i: 2">“because you loved”, next episode cards, a calendar for what’s out this week.</p>
+</div>
+<div class="collage rv f0" style="--i: 3">
+<div class="c-glow" aria-hidden="true">
+<img class="on" data-g="0" src="/l/amb-upnext.png" alt="">
+<img data-g="1" src="/l/amb-smart.png" alt="">
+<img data-g="2" src="/l/amb-cal.png" alt="">
+</div>
+<div class="win w-up" data-col="0"><div class="plx" style="--plx: 14px"><figure><img src="/l/scr-upnext.jpg" alt="couch's home screen, the up next row of shows" width="1118" height="653" decoding="async"><figcaption class="glass">next episode cards</figcaption></figure></div></div>
+<div class="win w-sm" data-col="1"><div class="plx" style="--plx: 34px"><figure><img src="/l/scr-smart.jpg" alt="the smart bar, suggesting films with a reason for each" width="995" height="724" decoding="async"><figcaption class="glass">“because you loved”</figcaption></figure></div></div>
+<div class="win w-cal" data-col="2"><div class="plx" style="--plx: 56px"><figure><img src="/l/scr-cal.jpg" alt="the calendar, with what airs tomorrow and tuesday" width="500" height="468" decoding="async"><figcaption class="glass">out this week</figcaption></figure></div></div>
+</div>
+</div>
+</section>
+
+<section class="sx" id="install" data-sx="install" style="padding-top: 0">
+<div class="wrap">
+<div>
+<p class="kick rv">ch 05 · install</p>
+<h2 class="h2 rv" style="--i: 1">install in a minute</h2>
+<p class="lead rv" style="--i: 2">couch keeps itself up to date after this.</p>
+</div>
+<ol class="steps">
+<li class="st rv" style="--i: 2">
 <div class="num"><i>0</i>1</div>
 <h3>download</h3>
 <p>grab couch-setup.exe with the button below.</p>
-</div>
-<div class="step glass tilt rv">
+</li>
+<li class="st rv" style="--i: 3">
 <div class="num"><i>0</i>2</div>
 <h3>run it</h3>
-<p>double-click it. no admin needed. couch opens when it's done. if windows says "protected your pc", hit more info, then run anyway.</p>
-</div>
-<div class="step glass tilt rv">
+<p>double-click it. no admin needed. couch opens when it’s done. if windows says “protected your pc”, hit more info, then run anyway.</p>
+</li>
+<li class="st rv" style="--i: 4">
 <div class="num"><i>0</i>3</div>
 <h3>sign in with discord</h3>
-<p>you'll need to be in the midnite server.</p>
-</div>
-</div>
-<div class="req rv">
-<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>windows 10 / 11</span>
-<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>64-bit</span>
-<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>a discord account in midnite</span>
-<span class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>an internet connection</span>
-</div>
-<div class="instfoot rv">
-<a class="btn pri" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"></path></svg>download couch-setup.exe</a>
+<p>you’ll need to be in the midnite server.</p>
+</li>
+</ol>
+<ul class="req rv" style="--i: 4">
+<li class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>windows 10 / 11</li>
+<li class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>64-bit</li>
+<li class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>a discord account in midnite</li>
+<li class="chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>an internet connection</li>
+</ul>
+<div class="instfoot rv" style="--i: 5">
+<a class="btn pri lg" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14"></path></svg>download couch-setup.exe</a>
 <a class="lk" href="/install">open the step-by-step guide (PC, iPhone &amp; iPad)<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"></path></svg></a>
 </div>
-<p class="note rv">on the old couch? it'll offer to move you over automatically.</p>
+<p class="note rv" style="--i: 6">on the old couch? it’ll offer to move you over automatically.</p>
 </div>
 </section>
 
-<section class="sec" id="faq">
-<div class="wrap faq">
-<div class="rv">
-<p class="kick">ch 06</p>
-<h2 class="t">questions</h2>
+<section class="sx" id="faq" data-sx="faq" style="padding-top: 0">
+<div class="wrap faqgrid">
+<div class="faqhead">
+<p class="kick rv">ch 06 · faq</p>
+<h2 class="h2 rv" style="--i: 1">questions</h2>
 </div>
-<div class="qs">
-<details class="glass rv"><summary>is it free?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">yes, for everyone in the midnite discord server.</p></details>
-<details class="glass rv"><summary>why do i need discord?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">couch is for the midnite crew. signing in with discord is how it knows you're one of us.</p></details>
-<details class="glass rv"><summary>i had the old couch. what happens to it?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">it's retired. open it once and it'll install the new one for you, or just download it here. your simkl history comes with you.</p></details>
-<details class="glass rv"><summary>windows says it doesn't recognise the app<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">click "more info" then "run anyway". it's not signed by a big publisher yet.</p></details>
-<details class="glass rv"><summary>iPhone or iPad?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">yes. it takes a computer and about 15 minutes the first time. <a href="/install">here is the guide</a>.</p></details>
-<details class="glass rv"><summary>mac or linux?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">windows only for now.</p></details>
+<div class="qs rv" style="--i: 2">
+<details class="q"><summary>is it free?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">yes, for everyone in the midnite discord server.</p></details>
+<details class="q"><summary>why do i need discord?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">couch is for the midnite crew. signing in with discord is how it knows you’re one of us.</p></details>
+<details class="q"><summary>i had the old couch. what happens to it?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">it’s retired. open it once and it’ll install the new one for you, or just download it here. your simkl history comes with you.</p></details>
+<details class="q"><summary>windows says it doesn’t recognise the app<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">click “more info” then “run anyway”. it’s not signed by a big publisher yet.</p></details>
+<details class="q"><summary>iPhone or iPad?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">yes. it takes a computer and about 15 minutes the first time. <a href="/install#ios">here is the guide</a>.</p></details>
+<details class="q"><summary>mac or linux?<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">windows only for now.</p></details>
 </div>
 </div>
 </section>
 
-<section class="cta">
-<div class="wall" aria-hidden="true">
-<img src="/l/L03.jpg" alt="">
-<img src="/l/L16.jpg" alt="">
-<img src="/l/L23.jpg" alt="">
-<img src="/l/L20.jpg" alt="">
-<img src="/l/L02.jpg" alt="">
-<img src="/l/L22.jpg" alt="">
-<img src="/l/L21.jpg" alt="">
-<img src="/l/L15.jpg" alt="">
-<img src="/l/L12.jpg" alt="">
-<img src="/l/L05.jpg" alt="">
-<img src="/l/L20.jpg" alt="">
-<img src="/l/L03.jpg" alt="">
-<img src="/l/L21.jpg" alt="">
-<img src="/l/L16.jpg" alt="">
-<img src="/l/L23.jpg" alt="">
-<img src="/l/L15.jpg" alt="">
-<img src="/l/L12.jpg" alt="">
-<img src="/l/L22.jpg" alt="">
-<img src="/l/L02.jpg" alt="">
-<img src="/l/L05.jpg" alt="">
-</div>
-<div class="vign" aria-hidden="true"></div>
-<div class="wrap rv">
-<img class="ctamark" src="/couch.png" alt="">
-<h2>pull up a seat.</h2>
-<a class="btn pri" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"></path></svg>download couch</a>
-<p>ask someone in midnite for an invite.</p>
+<section class="cta" data-sx="cta">
+<div class="cta-light" aria-hidden="true"><img class="x1" src="/l/amb-body.png" alt=""><img class="x2" src="/l/amb-upnext.png" alt=""></div>
+<div class="wrap cta-in">
+<picture class="mascot rv"><source media="(prefers-reduced-motion: reduce)" srcset="couch.png"><img src="/l/couch-boil.webp" alt="" width="281" height="160" loading="lazy" decoding="async"></picture>
+<h2 class="mega rv" style="--i: 1">pull up a seat.</h2>
+<a class="btn pri lg rv" style="--i: 2" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe" data-dl><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14"></path></svg>download couch</a>
+<p class="rv" style="--i: 3">ask someone in midnite for an invite.</p>
 </div>
 </section>
+
+</main>
 
 <footer class="foot">
 <div class="wrap">
-<span class="brand"><img src="/couch.png" alt="">couch · midnite™</span>
+<span class="fbrand"><img src="/couch.png" alt="">couch · midnite™</span>
 <a href="/terms">terms</a>
 </div>
 </footer>
 
 </div>
 
-<script>(() => {
-  const rm = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const nav = document.querySelector(".nav");
-  let i = 0, t = 0, raf = 0;
-  const show = (n) => { i = n; document.querySelectorAll("[data-s]").forEach((el) => el.classList.toggle("on", el.dataset.s === String(n))); };
-  const start = () => { clearInterval(t); t = setInterval(() => show((i + 1) % 2), 8000); };
-  document.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => { show(+b.dataset.go); if (!rm) start(); }));
-  if (!rm) start();
+<script>
+(() => {
+  const d = document, w = window;
+  const $ = (s, r) => (r || d).querySelector(s);
+  const $$ = (s, r) => Array.from((r || d).querySelectorAll(s));
+  const pg = $('.pg'), scene = $('.scene'), stage = $('.stage'), tv = $('.tv');
+  if (!pg || !scene || !stage || !tv) return;
+
+  const rm = !!(w.matchMedia && w.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const ua = navigator.userAgent || '';
+  const ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  const SLIDE_MS = 9000; /* keep in step with --slide-s in the css */
+  const mmss = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+
+  /* on an iPhone or iPad the guide is the way in, so it becomes the main button */
+  if (ios) {
+    pg.classList.add('ios');
+    const a = $('.cta-win'), b = $('.cta-ios');
+    if (a && b) { a.classList.replace('pri', 'onart'); b.classList.replace('onart', 'pri'); }
+    $$('[data-dl]').forEach((el) => el.setAttribute('href', '/install'));
+  }
+  /* opened straight from a folder (no server): point the site links at the files next to this one */
+  if (location.protocol === 'file:') {
+    $$('a[href^="/"]').forEach((a) => {
+      const h = a.getAttribute('href');
+      a.setAttribute('href', h === '/' ? 'index.html' : h.indexOf('/install') === 0 ? 'install.html' + h.slice(8) : 'https://midnite-couch.xnite7.workers.dev' + h);
+    });
+  }
+
+  /* -- hero slideshow: the art, the title logo, the room's glow and the tv all change together -- */
+  const slideEls = $$('[data-s]');
+  let cur = 0, slideT = 0;
+  const show = (n) => { cur = n; slideEls.forEach((el) => el.classList.toggle('on', +el.getAttribute('data-s') === n)); };
+  const startSlides = () => {
+    clearInterval(slideT);
+    slideT = setInterval(() => { if (!d.hidden) show((cur + 1) % 2); }, SLIDE_MS);
+  };
+  $$('.seg').forEach((b) => b.addEventListener('click', () => {
+    const n = +b.getAttribute('data-s');
+    if (n !== cur) show(n);
+    else { const f = b.firstElementChild; if (f) { f.style.animation = 'none'; void f.offsetWidth; f.style.animation = ''; } }
+    if (!rm) startSlides();
+  }));
+
+  /* -- the scene: in a normal landscape window the hero art travels back and becomes the tv -- */
+  const clip = !!(w.CSS && CSS.supports && CSS.supports('overflow', 'clip'));
+  const VARS = ['--p', '--vh', '--tv-ar', '--ts', '--tx', '--ty'];
+  let live = false, late = false, scrolled = false, sceneH = 800, raf = 0;
+  const wantLive = () => {
+    const W = w.innerWidth, H = w.innerHeight;
+    return clip && !rm && W >= 1024 && H >= 540 && H <= 2400 && W / H >= 1.15;
+  };
+  /* where the hero art has to land to become the tv */
+  const measure = () => {
+    if (!live) return;
+    const W = scene.clientWidth, H = w.innerHeight, O = 48;
+    const tw = W + 2 * O, th = H * 0.88 + O;
+    scene.style.setProperty('--vh', H + 'px');
+    scene.style.setProperty('--tv-ar', (tw / th).toFixed(4));
+    const s = stage.getBoundingClientRect(), r = tv.getBoundingClientRect();
+    scene.style.setProperty('--ts', (r.width / tw).toFixed(5));
+    scene.style.setProperty('--tx', (r.left - s.left + O).toFixed(2));
+    scene.style.setProperty('--ty', (r.top - s.top + O).toFixed(2));
+    sceneH = H;
+  };
   const onScroll = () => {
     if (raf) return;
     raf = requestAnimationFrame(() => {
       raf = 0;
-      const y = scrollY || 0;
-      if (!rm) document.documentElement.style.setProperty("--sy", String(Math.min(y, 1400)));
-      nav && nav.classList.toggle("on", y > 40);
+      /* read progress off the scene itself, so it works whatever element does the scrolling */
+      const y = -scene.getBoundingClientRect().top;
+      if (live) {
+        let p = y / (sceneH || 800);
+        p = p < 0 ? 0 : p > 1 ? 1 : p;
+        const e = p * p * (3 - 2 * p);
+        scene.style.setProperty('--p', e.toFixed(4));
+        const l = e > 0.5;
+        if (l !== late) { late = l; scene.classList.toggle('late', l); }
+      } else if (!rm) {
+        scene.style.setProperty('--sy', String(Math.max(0, Math.min(y, 900)) | 0));
+      }
+      const sc = y > 24;
+      if (sc !== scrolled) { scrolled = sc; pg.classList.toggle('scrolled', sc); }
     });
   };
-  addEventListener("scroll", onScroll, { passive: true });
-  onScroll();
-  document.querySelectorAll(".tilt").forEach((el) => {
-    el.addEventListener("mousemove", (e) => {
-      if (rm) return;
-      const r = el.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
-      el.style.setProperty("--ry", ((x - 0.5) * 7).toFixed(2) + "deg");
-      el.style.setProperty("--rx", ((0.5 - y) * 7).toFixed(2) + "deg");
-      el.style.setProperty("--mx", (x * 100).toFixed(1) + "%");
-      el.style.setProperty("--my", (y * 100).toFixed(1) + "%");
-    });
-    el.addEventListener("mouseleave", () => { el.style.setProperty("--ry", "0deg"); el.style.setProperty("--rx", "0deg"); });
+  const setLive = (v) => {
+    live = v;
+    scene.classList.toggle('live', v);
+    if (v) scene.style.removeProperty('--sy');
+    else { late = false; scene.classList.remove('late'); VARS.forEach((k) => scene.style.removeProperty(k)); }
+  };
+  const again = () => { measure(); onScroll(); };
+  let rz = 0;
+  w.addEventListener('resize', () => {
+    clearTimeout(rz);
+    rz = setTimeout(() => { const v = wantLive(); if (v !== live) setLive(v); again(); }, 120);
   });
+  d.addEventListener('scroll', onScroll, { passive: true, capture: true });
+  setLive(wantLive());
+  again();
+
+  /* -- arrivals: each section warms up the first time it is on screen -- */
+  const sections = $$('[data-sx]');
+  const H0 = w.innerHeight;
+  sections.forEach((el) => { const r = el.getBoundingClientRect(); if (r.top < H0 * 0.92 && r.bottom > 0) el.classList.add('in'); });
+  /* what is on screen right now, so nothing ticks where nobody is looking */
+  const vis = {};
+  if ('IntersectionObserver' in w) {
+    const io = new IntersectionObserver((es) => {
+      es.forEach((en) => {
+        if (!en.isIntersecting) return;
+        en.target.classList.add('in');
+        if (en.target.getAttribute('data-sx') === 'player') plArm(3600);
+      });
+    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.08 });
+    sections.forEach((el) => io.observe(el));
+    const io2 = new IntersectionObserver((es) => { es.forEach((en) => { vis[en.target.getAttribute('data-vis')] = en.isIntersecting; }); }, { threshold: 0.15 });
+    $$('[data-vis]').forEach((el) => io2.observe(el));
+  } else {
+    sections.forEach((el) => el.classList.add('in'));
+  }
+
+  /* -- reactions: six slots, reused in turn -- */
+  const rxs = $('.rxs'), slots = [];
+  if (rxs && rxs.firstElementChild) {
+    slots.push(rxs.firstElementChild);
+    for (let n = 1; n < 6; n++) slots.push(rxs.appendChild(slots[0].cloneNode(true)));
+  }
+  const flip = [];
+  let seq = 0, userRx = 0;
+  const send = (kind, mine) => {
+    if (!slots.length) return;
+    const n = seq++ % slots.length, el = slots[n];
+    flip[n] = !flip[n];
+    const x = 8 + Math.random() * 84, dx = (Math.random() * 60 - 30) | 0;
+    /* two identical keyframes under two names: swapping the name restarts the animation */
+    el.className = 'rx ' + (flip[n] ? 'ga' : 'gb') + ' k-' + kind;
+    el.style.cssText = '--x: ' + x.toFixed(1) + '%; --dx: ' + dx + 'px';
+    if (mine) userRx = Date.now() + 2600;
+  };
+  $$('[data-rx]').forEach((b) => b.addEventListener('click', () => send(b.getAttribute('data-rx'), true)));
+
+  /* -- nav: the selection slides to whatever the pointer is on -- */
+  const navin = $('.navin'), nhl = $('.nhl');
+  if (navin && nhl) {
+    $$('.nl', navin).forEach((el) => el.addEventListener('pointerenter', (e) => {
+      if (e.pointerType === 'touch') return;
+      nhl.style.setProperty('--x', el.offsetLeft + 'px');
+      nhl.style.setProperty('--w', el.offsetWidth + 'px');
+      nhl.style.setProperty('--o', '1');
+    }));
+    navin.addEventListener('pointerleave', () => nhl.style.setProperty('--o', '0'));
+  }
+
+  /* -- focus effect: tilt toward the pointer, move the sheen, shift the inner layers -- */
+  if (!rm) {
+    $$('.focus').forEach((el) => {
+      el.addEventListener('pointermove', (e) => {
+        if (e.pointerType === 'touch') return;
+        const r = el.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+        const k = Math.min(1, 520 / r.width) * 3.2, s = el.style;
+        s.setProperty('--ry', ((x - 0.5) * k).toFixed(2) + 'deg');
+        s.setProperty('--rx', ((0.5 - y) * k).toFixed(2) + 'deg');
+        s.setProperty('--mx', (x * 100).toFixed(1) + '%');
+        s.setProperty('--my', (y * 100).toFixed(1) + '%');
+        s.setProperty('--px', (0.5 - x).toFixed(3));
+        s.setProperty('--py', (0.5 - y).toFixed(3));
+      });
+      el.addEventListener('pointerleave', () => {
+        const s = el.style;
+        s.setProperty('--ry', '0deg'); s.setProperty('--rx', '0deg'); s.setProperty('--px', '0'); s.setProperty('--py', '0');
+      });
+    });
+  }
+
+  /* -- player: the controls leave when you stop moving; the bar scrubs with a preview -- */
+  const player = $('.player'), track = $('.pl-track'), scrubT = $('[data-scrub-t]');
+  let plIdle = false, scrub = -1, plT = 0;
+  const paintPlayer = () => {
+    if (!player) return;
+    const th = scrub < 0 ? -1 : scrub < 933 ? 0 : scrub < 1866 ? 1 : 2;
+    player.classList.toggle('idle', plIdle);
+    player.classList.toggle('scrub', scrub >= 0);
+    for (let n = 0; n < 3; n++) player.classList.toggle('th' + n, n === th);
+    if (scrubT) scrubT.textContent = mmss(scrub < 0 ? 2471 : scrub);
+  };
+  function plArm(ms) {
+    clearTimeout(plT);
+    if (rm || !player) return;
+    plT = setTimeout(() => { if (scrub < 0) { plIdle = true; paintPlayer(); } else plArm(1200); }, ms);
+  }
+  if (player && track) {
+    const scrubMove = (e) => {
+      const r = track.getBoundingClientRect();
+      let x = (e.clientX - r.left) / r.width;
+      x = x < 0 ? 0 : x > 1 ? 1 : x;
+      track.style.setProperty('--sx', (x * 100).toFixed(2) + '%');
+      const s = Math.round(x * 2799);
+      if (s !== scrub || plIdle) { scrub = s; plIdle = false; paintPlayer(); }
+    };
+    const scrubOut = () => { if (scrub >= 0) { scrub = -1; paintPlayer(); } plArm(2400); };
+    track.addEventListener('pointermove', scrubMove);
+    track.addEventListener('pointerdown', scrubMove);
+    track.addEventListener('pointerleave', scrubOut);
+    track.addEventListener('pointercancel', scrubOut);
+    const wake = () => { if (plIdle) { plIdle = false; paintPlayer(); } plArm(2400); };
+    player.addEventListener('pointermove', wake);
+    player.addEventListener('pointerdown', wake);
+    player.addEventListener('pointerleave', (e) => plArm(e.pointerType === 'touch' ? 2400 : 700));
+  }
+
+  /* -- the screens: whichever one you rest on lights the room -- */
+  const col = $('.collage'), glows = $$('[data-g]');
+  if (col) {
+    const focus = (n, hov) => {
+      for (let k = 0; k < 3; k++) col.classList.toggle('f' + k, k === n);
+      col.classList.toggle('hov', hov);
+      glows.forEach((g) => g.classList.toggle('on', +g.getAttribute('data-g') === n));
+    };
+    $$('[data-col]', col).forEach((el) => el.addEventListener('pointerenter', (e) => focus(+el.getAttribute('data-col'), e.pointerType !== 'touch')));
+    col.addEventListener('pointermove', (e) => {
+      if (rm || e.pointerType === 'touch') return;
+      const r = col.getBoundingClientRect();
+      col.style.setProperty('--px', (0.5 - (e.clientX - r.left) / r.width).toFixed(3));
+      col.style.setProperty('--py', (0.5 - (e.clientY - r.top) / r.height).toFixed(3));
+    });
+    col.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'touch') return;
+      col.style.setProperty('--px', '0'); col.style.setProperty('--py', '0');
+      focus(0, false);
+    });
+  }
+
+  /* -- things that tick -- */
+  if (!rm) {
+    startSlides();
+    const tcs = $$('.wp-t');
+    let tick = 0;
+    setInterval(() => {
+      if (d.hidden || !vis.wp) return;
+      tick = (tick + 1) % 328;
+      const t = mmss(2471 + tick);
+      tcs.forEach((el) => { el.textContent = t; });
+    }, 1000);
+    const kinds = ['heart', 'flame', 'laugh', 'spark', 'heart', 'skull'];
+    setInterval(() => {
+      if (d.hidden || !vis.set || userRx > Date.now()) return;
+      if (live && !late) return;
+      send(kinds[(Math.random() * kinds.length) | 0]);
+    }, 2300);
+  }
+
+  pg.classList.add('js');
+
+  /* measure again whenever the room's layout settles (fonts arriving, text rewrapping) */
+  again();
+  requestAnimationFrame(again);
+  if (d.fonts && d.fonts.ready) d.fonts.ready.then(again).catch(() => {});
+  w.addEventListener('load', again, { once: true });
+  if ('ResizeObserver' in w) {
+    let rr = 0;
+    new ResizeObserver(() => { cancelAnimationFrame(rr); rr = requestAnimationFrame(again); }).observe(tv.parentNode.parentNode);
+  }
 })();
 </script>
-
-
-</body></html>
+</body>
+</html>

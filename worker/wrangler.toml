@@ -15,7 +15,7 @@ CLIPS_POOL_ONLY = "1"
 
 [[rules]]
 type = "Data"
-globs = ["**/*.png", "**/*.jpg", "**/*.woff2"]
+globs = ["**/*.png", "**/*.jpg", "**/*.webp", "**/*.woff2"]
 fallthrough = true
 
 [[rules]]
