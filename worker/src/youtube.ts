@@ -154,7 +154,9 @@ async function find(type: string, id: string): Promise<{ streams: any[]; debug: 
       }
     }
   }
-  const best = [...seen.values()].sort((a, b) => b.score - a.score).slice(0, 4);
+  const all = [...seen.values()].sort((a, b) => b.score - a.score);
+  // only what's about as sure as the best one (a clear match pushes out the maybes)
+  const best = all.filter((v) => v.score >= all[0].score - 4).slice(0, 4);
   const streams = best.map((v) => ({
     name: "YouTube",
     title: `${v.title}\n${v.channel} · ${fmt(v.secs)} · ${views(v.views)}`,
