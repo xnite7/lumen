@@ -646,7 +646,14 @@ async function clipStatus(env: Env, imdb: string, tryDownload = false, req?: Req
       await d.body?.cancel();
     }
   }
+  // does Cloudflare's cache keep things here? (a mark from an earlier visit)
+  const probe = new Request("https://couch.clips/probe");
+  const kept = await caches.default.match(probe);
+  const cache = kept ? `kept (${await kept.text()})` : "empty";
+  await caches.default.put(probe, new Response(new Date().toISOString(), { headers: { "cache-control": "public, max-age=86400" } }));
   return json({
+    cache,
+    colo: (req as any)?.cf?.colo,
     key: "set",
     keyLength: env.CLIPCAFE_KEY.length,
     status: r.status,
