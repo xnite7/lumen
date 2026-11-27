@@ -48,8 +48,8 @@ jobs:
             -destination 'generic/platform=iOS' -derivedDataPath build ARCHS=arm64 \
             -skipPackagePluginValidation -skipMacroValidation \
             MARKETING_VERSION=$COUCH_VERSION CURRENT_PROJECT_VERSION=${{ github.run_number }} \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build 2>&1 | tee build.log | grep -E "error|warning: unre|BUILD|\*\*" || true
-          grep -q "BUILD SUCCEEDED" build.log || { echo "::group::errors"; grep -n "error" build.log | head -80; echo "::endgroup::"; exit 1; }
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build > build.log 2>&1 || true
+          grep -q "BUILD SUCCEEDED" build.log || { echo "COUCH-ERRORS-BEGIN"; grep -E ": error:|error: |ld: |Undefined symbols" build.log | grep -v "^ *builtin-\|/usr/bin/clang" | cut -c1-400 | sort -u | head -100; echo "COUCH-ERRORS-END"; exit 1; }
           APP=$(find build/Build/Products -name "Couch.app" -maxdepth 3 | head -1)
           mkdir -p Payload && cp -R "$APP" Payload/
           zip -qr ../couch.ipa Payload

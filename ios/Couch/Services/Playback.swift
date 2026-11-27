@@ -40,7 +40,9 @@ final class Playback {
         let vid = ep?.id ?? m.id
         finding = m.id
         defer { finding = nil }
-        guard let s = picked ?? (await Sources.shared.best(m.type, vid, like: stream)) else {
+        var found = picked
+        if found == nil { found = await Sources.shared.best(m.type, vid, like: stream) }
+        guard let s = found else {
             problem = "None of your sources has \(ep.map { "\(m.name) \($0.code)" } ?? m.name) right now."
             return
         }
@@ -54,8 +56,8 @@ final class Playback {
     /// the last you finished, else the first.
     func upNext(_ m: MetaDetail) -> Episode? {
         let lib = Library.shared
-        if let p = lib.resume(m.id), let id = Optional(p.videoId), let e = m.videos?.first(where: { $0.id == id }) {
-            return p.finished ? (m.after(id) ?? e) : e
+        if let p = lib.resume(m.id), let e = m.videos?.first(where: { $0.id == p.videoId }) {
+            return p.finished ? (m.after(p.videoId) ?? e) : e
         }
         let all = m.seasons.filter { $0 > 0 }.flatMap { m.episodes($0) }.filter(\.isOut)
         if let last = all.lastIndex(where: { lib.isWatched($0.id) }) {
