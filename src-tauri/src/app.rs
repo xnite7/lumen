@@ -137,6 +137,7 @@ pub fn run() {
             commands::update_install,
             commands::update_on_exit,
             commands::discord_membership,
+            commands::access_code,
             commands::crew_ask,
             commands::crew_ask_status,
             commands::crew_inbox,

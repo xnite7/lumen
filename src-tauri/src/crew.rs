@@ -50,6 +50,9 @@ pub async fn login(core: &Core) -> AppResult<()> {
     if server(core).is_some() {
         return Ok(());
     }
+    if let Some(code) = core.db.secret("access_code") {
+        return code_login(core, &code).await.map(|_| ());
+    }
     let tok = crate::integrations::discord_auth::access_token(core).await.ok_or_else(|| AppError::msg("sign in with Discord first"))?;
     let r = core
         .http
@@ -78,6 +81,28 @@ pub async fn login(core: &Core) -> AppResult<()> {
     core.db.set_secret("crew_session", Some(session))?;
     core.db.set("crew_session_exp", &json!(v.get("exp").and_then(|e| e.as_u64()).unwrap_or(0)))?;
     Ok(())
+}
+
+/// Trade an access code for a couch session (App Review's demo login).
+pub async fn code_login(core: &Core, code: &str) -> AppResult<Value> {
+    let r = core
+        .http
+        .client()
+        .post(format!("{}/v1/auth", CREW_URL.trim_end_matches('/')))
+        .json(&json!({ "code": code }))
+        .timeout(Duration::from_secs(12))
+        .send()
+        .await
+        .map_err(|e| AppError::msg(format!("the crew server didn't answer: {e}")))?;
+    let ok = r.status().is_success();
+    let v: Value = r.json().await.unwrap_or(Value::Null);
+    if !ok {
+        return Err(AppError::msg(v.get("error").and_then(|e| e.as_str()).unwrap_or("that code didn't work").to_string()));
+    }
+    let session = v.get("session").and_then(|s| s.as_str()).ok_or_else(|| AppError::msg("that code didn't work"))?;
+    core.db.set_secret("crew_session", Some(session))?;
+    core.db.set("crew_session_exp", &json!(v.get("exp").and_then(|e| e.as_u64()).unwrap_or(0)))?;
+    Ok(v)
 }
 
 /// Does the crew server let this Discord sign-in in (right role)? None = couldn't tell.

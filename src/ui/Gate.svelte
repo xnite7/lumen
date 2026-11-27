@@ -28,6 +28,25 @@
     };
   });
 
+  // App Review's demo login (or a friend without Discord): an access code
+  let coding = $state(false);
+  let code = $state("");
+  let codeErr = $state("");
+  let busy = $state(false);
+  async function useCode(e: Event) {
+    e.preventDefault();
+    busy = true;
+    codeErr = "";
+    try {
+      await api.accessCode(code);
+      await refreshSecrets();
+      recheck();
+    } catch (x) {
+      codeErr = String(x);
+    }
+    busy = false;
+  }
+
   async function other() {
     await api.discordLogout().catch(() => {});
     await refreshSecrets();
@@ -54,9 +73,46 @@
     <p class="dim">couch is for the midnite server now. Sign in with Discord again so it can check you're in.</p>
     <DiscordSignIn ondone={recheck} />
   {/if}
+  {#if coding}
+    <form class="code" onsubmit={useCode}>
+      <input bind:value={code} placeholder="access code" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Access code" />
+      <button type="submit" disabled={busy || !code.trim()}>{busy ? "checking…" : "enter"}</button>
+    </form>
+    {#if codeErr}<p class="dim err">{codeErr}</p>{/if}
+  {:else}
+    <button class="link" onclick={() => (coding = true)}>have an access code?</button>
+  {/if}
 </div>
 
 <style>
+  .code {
+    display: flex;
+    gap: 8px;
+  }
+  .code input {
+    width: 180px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid rgb(255 255 255 / 0.14);
+    background: rgb(255 255 255 / 0.06);
+    color: var(--text);
+    font: inherit;
+  }
+  .code button {
+    padding: 10px 16px;
+    border-radius: 12px;
+    border: 0;
+    background: #fff;
+    color: #000;
+    font: inherit;
+    font-weight: 600;
+  }
+  .code button:disabled {
+    opacity: 0.4;
+  }
+  .err {
+    font-size: 13px;
+  }
   /* the song plays, the video stays out of sight */
   .song {
     position: fixed;

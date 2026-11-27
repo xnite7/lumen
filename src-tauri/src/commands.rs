@@ -1304,6 +1304,12 @@ pub async fn discord_membership(s: S<'_>) -> AppResult<String> {
     Ok(crate::integrations::discord_auth::membership(&s.core).await.to_string())
 }
 
+/// Get in with an access code instead of Discord (App Review's demo login).
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn access_code(s: S<'_>, code: String) -> AppResult<()> {
+    crate::integrations::discord_auth::use_code(&s.core, &code).await
+}
+
 #[cfg_attr(feature = "tauri-app", tauri::command)]
 pub fn discord_logout(s: S<'_>) -> AppResult<()> {
     crate::integrations::discord_auth::logout(&s.core)

@@ -261,6 +261,10 @@ pub async fn access_token(core: &Core) -> Option<String> {
 /// a fresh sign-in, e.g. from before the server check) / "unknown" (offline).
 pub async fn membership(core: &Core) -> &'static str {
     let Some(guild) = GUILD_ID.filter(|g| !g.is_empty()) else { return "member" };
+    // App Review (or anyone handed an access code): no Discord needed
+    if core.db.secret("access_code").is_some() {
+        return "member";
+    }
     if user(core).is_none() {
         return "signin";
     }
@@ -307,9 +311,25 @@ pub fn user(core: &Core) -> Option<Value> {
 }
 
 pub fn logout(core: &Core) -> AppResult<()> {
+    let _ = core.db.set_secret("access_code", None);
     let _ = core.db.set_secret("discord_access", None);
     let _ = core.db.set_secret("discord_refresh", None);
     let _ = core.db.set_secret("crew_session", None);
     let _ = core.db.del("discord_member");
     core.db.del("discord_user")
+}
+
+/// An access code instead of Discord (for App Review's demo login): the
+/// crew server checks it and hands back a session like a Discord sign-in.
+pub async fn use_code(core: &Core, code: &str) -> AppResult<()> {
+    let code = code.trim();
+    if code.is_empty() {
+        return Err(AppError::msg("type the code"));
+    }
+    let v = crate::crew::code_login(core, code).await?;
+    core.db.set_secret("access_code", Some(code))?;
+    core.db.set("discord_member", &json!(true))?;
+    let name = v.get("name").and_then(|n| n.as_str()).unwrap_or("guest");
+    core.db.set("discord_user", &json!({ "id": v.get("id").cloned().unwrap_or(json!("guest")), "name": name }))?;
+    Ok(())
 }

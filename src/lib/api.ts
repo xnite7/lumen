@@ -303,6 +303,7 @@ export const api = {
   clipUrl: (id: string, title?: string, year?: string) => invoke<string | null>("clip_url", { id, title: title ?? null, year: year ?? null }),
   discordRpcStatus: () => invoke<string>("discord_rpc_status"),
   discordMe: () => invoke<{ id: string; name: string; avatar?: string } | null>("discord_me"),
+  accessCode: (code: string) => invoke<void>("access_code", { code }),
   discordMembership: () => invoke<"member" | "outsider" | "signin" | "unknown">("discord_membership"),
   netSpeed: (fresh = false) => invoke<number>("net_speed", { fresh }),
   crewList: () => invoke<{ setup: boolean; members: CrewMember[] }>("crew_list"),

@@ -20,6 +20,7 @@
 
 import logo from "./logo.png";
 import { TERMS_HTML } from "./terms";
+import { PRIVACY_HTML } from "./privacy";
 import { DOWNLOAD_HTML } from "./download";
 import { INSTALL_HTML } from "./install";
 import { LANDING_HTML, INSTALL_PAGE, LANDING_FILES } from "./landing/landing";
@@ -38,6 +39,8 @@ export interface Env {
   DISCORD_BOT_TOKEN?: string;
   /** ClipCafe PRO key: scene clips for billboard / preview (instead of trailers) */
   CLIPCAFE_KEY?: string;
+  /** access code for App Review's demo login (no Discord needed). Unset = off */
+  REVIEW_CODE?: string;
   /** read-only GitHub token for the app's releases (updates) */
   GH_TOKEN?: string;
   /** owner/repo holding the releases */
@@ -190,6 +193,17 @@ async function auth(req: Request, env: Env): Promise<Response> {
     b = await req.json();
   } catch {
     return json({ error: "bad json" }, 400);
+  }
+  // App Review's demo login: an access code instead of Discord
+  if (typeof b?.code === "string") {
+    const want = env.REVIEW_CODE ?? "";
+    const got = b.code.trim();
+    const enc = new TextEncoder();
+    const [x, y] = await Promise.all([crypto.subtle.digest("SHA-256", enc.encode(got)), crypto.subtle.digest("SHA-256", enc.encode(want))]);
+    const same = new Uint8Array(x).every((v, i) => v === new Uint8Array(y)[i]);
+    if (!want || !same) return json({ error: "that code didn't work" }, 403);
+    const who: Who = { id: "app-review", name: "App Review" };
+    return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id, name: who.name });
   }
   const token = typeof b?.token === "string" ? b.token : "";
   if (!token) return json({ error: "no token" }, 400);
@@ -351,6 +365,9 @@ export default {
       return new Response(INSTALL_PAGE, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
     }
     if (url.pathname === "/join") return joinPage(url);
+    if (url.pathname === "/privacy") {
+      return new Response(PRIVACY_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
+    }
     if (url.pathname === "/terms" || url.pathname === "/tos") {
       return new Response(TERMS_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
     }

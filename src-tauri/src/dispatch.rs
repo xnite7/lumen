@@ -536,6 +536,10 @@ pub async fn invoke(cmd: &str, a: Value) -> Result<Value, String> {
         "discord_membership" => {
             out(commands::discord_membership(st).await.map_err(|e| e.to_string())?)
         }
+        "access_code" => {
+            let code: String = arg(&a, "code")?;
+            out(commands::access_code(st, code).await.map_err(|e| e.to_string())?)
+        }
         "discord_logout" => {
             out(commands::discord_logout(st).map_err(|e| e.to_string())?)
         }
