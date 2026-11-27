@@ -82,8 +82,10 @@ struct ContinueCard: View {
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 ZStack(alignment: .bottomLeading) {
-                    Art(url: p.meta.backdropURL)
+                    Color.clear
                         .frame(width: w, height: w * 9 / 16)
+                        .overlay { Art(url: p.meta.backdropURL) }
+                        .clipped()
                         .bottomFade(0.5)
                     Image(systemName: "play.fill")
                         .font(.system(size: 13, weight: .bold))

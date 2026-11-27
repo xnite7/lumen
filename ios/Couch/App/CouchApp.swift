@@ -57,6 +57,13 @@ final class Router {
             }
         case "pro":
             paywall = true
+        case "tab":
+            switch parts.first {
+            case "search": tab = .search
+            case "library": tab = .library
+            case "settings": tab = .settings
+            default: tab = .home
+            }
         default:
             break
         }
@@ -94,6 +101,11 @@ struct RootView: View {
             .tag(Tab.settings)
         }
         .onOpenURL { router.handle($0) }
+        .task {
+            // `-open couch://…` at launch (used by the CI screenshots)
+            let a = ProcessInfo.processInfo.arguments
+            if let i = a.firstIndex(of: "-open"), i + 1 < a.count, let u = URL(string: a[i + 1]) { router.handle(u) }
+        }
         .sheet(isPresented: $router.paywall) { ProView() }
         .alert("couch", isPresented: Binding(get: { playback.problem != nil }, set: { if !$0 { playback.problem = nil } })) {
             if !Sources.shared.any {

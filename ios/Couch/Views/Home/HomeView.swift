@@ -123,8 +123,11 @@ struct Billboard: View {
     var body: some View {
         let h: CGFloat = size == .regular ? 640 : 560
         ZStack(alignment: .bottom) {
-            ClipBackdrop(meta: meta, active: active)
+            // the artwork fills the space without widening the page
+            Color.clear
+                .frame(maxWidth: .infinity)
                 .frame(height: h)
+                .overlay { ClipBackdrop(meta: meta, active: active) }
                 .clipped()
                 .bottomFade(0.55)
                 .overlay(LinearGradient(colors: [.black.opacity(0.5), .clear], startPoint: .top, endPoint: .init(x: 0.5, y: 0.25)))

@@ -70,12 +70,15 @@ struct Art: View {
     var mode: ContentMode = .fill
 
     var body: some View {
-        AsyncImage(url: url, transaction: .init(animation: .easeOut(duration: 0.25))) { phase in
-            switch phase {
-            case .success(let img): img.resizable().aspectRatio(contentMode: mode)
-            default: Theme.card
+        // the image is an overlay so a filled picture never widens its parent
+        Theme.card.overlay {
+            AsyncImage(url: url, transaction: .init(animation: .easeOut(duration: 0.25))) { phase in
+                if case .success(let img) = phase {
+                    img.resizable().aspectRatio(contentMode: mode)
+                }
             }
         }
+        .clipped()
     }
 }
 
