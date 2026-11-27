@@ -31,6 +31,7 @@ jobs:
           if [ -n "${{ secrets.ALLOWED_ROLE_IDS }}" ]; then echo "${{ secrets.ALLOWED_ROLE_IDS }}" | npx wrangler secret put ALLOWED_ROLES || true; fi
           if [ -n "${{ secrets.GH_RELEASES_TOKEN }}" ]; then echo "${{ secrets.GH_RELEASES_TOKEN }}" | npx wrangler secret put GH_TOKEN || true; fi
           if [ -n "${{ secrets.DISCORD_CLIENT_SECRET }}" ]; then echo "${{ secrets.DISCORD_CLIENT_SECRET }}" | npx wrangler secret put DISCORD_SECRET || true; fi
+          set -o pipefail # a failed deploy fails the run
           npx wrangler deploy 2>&1 | tee deploy.log
           echo "### crew server" >> $GITHUB_STEP_SUMMARY
           grep -o 'https://[a-z0-9.-]*workers.dev' deploy.log | head -1 >> $GITHUB_STEP_SUMMARY

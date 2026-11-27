@@ -20,6 +20,9 @@
 
 import logo from "./logo.png";
 import { TERMS_HTML } from "./terms";
+import { PRIVACY_HTML } from "./privacy";
+import { appStorePro } from "./appstore";
+import { Game } from "./game";
 import { DOWNLOAD_HTML } from "./download";
 import { INSTALL_HTML } from "./install";
 import { LANDING_HTML, INSTALL_PAGE, LANDING_FILES } from "./landing/landing";
@@ -38,6 +41,8 @@ export interface Env {
   DISCORD_BOT_TOKEN?: string;
   /** ClipCafe PRO key: scene clips for billboard / preview (instead of trailers) */
   CLIPCAFE_KEY?: string;
+  /** access code for App Review's demo login (no Discord needed). Unset = off */
+  REVIEW_CODE?: string;
   /** read-only GitHub token for the app's releases (updates) */
   GH_TOKEN?: string;
   /** owner/repo holding the releases */
@@ -69,6 +74,40 @@ async function discordToken(req: Request, env: Env, kind: "exchange" | "refresh"
   }
   const r = await fetch("https://discord.com/api/oauth2/token", { method: "POST", body: form, headers: { "content-type": "application/x-www-form-urlencoded" } });
   return new Response(r.body, { status: r.status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+}
+
+// ------------------------------------------------------------- demo source
+const DEMO: Record<string, { name: string; url: string; size: number }> = {
+  tt1254207: { name: "Big Buck Bunny", url: "https://archive.org/download/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.mp4", size: 61878609 },
+  tt1727587: { name: "Sintel", url: "https://archive.org/download/Sintel/sintel-2048-surround.mp4", size: 310674005 },
+};
+
+function demoSource(url: URL): Response {
+  const cors = { "access-control-allow-origin": "*", "cache-control": "public, max-age=3600" };
+  const path = url.pathname.replace(/^\/demo/, "");
+  if (path === "" || path === "/" || path === "/manifest.json") {
+    return json(
+      {
+        id: "app.midnite.couch.demo",
+        version: "1.0.0",
+        name: "couch demo",
+        description: "Open movies from the Blender Foundation (Creative Commons): Big Buck Bunny and Sintel.",
+        logo: `${url.origin}/couch.png`,
+        types: ["movie"],
+        idPrefixes: ["tt"],
+        resources: ["stream"],
+        catalogs: [],
+      },
+      200,
+      cors,
+    );
+  }
+  const m = path.match(/^\/stream\/movie\/(tt\d+)\.json$/);
+  if (m) {
+    const d = DEMO[m[1]];
+    return json({ streams: d ? [{ name: "couch demo\n720p", title: `${d.name} (Blender Foundation, CC BY)`, url: d.url, behaviorHints: { videoSize: d.size, filename: d.url.split("/").pop() } }] : [] }, 200, cors);
+  }
+  return json({ streams: [] }, 200, cors);
 }
 
 // ------------------------------------------------------------- updates
@@ -151,7 +190,9 @@ async function gpui(url: URL, env: Env): Promise<Response> {
   return json({ version: String(rel.tag_name).slice(5), size: zip.size, notes: rel.body ?? "" });
 }
 
-type Who = { id: string; name: string; avatar?: string };
+/** pro: clip previews etc. crew: the midnite social side. Missing = true
+ *  (sessions from the old gate: everyone there had the role). */
+type Who = { id: string; name: string; avatar?: string; pro?: boolean; crew?: boolean };
 // short on purpose: a session is re-earned from Discord every couple of
 // minutes, so someone kicked from the server is out right away
 const SESSION_TTL = 120;
@@ -177,7 +218,7 @@ async function verify(env: Env, header: string | null): Promise<Who | null> {
   try {
     const v = JSON.parse(unb64u(body));
     if (typeof v.exp !== "number" || v.exp < Date.now() / 1000) return null;
-    return { id: String(v.id), name: String(v.name ?? "someone"), avatar: v.avatar || undefined };
+    return { id: String(v.id), name: String(v.name ?? "someone"), avatar: v.avatar || undefined, pro: v.pro, crew: v.crew };
   } catch {
     return null;
   }
@@ -191,8 +232,35 @@ async function auth(req: Request, env: Env): Promise<Response> {
   } catch {
     return json({ error: "bad json" }, 400);
   }
+  // App Review's demo login: an access code instead of Discord
+  if (typeof b?.code === "string") {
+    const want = env.REVIEW_CODE ?? "";
+    const got = b.code.trim();
+    const enc = new TextEncoder();
+    const [x, y] = await Promise.all([crypto.subtle.digest("SHA-256", enc.encode(got)), crypto.subtle.digest("SHA-256", enc.encode(want))]);
+    const same = new Uint8Array(x).every((v, i) => v === new Uint8Array(y)[i]);
+    if (!want || !same) return json({ error: "that code didn't work" }, 403);
+    const who: Who = { id: "app-review", name: "App Review" };
+    return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id, name: who.name });
+  }
+  // no account: a guest session for this device (plays the scenes game;
+  // not on the leaderboards, no Pro, no crew)
+  if (typeof b?.guest === "string" && /^[A-Za-z0-9]{12,40}$/.test(b.guest)) {
+    const who: Who = { id: `g-${b.guest}`, name: "guest", pro: false, crew: false };
+    return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id, pro: false, crew: false });
+  }
+  // couch Pro bought in the App Store: Apple's signed transaction
+  if (typeof b?.appstore === "string") {
+    const t = await appStorePro(b.appstore);
+    if (!t) return json({ error: "couldn't check that purchase" }, 403);
+    const who: Who = { id: `as-${t}`, name: "couch pro", pro: true, crew: false };
+    return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id, pro: true, crew: false });
+  }
   const token = typeof b?.token === "string" ? b.token : "";
   if (!token) return json({ error: "no token" }, 400);
+  // the App Store app: anyone can sign in; the server role decides the tier
+  // instead of locking the door
+  const open = b?.open === true;
   const h = { authorization: `Bearer ${token}` };
   const me = await fetch("https://discord.com/api/users/@me", { headers: h });
   if (me.status === 429 || me.status >= 500) return json({ error: "discord is busy, try again" }, 503);
@@ -204,34 +272,47 @@ async function auth(req: Request, env: Env): Promise<Response> {
       // the bot sees membership AND roles in one call; the user's own server
       // list isn't needed (and is heavily rate-limited by Discord)
       const br = await fetch(`https://discord.com/api/guilds/${env.GUILD_ID}/members/${u.id}`, { headers: { authorization: `Bot ${env.DISCORD_BOT_TOKEN}` } });
-      if (br.status === 404) return json({ error: "not in the server", notMember: true }, 403);
+      if (br.status === 404) return deny(open, "not in the server");
       if (!br.ok) return json({ error: "couldn't check your roles" }, 503);
       const mem: any = await br.json();
-      if (!(mem?.roles ?? []).some((r: string) => roles.includes(r))) return json({ error: "no subscription", notMember: true }, 403);
+      if (!(mem?.roles ?? []).some((r: string) => roles.includes(r))) return deny(open, "no subscription");
     } else {
       const g = await fetch("https://discord.com/api/users/@me/guilds", { headers: h });
       if (!g.ok) return json({ error: "couldn't check your servers" }, 503);
       const list: any = await g.json();
       if (!Array.isArray(list)) return json({ error: "couldn't check your servers" }, 503);
-      if (!list.some((x: any) => x?.id === env.GUILD_ID)) return json({ error: "not in the server", notMember: true }, 403);
+      if (!list.some((x: any) => x?.id === env.GUILD_ID)) return deny(open, "not in the server");
     }
     if (roles.length && !env.DISCORD_BOT_TOKEN) {
       const mr = await fetch(`https://discord.com/api/users/@me/guilds/${env.GUILD_ID}/member`, { headers: h });
       // no permission to see roles = an old sign-in (or an old app): no way in
       // until they sign in again; new apps show "one more knock", old ones lock
-      if (mr.status === 401 || mr.status === 403) return json({ error: "sign in again (couch needs to see your server roles)", reauth: true, notMember: true }, 403);
+      if (mr.status === 401 || mr.status === 403) return open ? welcome(false) : json({ error: "sign in again (couch needs to see your server roles)", reauth: true, notMember: true }, 403);
       if (!mr.ok) return json({ error: "couldn't check your roles" }, 503);
       const mem: any = await mr.json();
       const has = (mem?.roles ?? []).some((r: string) => roles.includes(r));
-      if (!has) return json({ error: "no subscription", notMember: true }, 403);
+      if (!has) return deny(open, "no subscription");
     }
   }
-  const who: Who = {
-    id: String(u.id),
-    name: String(u.global_name || u.username || "someone").slice(0, 40),
-    avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=128` : undefined,
-  };
-  return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id });
+  return welcome(true);
+
+  // signed in, with or without the role (open mode only for the latter)
+  async function welcome(coucher: boolean) {
+    const who: Who = {
+      id: String(u.id),
+      name: String(u.global_name || u.username || "someone").slice(0, 40),
+      avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=128` : undefined,
+    };
+    if (open) {
+      who.pro = coucher;
+      who.crew = coucher;
+    }
+    return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id, name: who.name, avatar: who.avatar, pro: coucher, crew: coucher, coucher });
+  }
+  async function deny(open: boolean, why: string) {
+    if (open) return welcome(false);
+    return json({ error: why, notMember: true }, 403);
+  }
 }
 
 const STALE_MS = 120_000;
@@ -289,8 +370,8 @@ const isEmoji = (e: unknown): e is string =>
 const ASK_TTL = 120_000;
 const ROOM_TTL = 90_000;
 
-const json = (v: unknown, status = 200) =>
-  new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+const json = (v: unknown, status = 200, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...headers } });
 
 function safeEqual(a: string, b: string) {
   if (!a || !b || a.length !== b.length) return false;
@@ -351,6 +432,12 @@ export default {
       return new Response(INSTALL_PAGE, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
     }
     if (url.pathname === "/join") return joinPage(url);
+    // a demo source for the App Store app: open movies anyone may stream
+    // (Blender Foundation, Creative Commons). Shows how "Add a source" works.
+    if (url.pathname.startsWith("/demo")) return demoSource(url);
+    if (url.pathname === "/privacy") {
+      return new Response(PRIVACY_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
+    }
     if (url.pathname === "/terms" || url.pathname === "/tos") {
       return new Response(TERMS_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
     }
@@ -362,7 +449,23 @@ export default {
     if (clipFile) {
       const w = await verify(env, `Bearer ${url.searchParams.get("t") ?? ""}`);
       if (!w) return new Response("sign in again", { status: 401 });
+      if (w.pro === false) return new Response("couch pro", { status: 402 });
       return clipStream(env, clipFile[1], req, url.searchParams.get("title"), url.searchParams.get("year"));
+    }
+    // a game round's scene: asked for by game and round, so the address
+    // doesn't say which film it is
+    const gameClip = url.pathname.match(/^\/game\/clip\/([a-f0-9]{20})\/(\d{1,3})$/);
+    if (gameClip) {
+      const w = await verify(env, `Bearer ${url.searchParams.get("t") ?? ""}`);
+      if (!w) return new Response("sign in again", { status: 401 });
+      const stub = env.CREW.get(env.CREW.idFromName("midnite"));
+      const r = await stub.fetch(new Request(`https://couch.internal/internal/game-clip?g=${gameClip[1]}&n=${gameClip[2]}&u=${encodeURIComponent(w.id)}`));
+      if (!r.ok) return new Response("that game is over", { status: 404 });
+      const { id } = (await r.json()) as { id: string };
+      const out = await clipStream(env, id, req);
+      const h = new Headers(out.headers);
+      h.set("cache-control", "private, no-store"); // the address is per game
+      return new Response(out.body, { status: out.status, headers: h });
     }
     const clipCheck = url.pathname.match(/^\/clip-status\/(tt\d{5,10})$/);
     if (clipCheck) return clipStatus(env, clipCheck[1], false, req); // download check verified; off so nobody burns the monthly downloads
@@ -391,6 +494,7 @@ export default {
     if (!who) return json({ error: "sign in again" }, 401);
     const clipAsk = url.pathname.match(/^\/v1\/clip\/(tt\d{5,10})$/);
     if (clipAsk) {
+      if (who.pro === false) return json({ clip: false, pro: true }, 402);
       // already fetched once: it plays from the cache, no request needed
       if (await caches.default.match(new Request(`https://couch.clips/file2/${clipAsk[1]}.mp4`))) return json({ clip: true });
       // out of ClipCafe requests today: no clip (the app plays a trailer)
@@ -399,6 +503,9 @@ export default {
     }
     if (url.pathname.startsWith("/v1/update/")) return updates(url, env);
     if (url.pathname === "/v1/gpui/latest" || url.pathname === "/v1/gpui/file") return gpui(url, env);
+    // your own devices work for anyone signed in; the crew (presence, rooms,
+    // reviews…) is for the server's couchers
+    if (who.crew === false && !url.pathname.startsWith("/v1/me/") && !url.pathname.startsWith("/v1/game/")) return json({ error: "for couchers", crew: false }, 403);
     // the Durable Object trusts this header; set it here, never from the client
     const fwd = new Request(req);
     fwd.headers.set("x-who", JSON.stringify(who));
@@ -595,8 +702,21 @@ p{color:#9C8A96;margin:18px 24px 0}
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" } });
 }
 
+/** one of your own devices (couch on a PC, a Mac, an iPhone), Spotify-style */
+type Dev = {
+  id: string;
+  name: string;
+  kind: string;
+  playing: any;
+  at: number;
+  /** what another of your devices asked it to do, waiting for it to collect */
+  cmds: { cmd: string; pos?: number; from?: string; at: number }[];
+};
+
 export class Crew {
   members = new Map<string, Member>();
+  /** each person's devices, by person then device id (in memory, like presence) */
+  devices = new Map<string, Map<string, Dev>>();
   asks = new Map<string, Ask>();
   rooms = new Map<string, Room>();
   /** live lines per room: the host's socket and each guest's */
@@ -807,9 +927,11 @@ export class Crew {
   reactN = 0;
   lastSeenWrite = new Map<string, number>();
   env: Env;
+  game: Game;
   constructor(state: DurableObjectState, env: Env) {
     this.storage = state.storage;
     this.env = env;
+    this.game = new Game(state.storage, async (id, title, year) => !!(await clipPick(env, id, title, year)));
   }
   /** Discord's own look for someone: banner and display-name style (an hour) */
   looks = new Map<string, { v: any; at: number }>();
@@ -1193,12 +1315,19 @@ export class Crew {
       }
       return new Response(out, { headers: { "content-type": "image/gif", "cache-control": "public, max-age=604800" } });
     }
+    // from the worker only (it never forwards /internal/ from outside)
+    if (url.pathname === "/internal/game-clip") {
+      const c = this.game.clipOf(url.searchParams.get("g") ?? "", Number(url.searchParams.get("n")), url.searchParams.get("u") ?? "");
+      return c ? json(c) : json({ error: "gone" }, 404);
+    }
     let who: Who;
     try {
       who = JSON.parse(req.headers.get("x-who") ?? "");
     } catch {
       return json({ error: "sign in again" }, 401);
     }
+    // the scenes game; only Discord sign-ins go on the leaderboards
+    if (url.pathname.startsWith("/v1/game/")) return this.game.handle(req, url, who, /^\d+$/.test(who.id), who.pro !== false);
 
     const line = url.pathname.match(/^\/v1\/room\/([A-Za-z0-9_-]{1,40})\/ws$/);
     if (line && req.headers.get("upgrade") === "websocket") return this.openLine(line[1], who);
@@ -1281,6 +1410,76 @@ export class Crew {
         duration: num(b.duration),
         at: Date.now(),
       });
+      return json({ ok: true });
+    }
+
+    // your devices: each says what it's playing every few seconds and collects
+    // what your other devices asked it to do (pause, seek, stop, hand over)
+    if (req.method === "PUT" && url.pathname === "/v1/me/device") {
+      let b: any;
+      try {
+        b = await req.json();
+      } catch {
+        return json({ error: "bad json" }, 400);
+      }
+      const id = str(b?.id, 64);
+      if (!id || !/^[A-Za-z0-9_-]+$/.test(id)) return json({ error: "bad device" }, 400);
+      const mine = this.devices.get(who.id) ?? new Map<string, Dev>();
+      this.devices.set(who.id, mine);
+      const pl = b.playing && typeof b.playing === "object" ? b.playing : null;
+      let stream: any = undefined;
+      if (pl?.stream && typeof pl.stream === "object") {
+        const raw = JSON.stringify(pl.stream);
+        if (raw.length <= 6000) stream = pl.stream;
+      }
+      const prev = mine.get(id);
+      const d: Dev = {
+        id,
+        name: str(b.name, 60) ?? "couch",
+        kind: str(b.kind, 20) ?? "pc",
+        playing: pl && {
+          metaId: str(pl.metaId, 100),
+          type: str(pl.type, 20),
+          title: str(pl.title, 200),
+          episode: str(pl.episode, 200),
+          videoId: str(pl.videoId, 120),
+          poster: str(pl.poster, 500),
+          background: str(pl.background, 500),
+          logo: str(pl.logo, 500),
+          pos: num(pl.pos),
+          duration: num(pl.duration),
+          paused: !!pl.paused,
+          stream,
+        },
+        at: Date.now(),
+        cmds: [],
+      };
+      const cmds = prev?.cmds ?? [];
+      mine.set(id, d);
+      // gone quiet for a minute: not online anymore
+      for (const [k, v] of mine) if (Date.now() - v.at > 60_000) mine.delete(k);
+      const devices = [...mine.values()].map((v) => ({ id: v.id, name: v.name, kind: v.kind, playing: v.playing, at: v.at, me: v.id === id }));
+      return json({ devices, cmds: cmds.filter((c) => Date.now() - c.at < 30_000) });
+    }
+    const dc = url.pathname.match(/^\/v1\/me\/device\/([A-Za-z0-9_-]{1,64})\/cmd$/);
+    if (req.method === "POST" && dc) {
+      let b: any;
+      try {
+        b = await req.json();
+      } catch {
+        return json({ error: "bad json" }, 400);
+      }
+      const cmd = str(b?.cmd, 20);
+      if (!cmd || !["pause", "play", "seek", "stop", "next"].includes(cmd)) return json({ error: "bad command" }, 400);
+      const d = this.devices.get(who.id)?.get(dc[1]);
+      if (!d) return json({ error: "that device isn't online" }, 404);
+      d.cmds.push({ cmd, pos: typeof b.pos === "number" ? b.pos : undefined, from: str(b.from, 64), at: Date.now() });
+      if (d.cmds.length > 20) d.cmds.splice(0, d.cmds.length - 20);
+      return json({ ok: true });
+    }
+    const dd = url.pathname.match(/^\/v1\/me\/device\/([A-Za-z0-9_-]{1,64})$/);
+    if (req.method === "DELETE" && dd) {
+      this.devices.get(who.id)?.delete(dd[1]);
       return json({ ok: true });
     }
 
