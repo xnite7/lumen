@@ -18,8 +18,11 @@ final class Playback {
     private(set) var stream: Stream?
     private var activity: Activity<CouchActivityAttributes>?
     private var observers: [NSObjectProtocol] = []
-    private var lastPos: Double = 0
-    private var lastDur: Double = 0
+    private(set) var lastPos: Double = 0
+    private(set) var lastDur: Double = 0
+    private(set) var paused = false
+    /// the player is on screen
+    var isOpen: Bool { !observers.isEmpty }
     private var lastSaved = Date.distantPast
 
     private init() {}
@@ -132,6 +135,7 @@ final class Playback {
             self.lastPos = u["pos"] as? Double ?? 0
             self.lastDur = u["duration"] as? Double ?? 0
             let paused = u["paused"] as? Bool ?? false
+            self.paused = paused
             self.updateActivity(paused: paused)
             if Date().timeIntervalSince(self.lastSaved) > 10 || paused { self.save() }
         }
@@ -172,6 +176,30 @@ final class Playback {
         episode = e
         stream = s
         present(config(m, e, s, resume: true))
+    }
+
+    /// Remote control (from your other devices).
+    func control(_ action: String, value: Any? = nil) {
+        var info: [String: Any] = ["action": action]
+        if let value { info["value"] = value }
+        NotificationCenter.default.post(name: .init("couch.player.control"), object: nil, userInfo: info)
+    }
+    func nextEpisode() {
+        guard let m = meta, let ep = episode, let n = m.after(ep.id) else { return }
+        save()
+        Task { await switchTo(n) }
+    }
+
+    /// Carry on here from another device: same title, same spot.
+    func takeOver(type: Kind, metaId: String, videoId: String?, at pos: Double, duration: Double) async {
+        guard let m = try? await Cinemeta.shared.meta(type, metaId) else {
+            problem = "couldn't load that title"
+            return
+        }
+        let ep = m.videos?.first { $0.id == videoId }
+        Library.shared.record(Progress(meta: m.preview, videoId: ep?.id ?? m.id, season: ep?.season, episode: ep?.episode,
+                                       episodeTitle: ep?.label, position: max(0, pos - 3), duration: max(duration, pos + 600), updated: .now))
+        await play(m, episode: ep)
     }
 
     private func save() {

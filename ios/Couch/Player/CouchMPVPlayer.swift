@@ -541,6 +541,8 @@ final class CouchMPVPlayer: UIViewController {
             if let t = u["value"] as? Double { command(["seek", String(format: "%.3f", t), "absolute"]) }
         case "still":
             askStill()
+        case "stop":
+            close()
         default:
             break
         }

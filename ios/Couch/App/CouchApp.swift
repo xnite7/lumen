@@ -6,6 +6,7 @@ import SwiftUI
 struct CouchApp: App {
     init() {
         Store.shared.start()
+        Devices.shared.start()
         // the tab bar and nav bars sit on black glass
         let tab = UITabBarAppearance()
         tab.configureWithDefaultBackground()
@@ -73,6 +74,7 @@ final class Router {
 struct RootView: View {
     @State private var router = Router.shared
     @State private var playback = Playback.shared
+    @State private var devices = Devices.shared
 
     var body: some View {
         TabView(selection: $router.tab) {
@@ -100,6 +102,15 @@ struct RootView: View {
             .tabItem { Label("Settings", systemImage: "gearshape.fill") }
             .tag(Tab.settings)
         }
+        .safeAreaInset(edge: .bottom) {
+            // above the tab bar: what your other device is playing
+            if let d = devices.playingElsewhere {
+                DeviceBar(device: d)
+                    .padding(.bottom, 58)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: devices.playingElsewhere?.id)
         .onOpenURL { router.handle($0) }
         .task {
             // `-open couch://…` at launch (used by the CI screenshots)
