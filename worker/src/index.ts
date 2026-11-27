@@ -673,7 +673,7 @@ async function clipStream(env: Env, imdb: string, req: Request, title?: string |
   cache.put(new Request(fileKey), new Response(b, { headers: h2 })).catch(() => {});
   if (env.CLIPS && len) env.CLIPS.put(`${imdb}.mp4`, c.pipeThrough(new FixedLengthStream(Number(len))), { httpMetadata: { contentType: "video/mp4" } }).catch(() => {});
   else c.cancel().catch(() => {});
-  return new Response(a, { headers: { ...h2, "x-clip-via": via } });
+  return new Response(a, { headers: { ...h2, "x-clip-via": via, ...(why ? { "x-clip-why": why.replace(/[^\x20-\x7e]/g, " ").slice(0, 300) } : {}) } });
 }
 
 /** Is ClipCafe answering couch's key? Never shows the key or a download link. */
