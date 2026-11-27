@@ -1,433 +1,490 @@
-<!DOCTYPE html>
-<html lang="en"><head><style data-dc-design-system-vars="">@layer{:root{--room-0:#000000;--room-1:#0a0809;--room-2:#141113;--room-3:#1d181b;--broadcast:#050304;--plum:#7a3b5e;--ink:#f4eaf0;--ink-2:#f4eaf099;--ink-3:#f4eaf057;--ink-4:#f4eaf029;--lamp:#ffb25c;--on-lamp:#120a06;--neon:#e0309a;--neon-soft:#ff6ec4;--neon-core:#ffe3f3;--on-ink:#000000;--fill:#786e764d;--good:#7fd6a0;--danger:#ff5a5a;--glow-neon:0 0 18px -2px #e0309a8c, 0 0 46px -6px #e0309a66;--glow-lamp:0 0 22px -4px #ffb25c8c, 0 0 60px -10px #ffb25c59;--lift:0 2px 10px 0 #0000008c;--float:0 14px 34px -10px #00000099;--drop:0 18px 36px -12px #000000cc;--s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:20px;--s6:24px;--s7:32px;--s8:44px;--gutter:56px;--r-xs:8px;--r-sm:12px;--r-card:14px;--r-md:16px;--r-lg:22px;--r-xl:30px;--r-pill:999px;--d-tap:120ms;--d-quick:200ms;--d-turn:320ms;--d-channel:460ms;--d-settle:560ms;--d-lamp:800ms;--d-beat:550ms;--d-neon:1300ms;--d-room:4000ms;--ease-lamp:cubic-bezier(0.25, 1, 0.5, 1);--ease-out:cubic-bezier(0.33, 1, 0.68, 1);--ease-in-out:cubic-bezier(0.65, 0, 0.35, 1);--ease-in:cubic-bezier(0.32, 0, 0.67, 0);--spring-bouncy:linear(0, 0.19, 0.51, 0.79, 0.96, 1.04, 1.05, 1.04, 1.02, 1.01, 1);--spring-glide:linear(0, 0.09, 0.26, 0.44, 0.59, 0.71, 0.8, 0.86, 0.91, 0.94, 0.97, 0.99, 1);--font-satoshi:"Satoshi", "Segoe UI Variable Display", -apple-system, system-ui, sans-serif;--text-sign:900 210px/200px var(--font-satoshi);--text-display:900 132px/130px var(--font-satoshi);--text-hero:900 72px/72px var(--font-satoshi);--text-title1:900 34px/39px var(--font-satoshi);--text-title2:700 24px/30px var(--font-satoshi);--text-title3:600 20px/25px var(--font-satoshi);--text-aside:500 19px/28px var(--font-satoshi);--text-kick:700 18px/24px var(--font-satoshi);--text-headline:600 17px/22px var(--font-satoshi);--text-osd:900 16px/20px var(--font-satoshi);--text-body:500 15px/22px var(--font-satoshi);--text-foot:600 13px/18px var(--font-satoshi);--text-caption:600 12px/16px var(--font-satoshi);}}</style>
-
-
+<!doctype html>
+<!-- couch · install guide · serve at "/install" · images and the font are in l/ · couch.png is the logo -->
+<html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
 <title>how to install couch · midnite™</title>
 <meta name="description" content="get couch on your PC, iPhone or iPad, step by step.">
 <meta property="og:title" content="how to install couch · midnite™">
 <meta property="og:description" content="get couch on your PC, iPhone or iPad, step by step.">
 <meta property="og:image" content="/couch.png">
-<link rel="icon" href="/couch.png">
-
-
+<link rel="icon" type="image/png" href="/couch.png">
+<script>!function(){var u=navigator.userAgent||"",h=location.hash||"",a=/iPhone|iPad|iPod/.test(u)||/Macintosh/.test(u)&&navigator.maxTouchPoints>1;document.documentElement.className=/ios|^#(s|fin)-i/.test(h)||!h&&a?"t-ios":"t-win"}()</script>
 <style>
 @font-face{font-family:"Satoshi";src:url("/l/satoshi.woff2") format("woff2");font-weight:300 900;font-display:swap}
+:root{
+--k0:#000;--k1:#0a0809;--k2:#141113;--k3:#1d181b;
+--i1:#f4eaf0;--i2:#f4eaf099;--i3:#f4eaf057;--i4:#f4eaf029;
+--rim:rgba(244,234,240,.09);
+--e-lamp:cubic-bezier(.25,1,.5,1);--e-out:cubic-bezier(.33,1,.68,1);
+--e-bouncy:cubic-bezier(.35,.6,.15,1.25);
+--e-glide:cubic-bezier(.25,.2,.25,.95);
+--gut:clamp(18px,4.4vw,64px);
+}
+/* the springs as drawn in the design system, where the browser can do them; the curves above are the closest plain ones (older iPhones) */
+@supports (transition-timing-function:linear(0,1)){:root{--e-bouncy:linear(0,.19,.51,.79,.96,1.04,1.05,1.04,1.02,1.01,1);--e-glide:linear(0,.09,.26,.44,.59,.71,.8,.86,.91,.94,.97,.99,1)}}
+html{background:#000;color-scheme:dark;scroll-behavior:smooth;scrollbar-color:rgba(244,234,240,.22) #000}
+body{margin:0;background:var(--k0);color:var(--i1);font-family:"Satoshi","Segoe UI Variable Display",-apple-system,system-ui,sans-serif;font-weight:500;font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;-webkit-text-size-adjust:100%}
+*,*::before,*::after{box-sizing:border-box}
+img{display:block;max-width:100%}
+a{color:var(--i1);text-decoration:none}a:hover{color:#fff}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+h1,h2,h3,p,ol,ul{margin:0}
+ol,ul{padding:0;list-style:none}
+::selection{background:var(--i1);color:#000}
+:focus-visible{outline:2px solid var(--i1);outline-offset:3px;border-radius:14px}
+.pg{position:relative;overflow-x:clip;min-height:100vh;background:var(--k0)}
+.col{position:relative;z-index:1;width:min(760px,calc(100% - 2 * var(--gut)));margin-inline:auto}
 
+.grain{position:fixed;inset:-128px;z-index:120;pointer-events:none;opacity:.07;background:url("/l/grain.png") 0 0/256px 256px;animation:grain .5s steps(1) infinite}
+@keyframes grain{0%{transform:translate3d(0,0,0)}8.33%{transform:translate3d(-61px,37px,0)}16.66%{transform:translate3d(43px,-88px,0)}25%{transform:translate3d(-104px,-19px,0)}33.33%{transform:translate3d(77px,96px,0)}41.66%{transform:translate3d(-23px,-64px,0)}50%{transform:translate3d(112px,11px,0)}58.33%{transform:translate3d(-86px,83px,0)}66.66%{transform:translate3d(19px,-117px,0)}75%{transform:translate3d(-47px,52px,0)}83.33%{transform:translate3d(94px,-41px,0)}91.66%{transform:translate3d(-9px,108px,0)}}
+.glass{background:rgba(26,21,24,.5);-webkit-backdrop-filter:blur(26px) saturate(180%);backdrop-filter:blur(26px) saturate(180%);box-shadow:inset 0 0 0 1px rgba(244,234,240,.1),inset 0 1px 0 0 rgba(255,255,255,.1),0 14px 34px -10px rgba(0,0,0,.6)}
 
-:root{--ink:#f4eaf0;--ink2:rgba(244,234,240,.6);--ink3:rgba(244,234,240,.34);--ink4:rgba(244,234,240,.12);--r2:#141113;
---glass:rgba(28,22,26,.42);--rim:rgba(244,234,240,.09);
---lamp:cubic-bezier(.25,1,.5,1);--glide:linear(0,.09,.26,.44,.59,.71,.8,.86,.91,.94,.97,.99,1);--bouncy:linear(0,.19,.51,.79,.96,1.04,1.05,1.04,1.02,1.01,1);
---gut:clamp(16px,4.2vw,56px)}
-html{background:#000;scroll-behavior:smooth}
-body{margin:0;background:#000;color:var(--ink);font-family:"Satoshi","Segoe UI Variable Display",-apple-system,system-ui,sans-serif;font-weight:500;-webkit-font-smoothing:antialiased}
-a{color:var(--ink);text-decoration:none}a:hover{color:#fff}
-*{box-sizing:border-box}
-img{display:block}
-button{font:inherit;color:inherit}
-:focus-visible{outline:2px solid var(--ink);outline-offset:3px;border-radius:999px}
-.pg{position:relative;overflow-x:clip;background:#000;min-height:100vh}
-.col{position:relative;z-index:2;max-width:780px;margin:0 auto;padding:0 var(--gut)}
+/* the screen's light, at the top of the room */
+.amb{position:absolute;z-index:0;left:50%;top:-260px;width:min(1300px,170%);aspect-ratio:16/9;translate:-50% 0;pointer-events:none;opacity:.5;-webkit-mask-image:radial-gradient(closest-side,#000 10%,rgba(0,0,0,0) 100%);mask-image:radial-gradient(closest-side,#000 10%,rgba(0,0,0,0) 100%)}
+.amb img{width:100%;height:100%;max-width:none}
 
-.grain{position:fixed;inset:-50%;width:200%;height:200%;z-index:60;pointer-events:none;opacity:.07;mix-blend-mode:overlay;animation:grain 1s steps(24) infinite}
-@keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(2%,-4%)}40%{transform:translate(3%,3%)}60%{transform:translate(4%,-2%)}80%{transform:translate(2%,1%)}100%{transform:translate(0,0)}}
-.glass{background:var(--glass);-webkit-backdrop-filter:blur(30px) saturate(170%);backdrop-filter:blur(30px) saturate(170%);border:1px solid var(--rim);box-shadow:inset 0 1px 0 rgba(255,255,255,.05),0 14px 34px -10px rgba(0,0,0,.6)}
-
-/* art light at the top of the room */
-.amb{position:absolute;left:-15%;right:-15%;top:-180px;height:900px;z-index:0;pointer-events:none;opacity:.5}
-.amb img{position:absolute;width:62%;height:100%;object-fit:cover;filter:blur(120px) saturate(1.5)}
-.amb::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,0) 20%,#000 95%)}
-
-.nav{position:sticky;top:0;z-index:50;padding:14px var(--gut);padding-top:max(14px,env(safe-area-inset-top));display:flex;justify-content:center}
-.navin{width:100%;max-width:880px;display:flex;align-items:center;gap:8px;padding:8px 8px 8px 18px;border-radius:999px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:19px;letter-spacing:-.02em;margin-right:auto}
-.brand img{width:32px;height:32px;object-fit:contain}
-
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:54px;padding:0 26px;border-radius:999px;border:0;cursor:pointer;font-weight:700;font-size:16px;letter-spacing:-.01em;white-space:nowrap;transition:transform .63s var(--bouncy),background .2s,color .2s}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:50px;padding:0 24px;border-radius:999px;font-weight:700;font-size:16px;letter-spacing:-.01em;white-space:nowrap;-webkit-user-select:none;user-select:none;transition:transform .63s var(--e-bouncy),background-color .2s,color .2s}
 .btn svg{width:20px;height:20px;flex:none}
-.btn:active{transform:scale(.95);transition-duration:.12s}
-.btn.pri{background:var(--ink);color:#000}.btn.pri:hover{background:#fff;color:#000;transform:scale(1.03)}
-.btn.alt{color:var(--ink)}.btn.alt:hover{background:rgba(60,50,56,.55);transform:scale(1.03)}
-.btn.sm{height:40px;padding:0 16px;font-size:14px}
+.btn:active{transform:scale(.96);transition-duration:.12s,.2s,.2s}
+.btn.pri{background:var(--i1);color:#000}.btn.pri:hover{background:#fff;color:#000}
+.btn.tint{background:rgba(244,234,240,.12);color:var(--i1)}.btn.tint:hover{background:rgba(244,234,240,.2);color:var(--i1)}
+.btn.lg{height:56px;padding:0 28px;font-size:17px}
+.btn.sm{height:40px;padding:0 17px;font-size:14.5px}
 .btn.sm svg{width:17px;height:17px}
 
-.hero{padding:clamp(56px,9vw,110px) 0 40px}
-h1{margin:0;font-weight:900;font-size:clamp(46px,8vw,96px);line-height:.92;letter-spacing:-.055em}
-h1 span{display:block}
-.lede{margin:22px 0 0;font-size:clamp(17px,1.6vw,19px);line-height:1.55;color:var(--ink2);max-width:30em}
+.nav{position:fixed;z-index:90;top:max(14px,env(safe-area-inset-top));left:0;right:0;display:flex;justify-content:center;padding:0 var(--gut);pointer-events:none}
+.navin{pointer-events:auto;display:flex;align-items:center;gap:22px;height:54px;padding:0 7px 0 15px;border-radius:999px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:900;font-size:18px;letter-spacing:-.03em}
+.brand img{width:34px;height:34px;object-fit:contain}
 
-.tabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:40px}
-.tab{position:relative;text-align:left;border-radius:24px;padding:20px 22px;cursor:pointer;display:flex;align-items:center;gap:16px;min-height:88px;transition:transform .63s var(--bouncy),background .3s,border-color .3s}
-.tab:active{transform:scale(.97)}
-.tab .ti{width:46px;height:46px;flex:none;border-radius:14px;display:grid;place-items:center;background:rgba(244,234,240,.08)}
-.tab .ti svg{width:22px;height:22px}
-.tab b{display:block;font-weight:900;font-size:19px;letter-spacing:-.02em}
-.tab small{display:block;font-size:13px;font-weight:600;color:var(--ink2);margin-top:2px}
-.tab.on{background:var(--ink);color:#000;border-color:transparent}
-.tab.on small{color:rgba(0,0,0,.6)}
-.tab.on .ti{background:rgba(0,0,0,.08)}
+.lampin{animation:lampin .9s var(--e-lamp) both;animation-delay:calc(var(--i,0) * 110ms + 150ms)}
+@keyframes lampin{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:none}}
 
-.need{margin-top:28px;border-radius:24px;padding:22px 24px}
-.need h3{margin:0 0 12px;font-size:13px;font-weight:700;color:var(--ink2);letter-spacing:.02em}
-.need ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px}
-.need li{display:flex;gap:12px;align-items:flex-start;font-size:16px;font-weight:600;line-height:1.4}
-.need li svg{width:18px;height:18px;flex:none;margin-top:2px;color:var(--ink2)}
+.hero{padding:clamp(128px,17vw,196px) 0 0}
+.h1{font-weight:900;font-size:clamp(44px,8.2vw,92px);line-height:.93;letter-spacing:-.052em}
+.h1 span{display:block}
+.lede{margin-top:24px;max-width:30em;font-size:clamp(17px,1.7vw,19.5px);line-height:1.5;color:var(--i2)}
+.lede b{font-weight:700;color:var(--i1)}
 
-.prog{position:sticky;top:calc(max(14px,env(safe-area-inset-top)) + 72px);z-index:40;margin:28px 0 0;padding:12px 16px;border-radius:999px;display:flex;align-items:center;gap:14px}
-.segs{display:flex;gap:5px;flex:1}
-.seg{flex:1;height:6px;border-radius:999px;background:rgba(244,234,240,.16);transition:background .5s var(--lamp)}
-.seg.on{background:var(--ink)}
-.prog span{font-size:13px;font-weight:700;color:var(--ink2);white-space:nowrap}
+/* which device: a glass switch, the selection slides */
+.seg{position:relative;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin-top:40px;padding:6px;border-radius:28px}
+.seg-hl{position:absolute;left:6px;top:6px;bottom:6px;width:calc(50% - 6px);border-radius:22px;background:var(--i1);transition:transform .53s var(--e-glide)}
+.seg.ios .seg-hl{transform:translate3d(100%,0,0)}
+.t-win [data-tab="ios"],.t-ios [data-tab="win"]{display:none}
+.tab{position:relative;z-index:1;display:flex;align-items:center;gap:14px;min-height:76px;padding:14px 18px;border-radius:22px;text-align:left;color:var(--i1);transition:color .25s,transform .63s var(--e-bouncy)}
+.tab:active{transform:scale(.97);transition-duration:.25s,.12s}
+.tab svg{width:26px;height:26px;flex:none}
+.tab b{display:block;font-weight:900;font-size:18px;letter-spacing:-.02em;line-height:1.2}
+.tab small{display:block;margin-top:2px;font-size:13px;font-weight:600;color:var(--i2);transition:color .25s}
+.tab.on{color:#000}.tab.on small{color:rgba(0,0,0,.62)}
 
-.steps{display:flex;flex-direction:column;gap:14px;margin-top:18px}
-.step{position:relative;border-radius:28px;padding:26px;display:grid;grid-template-columns:44px minmax(0,1fr);gap:0 18px;transition:opacity .5s var(--lamp),background .5s var(--lamp)}
-.n{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:900;font-size:18px;background:rgba(244,234,240,.1);transition:background .4s,color .4s}
-.n svg{width:20px;height:20px;display:none}
-.step.done{opacity:.55}
-.step.done .n{background:var(--ink);color:#000}
-.step.done .n i{display:none}.step.done .n svg{display:block}
+.need{margin-top:14px;padding:22px 24px;border-radius:28px;background:var(--k1);box-shadow:inset 0 0 0 1px var(--rim)}
+.need h3{margin-bottom:12px;font-size:13px;font-weight:900;letter-spacing:.06em;color:var(--i2)}
+.need ul{display:flex;flex-direction:column;gap:10px}
+.need li{display:flex;align-items:flex-start;gap:12px;font-size:16px;font-weight:600;line-height:1.4}
+.need li svg{width:18px;height:18px;flex:none;margin-top:2px;color:var(--i2)}
+
+.prog{position:sticky;z-index:40;top:calc(max(14px,env(safe-area-inset-top)) + 64px);display:flex;align-items:center;gap:14px;margin-top:26px;padding:12px 18px;border-radius:999px}
+.bars{display:flex;flex:1;gap:5px}
+.bar{flex:1;height:6px;border-radius:6px;background:rgba(244,234,240,.16);transition:background-color .6s var(--e-lamp)}
+.bar.on{background:var(--i1)}
+.prog span{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--i2);white-space:nowrap}
+
+.steps{display:flex;flex-direction:column;gap:12px;margin-top:16px}
+.step{position:relative;display:grid;grid-template-columns:48px minmax(0,1fr);gap:0 20px;padding:26px 26px 26px 24px;border-radius:28px;background:var(--k1);box-shadow:inset 0 0 0 1px var(--rim);scroll-margin-top:150px;transition:opacity .6s var(--e-lamp),background-color .6s var(--e-lamp),box-shadow .6s var(--e-lamp)}
+.n{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;font-weight:900;font-size:19px;font-variant-numeric:tabular-nums;background:rgba(244,234,240,.09);transition:background-color .4s,color .4s,box-shadow .4s}
 .n i{font-style:normal}
-.where{font-size:12px;font-weight:700;color:var(--ink2);letter-spacing:.02em;margin:0 0 6px;padding-top:2px}
-.step h2{margin:0;font-weight:900;font-size:clamp(21px,2.4vw,26px);line-height:1.15;letter-spacing:-.03em;padding-top:8px}
-.where + h2{padding-top:0}
-.step p{margin:10px 0 0;font-size:16px;line-height:1.55;color:var(--ink2)}
-.step p b,.k{color:var(--ink);font-weight:700}
-.k{display:inline-block;padding:1px 8px;border-radius:8px;background:rgba(244,234,240,.1);font-size:14px}
-.body{min-width:0}
+.n svg{display:none;width:20px;height:20px}
+.step.cur{background:var(--k2);box-shadow:inset 0 0 0 1px rgba(244,234,240,.18),0 30px 60px -30px #000}
+.step.cur .n{background:var(--i1);color:#000}
+.step.done{opacity:.5}
+.step.done:hover,.step.done:focus-within{opacity:.85}
+.step.done .n{background:transparent;box-shadow:inset 0 0 0 1.5px var(--i3)}
+.step.done .n i{display:none}.step.done .n svg{display:block}
+.where{padding-top:3px;margin-bottom:5px;font-size:12px;font-weight:900;letter-spacing:.06em;color:var(--i2)}
+.step h2{padding-top:9px;font-weight:900;font-size:clamp(21px,2.5vw,26px);line-height:1.16;letter-spacing:-.032em;text-wrap:balance}
+.where+h2{padding-top:0}
+.step p{margin-top:10px;font-size:16px;line-height:1.55;color:var(--i2);text-wrap:pretty}
+.step p b{font-weight:700;color:var(--i1)}
+.k{display:inline-block;padding:1px 8px;border-radius:8px;font-size:14px;font-weight:700;color:var(--i1);background:rgba(244,234,240,.1)}
 .acts{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
-.donebtn{margin-top:18px;display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:999px;border:1px solid var(--rim);background:rgba(244,234,240,.05);cursor:pointer;font-weight:700;font-size:14px;color:var(--ink2);transition:transform .63s var(--bouncy),background .2s,color .2s}
-.donebtn svg{width:16px;height:16px}
-.donebtn:hover{color:var(--ink);background:rgba(244,234,240,.1)}
-.donebtn:active{transform:scale(.94)}
-.step.done .donebtn{background:var(--ink);color:#000;border-color:transparent}
 .tip{font-size:14px !important}
+.done-b{display:inline-flex;align-items:center;gap:8px;height:44px;margin-top:20px;padding:0 18px 0 15px;border-radius:999px;font-weight:700;font-size:15px;color:var(--i1);background:rgba(244,234,240,.12);transition:transform .63s var(--e-bouncy),background-color .2s,color .2s}
+.done-b svg{width:17px;height:17px}
+.done-b:hover{background:rgba(244,234,240,.2)}
+.done-b:active{transform:scale(.94);transition-duration:.12s,.2s,.2s}
+.step.done .done-b{background:var(--i1);color:#000}
 
-/* illustrated dialogs */
-.mock{margin-top:18px;border-radius:18px;padding:18px 20px;background:rgba(10,8,9,.7);border:1px solid var(--rim);max-width:420px}
-.mock b{display:block;font-size:17px;font-weight:900;letter-spacing:-.01em}
-.mock p{margin:6px 0 0 !important;font-size:13px !important;line-height:1.45}
-.mrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;align-items:center}
-.mp{display:inline-flex;align-items:center;height:32px;padding:0 14px;border-radius:999px;font-size:13px;font-weight:700;background:rgba(244,234,240,.08);color:var(--ink2)}
-.mp.hit{background:var(--ink);color:#000;box-shadow:0 0 0 4px rgba(244,234,240,.14)}
-.mlink{font-size:13px;font-weight:700;color:var(--ink);text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--ink3)}
+/* what you'll see, drawn plainly */
+.mock{max-width:420px;margin-top:18px;padding:18px 20px;border-radius:18px;background:#000;box-shadow:inset 0 0 0 1px rgba(244,234,240,.12)}
+.mock b{display:block;font-size:17px;font-weight:900;letter-spacing:-.015em}
+.mock p{margin-top:6px;font-size:13px;line-height:1.45}
+.mrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:14px}
+.mp{display:inline-flex;align-items:center;height:32px;padding:0 14px;border-radius:999px;font-size:13px;font-weight:700;color:var(--i2);background:rgba(244,234,240,.08)}
+.mp.hit{color:#000;background:var(--i1);box-shadow:0 0 0 4px rgba(244,234,240,.16)}
+.mlink{font-size:13px;font-weight:700;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--i3)}
 .path{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:14px}
-.path .k{font-size:13px}
-.path svg{width:14px;height:14px;color:var(--ink3)}
+.path svg{width:14px;height:14px;color:var(--i3)}
 
-.fin{margin-top:14px;border-radius:28px;padding:34px 28px;text-align:center;position:relative;overflow:hidden}
-.fin img.mk{width:56px;height:56px;object-fit:contain;margin:0 auto 16px}
-.fin h2{margin:0;font-weight:900;font-size:clamp(30px,4vw,44px);letter-spacing:-.045em}
-.fin p{margin:12px auto 0;font-size:16px;line-height:1.55;color:var(--ink2);max-width:28em}
+/* the end: the room lights up when every step is done */
+.fin{position:relative;margin-top:12px;padding:44px 28px 40px;border-radius:28px;text-align:center;background:var(--k1);overflow:hidden;box-shadow:inset 0 0 0 1px var(--rim);scroll-margin-top:150px}
+.fin-light{position:absolute;left:50%;top:-30%;width:150%;aspect-ratio:16/9;translate:-50% 0;pointer-events:none;opacity:0;transition:opacity 2.4s var(--e-lamp);-webkit-mask-image:radial-gradient(closest-side,#000 6%,rgba(0,0,0,0) 100%);mask-image:radial-gradient(closest-side,#000 6%,rgba(0,0,0,0) 100%)}
+.fin-light img{width:100%;height:100%;max-width:none}
+.fin.lit .fin-light{opacity:.78}
+.fin>*:not(.fin-light){position:relative}
+.fin .mk img{width:150px;height:auto;margin:0 auto 18px;opacity:.34;transition:opacity 1.2s var(--e-lamp)}
+.fin.lit .mk img{opacity:1}
+.fin h2{font-weight:900;font-size:clamp(30px,4.6vw,46px);letter-spacing:-.045em;line-height:1.05;color:var(--i2);transition:color 1.2s var(--e-lamp)}
+.fin.lit h2{color:var(--i1)}
+.fin p{max-width:28em;margin:12px auto 0;font-size:16px;line-height:1.55;color:var(--i2)}
+.fin p b{font-weight:700;color:var(--i1)}
 
-.stuck{margin-top:56px}
-.stuck h2{margin:0 0 16px;font-weight:900;font-size:clamp(30px,4vw,44px);letter-spacing:-.045em}
-.qs{display:flex;flex-direction:column;gap:10px}
-details{border-radius:22px;overflow:hidden}
-summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 22px;font-weight:700;font-size:17px;letter-spacing:-.015em;min-height:62px}
-summary::-webkit-details-marker{display:none}
-.pl{width:30px;height:30px;flex:none;border-radius:50%;display:grid;place-items:center;background:rgba(244,234,240,.08);transition:transform .5s var(--bouncy)}
+.stuck{margin-top:64px}
+.stuck>h2{margin-bottom:14px;font-weight:900;font-size:clamp(30px,4.6vw,46px);letter-spacing:-.045em}
+.q{border-top:1px solid var(--i4)}
+.q:last-child{border-bottom:1px solid var(--i4)}
+.q summary{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:72px;padding:18px 2px;cursor:pointer;list-style:none;font-weight:700;font-size:clamp(17px,2vw,20px);letter-spacing:-.02em;line-height:1.25}
+.q summary::-webkit-details-marker{display:none}
+.pl{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:rgba(244,234,240,.09);transition:transform .63s var(--e-bouncy),background-color .2s,color .2s}
 .pl svg{width:15px;height:15px}
-details[open] .pl{transform:rotate(45deg)}
-details[open]{background:rgba(40,32,37,.5)}
-.ans{padding:0 22px 22px;margin:0;font-size:15px;line-height:1.6;color:var(--ink2)}
+.q[open] .pl{transform:rotate(45deg);background:var(--i1);color:#000}
+.ans{max-width:38em;padding:0 2px 26px;font-size:16px;line-height:1.6;color:var(--i2);animation:ansin .5s var(--e-lamp)}
+.ans b{font-weight:700;color:var(--i1)}
+@keyframes ansin{from{opacity:0;transform:translate3d(0,-6px,0)}to{opacity:1;transform:none}}
 
-.foot{position:relative;z-index:2;margin-top:72px;border-top:1px solid var(--ink4);padding:28px 0 calc(28px + env(safe-area-inset-bottom))}
-.foot .col{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px;font-size:14px;font-weight:600;color:var(--ink2)}
-.foot a{color:var(--ink2)}.foot a:hover{color:var(--ink)}
+.share{display:flex;justify-content:center;margin-top:44px}
+.foot{position:relative;z-index:1;margin-top:72px;border-top:1px solid var(--i4);padding:26px 0 calc(26px + env(safe-area-inset-bottom))}
+.foot .col{display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:14px;font-weight:600;color:var(--i2)}
+.fbrand{display:flex;align-items:center;gap:10px}
+.fbrand img{width:26px;height:26px;object-fit:contain}
+.foot a{color:var(--i2)}.foot a:hover{color:var(--i1)}
 
-.in{animation:in .8s var(--lamp) both}
-@keyframes in{from{opacity:0;transform:translate3d(0,14px,0)}to{opacity:1;transform:none}}
-@supports (animation-timeline: view()){
-@media (prefers-reduced-motion: no-preference){
-.rv{animation:rv linear both;animation-timeline:view();animation-range:entry 0% entry 50%}
-@keyframes rv{from{opacity:0;transform:translate3d(0,20px,0)}to{opacity:1;transform:none}}
-}}
 @media (max-width:640px){
-.tabs{grid-template-columns:minmax(0,1fr)}
+.tab{gap:10px;min-height:68px;padding:12px}
+.tab svg{width:22px;height:22px}
+.tab b{font-size:15.5px}.tab small{font-size:12px}
 .step{grid-template-columns:minmax(0,1fr);padding:22px 20px}
 .n{margin-bottom:14px}
 .acts .btn{flex:1 1 100%}
-.prog{top:calc(max(14px,env(safe-area-inset-top)) + 64px)}
+.need{padding:20px}
 }
 @media (prefers-reduced-motion: reduce){
-*,*::before,*::after{animation:none !important;transition-duration:.01ms !important;scroll-behavior:auto !important}
-.grain{display:none}
+*,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;animation-delay:0s !important;transition-duration:.2s !important;transition-delay:0s !important;scroll-behavior:auto !important}
+.grain{animation:none}
+.lampin{transform:none !important}
 }
 </style>
-
+<noscript><style>.seg,.prog,.done-b,.share{display:none}</style></noscript>
 </head>
 <body>
 
-
-
 <div class="pg">
-<svg class="grain" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><filter id="gn2"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch"></feTurbulence><feColorMatrix type="saturate" values="0"></feColorMatrix></filter><rect width="100%" height="100%" filter="url(#gn2)"></rect></svg>
-
-<div class="amb" aria-hidden="true">
-<img src="/l/I00.jpg" alt="" style="left: 0; top: 0">
-<img src="/l/I01.jpg" alt="" style="right: 0; top: 60px">
-</div>
+<div class="grain" aria-hidden="true"></div>
+<div class="amb" aria-hidden="true"><img src="/l/amb-body.png" alt=""></div>
 
 <header class="nav">
 <nav class="navin glass" aria-label="main">
 <a class="brand" href="/"><img src="/couch.png" alt="">couch</a>
-<a class="btn alt sm" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5m5-5-5 5 5 5"></path></svg>back</a>
+<a class="btn tint sm" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5m5-5-5 5 5 5"></path></svg>back</a>
 </nav>
 </header>
 
 <main class="col">
-<section class="hero in">
-<h1><span>let's get couch</span><span>on your device</span></h1>
-<p class="lede">no tech skills needed. just follow the steps, one at a time. tap <b style="color: #f4eaf0">done</b> as you go so you don't lose your place.</p>
+<section class="hero">
+<h1 class="h1"><span class="lampin" style="--i: 0">let’s get couch</span><span class="lampin" style="--i: 1">on your device</span></h1>
+<p class="lede lampin" style="--i: 2">no tech skills needed. just follow the steps, one at a time. tap <b>done</b> as you go so you don’t lose your place.</p>
 
-<div class="tabs" role="tablist" aria-label="device">
-<button class="tab glass on" type="button" role="tab" aria-selected="true" data-show="win">
-<span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="12.5" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg></span>
+<div class="seg glass lampin" style="--i: 3" role="tablist" aria-label="device">
+<span class="seg-hl" aria-hidden="true"></span>
+<button class="tab on" type="button" role="tab" id="tab-win" aria-controls="guide-win" aria-selected="true" data-show="win">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="12.5" rx="2.2"></rect><path d="M8 21h8M12 17v4"></path></svg>
 <span><b>Windows PC</b><small>about 2 minutes</small></span>
 </button>
-<button class="tab glass" type="button" role="tab" aria-selected="false" data-show="ios">
-<span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="12" height="16" rx="2.5"></rect><rect x="16.5" y="9" width="5" height="11" rx="1.5"></rect></svg></span>
+<button class="tab" type="button" role="tab" id="tab-ios" aria-controls="guide-ios" aria-selected="false" data-show="ios">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="12" height="16" rx="2.5"></rect><rect x="16.5" y="9" width="5" height="11" rx="1.5"></rect></svg>
 <span><b>iPhone / iPad</b><small>about 10 minutes</small></span>
 </button>
 </div>
 </section>
 
-<div data-tab="win">
-<div class="in">
-<div class="need glass">
-<h3>you'll need</h3>
+<div class="lampin" style="--i: 0" id="guide-win" role="tabpanel" aria-labelledby="tab-win" data-tab="win">
+<div class="need">
+<h3>you’ll need</h3>
 <ul>
-<li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>a Windows 10 or 11 computer</li>
-<li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>a Discord account that's in the midnite server</li>
+<li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>a Windows 10 or 11 computer</li>
+<li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>a Discord account that’s in the midnite server</li>
 </ul>
 </div>
 
 <div class="prog glass" aria-live="polite">
-<div class="segs" aria-hidden="true"><i class="seg" data-seg="w1"></i><i class="seg" data-seg="w2"></i><i class="seg" data-seg="w3"></i><i class="seg" data-seg="w4"></i></div>
+<div class="bars" aria-hidden="true"><i class="bar" data-bar="w1"></i><i class="bar" data-bar="w2"></i><i class="bar" data-bar="w3"></i><i class="bar" data-bar="w4"></i></div>
 <span data-count="w">0 of 4 done</span>
 </div>
 
 <div class="steps">
-<div class="step glass rv" data-step="w1">
-<div class="n"><i>1</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
-<div class="body">
+<div class="step cur" id="s-w1">
+<div class="n"><i>1</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+<div>
 <h2>download couch</h2>
 <p>press the button. a file called <span class="k">couch-setup.exe</span> will download.</p>
-<div class="acts"><a class="btn pri" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"></path></svg>download couch for Windows</a></div>
-<button class="donebtn" type="button" aria-pressed="false" data-toggle="w1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
+<div class="acts"><a class="btn pri" href="https://github.com/xnite7/lumen/releases/download/couch/couch-setup.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14"></path></svg>download couch for Windows</a></div>
+<button class="done-b" type="button" aria-pressed="false" data-toggle="w1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
 </div>
 </div>
 
-<div class="step glass rv" data-step="w2">
-<div class="n"><i>2</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
-<div class="body">
+<div class="step" id="s-w2">
+<div class="n"><i>2</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+<div>
 <h2>open the file you downloaded</h2>
 <p>click it at the top-right of your browser (the little download icon), or find it in your <b>Downloads</b> folder and double-click it.</p>
-<button class="donebtn" type="button" aria-pressed="false" data-toggle="w2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
+<button class="done-b" type="button" aria-pressed="false" data-toggle="w2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
 </div>
 </div>
 
-<div class="step glass rv" data-step="w3">
-<div class="n"><i>3</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
-<div class="body">
-<h2>if a blue box pops up, press "More info", then "Run anyway"</h2>
-<p>this is normal. Windows shows it for any app it doesn't know yet. it's safe.</p>
+<div class="step" id="s-w3">
+<div class="n"><i>3</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+<div>
+<h2>if a blue box pops up, press “More info”, then “Run anyway”</h2>
+<p>this is normal. Windows shows it for any app it doesn’t know yet. it’s safe.</p>
 <div class="mock" aria-hidden="true">
 <b>Windows protected your PC</b>
 <p>Microsoft Defender SmartScreen prevented an unrecognized app from starting…</p>
 <div class="mrow"><span class="mlink">More info</span></div>
-<div class="mrow"><span class="mp hit">Run anyway</span><span class="mp">Don't run</span></div>
+<div class="mrow"><span class="mp hit">Run anyway</span><span class="mp">Don’t run</span></div>
 </div>
 <p class="tip">no blue box? great, skip this one.</p>
-<button class="donebtn" type="button" aria-pressed="false" data-toggle="w3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
+<button class="done-b" type="button" aria-pressed="false" data-toggle="w3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
 </div>
 </div>
 
-<div class="step glass rv" data-step="w4">
-<div class="n"><i>4</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
-<div class="body">
+<div class="step" id="s-w4">
+<div class="n"><i>4</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+<div>
 <h2>sign in with Discord</h2>
 <p>couch opens by itself. press <span class="k">sign in with Discord</span>, then <span class="k">Authorize</span> in the page that opens.</p>
-<button class="donebtn" type="button" aria-pressed="false" data-toggle="w4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
+<button class="done-b" type="button" aria-pressed="false" data-toggle="w4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
 </div>
 </div>
 
-<div class="fin glass rv">
-<img class="mk" src="/couch.png" alt="">
-<h2>you're on the couch!</h2>
+<div class="fin" id="fin-w">
+<div class="fin-light" aria-hidden="true"><img src="/l/amb-body.png" alt=""></div>
+<picture class="mk"><source media="(prefers-reduced-motion: reduce)" srcset="couch.png"><img src="/l/couch-boil.webp" alt="" width="281" height="160" loading="lazy" decoding="async"></picture>
+<h2>you’re on the couch!</h2>
 <p>couch updates itself from now on. you never have to do this again.</p>
 </div>
 </div>
 
-<section class="stuck rv">
+<section class="stuck">
 <h2>stuck?</h2>
-<div class="qs">
-<details class="glass"><summary>the download got blocked by my browser<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">in Chrome or Edge, click the download, then <b style="color: #f4eaf0">Keep</b> (you may need to press ⋯ first). it's flagged only because not many people have downloaded it yet.</p></details>
-<details class="glass"><summary>it says I'm not in the server<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">you need to be in the midnite Discord server, with the same Discord account you signed in with. ask a friend for an invite, join, then press <b style="color: #f4eaf0">try again</b> in couch.</p></details>
-</div>
+<details class="q"><summary>the download got blocked by my browser<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">in Chrome or Edge, click the download, then <b>Keep</b> (you may need to press ⋯ first). it’s flagged only because not many people have downloaded it yet.</p></details>
+<details class="q"><summary>it says I’m not in the server<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">you need to be in the midnite Discord server, with the same Discord account you signed in with. ask a friend for an invite, join, then press <b>try again</b> in couch.</p></details>
 </section>
 </div>
-</div>
 
-<div data-tab="ios" hidden>
-<div class="in">
-<div class="need glass">
-<h3>you'll need</h3>
+<div class="lampin" style="--i: 0" id="guide-ios" role="tabpanel" aria-labelledby="tab-ios" data-tab="ios">
+<div class="need">
+<h3>you’ll need</h3>
 <ul>
-<li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>a Windows PC or Mac</li>
-<li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>your phone's cable</li>
-<li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>your Apple ID (the one you use for the App Store)</li>
+<li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>a Windows PC or Mac</li>
+<li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>your phone’s cable</li>
+<li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>your Apple ID (the one you use for the App Store)</li>
 </ul>
 </div>
 
 <div class="prog glass" aria-live="polite">
-<div class="segs" aria-hidden="true"><i class="seg" data-seg="i1"></i><i class="seg" data-seg="i2"></i><i class="seg" data-seg="i3"></i><i class="seg" data-seg="i4"></i><i class="seg" data-seg="i5"></i><i class="seg" data-seg="i6"></i></div>
+<div class="bars" aria-hidden="true"><i class="bar" data-bar="i1"></i><i class="bar" data-bar="i2"></i><i class="bar" data-bar="i3"></i><i class="bar" data-bar="i4"></i><i class="bar" data-bar="i5"></i><i class="bar" data-bar="i6"></i></div>
 <span data-count="i">0 of 6 done</span>
 </div>
 
 <div class="steps">
-<div class="step glass rv" data-step="i1">
-<div class="n"><i>1</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
-<div class="body">
+<div class="step cur" id="s-i1">
+<div class="n"><i>1</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+<div>
 <p class="where">Windows only · Mac users skip this</p>
 <h2>install iTunes and iCloud</h2>
-<p>open each one and click <span class="k">Next</span> till it's done.</p>
+<p>open each one and click <span class="k">Next</span> till it’s done.</p>
 <div class="acts">
-<a class="btn alt glass" href="https://www.apple.com/itunes/download/win64"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"></path></svg>iTunes</a>
-<a class="btn alt glass" href="https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"></path></svg>iCloud</a>
+<a class="btn tint" href="https://www.apple.com/itunes/download/win64"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14"></path></svg>iTunes</a>
+<a class="btn tint" href="https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14"></path></svg>iCloud</a>
 </div>
-<p class="tip">already have them from the <b>Microsoft Store</b>? uninstall those first. Sideloadly can't use them.</p>
-<button class="donebtn" type="button" aria-pressed="false" data-toggle="i1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
+<p class="tip">already have them from the <b>Microsoft Store</b>? uninstall those first. Sideloadly can’t use them.</p>
+<button class="done-b" type="button" aria-pressed="false" data-toggle="i1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
 </div>
 </div>
 
-<div class="step glass rv" data-step="i2">
-<div class="n"><i>2</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
-<div class="body">
+<div class="step" id="s-i2">
+<div class="n"><i>2</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+<div>
 <p class="where">on your computer</p>
 <h2>get Sideloadly and couch</h2>
 <p>install Sideloadly like any app, and download couch.</p>
 <div class="acts">
-<a class="btn alt glass" href="https://sideloadly.io"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"></path></svg>Sideloadly</a>
-<a class="btn pri" href="https://github.com/xnite7/lumen/releases/download/couch-ios/couch.ipa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"></path></svg>couch.ipa</a>
+<a class="btn tint" href="https://sideloadly.io"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"></path></svg>Sideloadly</a>
+<a class="btn pri" href="https://github.com/xnite7/lumen/releases/download/couch-ios/couch.ipa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19.5h14"></path></svg>couch.ipa</a>
 </div>
-<button class="donebtn" type="button" aria-pressed="false" data-toggle="i2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
+<button class="done-b" type="button" aria-pressed="false" data-toggle="i2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
 </div>
 </div>
 
-<div class="step glass rv" data-step="i3">
-<div class="n"><i>3</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
-<div class="body">
+<div class="step" id="s-i3">
+<div class="n"><i>3</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+<div>
 <p class="where">on your phone</p>
-<h2>plug your phone in and tap "Trust"</h2>
+<h2>plug your phone in and tap “Trust”</h2>
 <div class="mock" aria-hidden="true" style="text-align: center">
 <b>Trust This Computer?</b>
 <p>Your settings and data will be accessible from this computer when connected.</p>
-<div class="mrow" style="justify-content: center"><span class="mp hit">Trust</span><span class="mp">Don't Trust</span></div>
+<div class="mrow" style="justify-content: center"><span class="mp hit">Trust</span><span class="mp">Don’t Trust</span></div>
 </div>
-<button class="donebtn" type="button" aria-pressed="false" data-toggle="i3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
+<button class="done-b" type="button" aria-pressed="false" data-toggle="i3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
 </div>
 </div>
 
-<div class="step glass rv" data-step="i4">
-<div class="n"><i>4</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
-<div class="body">
+<div class="step" id="s-i4">
+<div class="n"><i>4</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+<div>
 <p class="where">on your computer</p>
 <h2>in Sideloadly: drop in couch.ipa, type your Apple ID, press Start</h2>
 <p>if it asks for your password or a code, type them in. wait for <span class="k">Done</span>.</p>
-<button class="donebtn" type="button" aria-pressed="false" data-toggle="i4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
+<button class="done-b" type="button" aria-pressed="false" data-toggle="i4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
 </div>
 </div>
 
-<div class="step glass rv" data-step="i5">
-<div class="n"><i>5</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
-<div class="body">
+<div class="step" id="s-i5">
+<div class="n"><i>5</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+<div>
 <p class="where">on your phone</p>
 <h2>allow the app</h2>
-<div class="path"><span class="k">Settings</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">General</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">VPN &amp; Device Management</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">your email</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">Trust</span></div>
-<div class="path"><span class="k">Settings</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">Privacy &amp; Security</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">Developer Mode</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">on</span></div>
-<p>the phone restarts. tap <span class="k">Turn On</span> when it's back.</p>
-<button class="donebtn" type="button" aria-pressed="false" data-toggle="i5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
+<div class="path"><span class="k">Settings</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">General</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">VPN &amp; Device Management</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">your email</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">Trust</span></div>
+<div class="path"><span class="k">Settings</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">Privacy &amp; Security</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">Developer Mode</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg><span class="k">on</span></div>
+<p>the phone restarts. tap <span class="k">Turn On</span> when it’s back.</p>
+<button class="done-b" type="button" aria-pressed="false" data-toggle="i5"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
 </div>
 </div>
 
-<div class="step glass rv" data-step="i6">
-<div class="n"><i>6</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
-<div class="body">
+<div class="step" id="s-i6">
+<div class="n"><i>6</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+<div>
 <p class="where">on your phone</p>
 <h2>open couch and sign in with Discord</h2>
-<button class="donebtn" type="button" aria-pressed="false" data-toggle="i6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
+<button class="done-b" type="button" aria-pressed="false" data-toggle="i6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>done</button>
 </div>
 </div>
 
-<div class="fin glass rv">
-<img class="mk" src="/couch.png" alt="">
-<h2>you're on the couch!</h2>
-<p>free Apple IDs make the app stop after <b style="color: #f4eaf0">7 days</b>. plug in and press <span class="k">Start</span> in Sideloadly again to keep it going.</p>
+<div class="fin" id="fin-i">
+<div class="fin-light" aria-hidden="true"><img src="/l/amb-body.png" alt=""></div>
+<picture class="mk"><source media="(prefers-reduced-motion: reduce)" srcset="couch.png"><img src="/l/couch-boil.webp" alt="" width="281" height="160" loading="lazy" decoding="async"></picture>
+<h2>you’re on the couch!</h2>
+<p>free Apple IDs make the app stop after <b>7 days</b>. plug in and press <span class="k">Start</span> in Sideloadly again to keep it going.</p>
 </div>
 </div>
 
-<section class="stuck rv">
+<section class="stuck">
 <h2>stuck?</h2>
-<div class="qs">
-<details class="glass"><summary>Sideloadly doesn't see my phone<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">unlock it, tap Trust, try another cable or port. on Windows, make sure iTunes and iCloud are the ones from step 1.</p></details>
-<details class="glass"><summary>couch won't open<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">do step 5 again. if it's been 7 days, press Start in Sideloadly again.</p></details>
-</div>
+<details class="q"><summary>Sideloadly doesn’t see my phone<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">unlock it, tap Trust, try another cable or port. on Windows, make sure iTunes and iCloud are the ones from step 1.</p></details>
+<details class="q"><summary>couch won’t open<span class="pl" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg></span></summary><p class="ans">do step 5 again. if it’s been 7 days, press Start in Sideloadly again.</p></details>
 </section>
 </div>
-</div>
 
-<div style="margin-top: 40px; display: flex; justify-content: center">
-<button class="btn alt glass" type="button" data-share><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3m0 0L7.5 7.5M12 3l4.5 4.5"></path><path d="M5 12v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"></path></svg><span data-share-label>send this guide to a friend</span></button>
+<div class="share">
+<button class="btn tint" type="button" data-share><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3.5m0 0L7.5 8M12 3.5 16.5 8"></path><path d="M5 12.5v5.5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5.5"></path></svg><span data-share-label>send this guide to a friend</span></button>
 </div>
 </main>
 
 <footer class="foot">
 <div class="col">
-<span>couch · midnite™</span>
+<span class="fbrand"><img src="/couch.png" alt="">couch · midnite™</span>
 <a href="/terms">terms</a>
 </div>
 </footer>
 </div>
 
-<script>(() => {
+<script>
+(() => {
+  const d = document, w = window, root = d.documentElement;
+  const $$ = (s, r) => Array.from((r || d).querySelectorAll(s));
+  const rm = !!(w.matchMedia && w.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const KEY = 'couch-install-done';
+  const LIST = { w: ['w1', 'w2', 'w3', 'w4'], i: ['i1', 'i2', 'i3', 'i4', 'i5', 'i6'] };
+
+  /* opened straight from a folder (no server): point the site links at the files next to this one */
+  if (location.protocol === 'file:') {
+    $$('a[href^="/"]').forEach((a) => {
+      const h = a.getAttribute('href');
+      a.setAttribute('href', h === '/' ? 'index.html' : h.indexOf('/install') === 0 ? 'install.html' + h.slice(8) : 'https://midnite-couch.xnite7.workers.dev' + h);
+    });
+  }
+
+  /* -- which device: the script in the head already picked one, this keeps the switch in step -- */
+  let tab = root.classList.contains('t-ios') ? 'ios' : 'win';
+  const seg = d.querySelector('.seg');
+  const showTab = (name) => {
+    tab = name;
+    root.classList.toggle('t-ios', name === 'ios');
+    root.classList.toggle('t-win', name !== 'ios');
+    if (seg) seg.classList.toggle('ios', name === 'ios');
+    $$('[data-show]').forEach((b) => {
+      const on = b.getAttribute('data-show') === name;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  };
+  $$('[data-show]').forEach((b) => b.addEventListener('click', () => showTab(b.getAttribute('data-show'))));
+  w.addEventListener('hashchange', () => { if (/ios|^#(s|fin)-i/.test(location.hash || '')) showTab('ios'); });
+
+  /* -- steps: what is done is remembered on this device -- */
   let done = {};
-  try { done = JSON.parse(localStorage.getItem("couch-install-done") || "{}") || {}; } catch (e) {}
-  const W = ["w1", "w2", "w3", "w4"], I = ["i1", "i2", "i3", "i4", "i5", "i6"];
-  function paint() {
-    document.querySelectorAll("[data-step]").forEach((el) => el.classList.toggle("done", !!done[el.dataset.step]));
-    document.querySelectorAll("[data-toggle]").forEach((el) => el.setAttribute("aria-pressed", done[el.dataset.toggle] ? "true" : "false"));
-    document.querySelectorAll("[data-seg]").forEach((el) => el.classList.toggle("on", !!done[el.dataset.seg]));
-    for (const [k, list] of [["w", W], ["i", I]]) {
-      const n = list.filter((x) => done[x]).length;
-      document.querySelectorAll('[data-count="' + k + '"]').forEach((el) => (el.textContent = n === list.length ? "all done" : n + " of " + list.length + " done"));
-    }
-  }
-  document.querySelectorAll("[data-toggle]").forEach((b) => b.addEventListener("click", () => {
-    const k = b.dataset.toggle;
+  try { done = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) {}
+  const paint = () => {
+    Object.keys(LIST).forEach((p) => {
+      const list = LIST[p];
+      const cur = list.find((k) => !done[k]);
+      const n = list.filter((k) => done[k]).length;
+      list.forEach((k) => {
+        const el = d.getElementById('s-' + k);
+        if (el) { el.classList.toggle('done', !!done[k]); el.classList.toggle('cur', k === cur); }
+      });
+      $$('[data-count="' + p + '"]').forEach((el) => { el.textContent = n === list.length ? 'all done' : n + ' of ' + list.length + ' done'; });
+      const fin = d.getElementById('fin-' + p);
+      if (fin) fin.classList.toggle('lit', n === list.length);
+    });
+    $$('[data-toggle]').forEach((b) => b.setAttribute('aria-pressed', done[b.getAttribute('data-toggle')] ? 'true' : 'false'));
+    $$('[data-bar]').forEach((el) => el.classList.toggle('on', !!done[el.getAttribute('data-bar')]));
+  };
+  $$('[data-toggle]').forEach((b) => b.addEventListener('click', () => {
+    const k = b.getAttribute('data-toggle');
     done[k] = !done[k];
-    try { localStorage.setItem("couch-install-done", JSON.stringify(done)); } catch (e) {}
+    try { localStorage.setItem(KEY, JSON.stringify(done)); } catch (e) {}
     paint();
+    if (!done[k]) return;
+    /* bring the next step (or the end) up to where the eyes are */
+    const next = LIST[k[0]].find((x) => !done[x]);
+    const id = next ? 's-' + next : 'fin-' + k[0];
+    setTimeout(() => {
+      const el = d.getElementById(id);
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (r.top > w.innerHeight * 0.5 || r.top < 120) el.scrollIntoView({ block: 'start', behavior: rm ? 'auto' : 'smooth' });
+    }, 260);
   }));
-  function tab(name) {
-    document.querySelectorAll("[data-tab]").forEach((el) => (el.hidden = el.dataset.tab !== name));
-    document.querySelectorAll("[data-show]").forEach((el) => { const on = el.dataset.show === name; el.classList.toggle("on", on); el.setAttribute("aria-selected", on ? "true" : "false"); });
-  }
-  document.querySelectorAll("[data-show]").forEach((b) => b.addEventListener("click", () => tab(b.dataset.show)));
-  const apple = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-  tab((location.hash || "").indexOf("ios") >= 0 || (!location.hash && apple) ? "ios" : "win");
-  document.querySelectorAll("[data-share]").forEach((b) => b.addEventListener("click", () => {
-    const url = location.origin + "/install";
-    const label = b.querySelector("[data-share-label]");
+
+  /* -- send the guide on -- */
+  $$('[data-share]').forEach((b) => b.addEventListener('click', () => {
+    const site = /^https?:$/.test(location.protocol) ? location.origin : 'https://midnite-couch.xnite7.workers.dev';
+    const url = site + '/install' + (tab === 'ios' ? '#ios' : '');
+    const label = b.querySelector('[data-share-label]');
     try {
-      if (navigator.share) { navigator.share({ title: "how to install couch", url }).catch(() => {}); return; }
-      navigator.clipboard && navigator.clipboard.writeText(url).then(() => label && (label.textContent = "link copied")).catch(() => {});
+      if (navigator.share) { navigator.share({ title: 'how to install couch', url: url }).catch(() => {}); return; }
+      if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => { if (label) label.textContent = 'link copied'; }).catch(() => {});
     } catch (e) {}
   }));
+
+  showTab(tab);
   paint();
 })();
 </script>
-
-
-</body></html>
+</body>
+</html>

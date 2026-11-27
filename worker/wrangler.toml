@@ -15,7 +15,7 @@ CLIPS_POOL_ONLY = "1"
 
 [[rules]]
 type = "Data"
-globs = ["**/*.png", "**/*.jpg", "**/*.woff2"]
+globs = ["**/*.png", "**/*.jpg", "**/*.webp", "**/*.woff2"]
 fallthrough = true
 
 [[rules]]
@@ -31,5 +31,3 @@ class_name = "Crew"
 tag = "v1"
 new_sqlite_classes = ["Crew"]
 # bot token picked up 2026-11-07
-
-# redeployed 2026-11-27 (something else had replaced the server)
