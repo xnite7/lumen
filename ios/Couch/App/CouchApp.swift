@@ -102,11 +102,11 @@ struct RootView: View {
             .tabItem { Label("Settings", systemImage: "gearshape.fill") }
             .tag(Tab.settings)
         }
-        .safeAreaInset(edge: .bottom) {
+        .overlay(alignment: .bottom) {
             // above the tab bar: what your other device is playing
             if let d = devices.playingElsewhere {
                 DeviceBar(device: d)
-                    .padding(.bottom, 58)
+                    .padding(.bottom, 64)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
