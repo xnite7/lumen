@@ -377,6 +377,10 @@ pub async fn invoke(cmd: &str, a: Value) -> Result<Value, String> {
         "crew_profile_publish" => {
             out(commands::crew_profile_publish(st).await.map_err(|e| e.to_string())?)
         }
+        "game_clip" => {
+            let path: String = arg(&a, "path")?;
+            out(commands::game_clip(st, path).await.map_err(|e| e.to_string())?)
+        }
         "crew_social" => {
             let method: String = arg(&a, "method")?;
             let path: String = arg(&a, "path")?;

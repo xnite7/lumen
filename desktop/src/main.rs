@@ -189,6 +189,7 @@ pub enum Route {
     Catalog(views::catalog::Spec),
     Vibe,
     Following,
+    Scenes,
 }
 
 /// Getting around from anywhere: `Nav::detail(&meta, cx)`.
@@ -230,6 +231,11 @@ impl Nav {
                     if r.route == Route::Lists {
                         if let Some(l) = &r.library {
                             l.update(cx, |_, cx| views::library::Library::load(cx));
+                        }
+                    }
+                    if r.route == Route::Scenes {
+                        if let Some(s) = &r.scenes {
+                            s.update(cx, |s, cx| s.load(cx));
                         }
                     }
                     if r.route == Route::Following {
@@ -471,6 +477,7 @@ pub struct Root {
     catalog: Option<Entity<views::catalog::Catalog>>,
     vibe: Option<Entity<views::vibe::Vibe>>,
     following: Option<Entity<views::following::Following>>,
+    scenes: Option<Entity<views::scenes::Scenes>>,
     invite: Entity<views::invite::Invite>,
     pub planner: Entity<views::planner::Planner>,
     pub wrapped: Entity<views::wrapped::Wrapped>,
@@ -1460,6 +1467,7 @@ impl Render for Root {
                 }
                 self.studio.clone().unwrap().into_any_element()
             }
+            Route::Scenes => self.scenes.get_or_insert_with(|| cx.new(views::scenes::Scenes::new)).clone().into_any_element(),
             Route::Following => {
                 // always fresh: you may have followed someone since
                 let f = self.following.get_or_insert_with(|| cx.new(views::following::Following::new)).clone();
@@ -1973,6 +1981,7 @@ fn main() {
                             catalog: None,
                             vibe: None,
                             following: None,
+                            scenes: None,
                             invite: cx.new(views::invite::Invite::new),
                             planner: cx.new(views::planner::Planner::new),
                             wrapped: cx.new(views::wrapped::Wrapped::new),

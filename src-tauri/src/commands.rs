@@ -975,6 +975,12 @@ pub async fn streaming_services(s: S<'_>) -> AppResult<Vec<Value>> {
     Ok(tmdb::services(&s.core).await)
 }
 
+/// The address of a scenes-game round's video.
+#[cfg_attr(feature = "tauri-app", tauri::command)]
+pub async fn game_clip(s: S<'_>, path: String) -> AppResult<String> {
+    crate::crew::game_clip(&s.core, &path).await
+}
+
 #[cfg_attr(feature = "tauri-app", tauri::command)]
 pub async fn clip_url(s: S<'_>, id: String, title: Option<String>, year: Option<String>) -> AppResult<Option<String>> {
     Ok(crate::crew::clip_url(&s.core, &id, title.as_deref(), year.as_deref()).await)

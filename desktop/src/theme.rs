@@ -2,7 +2,11 @@
 //! neon pink and lamp amber.
 use gpui::{rgb, rgba, Hsla, Rgba};
 
+#[cfg(not(target_os = "macos"))]
 pub const FONT: &str = "Satoshi";
+/// On the Mac: the system's own font (San Francisco, with SF Arabic).
+#[cfg(target_os = "macos")]
+pub const FONT: &str = ".SystemUIFont";
 
 /// How text is drawn: "sharp" (ClearType, colour fringes on some screens),
 /// "smooth" (grayscale, soft edges; the default) or "auto" (what Windows is set to).

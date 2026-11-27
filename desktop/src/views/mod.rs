@@ -25,3 +25,4 @@ pub mod detail;
 
 
 pub mod following;
+pub mod scenes;

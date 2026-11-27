@@ -468,6 +468,7 @@ pub async fn clip_url(core: &Core, id: &str, title: Option<&str>, year: Option<&
 pub async fn social(core: &Core, method: &str, path: &str, body: Option<Value>) -> AppResult<Value> {
     let ok = ["/v1/favs", "/v1/activity", "/v1/people", "/v1/profile", "/v1/parties", "/v1/party"].contains(&path)
         || path.starts_with("/v1/party/")
+        || path.starts_with("/v1/game/")
         || path.starts_with("/v1/reviews/")
         || path.starts_with("/v1/react/")
         || path.starts_with("/v1/frame/")
@@ -483,6 +484,16 @@ pub async fn social(core: &Core, method: &str, path: &str, body: Option<Value>) 
         _ => reqwest::Method::GET,
     };
     call(core, m, path, body).await
+}
+
+/// A scenes-game round's video (https://…/game/clip/<game>/<n>?t=session).
+pub async fn game_clip(core: &Core, path: &str) -> AppResult<String> {
+    if !path.starts_with("/game/clip/") || path.contains("..") || path.contains('?') {
+        return Err(AppError::msg("not a game clip"));
+    }
+    login(core).await?;
+    let (url, auth) = server(core).ok_or_else(|| AppError::msg("the crew isn't set up"))?;
+    Ok(format!("{url}{path}?t={}", urlencoding::encode(auth.trim_start_matches("Bearer "))))
 }
 
 /// The live watch-together line for a room (wss://…?t=session).

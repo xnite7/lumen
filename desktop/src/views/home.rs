@@ -666,6 +666,24 @@ impl Render for Home {
                                     .child(crate::ui::icon("sparkles", 24.))
                                     .child(div().flex().flex_col().child(div().text_size(px(18.)).font_weight(FontWeight::BLACK).child("smart bar")).child(div().text_size(px(12.)).text_color(theme::white(0.8)).child("ask for a feeling"))),
                             )
+                            .child(
+                                div()
+                                    .id("browse-scenes")
+                                    .flex_none()
+                                    .w(px(220.))
+                                    .h(px(110.))
+                                    .p(px(16.))
+                                    .rounded(px(16.))
+                                    .bg(theme::white(0.1))
+                                    .flex()
+                                    .flex_col()
+                                    .justify_between()
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(theme::white(0.16)))
+                                    .on_click(|_, _, cx| Nav::go(crate::Route::Scenes, cx))
+                                    .child(crate::ui::icon("film", 24.))
+                                    .child(div().flex().flex_col().child(div().text_size(px(18.)).font_weight(FontWeight::BLACK).child("scenes")).child(div().text_size(px(12.)).text_color(theme::white(0.8)).child("guess the movie"))),
+                            )
                             .children(tiles),))
                     .child(crate::ui::rows::scroller("browse-genres", div().id("browse-genres").overflow_x_scroll().flex().gap(px(8.)).px(px(theme::GUTTER)).children(genres))),
             );

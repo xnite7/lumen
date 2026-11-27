@@ -133,3 +133,10 @@ jobs:
           path: |
             dist/couch.dmg
             dist/couch-mac.zip
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          R=couch-mac
+          gh release view $R >/dev/null 2>&1 || gh release create $R --prerelease --target "$GITHUB_SHA" --title "couch for Mac" --notes "couch.dmg: open it and drag couch to Applications."
+          gh release upload $R dist/couch.dmg dist/couch-mac.zip --clobber
