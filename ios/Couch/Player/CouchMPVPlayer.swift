@@ -16,6 +16,7 @@
 // without closing.
 
 import AVFoundation
+import AVKit
 import Libmpv
 import MediaPlayer
 import UIKit
@@ -276,6 +277,7 @@ final class CouchMPVPlayer: UIViewController {
         set("sub-shadow-offset", "1")
         set("sub-margin-y", "40")
         set("user-agent", "couch/1.0")
+        set("audio-channels", "7.1,5.1,stereo") // keep surround for Spatial Audio; stereo outputs get a downmix
         if let s = config["subLangs"] as? [String], !s.isEmpty { set("slang", s.joined(separator: ",")) }
         if let a = config["audioLangs"] as? [String], !a.isEmpty { set("alang", a.joined(separator: ",")) }
         if let h = config["headers"] as? [String: String], !h.isEmpty {
@@ -708,8 +710,33 @@ final class CouchMPVPlayer: UIViewController {
     private func startAudioSession() {
         let s = AVAudioSession.sharedInstance()
         try? s.setCategory(.playback, mode: .moviePlayback)
+        // surround tracks go out as surround: AirPods Pro / Max (and Beats)
+        // turn that into Spatial Audio with head tracking
+        try? s.setSupportsMultichannelContent(true)
         try? s.setActive(true)
+        let nc = NotificationCenter.default
+        nc.addObserver(self, selector: #selector(routeChanged(_:)), name: AVAudioSession.routeChangeNotification, object: nil)
+        nc.addObserver(self, selector: #selector(interrupted(_:)), name: AVAudioSession.interruptionNotification, object: nil)
         UIApplication.shared.isIdleTimerDisabled = true
+    }
+
+    /// AirPods taken off / headphones unplugged: pause instead of blasting the speaker.
+    @objc private func routeChanged(_ n: Notification) {
+        guard let r = (n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt).flatMap(AVAudioSession.RouteChangeReason.init(rawValue:)) else { return }
+        if r == .oldDeviceUnavailable { DispatchQueue.main.async { self.setFlag("pause", true) } }
+    }
+
+    /// A call or Siri: pause, and carry on after if the system says so.
+    @objc private func interrupted(_ n: Notification) {
+        guard let t = (n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init(rawValue:)) else { return }
+        DispatchQueue.main.async {
+            if t == .began {
+                self.setFlag("pause", true)
+            } else if let o = n.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt, AVAudioSession.InterruptionOptions(rawValue: o).contains(.shouldResume) {
+                try? AVAudioSession.sharedInstance().setActive(true)
+                self.setFlag("pause", false)
+            }
+        }
     }
 
     private func setupRemoteCommands() {
@@ -721,6 +748,13 @@ final class CouchMPVPlayer: UIViewController {
         rc.skipBackwardCommand.preferredIntervals = [10]
         rc.skipForwardCommand.addTarget { [weak self] _ in self?.command(["seek", "10", "relative"]); return .success }
         rc.skipBackwardCommand.addTarget { [weak self] _ in self?.command(["seek", "-10", "relative"]); return .success }
+        // AirPods stem: double press = next episode (or +10 s), triple = back 10 s
+        rc.nextTrackCommand.addTarget { [weak self] _ in
+            guard let self else { return .commandFailed }
+            if self.config["hasNext"] as? Bool == true { self.nextTapped() } else { self.command(["seek", "10", "relative"]) }
+            return .success
+        }
+        rc.previousTrackCommand.addTarget { [weak self] _ in self?.command(["seek", "-10", "relative"]); return .success }
         rc.changePlaybackPositionCommand.addTarget { [weak self] e in
             guard let e = e as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             self?.command(["seek", String(e.positionTime), "absolute"])
@@ -829,7 +863,14 @@ final class CouchMPVPlayer: UIViewController {
         }
         let spacer = UIView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        [mark, titleLabel, spacer, lockButton, closeButton].forEach { topBar.addArrangedSubview($0) }
+        // AirPods / AirPlay picker
+        let route = AVRoutePickerView()
+        route.tintColor = .warmWhite
+        route.activeTintColor = .white
+        route.prioritizesVideoDevices = false
+        route.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        route.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        [mark, titleLabel, spacer, route, lockButton, closeButton].forEach { topBar.addArrangedSubview($0) }
         topBar.axis = .horizontal
         topBar.alignment = .center
         topBar.spacing = 12
