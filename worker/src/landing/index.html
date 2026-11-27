@@ -64,14 +64,16 @@ ol,ul{padding:0;list-style:none}
 
 /* nav: a floating glass capsule */
 .nav{position:fixed;z-index:90;top:max(14px,env(safe-area-inset-top));left:0;right:0;display:flex;justify-content:center;padding:0 var(--gut);pointer-events:none}
-.navin{pointer-events:auto;position:relative;display:flex;align-items:center;height:54px;padding:0 7px 0 15px;border-radius:999px;transition:background-color .6s var(--e-lamp)}
+.navin{pointer-events:auto;position:relative;display:flex;align-items:center;height:54px;padding:0 7px 0 15px;border-radius:999px}
+/* the darker glass once the page moves is a layer that fades in, so nothing has to be repainted while scrolling */
+.navin::before{content:"";position:absolute;z-index:-1;inset:1px;border-radius:inherit;background:rgba(12,9,12,.26);opacity:0;pointer-events:none;transition:opacity .6s var(--e-lamp);will-change:opacity}
 .brand{display:flex;align-items:center;gap:9px;margin-right:12px;font-weight:900;font-size:18px;letter-spacing:-.03em}
 .brand img{width:34px;height:34px;object-fit:contain}
 .nl{position:relative;z-index:1;display:inline-flex;align-items:center;height:40px;padding:0 15px;border-radius:999px;font-weight:700;font-size:14.5px;color:var(--i2);transition:color .25s}
 .nl:hover{color:var(--i1)}
 .nhl{position:absolute;z-index:0;left:0;top:7px;height:40px;width:var(--w,0px);border-radius:999px;background:rgba(244,234,240,.11);transform:translate3d(var(--x,0px),0,0);opacity:var(--o,0);pointer-events:none;transition:transform .53s var(--e-glide),width .53s var(--e-glide),opacity .25s}
 .nav .btn{margin-left:8px}
-.scrolled .navin{background-color:rgba(20,16,19,.6)}
+.scrolled .navin::before{opacity:1}
 .nav-ios{display:none}
 .ios .nav-ios{display:inline-flex}.ios .nav-win{display:none}
 
@@ -105,7 +107,7 @@ ol,ul{padding:0;list-style:none}
 .trav .s-scrubs{transform:translate3d(0,8%,0)}
 .trav .s-scrubs::after{content:"";position:absolute;left:0;right:0;top:0;height:16%;background:linear-gradient(#000,rgba(0,0,0,0))}
 .melt{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.5) 0,rgba(0,0,0,0) 20%,rgba(0,0,0,0) 46%,rgba(0,0,0,.8) 79%,#000 100%),linear-gradient(90deg,rgba(0,0,0,.66) 0,rgba(0,0,0,.3) 34%,rgba(0,0,0,0) 60%)}
-.dim{position:absolute;inset:0;pointer-events:none;background:#000;opacity:calc(var(--sy,0) / 900)}
+.dim{position:absolute;inset:0;pointer-events:none;background:#000;opacity:calc(var(--sy,0) / 900);will-change:opacity}
 .hero-in{z-index:2;display:flex;align-items:flex-end;justify-content:space-between;gap:40px;padding:150px 0 clamp(40px,7.4vh,78px)}
 .h1{font-weight:900;font-size:clamp(46px,6.5vw,104px);line-height:.93;letter-spacing:-.052em}
 .h1 span{display:block}
@@ -174,15 +176,20 @@ ol,ul{padding:0;list-style:none}
 .scene.live .hcopy,.scene.live .now{opacity:calc(1 - var(--p) * 3);transform:translate3d(0,calc(var(--p) * -70px),0)}
 .scene.live .tv{visibility:hidden}
 .scene.live .tv.rv{translate:none}
-.scene.live .glow{opacity:calc((var(--p) - .35) * 1.7)}
-.scene.live .rfade{opacity:calc((var(--p) - .8) * 5.4);transform:translate3d(0,calc((1 - var(--p)) * 56px),0)}
-.scene.live .rlate{opacity:calc((var(--p) - .86) * 7.4);transform:translate3d(0,calc((1 - var(--p)) * 70px),0)}
+.scene.live .glow{opacity:max(.004,calc((var(--p) - .35) * 1.7))}
+.scene.live .rfade{opacity:max(.004,calc((var(--p) - .8) * 5.4));transform:translate3d(0,calc((1 - var(--p)) * 56px),0)}
+.scene.live .rlate{opacity:max(.004,calc((var(--p) - .86) * 7.4));transform:translate3d(0,calc((1 - var(--p)) * 70px),0)}
 .scene.live .rxs{opacity:calc((var(--p) - .8) * 6)}
 .scene.live .rv{transition:none}
+/* a frame of the pull-back is only compositing: whatever the scroll moves or fades keeps a layer of its own, and what arrives later is never
+   quite at zero (.004 cannot be seen) so it is already painted when its turn comes. .hcopy holds a frosted button, so it only hints transform */
+.scene.live .melt,.scene.live .glow,.scene.live .trav .s-scrubs::after{will-change:opacity}
+.scene.live .hcopy{will-change:transform}
+.scene.live .now,.scene.live .rfade,.scene.live .rlate{will-change:transform,opacity}
 .scene:not(.live) .slides{transform:translate3d(0,calc(var(--sy,0) * .14px),0)}
+/* the half that is faded out cannot be clicked (the script takes it out of the tab order as well) */
 .scene.live:not(.late) .room{pointer-events:none}
-.scene.live:not(.late) .bench,.scene.live:not(.late) .react{visibility:hidden}
-.scene.live.late .hero-in{pointer-events:none;visibility:hidden}
+.scene.live.late .hero-in{pointer-events:none}
 /* short laptop windows: the same scene, with the hero set a little tighter */
 @media (max-height:639px){
 .scene.live .hero-in{padding-top:92px;padding-bottom:34px}
@@ -869,33 +876,101 @@ ol,ul{padding:0;list-style:none}
     scene.style.setProperty('--ty', (r.top - s.top + O).toFixed(2));
     sceneH = H;
   };
+  const art = $('.trav', scene), heroIn = $('.hero-in', scene), roomKeys = $$('.bench, .react', scene);
+  let pv = null, sv = null;
+  /* the half of the scene that is faded out leaves the tab order too */
+  const fence = () => {
+    if (heroIn) heroIn.toggleAttribute('inert', live && late);
+    roomKeys.forEach((el) => el.toggleAttribute('inert', live && !late));
+  };
+  /* one frame of the scene: where the scroll is, written straight into the css */
+  const paint = () => {
+    const y = -scene.getBoundingClientRect().top;
+    if (live) {
+      let p = y / (sceneH || 800);
+      p = p < 0 ? 0 : p > 1 ? 1 : p;
+      const e = (p * p * (3 - 2 * p)).toFixed(4);
+      if (e !== pv) { pv = e; scene.style.setProperty('--p', e); }
+      const l = +e > 0.5;
+      if (l !== late) { late = l; scene.classList.toggle('late', l); fence(); }
+    } else if (!rm && art) {
+      /* the flat page only drifts and dims the art, so only the art hears about it */
+      const sy = String(Math.max(0, Math.min(y, 900)) | 0);
+      if (sy !== sv) { sv = sy; art.style.setProperty('--sy', sy); }
+    }
+    const sc = y > 24;
+    if (sc !== scrolled) { scrolled = sc; pg.classList.toggle('scrolled', sc); }
+  };
   const onScroll = () => {
     if (raf) return;
-    raf = requestAnimationFrame(() => {
-      raf = 0;
-      /* read progress off the scene itself, so it works whatever element does the scrolling */
-      const y = -scene.getBoundingClientRect().top;
-      if (live) {
-        let p = y / (sceneH || 800);
-        p = p < 0 ? 0 : p > 1 ? 1 : p;
-        const e = p * p * (3 - 2 * p);
-        scene.style.setProperty('--p', e.toFixed(4));
-        const l = e > 0.5;
-        if (l !== late) { late = l; scene.classList.toggle('late', l); }
-      } else if (!rm) {
-        scene.style.setProperty('--sy', String(Math.max(0, Math.min(y, 900)) | 0));
-      }
-      const sc = y > 24;
-      if (sc !== scrolled) { scrolled = sc; pg.classList.toggle('scrolled', sc); }
-    });
+    raf = requestAnimationFrame(() => { raf = 0; paint(); });
   };
   const setLive = (v) => {
     live = v;
     scene.classList.toggle('live', v);
-    if (v) scene.style.removeProperty('--sy');
-    else { late = false; scene.classList.remove('late'); VARS.forEach((k) => scene.style.removeProperty(k)); }
+    if (v) { if (art) art.style.removeProperty('--sy'); sv = null; }
+    else { late = false; scene.classList.remove('late'); VARS.forEach((k) => scene.style.removeProperty(k)); pv = null; }
+    fence();
   };
   const again = () => { measure(); onScroll(); };
+
+  /* -- wheel: a mouse wheel moves a page in jumps, and the scene would play in jumps with it. take the jump and glide through it instead -- */
+  const page = d.scrollingElement || d.documentElement;
+  /* the nearest thing that really scrolls: usually the page itself */
+  const scrollBox = (from) => {
+    for (let el = from; el && el.nodeType === 1 && el !== d.body && el !== d.documentElement; el = el.parentElement) {
+      const o = getComputedStyle(el).overflowY;
+      if ((o === 'auto' || o === 'scroll' || o === 'overlay') && el.scrollHeight > el.clientHeight + 1) return el;
+    }
+    return page;
+  };
+  const STIFF = 12; /* how firmly the page follows the wheel: lower floats more, higher snaps more */
+  let gTo = 0, gAt = 0, gV = 0, gSeen = 0, gT = 0, gRaf = 0, wT = 0, wOn = false;
+  /* while it glides, the page's own smooth scrolling is off, so every frame lands exactly where it is put */
+  const hold = (on) => { d.documentElement.style.scrollBehavior = on ? 'auto' : ''; };
+  const letGo = () => { if (gRaf) cancelAnimationFrame(gRaf); gRaf = 0; hold(false); };
+  const glide = (now) => {
+    gRaf = 0;
+    /* something else moved the page meanwhile (scrollbar, keys, a link): leave it be */
+    if (Math.abs(page.scrollTop - gSeen) > 1) { hold(false); return; }
+    const dt = gT ? Math.min(0.05, Math.max(0.001, (now - gT) / 1000)) : 1 / 60;
+    gT = now;
+    const max = page.scrollHeight - page.clientHeight;
+    if (gTo > max) gTo = max;
+    /* a critically damped spring toward the target: the speed never jumps, so each notch blends into the last one */
+    const off = gAt - gTo, decay = Math.exp(-STIFF * dt), k = (gV + STIFF * off) * dt;
+    gAt = gTo + (off + k) * decay;
+    gV = (gV - STIFF * k) * decay;
+    if (gAt < 0 || gAt > max) { gAt = gAt < 0 ? 0 : max; gV = 0; }
+    if (Math.abs(gTo - gAt) < 0.4 && Math.abs(gV) < 6) { gAt = gTo; gV = 0; }
+    page.scrollTop = gAt;
+    gSeen = page.scrollTop;
+    paint();
+    if (gAt !== gTo) gRaf = requestAnimationFrame(glide); else hold(false);
+  };
+  if (!rm) {
+    w.addEventListener('wheel', (e) => {
+      const mode = e.deltaMode; /* read before the deltas: firefox only reports lines that way */
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      /* a touchpad already scrolls evenly: only step in for a wheel with notches (whole clicks of 120, a real step each), decided once per burst */
+      const now = performance.now(), wd = e.wheelDeltaY;
+      if (now - wT > 200) wOn = mode === 1 || (typeof wd === 'number' && wd !== 0 && wd % 120 === 0 && wd !== -3 * e.deltaY && Math.abs(e.deltaY) >= 40);
+      wT = now;
+      if (!wOn || scrollBox(e.target) !== page) { letGo(); return; } /* or something of its own scrolls under the pointer */
+      const max = page.scrollHeight - page.clientHeight;
+      if (max <= 0) return;
+      const y = page.scrollTop;
+      if (!gRaf) { gTo = gAt = y; gV = 0; }
+      const to = Math.max(0, Math.min(max, gTo + e.deltaY * (mode === 1 ? 100 / 3 : mode === 2 ? page.clientHeight : 1)));
+      if (to === gTo && !gRaf) return; /* already at that end: let the event through */
+      e.preventDefault();
+      gTo = to;
+      if (!gRaf) { hold(true); gSeen = y; gT = 0; gRaf = requestAnimationFrame(glide); }
+    }, { passive: false });
+    /* a click or a key is about to move the page some other way (a link, the arrow keys): let go at once */
+    w.addEventListener('pointerdown', letGo, true);
+    w.addEventListener('keydown', letGo, true);
+  }
   let rz = 0;
   w.addEventListener('resize', () => {
     clearTimeout(rz);
