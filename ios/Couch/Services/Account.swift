@@ -151,7 +151,7 @@ final class Account: NSObject {
 
     /// A fresh couch-server session: from Discord, else from an App Store
     /// purchase. Nil when you're neither (the free app needs no server).
-    func token() async -> String? {
+    func token(guest: Bool = false) async -> String? {
         if let s = session, s.exp > Date().addingTimeInterval(15) { return s.token }
         if discord != nil, let a = await discordAccess(), let r = try? await post(["token": a, "open": true]) {
             // the role can change any time: keep the tier current
@@ -165,8 +165,19 @@ final class Account: NSObject {
         if let jws = await Store.shared.proTransaction(), let r = try? await post(["appstore": jws]) {
             return r.session
         }
+        // nobody: a guest session for this device (the scenes game only)
+        if guest, let r = try? await post(["guest": deviceId]) { return r.session }
         return nil
     }
+
+    /// has a couch-server identity beyond a guest's
+    var known: Bool { discord != nil || storePro }
+    let deviceId: String = {
+        if let id = UserDefaults.standard.string(forKey: "device.id") { return id }
+        let id = String((0..<16).map { _ in "abcdefghijklmnopqrstuvwxyz0123456789".randomElement()! })
+        UserDefaults.standard.set(id, forKey: "device.id")
+        return id
+    }()
 
     /// Check the role again (pull to refresh in Settings).
     func refresh() async {

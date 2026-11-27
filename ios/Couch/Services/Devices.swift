@@ -38,12 +38,7 @@ final class Devices {
     /// what you just tapped, shown right away until the other device confirms
     private var pending: (id: String, paused: Bool, at: Date)?
 
-    private let me: String = {
-        if let id = UserDefaults.standard.string(forKey: "device.id") { return id }
-        let id = Account.random(16).filter { $0.isLetter || $0.isNumber }
-        UserDefaults.standard.set(id, forKey: "device.id")
-        return id
-    }()
+    private var me: String { Account.shared.deviceId }
     private var kind: String { UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone" }
 
     private init() {}
@@ -73,7 +68,7 @@ final class Devices {
     }
 
     private func tick() async {
-        guard UIApplication.shared.applicationState == .active || Playback.shared.isOpen else { return }
+        guard Account.shared.known, UIApplication.shared.applicationState == .active || Playback.shared.isOpen else { return }
         let pb = Playback.shared
         var body: [String: Any] = ["id": me, "name": UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone", "kind": kind]
         if pb.isOpen, let m = pb.meta {

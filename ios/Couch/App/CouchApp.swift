@@ -24,7 +24,7 @@ struct CouchApp: App {
     }
 }
 
-enum Tab: Hashable { case home, search, library, settings }
+enum Tab: Hashable { case home, search, play, library, settings }
 
 /// Where the app is: the tab and each tab's stack (deep links push here).
 @MainActor @Observable
@@ -61,6 +61,7 @@ final class Router {
         case "tab":
             switch parts.first {
             case "search": tab = .search
+            case "play": tab = .play
             case "library": tab = .library
             case "settings": tab = .settings
             default: tab = .home
@@ -89,6 +90,12 @@ struct RootView: View {
             }
             .tabItem { Label("Search", systemImage: "magnifyingglass") }
             .tag(Tab.search)
+
+            NavigationStack {
+                GameHomeView()
+            }
+            .tabItem { Label("Scenes", systemImage: "film.stack.fill") }
+            .tag(Tab.play)
 
             NavigationStack(path: $router.library) {
                 LibraryView().withDestinations()

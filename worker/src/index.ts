@@ -22,6 +22,7 @@ import logo from "./logo.png";
 import { TERMS_HTML } from "./terms";
 import { PRIVACY_HTML } from "./privacy";
 import { appStorePro } from "./appstore";
+import { Game } from "./game";
 import { DOWNLOAD_HTML } from "./download";
 import { INSTALL_HTML } from "./install";
 import { LANDING_HTML, INSTALL_PAGE, LANDING_FILES } from "./landing/landing";
@@ -242,6 +243,12 @@ async function auth(req: Request, env: Env): Promise<Response> {
     const who: Who = { id: "app-review", name: "App Review" };
     return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id, name: who.name });
   }
+  // no account: a guest session for this device (plays the scenes game;
+  // not on the leaderboards, no Pro, no crew)
+  if (typeof b?.guest === "string" && /^[A-Za-z0-9]{12,40}$/.test(b.guest)) {
+    const who: Who = { id: `g-${b.guest}`, name: "guest", pro: false, crew: false };
+    return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id, pro: false, crew: false });
+  }
   // couch Pro bought in the App Store: Apple's signed transaction
   if (typeof b?.appstore === "string") {
     const t = await appStorePro(b.appstore);
@@ -445,6 +452,21 @@ export default {
       if (w.pro === false) return new Response("couch pro", { status: 402 });
       return clipStream(env, clipFile[1], req, url.searchParams.get("title"), url.searchParams.get("year"));
     }
+    // a game round's scene: asked for by game and round, so the address
+    // doesn't say which film it is
+    const gameClip = url.pathname.match(/^\/game\/clip\/([a-f0-9]{20})\/(\d{1,3})$/);
+    if (gameClip) {
+      const w = await verify(env, `Bearer ${url.searchParams.get("t") ?? ""}`);
+      if (!w) return new Response("sign in again", { status: 401 });
+      const stub = env.CREW.get(env.CREW.idFromName("midnite"));
+      const r = await stub.fetch(new Request(`https://couch.internal/internal/game-clip?g=${gameClip[1]}&n=${gameClip[2]}&u=${encodeURIComponent(w.id)}`));
+      if (!r.ok) return new Response("that game is over", { status: 404 });
+      const { id } = (await r.json()) as { id: string };
+      const out = await clipStream(env, id, req);
+      const h = new Headers(out.headers);
+      h.set("cache-control", "private, no-store"); // the address is per game
+      return new Response(out.body, { status: out.status, headers: h });
+    }
     const clipCheck = url.pathname.match(/^\/clip-status\/(tt\d{5,10})$/);
     if (clipCheck) return clipStatus(env, clipCheck[1], false, req); // download check verified; off so nobody burns the monthly downloads
     // Discord pictures: a title's animated "on the big screen" card, made by
@@ -483,7 +505,7 @@ export default {
     if (url.pathname === "/v1/gpui/latest" || url.pathname === "/v1/gpui/file") return gpui(url, env);
     // your own devices work for anyone signed in; the crew (presence, rooms,
     // reviews…) is for the server's couchers
-    if (who.crew === false && !url.pathname.startsWith("/v1/me/")) return json({ error: "for couchers", crew: false }, 403);
+    if (who.crew === false && !url.pathname.startsWith("/v1/me/") && !url.pathname.startsWith("/v1/game/")) return json({ error: "for couchers", crew: false }, 403);
     // the Durable Object trusts this header; set it here, never from the client
     const fwd = new Request(req);
     fwd.headers.set("x-who", JSON.stringify(who));
@@ -905,9 +927,11 @@ export class Crew {
   reactN = 0;
   lastSeenWrite = new Map<string, number>();
   env: Env;
+  game: Game;
   constructor(state: DurableObjectState, env: Env) {
     this.storage = state.storage;
     this.env = env;
+    this.game = new Game(state.storage, async (id, title, year) => !!(await clipPick(env, id, title, year)));
   }
   /** Discord's own look for someone: banner and display-name style (an hour) */
   looks = new Map<string, { v: any; at: number }>();
@@ -1291,12 +1315,19 @@ export class Crew {
       }
       return new Response(out, { headers: { "content-type": "image/gif", "cache-control": "public, max-age=604800" } });
     }
+    // from the worker only (it never forwards /internal/ from outside)
+    if (url.pathname === "/internal/game-clip") {
+      const c = this.game.clipOf(url.searchParams.get("g") ?? "", Number(url.searchParams.get("n")), url.searchParams.get("u") ?? "");
+      return c ? json(c) : json({ error: "gone" }, 404);
+    }
     let who: Who;
     try {
       who = JSON.parse(req.headers.get("x-who") ?? "");
     } catch {
       return json({ error: "sign in again" }, 401);
     }
+    // the scenes game; only Discord sign-ins go on the leaderboards
+    if (url.pathname.startsWith("/v1/game/")) return this.game.handle(req, url, who, /^\d+$/.test(who.id));
 
     const line = url.pathname.match(/^\/v1\/room\/([A-Za-z0-9_-]{1,40})\/ws$/);
     if (line && req.headers.get("upgrade") === "websocket") return this.openLine(line[1], who);

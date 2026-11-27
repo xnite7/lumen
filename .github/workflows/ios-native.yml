@@ -99,6 +99,7 @@ jobs:
           go -open couch://pro; sleep 6; shot pro
           go -open couch://tab/search; sleep 12; shot search
           go -open couch://tab/settings; sleep 5; shot settings
+          go -open couch://tab/play; sleep 8; shot play
           xcrun simctl spawn "$DEV" log show --last 2m --predicate 'process == "Couch"' --style compact 2>/dev/null | grep -i -E "fatal|crash|error" | head -15
           exit 0
       - name: Signed build → App Store Connect (TestFlight / App Store)
