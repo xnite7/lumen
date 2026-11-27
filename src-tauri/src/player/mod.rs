@@ -140,15 +140,23 @@ impl Player {
     }
 
     pub async fn open(self: &Arc<Self>, req: PlayRequest) -> AppResult<OpenResult> {
+        // a YouTube stream: on the desktop couch's own player opens the page
+        // itself (mpv hands it to yt-dlp); elsewhere the page's player does
+        let yt = req.stream.get("ytId").and_then(|y| y.as_str()).filter(|y| y.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')).map(|y| format!("https://www.youtube.com/watch?v={y}"));
+        #[cfg(not(desktop))]
         if let Some(yt) = req.stream.get("ytId").and_then(|y| y.as_str()) {
             return Ok(OpenResult { mode: "youtube", url: None, yt_id: Some(yt.to_string()), start_at: None, start_pct: None, headers: None });
         }
-        if req.stream.get("url").is_none() && req.stream.get("infoHash").is_none() {
+        if yt.is_none() && req.stream.get("url").is_none() && req.stream.get("infoHash").is_none() {
             if let Some(ext) = req.stream.get("externalUrl").and_then(|u| u.as_str()) {
                 return Ok(OpenResult { mode: "external", url: Some(ext.to_string()), yt_id: None, start_at: None, start_pct: None, headers: None });
             }
         }
-        let url = self.resolve_url(&req.stream).await?.ok_or_else(|| AppError::msg("This stream has nothing playable"))?;
+        let is_yt = yt.is_some();
+        let url = match yt {
+            Some(u) => u,
+            None => self.resolve_url(&req.stream).await?.ok_or_else(|| AppError::msg("This stream has nothing playable"))?,
+        };
 
         // A new title ends the previous session properly (progress + scrobble).
         self.finish_session().await;
@@ -168,7 +176,8 @@ impl Player {
                 .and_then(|h| h.as_object())
                 .map(|h| h.iter().filter_map(|(k, v)| v.as_str().map(|v| (k.clone(), v.to_string()))).collect::<Vec<_>>())
                 .unwrap_or_default();
-            let (play_url, absorbed) = self.route(&url, &headers).await;
+            // (a YouTube page goes to the player as it is: yt-dlp needs the real address)
+            let (play_url, absorbed) = if is_yt { (url.clone(), false) } else { self.route(&url, &headers).await };
             let headers = if absorbed { vec![] } else { headers };
             self.backend.load(&play_url, start, start_pct, &headers)?;
             // Subtitles from addons arrive a beat later and are added as

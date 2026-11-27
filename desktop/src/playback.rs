@@ -526,7 +526,7 @@ pub fn rank(streams: Vec<Value>, mbps: f64, rt: &Value) -> Vec<Value> {
         .filter(|s| {
             let p = &s["_couch"];
             let k = p["kind"].as_str().unwrap_or("");
-            k != "external" && k != "youtube" && !(p["threeD"].as_bool() == Some(true) && p["threeDLayout"].is_null())
+            k != "external" && !(p["threeD"].as_bool() == Some(true) && p["threeDLayout"].is_null())
         })
         .collect();
     let budget = mbps * 0.7;

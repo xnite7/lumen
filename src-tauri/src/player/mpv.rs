@@ -272,7 +272,20 @@ impl Mpv {
                 ("alang", alang.clone()),
                 ("slang", langs.clone()),
                 ("sub-auto", "fuzzy".into()),
-                ("ytdl", "no".into()),
+                // YouTube streams (the "couch YouTube" source): mpv asks yt-dlp,
+                // which ships next to couch. Ordinary links never go that way
+                // unless they fail to open.
+                ("ytdl", "yes".into()),
+                ("ytdl-format", "bestvideo[height<=2160]+bestaudio/best".into()),
+                (
+                    "script-opts",
+                    std::env::current_exe()
+                        .ok()
+                        .and_then(|e| e.parent().map(|d| d.to_path_buf()))
+                        .and_then(|d| ["yt-dlp.exe", "yt-dlp", "yt-dlp_macos"].iter().map(|n| d.join(n)).find(|p| p.exists()))
+                        .map(|y| format!("ytdl_hook-ytdl_path={}", y.to_string_lossy()))
+                        .unwrap_or_default(),
+                ),
                 ("volume", p.volume.to_string()),
                 ("volume-max", if p.volume_boost { "200".into() } else { "100".into() }),
                 ("audio-client-name", "couch".into()),
