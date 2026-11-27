@@ -1,0 +1,97 @@
+# midnite™ couch for iPhone and iPad: the native SwiftUI app.
+# Generate the Xcode project with `xcodegen` (CI does this).
+name: Couch
+options:
+  bundleIdPrefix: com.midnite
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.10"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+packages:
+  MPVKit:
+    url: https://github.com/mpvkit/MPVKit
+    revision: 98c3453e252922e3136422da3fbb2e341ed9edc8 # 1.1.0-n9.0.2
+targets:
+  Couch:
+    type: application
+    platform: iOS
+    sources:
+      - path: Couch
+    dependencies:
+      - package: MPVKit
+        product: MPVKit
+      - target: CouchWidgets
+        embed: true
+    entitlements:
+      path: Couch/Couch.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.midnite.couch]
+    info:
+      path: Couch/Info.plist
+      properties:
+        CFBundleDisplayName: couch
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        UILaunchScreen:
+          UIColorName: ""
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UIBackgroundModes: [audio]
+        NSSupportsLiveActivities: true
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIUserInterfaceStyle: Dark
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: couch plays from servers on your network.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.midnite.couch
+            CFBundleURLSchemes: [couch]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.midnite.couch
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        OTHER_LDFLAGS: ["$(inherited)", "-lc++"]
+  CouchWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: CouchWidgets
+      - path: Couch/Model/Shared.swift
+    entitlements:
+      path: CouchWidgets/CouchWidgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.midnite.couch]
+    info:
+      path: CouchWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: couch
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.midnite.couch.widgets
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
