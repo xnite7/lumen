@@ -126,7 +126,10 @@ struct GameRoundView: View {
                 SnippetView(player: snippet.player).opacity(snippet.showing ? 1 : 0)
                 if !snippet.showing {
                     if snippet.failed {
-                        Label("couldn't load this scene", systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(Theme.dim)
+                        VStack(spacing: 10) {
+                            Label("couldn't load this scene", systemImage: "exclamationmark.triangle").font(.footnote).foregroundStyle(Theme.dim)
+                            Button("Try again") { Task { await reload(r) } }.buttonStyle(.bordered)
+                        }
                     } else if !snippet.ready {
                         ProgressView()
                     } else {
@@ -178,6 +181,13 @@ struct GameRoundView: View {
         guard let u = await GameAPI.clip(r) else { error = "couldn't reach the couch server"; return }
         snippet.load(u)
         snippet.play(r.stages[r.stage] == 0 ? nil : r.stages[r.stage])
+    }
+
+    /// the scene again from the server (a fresh link), at the stage you're on
+    private func reload(_ r: GameRound) async {
+        guard let u = await GameAPI.clip(r) else { return }
+        snippet.load(u)
+        replay(r)
     }
 
     private func replay(_ r: GameRound) {
