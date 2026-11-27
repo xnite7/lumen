@@ -103,6 +103,28 @@ export class Game {
     private hasClip: HasClip,
   ) {}
 
+  // ---- runs: in memory while this object is awake, and in storage so a
+  // game survives it going to sleep (it does after a minute or two of quiet)
+  private async run(gid: string): Promise<Run | undefined> {
+    if (!/^[a-f0-9]{20}$/.test(gid)) return undefined;
+    let r = this.runs.get(gid);
+    if (!r) {
+      r = await this.storage.get<Run>(`gr:${gid}`);
+      if (r) this.runs.set(gid, r);
+    }
+    return r;
+  }
+  private async keep(gid: string, run: Run) {
+    this.runs.set(gid, run);
+    await this.storage.put(`gr:${gid}`, run);
+    await this.storage.put(`gu:${run.user}:${run.mode}`, gid);
+  }
+  private async drop(gid: string, run: Run) {
+    this.runs.delete(gid);
+    await this.storage.delete(`gr:${gid}`);
+    if ((await this.storage.get<string>(`gu:${run.user}:${run.mode}`)) === gid) await this.storage.delete(`gu:${run.user}:${run.mode}`);
+  }
+
   // ---- titles (names from Cinemeta, kept)
   private async title(id: string): Promise<Title | null> {
     const k = `gt:${id}`;
@@ -245,7 +267,7 @@ export class Game {
   }
 
   private async finish(gid: string, run: Run) {
-    this.runs.delete(gid);
+    await this.drop(gid, run);
     const s = await this.stats(run.user);
     const row: Row = { id: run.user, name: run.name, avatar: run.avatar, score: run.score };
     s.played++;
@@ -268,16 +290,14 @@ export class Game {
   }
 
   /** which film a round's video is (only the worker asks, for the owner of the game) */
-  clipOf(gid: string, n: number, user: string): { id: string } | null {
-    const run = this.runs.get(gid);
+  async clipOf(gid: string, n: number, user: string): Promise<{ id: string } | null> {
+    const run = await this.run(gid);
     if (!run || run.user !== user) return null;
     const r = run.rounds[n - 1];
     return r ? { id: r.id } : null;
   }
 
   async handle(req: Request, url: URL, who: Who, ranked: boolean, pro: boolean, paused = false): Promise<Response> {
-    // runs left alone for an hour are dropped
-    for (const [k, v] of this.runs) if (Date.now() - v.at > 3600_000) this.runs.delete(k);
     const path = url.pathname.replace(/^\/v1\/game/, "");
     if (req.method === "GET" && path === "/home") return j({ ...(await this.home(who, ranked)), pro, paused });
     if (req.method !== "POST") return j({ error: "not here" }, 404);
@@ -293,29 +313,32 @@ export class Game {
       // the daily five are for everyone; endless runs come with couch Pro
       if (mode === "endless" && !pro) return j({ error: "Endless is part of couch Pro", pro: true }, 402);
       if (mode === "daily" && (await this.storage.get(`gd:${day}:${who.id}`))) return j({ error: "you've played today's scenes", played: true }, 409);
-      // one run per person per mode: starting again picks up where it was
-      for (const [k, v] of this.runs) {
-        if (v.user !== who.id || v.mode !== mode) continue;
-        if (mode === "daily" && v.day === day) return j(await this.view(k, v));
-        this.runs.delete(k);
+      // one run per person per mode: today's daily picks up where it was;
+      // anything else left over is dropped
+      const old = await this.storage.get<string>(`gu:${who.id}:${mode}`);
+      const was = old ? await this.run(old) : undefined;
+      if (old && was) {
+        if (mode === "daily" && was.day === day) return j(await this.view(old, was));
+        await this.drop(old, was);
       }
       const run: Run = { user: who.id, name: who.name, avatar: who.avatar, ranked, mode, day, rounds: [], score: 0, lives: LIVES, right: 0, results: [], used: [], at: Date.now() };
       const first = mode === "daily" ? (await this.daily(day))[0] : await this.pick(shuffled(POOL[0], Math.random), []);
       if (!first) return j({ error: "no scenes right now, try again in a bit" }, 503);
       const gid = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
-      this.runs.set(gid, run);
       await this.round(run, first);
+      await this.keep(gid, run);
       return j(await this.view(gid, run));
     }
 
     const gid = String(b?.game ?? "");
-    const run = this.runs.get(gid);
+    const run = await this.run(gid);
     if (!run || run.user !== who.id) return j({ error: "that game is over", gone: true }, 410);
     const r = run.rounds[run.rounds.length - 1];
     run.at = Date.now();
 
     if (path === "/reveal") {
       if (!r.done && r.stage < STAGES.length - 1) r.stage++;
+      await this.keep(gid, run);
       return j({ stage: r.stage });
     }
 
@@ -344,6 +367,7 @@ export class Game {
       }
       if (!nextId) return j({ ...base, next: null, done: await this.finish(gid, run) });
       await this.round(run, nextId);
+      await this.keep(gid, run);
       return j({ ...base, next: await this.view(gid, run), done: null });
     }
 

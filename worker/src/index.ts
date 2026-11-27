@@ -1377,7 +1377,7 @@ export class Crew {
     }
     // from the worker only (it never forwards /internal/ from outside)
     if (url.pathname === "/internal/game-clip") {
-      const c = this.game.clipOf(url.searchParams.get("g") ?? "", Number(url.searchParams.get("n")), url.searchParams.get("u") ?? "");
+      const c = await this.game.clipOf(url.searchParams.get("g") ?? "", Number(url.searchParams.get("n")), url.searchParams.get("u") ?? "");
       return c ? json(c) : json({ error: "gone" }, 404);
     }
     let who: Who;

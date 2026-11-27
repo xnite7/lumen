@@ -41,7 +41,15 @@ struct GameHomeView: View {
         }
         .background(Theme.bg)
         .navigationTitle("Scenes")
-        .task { await load() }
+        .task {
+            await load()
+            // opened by a link (couch://play/daily): straight into the game
+            if let m = router.autoStart, home?.paused != true {
+                router.autoStart = nil
+                if m == "daily", home?.daily.played == true { return }
+                start(daily: m == "daily")
+            }
+        }
         .refreshable { await load() }
         .task(id: account.pro) { await load() }
         .fullScreenCover(item: $round, onDismiss: { Task { await load() } }) { r in

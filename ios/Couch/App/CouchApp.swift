@@ -32,11 +32,16 @@ final class Router {
     /// the scenes game is switched on (the couch server says; remembered)
     var scenes = UserDefaults.standard.object(forKey: "config.scenes") as? Bool ?? false
 
+    /// couch://play/daily: open Scenes (and start today's five)
+    var wantsPlay = false
+    var autoStart: String?
+
     func loadConfig() async {
         struct C: Decodable { let scenes: Bool }
         guard let c = try? await Net.json(URL(string: crewURL + "/config")!, as: C.self, fresh: true) else { return }
         scenes = c.scenes
         UserDefaults.standard.set(c.scenes, forKey: "config.scenes")
+        if c.scenes, wantsPlay { tab = .play }
     }
 
     func open(_ m: MetaPreview) {
@@ -61,10 +66,14 @@ final class Router {
             }
         case "pro":
             paywall = true
+        case "play":
+            wantsPlay = true
+            autoStart = parts.first ?? "daily"
+            if scenes { tab = .play }
         case "tab":
             switch parts.first {
             case "search": tab = .search
-            case "play": tab = .play
+            case "play": wantsPlay = true; if scenes { tab = .play }
             case "library": tab = .library
             case "settings": tab = .settings
             default: tab = .home

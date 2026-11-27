@@ -28,6 +28,11 @@ struct GameRoundView: View {
         }
         .task {
             if round == nil { await show(first) }
+            // `-revealAll` at launch (CI screenshots): show the whole scene
+            if ProcessInfo.processInfo.arguments.contains("-revealAll"), let r = round {
+                for _ in 0..<(r.stages.count - 1) { if let s = try? await GameAPI.reveal(r.game) { stage = s } }
+                replay(r)
+            }
         }
         .onDisappear { snippet.close() }
         .sensoryFeedback(.impact, trigger: stage)
