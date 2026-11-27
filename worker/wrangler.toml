@@ -11,7 +11,7 @@ compatibility_date = "2025-06-01"
 # CLIPS_PAUSED = "1" switches clips and the game off.
 [vars]
 CLIPS_PAUSED = ""
-CLIPS_POOL_ONLY = ""
+CLIPS_POOL_ONLY = "1"
 
 [[rules]]
 type = "Data"
