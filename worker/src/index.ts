@@ -23,6 +23,7 @@ import { TERMS_HTML } from "./terms";
 import { PRIVACY_HTML } from "./privacy";
 import { appStorePro } from "./appstore";
 import { Game, POOL_IDS } from "./game";
+import { youtubeSource } from "./youtube";
 import { DOWNLOAD_HTML } from "./download";
 import { INSTALL_HTML } from "./install";
 import { LANDING_HTML, INSTALL_PAGE, LANDING_FILES } from "./landing/landing";
@@ -441,6 +442,8 @@ export default {
     if (url.pathname === "/join") return joinPage(url);
     // a demo source for the App Store app: open movies anyone may stream
     // (Blender Foundation, Creative Commons). Shows how "Add a source" works.
+    // full episodes / films that are on YouTube, as a source for couch
+    if (url.pathname === "/yt" || url.pathname.startsWith("/yt/")) return youtubeSource(url, ctx);
     if (url.pathname.startsWith("/demo")) return demoSource(url);
     if (url.pathname === "/privacy") {
       return new Response(PRIVACY_HTML, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=600" } });
