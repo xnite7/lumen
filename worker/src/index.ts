@@ -558,8 +558,9 @@ async function clipsOut(): Promise<boolean> {
   return !!(await caches.default.match(new Request(CLIPS_OUT)));
 }
 
-async function clipPick(env: Env, imdb: string, title?: string | null, year?: string | null): Promise<Clip> {
-  if (!env.CLIPCAFE_KEY || env.CLIPS_PAUSED) return null;
+/** null = this film has no fitting clip; undefined = couldn't tell right now */
+async function clipPick(env: Env, imdb: string, title?: string | null, year?: string | null): Promise<Clip | undefined> {
+  if (!env.CLIPCAFE_KEY || env.CLIPS_PAUSED) return undefined;
   // only the films the scenes game uses (what ClipCafe agreed to)
   if (env.CLIPS_POOL_ONLY && !POOL_IDS.has(imdb)) return null;
   const cache = caches.default;
@@ -598,15 +599,24 @@ async function clipPick(env: Env, imdb: string, title?: string | null, year?: st
       break;
     }
   }
-  if (!failed) await cache.put(key, new Response(JSON.stringify(pick), { headers: { "content-type": "application/json", "cache-control": `public, max-age=${pick ? CLIP_DAYS * 86400 : 86400}` } }));
+  if (failed) return undefined;
+  await cache.put(key, new Response(JSON.stringify(pick), { headers: { "content-type": "application/json", "cache-control": `public, max-age=${pick ? CLIP_DAYS * 86400 : 86400}` } }));
   return pick;
 }
 
-/** Where a clip's video is. ClipCafe closed its API (Nov 2026) and allowed
- *  couch (account xnite7) to fetch the ~200 clips it needs from the site
- *  itself: each one is fetched once and kept on our side, never re-shared. */
-async function clipDownloadUrl(_env: Env, pick: NonNullable<Clip>): Promise<string | null> {
-  return /^[a-z0-9-]{1,200}$/i.test(pick.slug) ? `https://clip.cafe/videos/${pick.slug}.mp4` : null;
+/** Where a clip's video is: the API's download (a key that's fresh right
+ *  now), then the file on ClipCafe's site (they allowed couch, account
+ *  xnite7, to fetch what it needs there). Each clip is kept on our side. */
+async function clipDownloadUrls(env: Env, pick: NonNullable<Clip>): Promise<{ url: string; via: string }[]> {
+  const out: { url: string; via: string }[] = [];
+  const r = await clipSearch(env, `slug=${encodeURIComponent(pick.slug)}&size=1`);
+  const c = r.clips.find((x: any) => x.slug === pick.slug) ?? r.clips[0];
+  const dl = String(c?.download ?? pick.download ?? "");
+  const k = encodeURIComponent(env.CLIPCAFE_KEY ?? "");
+  if (dl && /^https?:/.test(dl)) out.push({ url: dl.includes("api_key=") ? dl : `${dl}${dl.includes("?") ? "&" : "?"}api_key=${k}`, via: "api" });
+  else if (dl) out.push({ url: `https://api.clip.cafe/?api_key=${k}&slug=${encodeURIComponent(pick.slug)}&key=${encodeURIComponent(dl)}`, via: "api" });
+  if (/^[a-z0-9-]{1,200}$/i.test(pick.slug)) out.push({ url: `https://clip.cafe/videos/${pick.slug}.mp4`, via: "site" });
+  return out;
 }
 
 async function clipStream(env: Env, imdb: string, req: Request, title?: string | null, year?: string | null): Promise<Response> {
@@ -632,27 +642,38 @@ async function clipStream(env: Env, imdb: string, req: Request, title?: string |
   }
   const pick = await clipPick(env, imdb, title, year);
   if (!pick) return new Response("no clip", { status: 404 });
-  const dl = await clipDownloadUrl(env, pick);
-  if (!dl) return new Response("clip unavailable", { status: 502 });
-  const r = await fetch(dl, { headers: { "user-agent": "midnite-couch/1.0 (clip.cafe account xnite7; with permission)" } });
-  const type = r.headers.get("content-type") ?? "";
-  if (!r.ok || !r.body || type.includes("json") || type.includes("html")) {
+  let r: Response | null = null;
+  let type = "";
+  let via = "";
+  let why = "";
+  for (const d of await clipDownloadUrls(env, pick)) {
+    const x = await fetch(d.url, { headers: { "user-agent": "midnite-couch/1.0 (clip.cafe account xnite7; with permission)" } });
+    const t = x.headers.get("content-type") ?? "";
+    if (x.ok && x.body && !t.includes("json") && !t.includes("html")) {
+      r = x;
+      type = t;
+      via = d.via;
+      break;
+    }
     // say what ClipCafe answered (never the address: it carries the key)
-    const why = (await r.text().catch(() => "")).replace(/[A-Za-z0-9]{24,}/g, "…").slice(0, 300);
-    console.log(`clip ${imdb}: download ${r.status} ${type} ${why}`);
-    return new Response(`clip unavailable (${r.status} ${type.split(";")[0]}) ${why}`, { status: 502 });
+    why += ` [${d.via} ${x.status} ${t.split(";")[0]} ${(await x.text().catch(() => "")).replace(/[A-Za-z0-9]{24,}/g, "…").slice(0, 160)}]`;
+  }
+  if (!r || !r.body) {
+    console.log(`clip ${imdb}: no download${why}`);
+    return new Response(`clip unavailable${why}`, { status: 502 });
   }
   // straight through to the player while a copy goes into the cache (no
   // holding the whole file in memory first)
   const [a, rest] = r.body.tee();
   const [b, c] = rest.tee();
+  void type;
   const headers = { "content-type": "video/mp4", "cache-control": `public, max-age=${CLIP_DAYS * 86400}`, "accept-ranges": "bytes" };
   const len = r.headers.get("content-length");
   const h2: Record<string, string> = len ? { ...headers, "content-length": len } : headers;
   cache.put(new Request(fileKey), new Response(b, { headers: h2 })).catch(() => {});
   if (env.CLIPS && len) env.CLIPS.put(`${imdb}.mp4`, c.pipeThrough(new FixedLengthStream(Number(len))), { httpMetadata: { contentType: "video/mp4" } }).catch(() => {});
   else c.cancel().catch(() => {});
-  return new Response(a, { headers: h2 });
+  return new Response(a, { headers: { ...h2, "x-clip-via": via } });
 }
 
 /** Is ClipCafe answering couch's key? Never shows the key or a download link. */
@@ -663,7 +684,7 @@ async function clipStatus(env: Env, imdb: string, tryDownload = false, req?: Req
   const c = r.clips[0];
   let download: any = undefined;
   if (tryDownload && c) {
-    const u = await clipDownloadUrl(env, { slug: String(c.slug), download: String(c.download ?? ""), duration: 0 });
+    const u = (await clipDownloadUrls(env, { slug: String(c.slug), download: String(c.download ?? ""), duration: 0 }))[0]?.url;
     if (u) {
       const d = await fetch(u);
       download = { status: d.status, type: d.headers.get("content-type"), bytes: d.headers.get("content-length") };
@@ -967,7 +988,10 @@ export class Crew {
   constructor(state: DurableObjectState, env: Env) {
     this.storage = state.storage;
     this.env = env;
-    this.game = new Game(state.storage, async (id, title, year) => !!(await clipPick(env, id, title, year)));
+    this.game = new Game(state.storage, async (id, title, year) => {
+      const p = await clipPick(env, id, title, year);
+      return p === undefined ? null : !!p;
+    });
   }
   /** Discord's own look for someone: banner and display-name style (an hour) */
   looks = new Map<string, { v: any; at: number }>();
