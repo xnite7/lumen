@@ -21,6 +21,7 @@
 import logo from "./logo.png";
 import { TERMS_HTML } from "./terms";
 import { PRIVACY_HTML } from "./privacy";
+import { appStorePro } from "./appstore";
 import { DOWNLOAD_HTML } from "./download";
 import { INSTALL_HTML } from "./install";
 import { LANDING_HTML, INSTALL_PAGE, LANDING_FILES } from "./landing/landing";
@@ -154,7 +155,9 @@ async function gpui(url: URL, env: Env): Promise<Response> {
   return json({ version: String(rel.tag_name).slice(5), size: zip.size, notes: rel.body ?? "" });
 }
 
-type Who = { id: string; name: string; avatar?: string };
+/** pro: clip previews etc. crew: the midnite social side. Missing = true
+ *  (sessions from the old gate: everyone there had the role). */
+type Who = { id: string; name: string; avatar?: string; pro?: boolean; crew?: boolean };
 // short on purpose: a session is re-earned from Discord every couple of
 // minutes, so someone kicked from the server is out right away
 const SESSION_TTL = 120;
@@ -180,7 +183,7 @@ async function verify(env: Env, header: string | null): Promise<Who | null> {
   try {
     const v = JSON.parse(unb64u(body));
     if (typeof v.exp !== "number" || v.exp < Date.now() / 1000) return null;
-    return { id: String(v.id), name: String(v.name ?? "someone"), avatar: v.avatar || undefined };
+    return { id: String(v.id), name: String(v.name ?? "someone"), avatar: v.avatar || undefined, pro: v.pro, crew: v.crew };
   } catch {
     return null;
   }
@@ -205,8 +208,18 @@ async function auth(req: Request, env: Env): Promise<Response> {
     const who: Who = { id: "app-review", name: "App Review" };
     return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id, name: who.name });
   }
+  // couch Pro bought in the App Store: Apple's signed transaction
+  if (typeof b?.appstore === "string") {
+    const t = await appStorePro(b.appstore);
+    if (!t) return json({ error: "couldn't check that purchase" }, 403);
+    const who: Who = { id: `as-${t}`, name: "couch pro", pro: true, crew: false };
+    return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id, pro: true, crew: false });
+  }
   const token = typeof b?.token === "string" ? b.token : "";
   if (!token) return json({ error: "no token" }, 400);
+  // the App Store app: anyone can sign in; the server role decides the tier
+  // instead of locking the door
+  const open = b?.open === true;
   const h = { authorization: `Bearer ${token}` };
   const me = await fetch("https://discord.com/api/users/@me", { headers: h });
   if (me.status === 429 || me.status >= 500) return json({ error: "discord is busy, try again" }, 503);
@@ -218,34 +231,47 @@ async function auth(req: Request, env: Env): Promise<Response> {
       // the bot sees membership AND roles in one call; the user's own server
       // list isn't needed (and is heavily rate-limited by Discord)
       const br = await fetch(`https://discord.com/api/guilds/${env.GUILD_ID}/members/${u.id}`, { headers: { authorization: `Bot ${env.DISCORD_BOT_TOKEN}` } });
-      if (br.status === 404) return json({ error: "not in the server", notMember: true }, 403);
+      if (br.status === 404) return deny(open, "not in the server");
       if (!br.ok) return json({ error: "couldn't check your roles" }, 503);
       const mem: any = await br.json();
-      if (!(mem?.roles ?? []).some((r: string) => roles.includes(r))) return json({ error: "no subscription", notMember: true }, 403);
+      if (!(mem?.roles ?? []).some((r: string) => roles.includes(r))) return deny(open, "no subscription");
     } else {
       const g = await fetch("https://discord.com/api/users/@me/guilds", { headers: h });
       if (!g.ok) return json({ error: "couldn't check your servers" }, 503);
       const list: any = await g.json();
       if (!Array.isArray(list)) return json({ error: "couldn't check your servers" }, 503);
-      if (!list.some((x: any) => x?.id === env.GUILD_ID)) return json({ error: "not in the server", notMember: true }, 403);
+      if (!list.some((x: any) => x?.id === env.GUILD_ID)) return deny(open, "not in the server");
     }
     if (roles.length && !env.DISCORD_BOT_TOKEN) {
       const mr = await fetch(`https://discord.com/api/users/@me/guilds/${env.GUILD_ID}/member`, { headers: h });
       // no permission to see roles = an old sign-in (or an old app): no way in
       // until they sign in again; new apps show "one more knock", old ones lock
-      if (mr.status === 401 || mr.status === 403) return json({ error: "sign in again (couch needs to see your server roles)", reauth: true, notMember: true }, 403);
+      if (mr.status === 401 || mr.status === 403) return open ? welcome(false) : json({ error: "sign in again (couch needs to see your server roles)", reauth: true, notMember: true }, 403);
       if (!mr.ok) return json({ error: "couldn't check your roles" }, 503);
       const mem: any = await mr.json();
       const has = (mem?.roles ?? []).some((r: string) => roles.includes(r));
-      if (!has) return json({ error: "no subscription", notMember: true }, 403);
+      if (!has) return deny(open, "no subscription");
     }
   }
-  const who: Who = {
-    id: String(u.id),
-    name: String(u.global_name || u.username || "someone").slice(0, 40),
-    avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=128` : undefined,
-  };
-  return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id });
+  return welcome(true);
+
+  // signed in, with or without the role (open mode only for the latter)
+  async function welcome(coucher: boolean) {
+    const who: Who = {
+      id: String(u.id),
+      name: String(u.global_name || u.username || "someone").slice(0, 40),
+      avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=128` : undefined,
+    };
+    if (open) {
+      who.pro = coucher;
+      who.crew = coucher;
+    }
+    return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id, name: who.name, avatar: who.avatar, pro: coucher, crew: coucher, coucher });
+  }
+  async function deny(open: boolean, why: string) {
+    if (open) return welcome(false);
+    return json({ error: why, notMember: true }, 403);
+  }
 }
 
 const STALE_MS = 120_000;
@@ -379,6 +405,7 @@ export default {
     if (clipFile) {
       const w = await verify(env, `Bearer ${url.searchParams.get("t") ?? ""}`);
       if (!w) return new Response("sign in again", { status: 401 });
+      if (w.pro === false) return new Response("couch pro", { status: 402 });
       return clipStream(env, clipFile[1], req, url.searchParams.get("title"), url.searchParams.get("year"));
     }
     const clipCheck = url.pathname.match(/^\/clip-status\/(tt\d{5,10})$/);
@@ -408,6 +435,7 @@ export default {
     if (!who) return json({ error: "sign in again" }, 401);
     const clipAsk = url.pathname.match(/^\/v1\/clip\/(tt\d{5,10})$/);
     if (clipAsk) {
+      if (who.pro === false) return json({ clip: false, pro: true }, 402);
       // already fetched once: it plays from the cache, no request needed
       if (await caches.default.match(new Request(`https://couch.clips/file2/${clipAsk[1]}.mp4`))) return json({ clip: true });
       // out of ClipCafe requests today: no clip (the app plays a trailer)
@@ -416,6 +444,9 @@ export default {
     }
     if (url.pathname.startsWith("/v1/update/")) return updates(url, env);
     if (url.pathname === "/v1/gpui/latest" || url.pathname === "/v1/gpui/file") return gpui(url, env);
+    // your own devices work for anyone signed in; the crew (presence, rooms,
+    // reviews…) is for the server's couchers
+    if (who.crew === false && !url.pathname.startsWith("/v1/me/")) return json({ error: "for couchers", crew: false }, 403);
     // the Durable Object trusts this header; set it here, never from the client
     const fwd = new Request(req);
     fwd.headers.set("x-who", JSON.stringify(who));
