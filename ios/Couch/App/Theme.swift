@@ -15,8 +15,9 @@ enum Theme {
 
 extension Font {
     static let billboardTitle = Font.system(size: 34, weight: .heavy, design: .default)
-    static let rowTitle = Font.system(size: 20, weight: .bold)
-    static let meta = Font.system(size: 13, weight: .medium)
+    // text styles, so everything follows the reader's text size (Dynamic Type)
+    static let rowTitle = Font.title3.weight(.bold)
+    static let meta = Font.footnote.weight(.medium)
 }
 
 /// Primary (white) and secondary (glass) buttons, Apple TV style.
@@ -24,11 +25,11 @@ struct PillButton: ButtonStyle {
     var primary = true
     func makeBody(configuration c: Configuration) -> some View {
         c.label
-            .font(.system(size: 16, weight: .semibold))
+            .font(.callout.weight(.semibold))
             .lineLimit(1)
             .minimumScaleFactor(0.8)
             .padding(.horizontal, 14)
-            .frame(height: 46)
+            .frame(minHeight: 46)
             .frame(maxWidth: .infinity)
             .foregroundStyle(primary ? Color.black : Color.white)
             .background {
@@ -54,7 +55,7 @@ struct StackedAction: View {
                 .font(.system(size: 20, weight: .medium))
                 .frame(height: 24)
                 .contentTransition(.symbolEffect(.replace))
-            Text(title).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.dim).lineLimit(1)
+            Text(title).font(.caption2.weight(.medium)).foregroundStyle(Theme.dim).lineLimit(1)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 52)
@@ -72,6 +73,9 @@ struct RoundIcon: View {
             .frame(width: size, height: size)
             .background(.ultraThinMaterial, in: Circle())
             .foregroundStyle(.white)
+            // never a smaller touch target than 44 pt
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
     }
 }
 

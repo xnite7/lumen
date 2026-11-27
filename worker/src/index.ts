@@ -1327,7 +1327,7 @@ export class Crew {
       return json({ error: "sign in again" }, 401);
     }
     // the scenes game; only Discord sign-ins go on the leaderboards
-    if (url.pathname.startsWith("/v1/game/")) return this.game.handle(req, url, who, /^\d+$/.test(who.id));
+    if (url.pathname.startsWith("/v1/game/")) return this.game.handle(req, url, who, /^\d+$/.test(who.id), who.pro !== false);
 
     const line = url.pathname.match(/^\/v1\/room\/([A-Za-z0-9_-]{1,40})\/ws$/);
     if (line && req.headers.get("upgrade") === "websocket") return this.openLine(line[1], who);

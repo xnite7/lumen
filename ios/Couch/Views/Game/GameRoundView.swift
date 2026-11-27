@@ -144,7 +144,7 @@ struct GameRoundView: View {
         let right = result?.answer.index == i
         let wrong = result != nil && picked == i && !right
         return HStack {
-            Text(o.title).font(.system(size: 16, weight: .semibold)).lineLimit(2).multilineTextAlignment(.leading)
+            Text(o.title).font(.callout.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
             if !o.year.isEmpty { Text(o.year).font(.footnote).opacity(0.6) }
             Spacer(minLength: 4)
             if right { Image(systemName: "checkmark.circle.fill") }

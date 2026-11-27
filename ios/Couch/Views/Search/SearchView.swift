@@ -24,7 +24,7 @@ struct SearchView: View {
         }
         .background(Theme.bg)
         .navigationTitle("Search")
-        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Movies and series")
+        .searchable(text: $query, prompt: "Movies and series")
         .autocorrectionDisabled()
         .overlay { if searching && results.isEmpty { ProgressView() } }
         .task(id: query) {

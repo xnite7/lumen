@@ -22,6 +22,7 @@ struct GameHome: Codable {
     let bestStreak: Int
     let bestRun: Int
     let ranked: Bool
+    let pro: Bool?
     let boards: Boards
     let ranks: Ranks
 }

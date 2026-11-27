@@ -39,6 +39,7 @@ struct GameHomeView: View {
         .navigationTitle("Scenes")
         .task { await load() }
         .refreshable { await load() }
+        .task(id: account.pro) { await load() }
         .fullScreenCover(item: $round, onDismiss: { Task { await load() } }) { r in
             GameRoundView(first: r)
         }
@@ -108,9 +109,14 @@ struct GameHomeView: View {
             }
             Text("Play whenever. It starts easy and gets nicher. Three misses and the run is over.")
                 .font(.subheadline).foregroundStyle(Theme.dim)
-            Button { start(daily: false) } label: { Label("Start a run", systemImage: "play.fill") }
-                .buttonStyle(PillButton(primary: false))
-                .disabled(starting)
+            if h.pro ?? account.pro {
+                Button { start(daily: false) } label: { Label("Start a run", systemImage: "play.fill") }
+                    .buttonStyle(PillButton(primary: false))
+                    .disabled(starting)
+            } else {
+                Button { router.paywall = true } label: { Label("Unlock with couch Pro", systemImage: "lock.fill") }
+                    .buttonStyle(PillButton(primary: false))
+            }
         }
         .card()
     }

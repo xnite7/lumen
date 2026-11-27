@@ -11,6 +11,7 @@ struct ProView: View {
 
     private let perks: [(String, String, String)] = [
         ("play.rectangle.fill", "Scene previews", "Clips play behind the billboard and on every title page."),
+        ("infinity", "Endless Scenes", "Play the guessing game as long as you can last, and climb the best-runs board."),
         ("square.grid.2x2.fill", "Home-screen widgets", "Continue Watching and My List, right on your Home Screen."),
         ("heart.fill", "Support couch", "Pro keeps the lights on and the updates coming."),
     ]

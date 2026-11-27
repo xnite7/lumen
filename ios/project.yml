@@ -23,6 +23,11 @@ targets:
     platform: iOS
     sources:
       - path: Couch
+        excludes: ["AppIcon.icon"]
+      # the Liquid Glass icon (Icon Composer format; Xcode renders every size and look)
+      - path: Couch/AppIcon.icon
+        type: file
+        buildPhase: resources
     dependencies:
       - package: MPVKit
         product: MPVKit

@@ -7,12 +7,6 @@ struct CouchApp: App {
     init() {
         Store.shared.start()
         Devices.shared.start()
-        // the tab bar and nav bars sit on black glass
-        let tab = UITabBarAppearance()
-        tab.configureWithDefaultBackground()
-        tab.backgroundEffect = UIBlurEffect(style: .systemChromeMaterialDark)
-        UITabBar.appearance().standardAppearance = tab
-        UITabBar.appearance().scrollEdgeAppearance = tab
     }
 
     var body: some Scene {
@@ -24,13 +18,13 @@ struct CouchApp: App {
     }
 }
 
-enum Tab: Hashable { case home, search, play, library, settings }
+enum AppTab: Hashable { case home, search, play, library, settings }
 
 /// Where the app is: the tab and each tab's stack (deep links push here).
 @MainActor @Observable
 final class Router {
     static let shared = Router()
-    var tab: Tab = .home
+    var tab: AppTab = .home
     var home = NavigationPath()
     var search = NavigationPath()
     var library = NavigationPath()
@@ -79,35 +73,22 @@ struct RootView: View {
 
     var body: some View {
         TabView(selection: $router.tab) {
-            NavigationStack(path: $router.home) {
-                HomeView().withDestinations()
+            Tab("Home", systemImage: "house.fill", value: AppTab.home) {
+                NavigationStack(path: $router.home) { HomeView().withDestinations() }
             }
-            .tabItem { Label("Home", systemImage: "house.fill") }
-            .tag(Tab.home)
-
-            NavigationStack(path: $router.search) {
-                SearchView().withDestinations()
+            Tab("Scenes", systemImage: "film.stack.fill", value: AppTab.play) {
+                NavigationStack { GameHomeView() }
             }
-            .tabItem { Label("Search", systemImage: "magnifyingglass") }
-            .tag(Tab.search)
-
-            NavigationStack {
-                GameHomeView()
+            Tab("My couch", systemImage: "sofa.fill", value: AppTab.library) {
+                NavigationStack(path: $router.library) { LibraryView().withDestinations() }
             }
-            .tabItem { Label("Scenes", systemImage: "film.stack.fill") }
-            .tag(Tab.play)
-
-            NavigationStack(path: $router.library) {
-                LibraryView().withDestinations()
+            Tab("Settings", systemImage: "gearshape.fill", value: AppTab.settings) {
+                NavigationStack { SettingsView() }
             }
-            .tabItem { Label("My couch", systemImage: "sofa.fill") }
-            .tag(Tab.library)
-
-            NavigationStack {
-                SettingsView()
+            // the system's search tab (its own spot in the tab bar)
+            Tab(value: AppTab.search, role: .search) {
+                NavigationStack(path: $router.search) { SearchView().withDestinations() }
             }
-            .tabItem { Label("Settings", systemImage: "gearshape.fill") }
-            .tag(Tab.settings)
         }
         .overlay(alignment: .bottom) {
             // above the tab bar: what your other device is playing

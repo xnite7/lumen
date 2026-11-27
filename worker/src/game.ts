@@ -7,7 +7,7 @@
 //
 //   Daily     5 scenes, the same for everyone, easy first then nicher. One go
 //             a day (UTC). Keeps a streak. Its own leaderboard each day.
-//   Endless   play whenever. Starts easy and gets nicher; three wrong guesses
+//   Endless   couch Pro. Play whenever. Starts easy and gets nicher; three wrong guesses
 //             end the run. Leaderboard of best runs.
 //
 // The server decides everything (which scene, what you've revealed, the
@@ -271,11 +271,11 @@ export class Game {
     return r ? { id: r.id } : null;
   }
 
-  async handle(req: Request, url: URL, who: Who, ranked: boolean): Promise<Response> {
+  async handle(req: Request, url: URL, who: Who, ranked: boolean, pro: boolean): Promise<Response> {
     // runs left alone for an hour are dropped
     for (const [k, v] of this.runs) if (Date.now() - v.at > 3600_000) this.runs.delete(k);
     const path = url.pathname.replace(/^\/v1\/game/, "");
-    if (req.method === "GET" && path === "/home") return j(await this.home(who, ranked));
+    if (req.method === "GET" && path === "/home") return j({ ...(await this.home(who, ranked)), pro });
     if (req.method !== "POST") return j({ error: "not here" }, 404);
     let b: any = {};
     try {
@@ -285,6 +285,8 @@ export class Game {
     if (path === "/start") {
       const mode = b?.mode === "daily" ? "daily" : "endless";
       const day = today();
+      // the daily five are for everyone; endless runs come with couch Pro
+      if (mode === "endless" && !pro) return j({ error: "Endless is part of couch Pro", pro: true }, 402);
       if (mode === "daily" && (await this.storage.get(`gd:${day}:${who.id}`))) return j({ error: "you've played today's scenes", played: true }, 409);
       // one run per person per mode: starting again picks up where it was
       for (const [k, v] of this.runs) {

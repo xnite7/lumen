@@ -93,6 +93,9 @@ jobs:
             echo "COUCH-SHOT-BEGIN $1"; base64 -i "$1.jpg" | fold -w 200; echo "COUCH-SHOT-END $1"
           }
           go() { xcrun simctl terminate "$DEV" com.midnite.couch >/dev/null 2>&1; xcrun simctl launch "$DEV" com.midnite.couch "$@" >/dev/null; }
+          grep -n "AppIcon" Couch.xcodeproj/project.pbxproj | head -5
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIcons" "$APP/Info.plist" 2>&1 | head -12
+          sleep 6; shot springboard
           go; sleep 25; shot home
           go -open couch://title/series/tt0903747; sleep 16; shot title
           go -open couch://title/movie/tt1727587; sleep 14; shot movie

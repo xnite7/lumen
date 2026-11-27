@@ -215,7 +215,7 @@ struct Tag: View {
     init(_ t: String) { text = t }
     var body: some View {
         Text(text)
-            .font(.system(size: 11, weight: .bold))
+            .font(.caption2.weight(.bold))
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 5))

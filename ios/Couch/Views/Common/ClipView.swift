@@ -24,6 +24,8 @@ struct ClipBackdrop: View {
             url = nil
             // a beat on the artwork first, like Apple TV
             try? await Task.sleep(for: .seconds(1.2))
+            // Settings → Accessibility → Motion → Auto-Play Video Previews off: artwork only
+            guard UIAccessibility.isVideoAutoplayEnabled else { return }
             url = await Clips.shared.url(for: meta)
         }
     }
