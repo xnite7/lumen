@@ -31,3 +31,5 @@ class_name = "Crew"
 tag = "v1"
 new_sqlite_classes = ["Crew"]
 # bot token picked up 2026-11-07
+
+# redeployed 2026-11-27 (something else had replaced the server)
