@@ -615,7 +615,12 @@ async function clipStream(env: Env, imdb: string, req: Request, title?: string |
   if (!dl) return new Response("clip unavailable", { status: 502 });
   const r = await fetch(dl);
   const type = r.headers.get("content-type") ?? "";
-  if (!r.ok || !r.body || type.includes("json") || type.includes("html")) return new Response("clip unavailable", { status: 502 });
+  if (!r.ok || !r.body || type.includes("json") || type.includes("html")) {
+    // say what ClipCafe answered (never the address: it carries the key)
+    const why = (await r.text().catch(() => "")).replace(/[A-Za-z0-9]{24,}/g, "…").slice(0, 300);
+    console.log(`clip ${imdb}: download ${r.status} ${type} ${why}`);
+    return new Response(`clip unavailable (${r.status} ${type.split(";")[0]}) ${why}`, { status: 502 });
+  }
   // straight through to the player while a copy goes into the cache (no
   // holding the whole file in memory first)
   const [a, b] = r.body.tee();
