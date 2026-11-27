@@ -41,6 +41,8 @@ export interface Env {
   DISCORD_BOT_TOKEN?: string;
   /** ClipCafe PRO key: scene clips for billboard / preview (instead of trailers) */
   CLIPCAFE_KEY?: string;
+  /** "1": no clip source right now (previews off, the scenes game paused) */
+  CLIPS_PAUSED?: string;
   /** optional R2 bucket: clips kept for good, so each is downloaded from
    *  ClipCafe once ever (Cloudflare's cache alone is per region and can forget) */
   CLIPS?: R2Bucket;
@@ -485,6 +487,8 @@ export default {
     // the server invite (permanent, made by couch's bot): for people who
     // aren't in the server yet, so it's public
     if (url.pathname === "/v1/invite") return serverInvite(env);
+    // what's switched on (the apps hide what isn't)
+    if (url.pathname === "/config") return json({ scenes: !env.CLIPS_PAUSED, clips: !env.CLIPS_PAUSED }, 200, { "cache-control": "public, max-age=300" });
     if (url.pathname === "/geo") return json({ country: String((req as any).cf?.country ?? "").toLowerCase() });
     if (!url.pathname.startsWith("/v1/")) return json({ error: "not here" }, 404);
     if (req.method === "POST" && url.pathname === "/v1/auth") return auth(req, env);
@@ -553,7 +557,7 @@ async function clipsOut(): Promise<boolean> {
 }
 
 async function clipPick(env: Env, imdb: string, title?: string | null, year?: string | null): Promise<Clip> {
-  if (!env.CLIPCAFE_KEY) return null;
+  if (!env.CLIPCAFE_KEY || env.CLIPS_PAUSED) return null;
   const cache = caches.default;
   const key = new Request(`https://couch.clips/pick4/${imdb}`);
   const hit = await cache.match(key);
@@ -1360,7 +1364,7 @@ export class Crew {
       return json({ error: "sign in again" }, 401);
     }
     // the scenes game; only Discord sign-ins go on the leaderboards
-    if (url.pathname.startsWith("/v1/game/")) return this.game.handle(req, url, who, /^\d+$/.test(who.id), who.pro !== false);
+    if (url.pathname.startsWith("/v1/game/")) return this.game.handle(req, url, who, /^\d+$/.test(who.id), who.pro !== false, !!this.env.CLIPS_PAUSED);
 
     const line = url.pathname.match(/^\/v1\/room\/([A-Za-z0-9_-]{1,40})\/ws$/);
     if (line && req.headers.get("upgrade") === "websocket") return this.openLine(line[1], who);

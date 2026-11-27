@@ -39,6 +39,21 @@ pub struct Scenes {
     scroll: ScrollHandle,
 }
 
+/// Is the game switched on? (the couch server says; asked at start)
+static ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub fn on() -> bool {
+    ON.load(std::sync::atomic::Ordering::Relaxed)
+}
+pub fn watch(cx: &mut gpui::App) {
+    cx.spawn(async move |cx| {
+        if let Ok(c) = api::call::<Value>("crew_config", json!({})).await {
+            ON.store(c["scenes"].as_bool().unwrap_or(false), std::sync::atomic::Ordering::Relaxed);
+            let _ = cx.update(|cx| cx.refresh_windows());
+        }
+    })
+    .detach();
+}
+
 async fn game(method: &str, path: &str, body: Value) -> Result<Value, String> {
     api::call::<Value>("crew_social", json!({ "method": method, "path": format!("/v1/game{path}"), "body": body })).await
 }
@@ -328,6 +343,9 @@ impl Scenes {
         let Some(h) = &self.home else {
             return col.child(div().text_color(theme::label2()).child(if self.error.is_empty() { "loading…".to_string() } else { self.error.clone() }));
         };
+        if h["paused"].as_bool() == Some(true) {
+            return col.child(card().child(div().text_color(theme::label2()).child("scenes is taking a break while we sort out where the clips come from. back soon.")));
+        }
         let streak = h["streak"].as_i64().unwrap_or(0);
         let mut daily = card().child(
             div()

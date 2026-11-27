@@ -23,6 +23,7 @@ struct GameHome: Codable {
     let bestRun: Int
     let ranked: Bool
     let pro: Bool?
+    let paused: Bool?
     let boards: Boards
     let ranks: Ranks
 }

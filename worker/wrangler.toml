@@ -5,6 +5,11 @@ name = "midnite-couch"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
 
+# ClipCafe closed its API (2026-11-27): clip previews and the scenes game are
+# paused until there's a clip source again. Set to "" to bring them back.
+[vars]
+CLIPS_PAUSED = "1"
+
 [[rules]]
 type = "Data"
 globs = ["**/*.png", "**/*.jpg", "**/*.woff2"]

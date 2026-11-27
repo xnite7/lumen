@@ -17,7 +17,11 @@ struct GameHomeView: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Guess the movie from its most famous scene. The less you watch, the more you score.")
                     .font(.subheadline).foregroundStyle(Theme.dim)
-                if let h = home {
+                if let h = home, h.paused == true {
+                    Label("Scenes is taking a break while we sort out where the clips come from. Back soon.", systemImage: "pause.circle")
+                        .font(.subheadline).card()
+                    boards(h)
+                } else if let h = home {
                     daily(h)
                     endless(h)
                     boards(h)

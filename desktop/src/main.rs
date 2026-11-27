@@ -1764,6 +1764,7 @@ fn main() {
         media::start(cx);
         notify::start(cx);
         devices::start(cx);
+        views::scenes::watch(cx);
         views::player::mini_backdrop(cx);
         // billboard + previews play with sound in the new couch (once; the speaker button changes it)
         {

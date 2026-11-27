@@ -29,6 +29,15 @@ final class Router {
     var search = NavigationPath()
     var library = NavigationPath()
     var paywall = false
+    /// the scenes game is switched on (the couch server says; remembered)
+    var scenes = UserDefaults.standard.object(forKey: "config.scenes") as? Bool ?? false
+
+    func loadConfig() async {
+        struct C: Decodable { let scenes: Bool }
+        guard let c = try? await Net.json(URL(string: crewURL + "/config")!, as: C.self, fresh: true) else { return }
+        scenes = c.scenes
+        UserDefaults.standard.set(c.scenes, forKey: "config.scenes")
+    }
 
     func open(_ m: MetaPreview) {
         switch tab {
@@ -76,8 +85,10 @@ struct RootView: View {
             Tab("Home", systemImage: "house.fill", value: AppTab.home) {
                 NavigationStack(path: $router.home) { HomeView().withDestinations() }
             }
-            Tab("Scenes", systemImage: "film.stack.fill", value: AppTab.play) {
-                NavigationStack { GameHomeView() }
+            if router.scenes {
+                Tab("Scenes", systemImage: "film.stack.fill", value: AppTab.play) {
+                    NavigationStack { GameHomeView() }
+                }
             }
             Tab("My couch", systemImage: "sofa.fill", value: AppTab.library) {
                 NavigationStack(path: $router.library) { LibraryView().withDestinations() }
@@ -100,6 +111,7 @@ struct RootView: View {
         }
         .animation(.snappy, value: devices.playingElsewhere?.id)
         .onOpenURL { router.handle($0) }
+        .task { await router.loadConfig() }
         .task {
             // `-open couch://…` at launch (used by the CI screenshots)
             let a = ProcessInfo.processInfo.arguments

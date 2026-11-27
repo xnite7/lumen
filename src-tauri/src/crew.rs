@@ -486,6 +486,12 @@ pub async fn social(core: &Core, method: &str, path: &str, body: Option<Value>) 
     call(core, m, path, body).await
 }
 
+/// What the couch server has switched on ({ scenes, clips }); public.
+pub async fn config(core: &Core) -> AppResult<Value> {
+    let r = core.http.client().get(format!("{}/config", CREW_URL.trim_end_matches('/'))).timeout(Duration::from_secs(8)).send().await.map_err(|e| AppError::msg(e.to_string()))?;
+    r.json().await.map_err(|e| AppError::msg(e.to_string()))
+}
+
 /// A scenes-game round's video (https://…/game/clip/<game>/<n>?t=session).
 pub async fn game_clip(core: &Core, path: &str) -> AppResult<String> {
     if !path.starts_with("/game/clip/") || path.contains("..") || path.contains('?') {

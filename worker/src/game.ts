@@ -271,17 +271,18 @@ export class Game {
     return r ? { id: r.id } : null;
   }
 
-  async handle(req: Request, url: URL, who: Who, ranked: boolean, pro: boolean): Promise<Response> {
+  async handle(req: Request, url: URL, who: Who, ranked: boolean, pro: boolean, paused = false): Promise<Response> {
     // runs left alone for an hour are dropped
     for (const [k, v] of this.runs) if (Date.now() - v.at > 3600_000) this.runs.delete(k);
     const path = url.pathname.replace(/^\/v1\/game/, "");
-    if (req.method === "GET" && path === "/home") return j({ ...(await this.home(who, ranked)), pro });
+    if (req.method === "GET" && path === "/home") return j({ ...(await this.home(who, ranked)), pro, paused });
     if (req.method !== "POST") return j({ error: "not here" }, 404);
     let b: any = {};
     try {
       b = await req.json();
     } catch {}
 
+    if (paused) return j({ error: "scenes is taking a break while we sort out where the clips come from. back soon.", paused: true }, 503);
     if (path === "/start") {
       const mode = b?.mode === "daily" ? "daily" : "endless";
       const day = today();
