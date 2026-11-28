@@ -119,7 +119,11 @@ jobs:
             xcrun simctl status_bar "$D" override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 --dataNetwork wifi
             xcrun simctl install "$D" "$APP"
             run() { xcrun simctl terminate "$D" com.midnite.couch >/dev/null 2>&1; xcrun simctl launch "$D" com.midnite.couch -demo "$@" >/dev/null; }
-            snap() { xcrun simctl io "$D" screenshot "store/$2-$1.png" >/dev/null 2>&1; }
+            snap() {
+              xcrun simctl io "$D" screenshot "store/$2-$1.png" >/dev/null 2>&1
+              # nearly empty = it hadn't drawn yet: give it a moment more
+              [ "$(stat -f%z "store/$2-$1.png")" -lt 200000 ] && { sleep 15; xcrun simctl io "$D" screenshot "store/$2-$1.png" >/dev/null 2>&1; }
+            }
             run; sleep 30; run; sleep 14; snap 1-home "$2"
             run -open couch://title/movie/tt1727587; sleep 16; snap 2-title "$2"
             run -open couch://tab/play; sleep 10; snap 3-games "$2"

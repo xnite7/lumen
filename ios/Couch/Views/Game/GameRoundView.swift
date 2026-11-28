@@ -44,7 +44,7 @@ struct GameRoundView: View {
         .onDisappear { snippet.close() }
         .sensoryFeedback(.impact, trigger: stage)
         .sensoryFeedback(trigger: haptic) { _, _ in result?.correct == true ? .success : .error }
-        .alert("Scenes", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+        .alert("Games", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(error ?? "") }
     }

@@ -40,7 +40,7 @@ struct GameHomeView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Theme.bg)
-        .navigationTitle("Scenes")
+        .navigationTitle("Games")
         .task {
             await load()
             // opened by a link (couch://play/daily): straight into the game
@@ -55,7 +55,7 @@ struct GameHomeView: View {
         .fullScreenCover(item: $round, onDismiss: { Task { await load() } }) { r in
             GameRoundView(first: r)
         }
-        .alert("Scenes", isPresented: Binding(get: { error != nil && home != nil }, set: { if !$0 { error = nil } })) {
+        .alert("Games", isPresented: Binding(get: { error != nil && home != nil }, set: { if !$0 { error = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(error ?? "") }
     }
