@@ -109,12 +109,35 @@ final class Account: NSObject {
         return t
     }
 
-    private func discordAccess() async -> String? {
+    private var discordRefreshing: Task<String?, Never>?
+
+    private func discordFresh() -> String? {
         if let a = Keychain.get("discord.access"), let e = Keychain.get("discord.access.exp").flatMap(Double.init), e > Date().timeIntervalSince1970 + 300 {
             return a
         }
-        guard let rt = Keychain.get("discord.refresh") else { return nil }
-        return try? await discordToken(["grant_type": "refresh_token", "refresh_token": rt]).access_token
+        return nil
+    }
+
+    /// Discord hands out a new refresh token each time and retires the old
+    /// one, so: one refresh at a time, and if it's turned down, look again
+    /// (another device on your Apple ID may have refreshed a moment ago).
+    private func discordAccess() async -> String? {
+        if let a = discordFresh() { return a }
+        if let t = discordRefreshing { return await t.value }
+        let t = Task { () -> String? in
+            guard let rt = Keychain.get("discord.refresh") else { return nil }
+            if let a = try? await self.discordToken(["grant_type": "refresh_token", "refresh_token": rt]).access_token { return a }
+            try? await Task.sleep(for: .seconds(2))
+            if let a = self.discordFresh() { return a }
+            if let newer = Keychain.get("discord.refresh"), newer != rt {
+                return try? await self.discordToken(["grant_type": "refresh_token", "refresh_token": newer]).access_token
+            }
+            return nil
+        }
+        discordRefreshing = t
+        let a = await t.value
+        discordRefreshing = nil
+        return a
     }
 
     // MARK: the couch server

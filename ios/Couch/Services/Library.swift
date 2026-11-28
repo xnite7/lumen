@@ -15,14 +15,17 @@ struct Progress: Codable, Hashable {
     var position: Double
     var duration: Double
     var updated: Date
+    /// a spot known only as a share of the whole (from Simkl, another device)
+    var pct: Double?
 
-    var fraction: Double { duration > 0 ? min(1, position / duration) : 0 }
+    var fraction: Double { duration > 0 ? min(1, position / duration) : min(1, pct ?? 0) }
     var finished: Bool { duration > 0 && (duration - position < 180 || fraction > 0.93) }
     var subtitle: String {
         if let s = season, let e = episode { return "S\(s) · E\(e)" + (episodeTitle.map { "  \($0)" } ?? "") }
         return meta.year
     }
     var left: String {
+        if duration <= 0, let pct { return "\(Int(pct * 100))% watched" }
         let m = Int(max(0, duration - position) / 60)
         return m >= 60 ? "\(m / 60)h \(m % 60)m left" : "\(max(1, m))m left"
     }
@@ -37,11 +40,17 @@ final class Library {
     private(set) var progress: [String: Progress] = [:]
     /// finished video ids (movies and episodes)
     private(set) var watched: Set<String> = []
+    /// taken off My List here: a sync doesn't bring these back
+    private var removed: Set<String> = []
+    /// on My List because Simkl has them: leave with it when Simkl drops them
+    private var viaSimkl: Set<String> = []
 
     private struct Disk: Codable {
         var myList: [MetaPreview]
         var progress: [String: Progress]
         var watched: Set<String>
+        var removed: Set<String>?
+        var viaSimkl: Set<String>?
     }
     private var url: URL {
         let d = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -50,15 +59,23 @@ final class Library {
     }
 
     private init() {
-        if let d = try? Data(contentsOf: url), let l = try? JSONDecoder().decode(Disk.self, from: d) {
+        guard let d = try? Data(contentsOf: url) else { return }
+        if let l = try? JSONDecoder().decode(Disk.self, from: d) {
             myList = l.myList
             progress = l.progress
             watched = l.watched
+            removed = l.removed ?? []
+            viaSimkl = l.viaSimkl ?? []
+        } else {
+            // unreadable: set it aside instead of writing over it
+            let bad = url.deletingLastPathComponent().appendingPathComponent("library.unreadable.json")
+            try? FileManager.default.removeItem(at: bad)
+            try? FileManager.default.copyItem(at: url, to: bad)
         }
     }
 
     private func save() {
-        let disk = Disk(myList: myList, progress: progress, watched: watched)
+        let disk = Disk(myList: myList, progress: progress, watched: watched, removed: removed, viaSimkl: viaSimkl)
         if let d = try? JSONEncoder().encode(disk) { try? d.write(to: url, options: .atomic) }
         refreshWidgets()
     }
@@ -68,24 +85,68 @@ final class Library {
     func inList(_ id: String) -> Bool { myList.contains { $0.id == id } }
     func toggleList(_ m: MetaPreview) {
         let adding = !inList(m.id)
-        if adding { myList.insert(m, at: 0) } else { myList.removeAll { $0.id == m.id } }
+        if adding {
+            myList.insert(m, at: 0)
+            removed.remove(m.id)
+        } else {
+            myList.removeAll { $0.id == m.id }
+            removed.insert(m.id)
+            viaSimkl.remove(m.id)
+        }
         save()
         Simkl.shared.listed(m, adding)
     }
 
-    /// Titles from elsewhere (your Simkl lists): added if they aren't here yet.
-    func merge(_ items: [MetaPreview]) {
-        let new = items.filter { m in !myList.contains { $0.id == m.id } }
-        guard !new.isEmpty else { return }
-        myList.append(contentsOf: new)
-        save()
+    /// Simkl's side of things. Adds what isn't here (never what you took
+    /// off here); what Simkl dropped leaves only when `complete` (the whole
+    /// pull came back and nothing of ours is still waiting to be sent).
+    func fromSimkl(list: [MetaPreview], watched done: Set<String>, complete: Bool) {
+        var changed = false
+        let there = Set(list.map(\.id))
+        for m in list where !removed.contains(m.id) {
+            if !inList(m.id) {
+                myList.append(m)
+                changed = true
+            }
+            if viaSimkl.insert(m.id).inserted { changed = true }
+        }
+        // (an empty answer against a real list here reads as a fault, not a wish)
+        if complete, !(there.isEmpty && viaSimkl.count > 3) {
+            let gone = viaSimkl.subtracting(there)
+            if !gone.isEmpty {
+                myList.removeAll { gone.contains($0.id) }
+                viaSimkl.subtract(gone)
+                changed = true
+            }
+        }
+        let new = done.subtracting(watched)
+        if !new.isEmpty {
+            watched.formUnion(new)
+            changed = true
+        }
+        if changed { save() }
+    }
+
+    /// Where you stopped on another device: taken when it's newer than what
+    /// this one knows, and not for something already finished here.
+    func fromSimkl(spots: [Progress]) {
+        var changed = false
+        for p in spots where !watched.contains(p.videoId) {
+            if let mine = progress[p.meta.id], mine.updated >= p.updated { continue }
+            var p = p
+            // keep the artwork and names this device already had
+            if let mine = progress[p.meta.id], mine.videoId == p.videoId { p.meta = mine.meta; p.episodeTitle = mine.episodeTitle }
+            progress[p.meta.id] = p
+            changed = true
+        }
+        if changed { save() }
     }
 
     // MARK: progress
 
     /// Titles you're partway through, newest first.
     var continueWatching: [Progress] {
-        progress.values.filter { !$0.finished && $0.position > 60 }.sorted { $0.updated > $1.updated }
+        progress.values.filter { !$0.finished && ($0.position > 60 || ($0.duration <= 0 && $0.pct != nil)) }.sorted { $0.updated > $1.updated }
     }
 
     func resume(_ id: String) -> Progress? { progress[id] }

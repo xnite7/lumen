@@ -77,8 +77,13 @@ final class Playback {
             "artwork": m.backdropURL?.absoluteString ?? "",
         ]
         if let ep { c["episodeLabel"] = ep.code }
-        if resume, let p = Library.shared.resume(m.id), p.videoId == (ep?.id ?? m.id), !p.finished, p.position > 30 {
-            c["startAt"] = p.position
+        if resume, let p = Library.shared.resume(m.id), p.videoId == (ep?.id ?? m.id), !p.finished {
+            if p.position > 30 {
+                c["startAt"] = p.position
+            } else if p.duration <= 0, let pct = p.pct, pct > 0.01 {
+                // a spot from another device: known as a share of the whole
+                c["startPct"] = pct
+            }
         }
         if let h = s.behaviorHints?.proxyHeaders?.request, !h.isEmpty { c["headers"] = h }
         let langs = Locale.preferredLanguages.compactMap { Locale(identifier: $0).language.languageCode?.identifier(.alpha3) }
@@ -150,6 +155,7 @@ final class Playback {
             if let p = u["pos"] as? Double, p > 0 { self.lastPos = p }
             if let d = u["duration"] as? Double, d > 0 { self.lastDur = d }
             self.save()
+            if let m = self.meta, let p = Library.shared.resume(m.id), p.videoId == (self.episode?.id ?? m.id) { Simkl.shared.paused(p) }
             self.endActivity()
             self.observers.forEach { NotificationCenter.default.removeObserver($0) }
             self.observers = []

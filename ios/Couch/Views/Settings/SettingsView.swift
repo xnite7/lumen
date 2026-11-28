@@ -77,6 +77,19 @@ struct SettingsView: View {
                         Label(simkl.name.map { "Linked as \($0)" } ?? "Linked", systemImage: "list.star")
                     }
                     Button("Sync now") { Task { await simkl.sync() } }.disabled(simkl.syncing)
+                    if simkl.needsReconnect {
+                        Label("Simkl needs you to link again", systemImage: "exclamationmark.triangle")
+                        Button("Link again") {
+                            linking = true
+                            Task {
+                                do { try await simkl.connect() } catch { self.error = error.localizedDescription }
+                                linking = false
+                            }
+                        }
+                        .disabled(linking)
+                    } else if simkl.waiting > 0 {
+                        Label("\(simkl.waiting) change\(simkl.waiting == 1 ? "" : "s") waiting to reach Simkl", systemImage: "arrow.triangle.2.circlepath")
+                    }
                     Button("Unlink Simkl", role: .destructive) { simkl.disconnect() }
                 } else {
                     Button {
