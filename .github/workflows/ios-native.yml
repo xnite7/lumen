@@ -11,7 +11,7 @@ name: Build couch (iPhone / iPad, native)
 
 on:
   push:
-    branches: [gpui, ios-native]
+    branches: [gpui, ios-native, testflight]
     paths:
       - "ios/**"
       - ".github/workflows/ios-native.yml"
@@ -108,7 +108,8 @@ jobs:
           xcrun simctl spawn "$DEV" log show --last 2m --predicate 'process == "Couch"' --style compact 2>/dev/null | grep -i -E "fatal|crash|error" | head -15
           exit 0
       - name: Signed build → App Store Connect (TestFlight / App Store)
-        if: github.ref == 'refs/heads/gpui'
+        # (the testflight branch: a TestFlight build without a Windows release)
+        if: github.ref == 'refs/heads/gpui' || github.ref == 'refs/heads/testflight'
         working-directory: ios
         env:
           TEAM: ${{ secrets.APPLE_TEAM_ID }}
@@ -126,7 +127,7 @@ jobs:
             -skipPackagePluginValidation -skipMacroValidation $AUTH \
             DEVELOPMENT_TEAM=$TEAM CODE_SIGN_STYLE=Automatic ARCHS=arm64 \
             MARKETING_VERSION=$COUCH_VERSION CURRENT_PROJECT_VERSION=${{ github.run_number }} \
-            archive
+            archive > archive.log 2>&1 || { echo "COUCH-ERRORS-BEGIN"; grep -E "error:|error |Provisioning|provisioning|entitlement|No profiles|requires a|doesn.t|Signing" archive.log | cut -c1-500 | sort -u | head -60; echo "COUCH-ERRORS-END"; exit 1; }
           cat > $RUNNER_TEMP/export.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -139,5 +140,6 @@ jobs:
             <key>manageAppVersionAndBuildNumber</key><false/>
           </dict></plist>
           PLIST
-          xcodebuild -exportArchive -archivePath $RUNNER_TEMP/couch.xcarchive -exportOptionsPlist $RUNNER_TEMP/export.plist -exportPath $RUNNER_TEMP/export $AUTH
+          xcodebuild -exportArchive -archivePath $RUNNER_TEMP/couch.xcarchive -exportOptionsPlist $RUNNER_TEMP/export.plist -exportPath $RUNNER_TEMP/export $AUTH > export.log 2>&1 || { echo "COUCH-ERRORS-BEGIN"; grep -v "^$" export.log | cut -c1-500 | tail -60; echo "COUCH-ERRORS-END"; exit 1; }
+          tail -5 export.log
           echo "### sent to App Store Connect: $COUCH_VERSION (build ${{ github.run_number }})" >> $GITHUB_STEP_SUMMARY
