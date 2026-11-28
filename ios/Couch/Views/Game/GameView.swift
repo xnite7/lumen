@@ -93,14 +93,17 @@ struct GameHomeView: View {
                     if let r = h.ranks.daily { Text("#\(r) today").font(.subheadline.weight(.semibold)) }
                 }
                 ResultDots(results: h.daily.results ?? [])
-                HStack {
-                    Text("Next five in ") + Text(Date().addingTimeInterval(Double(h.nextIn)), style: .timer)
-                    Spacer()
-                    ShareLink(item: shareText(day: h.day, score: h.daily.score ?? 0, results: h.daily.results ?? [], streak: h.streak)) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                }
-                .font(.footnote).foregroundStyle(Theme.dim).monospacedDigit()
+                (Text("Next five in ") + Text(Date().addingTimeInterval(Double(h.nextIn)), style: .timer))
+                    .font(.footnote).foregroundStyle(Theme.dim).monospacedDigit()
+                ShareCardPanel(d: GameCardData(daily: true, score: h.daily.score ?? 0, right: (h.daily.results ?? []).filter { $0 >= 0 }.count,
+                                               rounds: (h.daily.results ?? []).count, results: h.daily.results ?? [], streak: h.streak,
+                                               rank: h.ranks.daily, name: account.discord?.name ?? "", day: GameCardData.day(h.day)))
+            } else if let r = h.daily.resume {
+                Text("You're on scene \(r.n) of \(r.total) with \(r.score) points. Carry on here, or on any of your devices.")
+                    .font(.subheadline).foregroundStyle(Theme.dim)
+                Button { start(daily: true) } label: { Label("Continue today's five", systemImage: "play.fill") }
+                    .buttonStyle(PillButton())
+                    .disabled(starting)
             } else {
                 Text("Five scenes, the same for everyone. Easy first, then nicher. One go a day.")
                     .font(.subheadline).foregroundStyle(Theme.dim)

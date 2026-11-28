@@ -8,6 +8,8 @@ struct SettingsView: View {
     @State private var router = Router.shared
     @State private var signingIn = false
     @State private var error: String?
+    @State private var simkl = Simkl.shared
+    @State private var linking = false
 
     var body: some View {
         List {
@@ -65,6 +67,36 @@ struct SettingsView: View {
                 Text("midnite")
             } footer: {
                 Text("Optional. Couchers in the midnite Discord server get Pro included.")
+            }
+
+            Section {
+                if simkl.connected {
+                    LabeledContent {
+                        if simkl.syncing { ProgressView() } else { Image(systemName: "checkmark.circle.fill") }
+                    } label: {
+                        Label(simkl.name.map { "Linked as \($0)" } ?? "Linked", systemImage: "list.star")
+                    }
+                    Button("Sync now") { Task { await simkl.sync() } }.disabled(simkl.syncing)
+                    Button("Unlink Simkl", role: .destructive) { simkl.disconnect() }
+                } else {
+                    Button {
+                        linking = true
+                        Task {
+                            do { try await simkl.connect() } catch { self.error = error.localizedDescription }
+                            linking = false
+                        }
+                    } label: {
+                        HStack {
+                            Label("Link Simkl", systemImage: "list.star")
+                            if linking { Spacer(); ProgressView() }
+                        }
+                    }
+                    .disabled(linking)
+                }
+            } header: {
+                Text("Simkl")
+            } footer: {
+                Text("Recommended. Your watchlist and what you've watched stay the same on every couch. Your Discord and Simkl links are kept in iCloud Keychain, so they follow your Apple ID to your other devices.")
             }
 
             Section {

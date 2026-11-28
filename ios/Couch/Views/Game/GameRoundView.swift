@@ -48,7 +48,10 @@ struct GameRoundView: View {
         VStack(spacing: 16) {
             HStack {
                 Button {
-                    Task { await GameAPI.quit(r.game); dismiss() }
+                    Task {
+                        // today's five is only paused; an endless run ends here
+                        if let d = await GameAPI.quit(r.game) { withAnimation { done = d } } else { dismiss() }
+                    }
                 } label: { RoundIcon(symbol: "xmark", size: 36) }
                     .accessibilityLabel("Quit")
                 Spacer()
@@ -226,25 +229,17 @@ struct GameRoundView: View {
     // MARK: the end
 
     private func summary(_ d: GameDone) -> some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 16) {
             Spacer()
             Text(d.mode == "daily" ? "Today's five" : "Run over").font(.headline).foregroundStyle(Theme.dim)
-            Text("\(d.score)").font(.system(size: 72, weight: .heavy)).monospacedDigit()
-            Text("\(d.right) of \(d.rounds) right").foregroundStyle(Theme.dim)
-            if d.mode == "daily" {
-                ResultDots(results: d.results)
-                Label("\(d.streak) day streak", systemImage: "flame.fill").font(.headline)
-            } else if d.score >= d.bestRun, d.score > 0 {
+            // the card is the summary: what you share is what you see
+            ShareCardPanel(d: GameCardData(daily: d.mode == "daily", score: d.score, right: d.right, rounds: d.rounds, results: d.results,
+                                           streak: d.streak, rank: d.rank, name: Account.shared.discord?.name ?? "", day: GameCardData.day()))
+            if d.mode != "daily", d.score >= d.bestRun, d.score > 0 {
                 Label("Your best run", systemImage: "trophy.fill").font(.headline)
             }
-            if let r = d.rank { Text("#\(r) on the leaderboard").font(.subheadline.weight(.semibold)) }
             Spacer()
-            if d.mode == "daily" {
-                ShareLink(item: shareText(day: String(ISO8601DateFormatter().string(from: .now).prefix(10)), score: d.score, results: d.results, streak: d.streak)) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-                .buttonStyle(PillButton(primary: false))
-            } else {
+            if d.mode != "daily" {
                 Button {
                     Task {
                         do {
@@ -259,7 +254,7 @@ struct GameRoundView: View {
             Button("Done") { dismiss() }.buttonStyle(PillButton())
         }
         .padding(Theme.pad)
-        .frame(maxWidth: 480)
+        .frame(maxWidth: 560)
         .onAppear { snippet.close() }
     }
 }

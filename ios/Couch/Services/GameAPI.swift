@@ -12,7 +12,8 @@ struct GameRow: Codable, Hashable, Identifiable {
 }
 
 struct GameHome: Codable {
-    struct Daily: Codable { let played: Bool; let score: Int?; let results: [Int]? }
+    struct Resume: Codable { let n: Int; let total: Int; let score: Int }
+    struct Daily: Codable { let played: Bool; let score: Int?; let results: [Int]?; let resume: Resume? }
     struct Boards: Codable { let daily: [GameRow]; let runs: [GameRow] }
     struct Ranks: Codable { let daily: Int?; let runs: Int? }
     let day: String
@@ -94,9 +95,11 @@ enum GameAPI {
         return try await (call("POST", "/reveal", ["game": game]) as R).stage
     }
     static func answer(_ game: String, pick: Int) async throws -> GameAnswer { try await call("POST", "/answer", ["game": game, "pick": pick]) }
-    static func quit(_ game: String) async {
+    /// Leave a game. Today's five is only paused (carry on later, on any
+    /// device); an endless run ends, and its summary comes back.
+    static func quit(_ game: String) async -> GameDone? {
         struct R: Decodable { let done: GameDone? }
-        _ = try? await (call("POST", "/quit", ["game": game]) as R)
+        return (try? await (call("POST", "/quit", ["game": game]) as R))?.done
     }
     /// the round's scene (the session rides in the link: a player can't send headers)
     static func clip(_ round: GameRound) async -> URL? {

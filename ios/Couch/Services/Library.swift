@@ -67,7 +67,17 @@ final class Library {
 
     func inList(_ id: String) -> Bool { myList.contains { $0.id == id } }
     func toggleList(_ m: MetaPreview) {
-        if inList(m.id) { myList.removeAll { $0.id == m.id } } else { myList.insert(m, at: 0) }
+        let adding = !inList(m.id)
+        if adding { myList.insert(m, at: 0) } else { myList.removeAll { $0.id == m.id } }
+        save()
+        Simkl.shared.listed(m, adding)
+    }
+
+    /// Titles from elsewhere (your Simkl lists): added if they aren't here yet.
+    func merge(_ items: [MetaPreview]) {
+        let new = items.filter { m in !myList.contains { $0.id == m.id } }
+        guard !new.isEmpty else { return }
+        myList.append(contentsOf: new)
         save()
     }
 
@@ -85,6 +95,7 @@ final class Library {
         var p = p
         p.updated = .now
         if p.finished {
+            if !watched.contains(p.videoId) { Simkl.shared.watched(p) }
             watched.insert(p.videoId)
             if p.season == nil { progress[p.meta.id] = nil } else { progress[p.meta.id] = p }
         } else {

@@ -179,6 +179,16 @@ final class Account: NSObject {
         return id
     }()
 
+    /// A new device on the same Apple ID: the Discord link is already in
+    /// iCloud Keychain, so sign in quietly with it.
+    func restore() async {
+        guard discord == nil, Keychain.get("discord.refresh") != nil, let a = await discordAccess(),
+              let r = try? await post(["token": a, "open": true]) else { return }
+        discord = Discord(id: r.id ?? "", name: r.name ?? "you", avatar: r.avatar, coucher: r.coucher ?? false)
+        keep()
+        Library.shared.refreshWidgets()
+    }
+
     /// Check the role again (pull to refresh in Settings).
     func refresh() async {
         session = nil
@@ -205,20 +215,33 @@ extension Data {
     }
 }
 
-/// Tokens live in the Keychain, not in preferences.
+/// Tokens live in the Keychain, not in preferences: in iCloud Keychain when
+/// it's on, so your Discord and Simkl links follow your Apple ID to your
+/// other devices (and stay on this one when it's off).
 enum Keychain {
+    private static func base(_ key: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: key, kSecAttrService as String: "couch"]
+    }
     static func set(_ key: String, _ value: String?) {
-        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: key, kSecAttrService as String: "couch"]
-        SecItemDelete(q as CFDictionary)
+        var all = base(key)
+        all[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+        SecItemDelete(all as CFDictionary)
         guard let v = value else { return }
-        var add = q
+        var add = base(key)
         add[kSecValueData as String] = Data(v.utf8)
         add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
-        SecItemAdd(add as CFDictionary, nil)
+        add[kSecAttrSynchronizable as String] = true
+        if SecItemAdd(add as CFDictionary, nil) != errSecSuccess {
+            // no iCloud Keychain: keep it on this device
+            add[kSecAttrSynchronizable as String] = false
+            SecItemAdd(add as CFDictionary, nil)
+        }
     }
     static func get(_ key: String) -> String? {
-        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrAccount as String: key, kSecAttrService as String: "couch",
-                                kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+        var q = base(key)
+        q[kSecReturnData as String] = true
+        q[kSecMatchLimit as String] = kSecMatchLimitOne
+        q[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
         var out: AnyObject?
         guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
         return String(data: d, encoding: .utf8)

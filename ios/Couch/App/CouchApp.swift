@@ -122,6 +122,10 @@ struct RootView: View {
         .onOpenURL { router.handle($0) }
         .task { await router.loadConfig() }
         .task {
+            await Account.shared.restore()
+            await Simkl.shared.sync()
+        }
+        .task {
             // `-demo` at launch (CI screenshots): with the demo source added
             if ProcessInfo.processInfo.arguments.contains("-demo") { _ = try? await Sources.shared.add(demoSource) }
             await Sources.shared.refresh()
