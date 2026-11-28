@@ -21,6 +21,11 @@ jobs:
         working-directory: worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # Sign in with Apple (revoking on account deletion): the team id the
+          # iOS build already uses, plus a "Sign in with Apple" key
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SIWA_KEY_ID: ${{ secrets.SIWA_KEY_ID }}
+          SIWA_KEY_P8: ${{ secrets.SIWA_KEY_P8 }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "::warning::CLOUDFLARE_API_TOKEN not set; skipping"; exit 0; fi
           npm install --no-audit --no-fund
@@ -31,6 +36,11 @@ jobs:
           if [ -n "${{ secrets.ALLOWED_ROLE_IDS }}" ]; then echo "${{ secrets.ALLOWED_ROLE_IDS }}" | npx wrangler secret put ALLOWED_ROLES || true; fi
           if [ -n "${{ secrets.GH_RELEASES_TOKEN }}" ]; then echo "${{ secrets.GH_RELEASES_TOKEN }}" | npx wrangler secret put GH_TOKEN || true; fi
           if [ -n "${{ secrets.DISCORD_CLIENT_SECRET }}" ]; then echo "${{ secrets.DISCORD_CLIENT_SECRET }}" | npx wrangler secret put DISCORD_SECRET || true; fi
+          if [ -n "$SIWA_KEY_ID" ] && [ -n "$SIWA_KEY_P8" ] && [ -n "$APPLE_TEAM_ID" ]; then
+            printf '%s' "$APPLE_TEAM_ID" | npx wrangler secret put APPLE_TEAM_ID || true
+            printf '%s' "$SIWA_KEY_ID" | npx wrangler secret put APPLE_SIWA_KEY_ID || true
+            printf '%s' "$SIWA_KEY_P8" | npx wrangler secret put APPLE_SIWA_P8 || true
+          fi
           set -o pipefail # a failed deploy fails the run
           npx wrangler deploy 2>&1 | tee deploy.log
           echo "### crew server" >> $GITHUB_STEP_SUMMARY

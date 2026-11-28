@@ -179,6 +179,8 @@ final class Account: NSObject {
             throw CouchError.message("Apple didn't finish the sign-in")
         }
         var body: [String: Any] = ["apple": tok]
+        // (a one-time code: lets the server end couch's access if you delete the account)
+        if let c = cred.authorizationCode, let code = String(data: c, encoding: .utf8) { body["code"] = code }
         // (Apple only gives the name the first time)
         if let n = cred.fullName {
             let name = PersonNameComponentsFormatter().string(from: n).trimmingCharacters(in: .whitespaces)

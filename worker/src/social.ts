@@ -10,7 +10,7 @@
 // watching (if you let them); nobody else does.
 
 type Storage = DurableObjectStorage;
-export type Account = { id: string; name: string; handle?: string; avatar?: string; created: number; tok?: string; /** an Apple account joined to a Discord one: that one is who you are */ linked?: string };
+export type Account = { id: string; name: string; handle?: string; avatar?: string; created: number; tok?: string; /** an Apple account joined to a Discord one: that one is who you are */ linked?: string; /** titles they've reviewed (so deleting the account can take the reviews with it) */ reviewed?: string[]; /** Apple's refresh token for this sign-in (to revoke on deletion) */ apple?: string };
 type Edges = { friends: string[]; in: string[]; out: string[]; blocked: string[] };
 export type Watching = { watching: Record<string, unknown> | null; paused: boolean; pos: number; duration: number; at: number };
 
@@ -81,6 +81,8 @@ export class Social {
     private crewWatching: (id: string) => Watching | undefined,
     /** may this person read the reports? */
     private isAdmin: (id: string) => Promise<boolean> = async () => false,
+    /** end couch's access to an Apple sign-in */
+    private revokeApple: (token: string) => Promise<boolean> = async () => false,
   ) {}
 
   private acct = (id: string) => this.storage.get<Account>(`acct:${id}`);
@@ -120,6 +122,11 @@ export class Social {
       const old = list.find((r) => r.who === who.id);
       const r: Review = { id: old?.id ?? crypto.randomUUID(), who: who.id, name: a?.name ?? who.name, handle: a?.handle, avatar: a?.avatar ?? who.avatar, kind: text ? "review" : "rating", title: { id: title, type: s(t.type, 20) ?? "movie", name: s(t.name, 200) ?? title, poster: s(t.poster, 500) }, rating, text, at: Date.now(), likes: old && old.text === text ? old.likes : [] };
       await this.storage.put(key, [r, ...list.filter((x) => x.who !== who.id)].slice(0, 300));
+      const acct: Account = a ?? { id: who.id, name: who.name, avatar: who.avatar, created: Date.now() };
+      if (!acct.reviewed?.includes(title)) {
+        acct.reviewed = [...(acct.reviewed ?? []).slice(-999), title];
+        await this.storage.put(`acct:${who.id}`, acct);
+      }
       return j({ ok: true, id: r.id });
     }
     if (!sub && req.method === "DELETE") {
@@ -147,11 +154,12 @@ export class Social {
   // ---- from the worker's sign-in (never reachable from outside)
 
   /** Sign in with Apple: find or make the account, hand back a fresh couch token. */
-  async appleSignIn(sub: string, name: string | null): Promise<{ account: Account; token: string }> {
+  async appleSignIn(sub: string, name: string | null, refresh: string | null = null): Promise<{ account: Account; token: string }> {
     const id = `ap-${(await sha(`couch-apple:${sub}`)).slice(0, 24)}`;
     let a = await this.acct(id);
     if (!a) a = { id, name: name ?? "someone", created: Date.now() };
     else if (name && a.name === "someone") a.name = name;
+    if (refresh) a.apple = refresh;
     // a new token each sign-in; the old one stops working
     const token = hex(crypto.getRandomValues(new Uint8Array(32)).buffer);
     if (a.tok) await this.storage.delete(`tok:${a.tok}`);
@@ -333,6 +341,13 @@ export class Social {
         const x = await this.acct(ap);
         gone.push(`acct:${ap}`, `link:${who.id}`);
         if (x?.tok) gone.push(`tok:${x.tok}`);
+        if (x?.apple) await this.revokeApple(x.apple).catch(() => false);
+      }
+      if (a?.apple) await this.revokeApple(a.apple).catch(() => false);
+      // their reviews go too (the titles they reviewed are remembered on the account)
+      for (const t of a?.reviewed ?? []) {
+        const list = (await this.storage.get<Review[]>(`rev:${t}`)) ?? [];
+        await this.storage.put(`rev:${t}`, list.filter((r) => r.who !== who.id));
       }
       if (a?.handle) gone.push(`h:${a.handle}`);
       if (a?.tok) gone.push(`tok:${a.tok}`);

@@ -23,6 +23,7 @@ import { TERMS_HTML } from "./terms";
 import { PRIVACY_HTML } from "./privacy";
 import { appStorePro } from "./appstore";
 import { Social, appleSubject, cleanName } from "./social";
+import { appleExchange, appleRevoke } from "./applesiwa";
 import { Game, POOL_IDS } from "./game";
 import { youtubeSource } from "./youtube";
 import { DOWNLOAD_HTML } from "./download";
@@ -31,6 +32,10 @@ import { LANDING_HTML, INSTALL_PAGE, LANDING_FILES } from "./landing/landing";
 
 export interface Env {
   CREW: DurableObjectNamespace;
+  /** Sign in with Apple, for revoking on account deletion (see applesiwa.ts) */
+  APPLE_TEAM_ID?: string;
+  APPLE_SIWA_KEY_ID?: string;
+  APPLE_SIWA_P8?: string;
   /** signing key for sessions */
   CREW_CODE: string;
   /** the Discord server couch is for */
@@ -287,7 +292,9 @@ async function auth(req: Request, env: Env): Promise<Response> {
     if (typeof b.apple === "string") {
       const sub = await appleSubject(b.apple, ["com.midnite.couch"]);
       if (!sub) return json({ error: "Apple didn't recognise that sign-in" }, 401);
-      body = { op: "apple", sub, name: cleanName(b.name) };
+      // (kept so the sign-in can be revoked if the account is deleted)
+      const refresh = typeof b.code === "string" && b.code.length < 2000 ? await appleExchange(env, b.code) : null;
+      body = { op: "apple", sub, name: cleanName(b.name), refresh };
     } else {
       body = { op: "token", token: b.account };
     }
@@ -1040,7 +1047,7 @@ export class Crew {
   constructor(state: DurableObjectState, env: Env) {
     this.storage = state.storage;
     this.env = env;
-    this.accounts = new Social(state.storage, (id) => this.members.get(id), (id) => this.isOwner(id));
+    this.accounts = new Social(state.storage, (id) => this.members.get(id), (id) => this.isOwner(id), (t) => appleRevoke(env, t));
     this.game = new Game(state.storage, async (id, title, year) => {
       const p = await clipPick(env, id, title, year);
       return p === undefined ? null : !!p;
@@ -1443,7 +1450,7 @@ export class Crew {
     if (url.pathname === "/internal/account") {
       const b: any = await req.json().catch(() => ({}));
       if (b.op === "apple" && typeof b.sub === "string") {
-        const { account, token } = await this.accounts.appleSignIn(b.sub, typeof b.name === "string" ? b.name : null);
+        const { account, token } = await this.accounts.appleSignIn(b.sub, typeof b.name === "string" ? b.name : null, typeof b.refresh === "string" ? b.refresh : null);
         const a = await this.accounts.resolve(account);
         return json({ id: a.id, name: a.name, handle: a.handle, avatar: a.avatar, token });
       }
