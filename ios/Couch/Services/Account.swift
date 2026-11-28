@@ -13,7 +13,7 @@ import UIKit
 /// the sign-in sheet must outlive the call that starts it
 nonisolated(unsafe) private var liveAuth: ASWebAuthenticationSession?
 
-let crewURL = "https://midnite-couch.xnite7.workers.dev"
+let crewURL = "https://midnite.club"
 private let discordClient = "1568062298721886290"
 private let discordRedirect = "couch://auth/discord"
 

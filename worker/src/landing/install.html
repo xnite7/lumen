@@ -414,7 +414,7 @@ ol,ul{padding:0;list-style:none}
   if (location.protocol === 'file:') {
     $$('a[href^="/"]').forEach((a) => {
       const h = a.getAttribute('href');
-      a.setAttribute('href', h === '/' ? 'index.html' : h.indexOf('/install') === 0 ? 'install.html' + h.slice(8) : 'https://midnite-couch.xnite7.workers.dev' + h);
+      a.setAttribute('href', h === '/' ? 'index.html' : h.indexOf('/install') === 0 ? 'install.html' + h.slice(8) : 'https://midnite.club' + h);
     });
   }
 
@@ -473,7 +473,7 @@ ol,ul{padding:0;list-style:none}
 
   /* -- send the guide on -- */
   $$('[data-share]').forEach((b) => b.addEventListener('click', () => {
-    const site = /^https?:$/.test(location.protocol) ? location.origin : 'https://midnite-couch.xnite7.workers.dev';
+    const site = /^https?:$/.test(location.protocol) ? location.origin : 'https://midnite.club';
     const url = site + '/install' + (tab === 'ios' ? '#ios' : '');
     const label = b.querySelector('[data-share-label]');
     try {

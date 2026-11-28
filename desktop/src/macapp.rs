@@ -48,8 +48,8 @@ pub fn init(cx: &mut App) {
     cx.on_action(|_: &Minimize, cx| window(cx, |w| w.minimize_window()));
     cx.on_action(|_: &Zoom, cx| window(cx, |w| w.zoom_window()));
     cx.on_action(|_: &FullScreen, cx| window(cx, |w| w.toggle_fullscreen()));
-    cx.on_action(|_: &About, cx| cx.open_url("https://midnite-couch.xnite7.workers.dev"));
-    cx.on_action(|_: &Guide, cx| cx.open_url("https://midnite-couch.xnite7.workers.dev/install"));
+    cx.on_action(|_: &About, cx| cx.open_url("https://midnite.club"));
+    cx.on_action(|_: &Guide, cx| cx.open_url("https://midnite.club/install"));
     cx.on_action(|_: &Search, cx| crate::Nav::go(crate::Route::Search, cx));
     cx.on_action(|_: &Home, cx| crate::Nav::go(crate::Route::Home, cx));
     cx.on_action(|_: &Settings, cx| crate::Nav::go(crate::Route::Settings, cx));

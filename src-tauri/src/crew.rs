@@ -24,7 +24,7 @@ static LAST: Mutex<Option<Sent>> = Mutex::new(None);
 /// The crew server (built in; COUCH_CREW_URL at build time overrides it).
 pub const CREW_URL: &str = match option_env!("COUCH_CREW_URL") {
     Some(u) => u,
-    None => "https://midnite-couch.xnite7.workers.dev",
+    None => "https://midnite.club",
 };
 
 /// You on the couch: your Discord id (the server vouches for it).
