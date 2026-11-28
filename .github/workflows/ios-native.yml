@@ -181,6 +181,14 @@ jobs:
             <key>manageAppVersionAndBuildNumber</key><false/>
           </dict></plist>
           PLIST
-          xcodebuild -exportArchive -archivePath $RUNNER_TEMP/couch.xcarchive -exportOptionsPlist $RUNNER_TEMP/export.plist -exportPath $RUNNER_TEMP/export $AUTH > export.log 2>&1 || { echo "COUCH-ERRORS-BEGIN"; grep -v "^$" export.log | cut -c1-500 | tail -60; echo "COUCH-ERRORS-END"; exit 1; }
+          # the upload can drop ("The network connection was lost"): try up to three times
+          sent=0
+          for try in 1 2 3; do
+            rm -rf $RUNNER_TEMP/export
+            if xcodebuild -exportArchive -archivePath $RUNNER_TEMP/couch.xcarchive -exportOptionsPlist $RUNNER_TEMP/export.plist -exportPath $RUNNER_TEMP/export $AUTH > export.log 2>&1; then sent=1; break; fi
+            echo "upload try $try failed: $(grep -i "error" export.log | head -2 | cut -c1-200)"
+            sleep 30
+          done
+          [ "$sent" = 1 ] || { echo "COUCH-ERRORS-BEGIN"; grep -v "^$" export.log | cut -c1-500 | tail -60; echo "COUCH-ERRORS-END"; exit 1; }
           tail -5 export.log
           echo "### sent to App Store Connect: $COUCH_VERSION (build ${{ github.run_number }})" >> $GITHUB_STEP_SUMMARY
