@@ -33,6 +33,10 @@ final class Friends {
         var by: String
         var line: String
         var why: String
+        /// a reported review: its title's id, its own id, what it said
+        var title: String?
+        var ref: String?
+        var text: String?
     }
     private var at = Date.distantPast
 
@@ -143,8 +147,16 @@ final class Friends {
                 (r[n] as? String ?? r[id] as? String ?? "?") + ((r[h] as? String).map { " (@\($0))" } ?? "")
             }
             return Report(at: at, by: by, line: "\(who("byName", "byHandle", "by")) reported \(who("aboutName", "aboutHandle", "about"))",
-                          why: [r["what"] as? String, r["why"] as? String].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+                          why: [r["what"] as? String, r["titleName"] as? String, r["why"] as? String].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
+                          title: r["title"] as? String, ref: r["ref"] as? String, text: r["text"] as? String)
         }
+    }
+
+    /// take the reported review down for everyone, then clear the report
+    func removeReview(_ r: Report) async {
+        guard let t = r.title, let id = r.ref else { return }
+        _ = await call("POST", "/reviews/\(t)/remove", ["id": id])
+        await clear(r)
     }
 
     /// dealt with: off the list

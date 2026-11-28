@@ -111,7 +111,7 @@ async fn load(kind: String, id: String) -> Loaded {
         api::call::<Value>("meta_get", json!({ "kind": kind, "id": id, "hint": Value::Null })),
         api::call::<Value>("meta_enrich", json!({ "kind": kind, "id": id })),
         api::call::<Value>("crew_social", json!({ "method": "GET", "path": "/v1/favs", "body": Value::Null })),
-        api::call::<Value>("crew_social", json!({ "method": "GET", "path": format!("/v1/reviews/{}", urlencoding::encode(&rid)), "body": Value::Null })),
+        api::call::<Value>("crew_social", json!({ "method": "GET", "path": format!("/v1/me/reviews/{}", urlencoding::encode(&rid)), "body": Value::Null })),
     );
     let lid = full.as_ref().ok().and_then(|f| f["id"].as_str().map(|s| s.to_string())).unwrap_or(id.clone());
     let studio_c = extra.as_ref().ok().and_then(|e| e["companies"].as_array()?.first().cloned());
@@ -253,7 +253,7 @@ impl Detail {
         let rid = m.id.split(':').next().unwrap_or("").to_string();
         cx.spawn(async move |this, cx| {
             let r = api::call::<Value>("crew_social", json!({ "method": "POST", "path": "/v1/activity", "body": { "kind": "review", "title": title, "rating": rating, "text": text } })).await;
-            let list = api::call::<Value>("crew_social", json!({ "method": "GET", "path": format!("/v1/reviews/{}", urlencoding::encode(&rid)), "body": Value::Null })).await.unwrap_or_default();
+            let list = api::call::<Value>("crew_social", json!({ "method": "GET", "path": format!("/v1/me/reviews/{}", urlencoding::encode(&rid)), "body": Value::Null })).await.unwrap_or_default();
             let _ = this.update(cx, |d, cx| {
                 d.reviews = list["reviews"].as_array().cloned().unwrap_or_default();
                 Nav::toast(if r.is_ok() { "posted to the couch".into() } else { "couldn't post that, try again".into() }, cx);
@@ -262,6 +262,32 @@ impl Detail {
         })
         .detach();
         cx.notify();
+    }
+
+    /// like / unlike a review, or report it (then it's out of your sight); the list is read again
+    fn review_act(&mut self, review: String, about: String, report: bool, on: bool, cx: &mut Context<Self>) {
+        let rid = self.lid().split(':').next().unwrap_or("").to_string();
+        cx.spawn(async move |this, cx| {
+            let r = if report {
+                api::call::<Value>("crew_social", json!({ "method": "POST", "path": "/v1/me/report", "body": { "id": about, "what": "review", "why": "reported on PC", "title": rid, "ref": review } })).await
+            } else {
+                api::call::<Value>("crew_social", json!({ "method": "POST", "path": format!("/v1/me/reviews/{}/like", urlencoding::encode(&rid)), "body": { "id": review, "on": on } })).await
+            };
+            let list = api::call::<Value>("crew_social", json!({ "method": "GET", "path": format!("/v1/me/reviews/{}", urlencoding::encode(&rid)), "body": Value::Null })).await.ok();
+            let _ = this.update(cx, |d, cx| {
+                if let Some(l) = list {
+                    d.reviews = l["reviews"].as_array().cloned().unwrap_or_default();
+                }
+                if report {
+                    d.reviews.retain(|x| x["id"].as_str() != Some(review.as_str()));
+                    Nav::toast(if r.is_ok() { "reported. it's hidden for you and sent to the moderators".into() } else { r.err().unwrap_or_default() }, cx);
+                } else if let Err(e) = r {
+                    Nav::toast(e, cx);
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     /// my Discord id (who "you" is in the reviews)
@@ -1112,6 +1138,37 @@ impl Render for Detail {
                     let who = if r["who"].as_str() == Some(me.as_str()) { "you".to_string() } else { r["name"].as_str().unwrap_or("someone").to_string() };
                     let wid = r["who"].as_str().unwrap_or("").to_string();
                     let text = r["text"].as_str().filter(|t| !t.is_empty()).map(String::from);
+                    let rev = r["id"].as_str().unwrap_or("").to_string();
+                    let mine = r["who"].as_str() == Some(me.as_str());
+                    let liked = r["liked"].as_bool() == Some(true);
+                    let likes = r["likes"].as_i64().unwrap_or(0);
+                    let (rev2, about, about2) = (rev.clone(), r["who"].as_str().unwrap_or("").to_string(), r["who"].as_str().unwrap_or("").to_string());
+                    // everyone's reviews: a like, and a way to report
+                    let foot = div()
+                        .mt(px(4.))
+                        .flex()
+                        .items_center()
+                        .gap(px(14.))
+                        .text_size(px(12.))
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(
+                            div()
+                                .id(SharedString::from(format!("rv-like-{rev}")))
+                                .text_color(if liked { gpui::rgb(0xfa6e69).into() } else { theme::label2() })
+                                .when(!mine, |d| d.cursor_pointer().hover(|s| s.opacity(0.75)).on_click(cx.listener(move |d, _, _, cx| d.review_act(rev.clone(), about.clone(), false, !liked, cx))))
+                                .child(if likes > 0 { format!("♥ {likes}") } else { "♥ like".to_string() }),
+                        )
+                        .when(!mine, |d| {
+                            d.child(
+                                div()
+                                    .id(SharedString::from(format!("rv-rep-{rev2}")))
+                                    .text_color(theme::white(0.35))
+                                    .cursor_pointer()
+                                    .hover(|s| s.text_color(gpui::rgb(0xfa6e69)))
+                                    .on_click(cx.listener(move |d, _, _, cx| d.review_act(rev2.clone(), about2.clone(), true, false, cx)))
+                                    .child("report"),
+                            )
+                        });
                     div()
                         .max_w(px(440.))
                         .py(px(10.))
@@ -1132,7 +1189,6 @@ impl Render for Detail {
                                 .flex()
                                 .flex_col()
                                 .gap(px(2.))
-                                .when(text.is_none(), |d| d.h(px(28.)).justify_center())
                                 .child(
                                     div()
                                         .flex()
@@ -1142,7 +1198,8 @@ impl Render for Detail {
                                         .child(div().id(SharedString::from(format!("rv-{wid}"))).font_weight(FontWeight::SEMIBOLD).cursor_pointer().hover(|s| s.underline()).on_click(move |_, _, cx| Nav::go(crate::Route::Member(wid.clone()), cx)).child(crate::ui::emoji::text(&who, 14.)))
                                         .children(r["rating"].as_i64().map(|n| div().text_size(px(13.)).font_weight(FontWeight::SEMIBOLD).text_color(theme::lamp()).child(format!("★ {n}/10")))),
                                 )
-                                .children(text.map(|t| div().text_size(px(14.)).line_height(px(20.)).text_color(theme::white(0.75)).child(crate::ui::emoji::text(&t, 14.)))),
+                                .children(text.map(|t| div().text_size(px(14.)).line_height(px(20.)).text_color(theme::white(0.75)).child(crate::ui::emoji::text(&t, 14.))))
+                                .child(foot),
                         )
                 })),
             );

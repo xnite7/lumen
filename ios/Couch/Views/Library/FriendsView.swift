@@ -87,9 +87,13 @@ struct FriendsView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(r.line).font(.subheadline.weight(.semibold))
                             if !r.why.isEmpty { Text(r.why).font(.caption).foregroundStyle(Theme.dim) }
+                            if let t = r.text, !t.isEmpty { Text("“\(t)”").font(.caption).italic().lineLimit(6) }
                             Text(Date(timeIntervalSince1970: r.at / 1000), format: .dateTime.day().month().hour().minute()).font(.caption2).foregroundStyle(Theme.faint)
                         }
-                        .swipeActions { Button("Done") { Task { await friends.clear(r) } }.tint(GameTint.green) }
+                        .swipeActions {
+                            Button("Done") { Task { await friends.clear(r) } }.tint(GameTint.green)
+                            if r.ref != nil { Button("Remove review", role: .destructive) { Task { await friends.removeReview(r) } } }
+                        }
                     }
                 } header: {
                     Text("Reports")

@@ -103,6 +103,11 @@ struct DetailView: View {
             Shelf(title: "More Like This") { ForEach(similar) { PosterCard(meta: $0) } }
                 .padding(.top, 30)
         }
+        ReviewsSection(meta: m.preview)
+            .padding(.horizontal, Theme.pad)
+            .padding(.top, 30)
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
     }
 
     private func facts(_ m: MetaDetail) -> some View {

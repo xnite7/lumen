@@ -89,6 +89,15 @@ impl Couch {
         .detach();
     }
 
+    /// (the owner) take a reported review down for everyone
+    fn remove_review(&mut self, title: String, id: String, cx: &mut Context<Self>) {
+        cx.spawn(async move |_, cx| {
+            let r = me_call("POST", &format!("/v1/me/reviews/{title}/remove"), json!({ "id": id })).await;
+            let _ = cx.update(|cx| Nav::toast(match r { Ok(_) => "review removed".to_string(), Err(e) => e }, cx));
+        })
+        .detach();
+    }
+
     fn add_friend(&mut self, cx: &mut Context<Self>) {
         let h = self.add.read(cx).content.trim().trim_start_matches('@').to_lowercase();
         if h.len() < 3 {
@@ -202,6 +211,18 @@ impl Couch {
                         .child(div().w(px(620.)).text_size(px(14.)).child(line))
                         .child(btn(SharedString::from(key), "done", false).on_click(cx.listener(move |c, _, _, cx| c.friend_act("/v1/me/reports/done", json!({ "at": at, "by": by }), "cleared", cx)))),
                 );
+                if let (Some(t), Some(id)) = (r["title"].as_str(), r["ref"].as_str()) {
+                    let (t, id) = (t.to_string(), id.to_string());
+                    let key = format!("rep-rm-{}", r["at"].as_f64().unwrap_or(0.) as i64);
+                    col = col.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(10.))
+                            .child(div().w(px(620.)).text_size(px(13.)).italic().text_color(theme::label2()).child(format!("“{}”", r["text"].as_str().unwrap_or(""))))
+                            .child(btn(SharedString::from(key), "remove review", false).on_click(cx.listener(move |c, _, _, cx| c.remove_review(t.clone(), id.clone(), cx)))),
+                    );
+                }
             }
         }
         col

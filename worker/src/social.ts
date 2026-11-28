@@ -19,6 +19,13 @@ const hex = (b: ArrayBuffer) => [...new Uint8Array(b)].map((x) => x.toString(16)
 const sha = async (s: string) => hex(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)));
 const b64 = (s: string) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
 
+/** a review, as kept per title (`rev:<title id>`; the crew's reviews live in the same list) */
+type Review = { id: string; who: string; name: string; handle?: string; avatar?: string; kind: string; title: any; rating?: number; text?: string; at: number; likes?: string[] };
+
+// words that don't get shown (starred out): a plain filter, the report button does the rest
+const ROUGH = /\b(n[i1]gg(?:er|a)s?|f[a@]gg?(?:ot)?s?|r[e3]tard(?:ed|s)?|k[i1]kes?|ch[i1]nks?|sp[i1]cs?|tr[a@]nn(?:y|ies)|c[u*]nts?|wh[o0]res?|sl[u*]ts?|rap(?:e|ist)s?|kys|kill yourself)\b/gi;
+export const soften = (t: string) => t.replace(ROUGH, (w) => w[0] + "*".repeat(Math.max(1, w.length - 1)));
+
 const HANDLE = /^[a-z0-9_.]{3,20}$/;
 const RESERVED = new Set(["admin", "couch", "midnite", "apple", "support", "help", "official", "staff", "mod", "moderator", "system", "everyone", "here", "null", "undefined"]);
 const MAX_FRIENDS = 500;
@@ -81,6 +88,61 @@ export class Social {
     return (await this.storage.get<Edges>(`fr:${id}`)) ?? { friends: [], in: [], out: [], blocked: [] };
   }
   private card = (a: Account) => ({ id: a.id, name: a.name, handle: a.handle, avatar: a.avatar });
+
+  // ---- reviews, for everyone: read by anyone, written / liked by people with an account
+
+  private async reviews(req: Request, title: string, sub: string, who: { id: string; name: string; avatar?: string }, person: boolean): Promise<Response> {
+    const key = `rev:${title}`;
+    const list = (await this.storage.get<Review[]>(key)) ?? [];
+    let b: any = {};
+    if (req.method !== "GET") b = await req.json().catch(() => ({}));
+
+    if (!sub && req.method === "GET") {
+      const blocked = person ? (await this.edges(who.id)).blocked : [];
+      const out = list
+        .filter((r) => !blocked.includes(r.who) && (r.text || r.rating))
+        .map((r) => ({ id: r.id, who: r.who, name: r.name, handle: r.handle, avatar: r.avatar, rating: r.rating, text: r.text ? soften(r.text) : undefined, at: r.at, likes: r.likes?.length ?? 0, liked: !!r.likes?.includes(who.id), mine: r.who === who.id }))
+        // the most liked first, then the newest
+        .sort((x, y) => y.likes - x.likes || y.at - x.at)
+        .slice(0, 100);
+      const rated = list.filter((r) => typeof r.rating === "number" && r.rating > 0);
+      return j({ reviews: out, count: rated.length, average: rated.length ? Math.round((rated.reduce((n, r) => n + (r.rating ?? 0), 0) / rated.length) * 10) / 10 : null, admin: await this.isAdmin(who.id) });
+    }
+    if (!person) return j({ error: "sign in to do that" }, 403);
+
+    if (!sub && req.method === "POST") {
+      const rating = Math.max(0, Math.min(10, Math.round(typeof b.rating === "number" ? b.rating : 0))) || undefined;
+      const text = typeof b.text === "string" ? b.text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "").trim().slice(0, 1200) || undefined : undefined;
+      if (!text && !rating) return j({ error: "say something, or give it a score" }, 400);
+      const a = await this.acct(who.id);
+      const t = b.title && typeof b.title === "object" ? b.title : {};
+      const s = (v: unknown, n: number) => (typeof v === "string" ? v.slice(0, n) : undefined);
+      const old = list.find((r) => r.who === who.id);
+      const r: Review = { id: old?.id ?? crypto.randomUUID(), who: who.id, name: a?.name ?? who.name, handle: a?.handle, avatar: a?.avatar ?? who.avatar, kind: text ? "review" : "rating", title: { id: title, type: s(t.type, 20) ?? "movie", name: s(t.name, 200) ?? title, poster: s(t.poster, 500) }, rating, text, at: Date.now(), likes: old && old.text === text ? old.likes : [] };
+      await this.storage.put(key, [r, ...list.filter((x) => x.who !== who.id)].slice(0, 300));
+      return j({ ok: true, id: r.id });
+    }
+    if (!sub && req.method === "DELETE") {
+      await this.storage.put(key, list.filter((r) => r.who !== who.id));
+      return j({ ok: true });
+    }
+    if (sub === "/like" && req.method === "POST") {
+      const r = list.find((x) => x.id === b.id);
+      if (!r) return j({ error: "that review is gone" }, 404);
+      const likes = (r.likes ?? []).filter((x) => x !== who.id);
+      if (b.on !== false && r.who !== who.id) likes.push(who.id);
+      r.likes = likes.slice(-5000);
+      await this.storage.put(key, list);
+      return j({ ok: true, likes: r.likes.length, liked: r.likes.includes(who.id) });
+    }
+    // whoever runs the place takes a review down
+    if (sub === "/remove" && req.method === "POST") {
+      if (!(await this.isAdmin(who.id))) return j({ error: "not yours to remove" }, 403);
+      await this.storage.put(key, list.filter((r) => r.id !== b.id));
+      return j({ ok: true });
+    }
+    return j({ error: "not found" }, 404);
+  }
 
   // ---- from the worker's sign-in (never reachable from outside)
 
@@ -170,6 +232,8 @@ export class Social {
   async handle(req: Request, path: string, who: { id: string; name: string; avatar?: string }): Promise<Response | null> {
     // guests and bare purchases aren't people here
     const person = /^\d+$/.test(who.id) || who.id.startsWith("ap-");
+    const rv = path.match(/^\/reviews\/([A-Za-z0-9:._-]{1,100})(\/like|\/remove)?$/);
+    if (rv) return this.reviews(req, rv[1], rv[2] ?? "", who, person);
     if (!path.startsWith("/account") && !path.startsWith("/friends") && path !== "/presence" && !path.startsWith("/report")) return null;
     if (!person) return j({ error: "sign in first" }, 403);
     let b: any = {};
@@ -392,7 +456,13 @@ export class Social {
       const id = typeof b.id === "string" ? b.id.slice(0, 40) : "";
       if (!id) return j({ error: "who?" }, 400);
       const list = (await this.storage.get<any[]>("reports")) ?? [];
-      list.push({ by: who.id, about: id, what: typeof b.what === "string" ? b.what.slice(0, 60) : "", why: typeof b.why === "string" ? b.why.slice(0, 500) : "", at: Date.now() });
+      const rep: any = { by: who.id, about: id, what: typeof b.what === "string" ? b.what.slice(0, 60) : "", why: typeof b.why === "string" ? b.why.slice(0, 500) : "", at: Date.now() };
+      // a reported review: which one, and what it said at the time
+      if (typeof b.title === "string" && /^[A-Za-z0-9:._-]{1,100}$/.test(b.title) && typeof b.ref === "string") {
+        const r = ((await this.storage.get<Review[]>(`rev:${b.title}`)) ?? []).find((x) => x.id === b.ref);
+        if (r) Object.assign(rep, { title: b.title, ref: r.id, text: (r.text ?? "").slice(0, 600), titleName: r.title?.name });
+      }
+      list.push(rep);
       await this.storage.put("reports", list.slice(-500));
       return j({ ok: true });
     }
