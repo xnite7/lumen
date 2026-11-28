@@ -90,6 +90,8 @@ final class Account: NSObject {
             "grant_type": "authorization_code", "code": code, "redirect_uri": discordRedirect, "code_verifier": verifier,
         ])
         try await crewLogin(with: tok)
+        // already have a couch account (Apple): the two become one person
+        if Keychain.get("couch.account") != nil { await link() }
     }
 
     func signOut() {
@@ -186,6 +188,31 @@ final class Account: NSObject {
         guard let t = a.account, let id = a.id else { throw CouchError.message("the couch server said no") }
         Keychain.set("couch.account", t)
         couch = Couch(id: id, name: a.name ?? "someone", handle: a.handle)
+        // already signed in with Discord: the two become one person
+        if discord != nil, let e = await link() { throw CouchError.message(e) }
+    }
+
+    /// both sign-ins are joined on the server (one person, one friends list)
+    var linked: Bool { discord != nil && couch != nil && UserDefaults.standard.string(forKey: "couch.linked") == discord?.id }
+
+    /// Join the Apple sign-in to the Discord one. Returns what went wrong, or nil.
+    @discardableResult
+    func link() async -> String? {
+        guard let d = discord, let t = Keychain.get("couch.account") else { return nil }
+        session = nil
+        guard let tok = await token() else { return "couldn't reach the couch server" }
+        var r = URLRequest(url: URL(string: crewURL + "/v1/me/account/link")!)
+        r.httpMethod = "POST"
+        r.setValue("Bearer \(tok)", forHTTPHeaderField: "authorization")
+        r.setValue("application/json", forHTTPHeaderField: "content-type")
+        r.httpBody = try? JSONSerialization.data(withJSONObject: ["account": t])
+        guard let (data, res) = try? await Net.session.data(for: r), let h = res as? HTTPURLResponse else { return "couldn't reach the couch server" }
+        if h.statusCode == 200 {
+            UserDefaults.standard.set(d.id, forKey: "couch.linked")
+            _ = await couchSession()
+            return nil
+        }
+        return ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["error"] as? String ?? "couldn't link them"
     }
 
     /// what the server now says about your account (after a rename)
@@ -219,6 +246,7 @@ final class Account: NSObject {
     }
 
     private func forgetCouch() {
+        UserDefaults.standard.removeObject(forKey: "couch.linked")
         Keychain.set("couch.account", nil)
         couch = nil
         session = nil
@@ -299,6 +327,11 @@ final class Account: NSObject {
     func restore() async {
         // (a couch account whose token came over in iCloud Keychain)
         if discord == nil, couch == nil, Keychain.get("couch.account") != nil { _ = await couchSession() }
+        // both here but never joined (signed in before linking existed, or on two devices)
+        if discord != nil, Keychain.get("couch.account") != nil, !linked {
+            if couch == nil { _ = await couchSession() }
+            await link()
+        }
         guard discord == nil, Keychain.get("discord.refresh") != nil, let a = await discordAccess(),
               let r = try? await post(["token": a, "open": true]) else { return }
         discord = Discord(id: r.id ?? "", name: r.name ?? "you", avatar: r.avatar, coucher: r.coucher ?? false)

@@ -80,6 +80,23 @@ struct FriendsView: View {
                     }
                 }
             }
+
+            if friends.admin, !friends.reports.isEmpty {
+                Section {
+                    ForEach(friends.reports) { r in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(r.line).font(.subheadline.weight(.semibold))
+                            if !r.why.isEmpty { Text(r.why).font(.caption).foregroundStyle(Theme.dim) }
+                            Text(Date(timeIntervalSince1970: r.at / 1000), format: .dateTime.day().month().hour().minute()).font(.caption2).foregroundStyle(Theme.faint)
+                        }
+                        .swipeActions { Button("Done") { Task { await friends.clear(r) } }.tint(GameTint.green) }
+                    }
+                } header: {
+                    Text("Reports")
+                } footer: {
+                    Text("Only you see these. Swipe one away when it's dealt with.")
+                }
+            }
         }
         .navigationTitle("Friends")
         .task { await friends.refresh(force: true) }

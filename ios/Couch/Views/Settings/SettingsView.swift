@@ -50,10 +50,14 @@ struct SettingsView: View {
                             }
                         }
                     }
+                    if account.linked { Label("Linked with your Discord", systemImage: "link") }
                     Toggle("Show friends what I'm watching", isOn: Binding(get: { Crew.shared.share }, set: { Crew.shared.share = $0 }))
                     Button("Sign out") { Task { await account.signOutCouch() } }
                     Button("Delete my account", role: .destructive) { deleting = true }
-                } else if account.discord == nil {
+                } else {
+                    if account.discord != nil {
+                        Button { naming = true } label: { Label("Your couch name (for friends)", systemImage: "at") }
+                    }
                     SignInWithAppleButton(.signIn) { req in
                         req.requestedScopes = [.fullName]
                     } onCompletion: { result in
@@ -74,13 +78,11 @@ struct SettingsView: View {
                     .signInWithAppleButtonStyle(.white)
                     .frame(height: 46)
                     .listRowInsets(EdgeInsets())
-                } else {
-                    Button { naming = true } label: { Label("Your couch name (for friends)", systemImage: "at") }
                 }
             } header: {
                 Text("couch account")
             } footer: {
-                Text("Optional. For friends and the game's leaderboard. couch keeps a name and a couch name, nothing else from Apple.")
+                Text("Optional. For friends and the game's leaderboard. couch keeps a name and a couch name, nothing else from Apple. With Discord too, they're linked into one.")
             }
 
             Section {

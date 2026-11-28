@@ -3,7 +3,8 @@
 use crate::api::{self, sized};
 use crate::theme;
 use crate::Nav;
-use gpui::{div, img, linear_color_stop, linear_gradient, prelude::*, px, Context, FontWeight, ObjectFit, ScrollHandle, SharedString, Window};
+use crate::ui::input::TextInput;
+use gpui::{div, img, linear_color_stop, linear_gradient, prelude::*, px, Context, Entity, FontWeight, ObjectFit, ScrollHandle, SharedString, Window};
 use serde_json::{json, Value};
 use std::time::Duration;
 
@@ -14,19 +15,41 @@ pub struct Couch {
     me: String,
     setup: Option<bool>,
     scroll: ScrollHandle,
+    /// friends (by couch name, alongside the crew): { me, friends, incoming, outgoing }
+    friends: Value,
+    reports: Vec<Value>,
+    add: Entity<TextInput>,
+    handle: Entity<TextInput>,
+}
+
+async fn me_call(method: &str, path: &str, body: Value) -> Result<Value, String> {
+    api::call::<Value>("crew_social", json!({ "method": method, "path": path, "body": body })).await
 }
 
 impl Couch {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        let me = Self { members: vec![], people: vec![], parties: vec![], me: String::new(), setup: None, scroll: ScrollHandle::new() };
+        let add = cx.new(|cx| TextInput::new("a friend's couch name", cx));
+        let handle = cx.new(|cx| TextInput::new("pick your couch name", cx));
+        cx.subscribe(&add, |c: &mut Self, _, _: &crate::ui::input::Submitted, cx| c.add_friend(cx)).detach();
+        cx.subscribe(&handle, |c: &mut Self, _, _: &crate::ui::input::Submitted, cx| c.save_handle(cx)).detach();
+        let me = Self { members: vec![], people: vec![], parties: vec![], me: String::new(), setup: None, scroll: ScrollHandle::new(), friends: Value::Null, reports: vec![], add, handle };
         // refresh every 20 s while it's around
         cx.spawn(async move |this, cx| loop {
             let crew = api::call::<Value>("crew_list", json!({})).await.unwrap_or(json!({ "setup": false }));
             let people = api::call::<Value>("crew_social", json!({ "method": "GET", "path": "/v1/people", "body": Value::Null })).await.unwrap_or_default();
             let parties = api::call::<Value>("crew_social", json!({ "method": "GET", "path": "/v1/parties", "body": Value::Null })).await.unwrap_or_default();
             let me = api::call::<Value>("discord_me", json!({})).await.unwrap_or_default();
+            let friends = me_call("GET", "/v1/me/friends", Value::Null).await.ok();
+            let reports = if friends.as_ref().is_some_and(|f| f["me"]["admin"].as_bool() == Some(true)) { me_call("GET", "/v1/me/reports", Value::Null).await.ok() } else { None };
             let ok = this
                 .update(cx, |c, cx| {
+                    // (a failed fetch keeps what was there)
+                    if let Some(f) = friends {
+                        c.friends = f;
+                    }
+                    if let Some(r) = reports {
+                        c.reports = r["reports"].as_array().cloned().unwrap_or_default();
+                    }
                     c.setup = Some(crew["setup"].as_bool() == Some(true));
                     c.members = crew["members"].as_array().cloned().unwrap_or_default();
                     c.people = people["people"].as_array().cloned().unwrap_or_default();
@@ -42,6 +65,146 @@ impl Couch {
         })
         .detach();
         me
+    }
+}
+
+impl Couch {
+    /// do something on the friends list, say how it went, then read the list again
+    fn friend_act(&mut self, path: &'static str, body: Value, done: &'static str, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            let r = me_call("POST", path, body).await;
+            let f = me_call("GET", "/v1/me/friends", Value::Null).await.ok();
+            let rep = if path.starts_with("/v1/me/reports") { me_call("GET", "/v1/me/reports", Value::Null).await.ok() } else { None };
+            let _ = this.update(cx, |c, cx| {
+                if let Some(f) = f {
+                    c.friends = f;
+                }
+                if let Some(r) = rep {
+                    c.reports = r["reports"].as_array().cloned().unwrap_or_default();
+                }
+                Nav::toast(match r { Ok(_) => done.to_string(), Err(e) => e }, cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn add_friend(&mut self, cx: &mut Context<Self>) {
+        let h = self.add.read(cx).content.trim().trim_start_matches('@').to_lowercase();
+        if h.len() < 3 {
+            return;
+        }
+        self.add.update(cx, |i, cx| i.set_text("", cx));
+        self.friend_act("/v1/me/friends/add", json!({ "handle": h }), "asked", cx);
+    }
+
+    fn save_handle(&mut self, cx: &mut Context<Self>) {
+        let h = self.handle.read(cx).content.trim().trim_start_matches('@').to_lowercase();
+        if h.len() < 3 {
+            return;
+        }
+        cx.spawn(async move |this, cx| {
+            let r = me_call("PUT", "/v1/me/account", json!({ "handle": h })).await;
+            let f = me_call("GET", "/v1/me/friends", Value::Null).await.ok();
+            let _ = this.update(cx, |c, cx| {
+                if let Some(f) = f {
+                    c.friends = f;
+                }
+                Nav::toast(match r { Ok(_) => "that's your couch name".to_string(), Err(e) => e }, cx);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// friends by couch name: add, answer, who's watching what; and (for whoever runs the place) the reports
+    fn friends_section(&self, cx: &mut Context<Self>) -> gpui::Div {
+        let f = &self.friends;
+        let field = |e: &Entity<TextInput>| div().w(px(260.)).h(px(36.)).px(px(12.)).flex().items_center().rounded_full().bg(theme::white(0.08)).text_size(px(14.)).child(e.clone());
+        let mut col = div().flex_none().mt(px(10.)).flex().flex_col().gap(px(12.)).child(div().text_size(px(24.)).font_weight(FontWeight::BLACK).child("friends"));
+        match f["me"]["handle"].as_str() {
+            None => {
+                col = col
+                    .child(div().text_size(px(14.)).text_color(theme::label2()).child("friends add you by your couch name (on iPhone too). pick one: 3 to 20 letters, numbers, _ or ."))
+                    .child(div().flex().items_center().gap(px(8.)).child(field(&self.handle)).child(btn("fr-name".into(), "save", true).on_click(cx.listener(|c, _, _, cx| c.save_handle(cx)))));
+            }
+            Some(h) => {
+                col = col.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(field(&self.add))
+                        .child(btn("fr-add".into(), "add", true).on_click(cx.listener(|c, _, _, cx| c.add_friend(cx))))
+                        .child(div().ml(px(8.)).text_size(px(13.)).text_color(theme::label2()).child(format!("you're @{h}"))),
+                );
+            }
+        }
+        let row = |p: &Value| {
+            let name = p["name"].as_str().unwrap_or("someone").to_string();
+            let handle = p["handle"].as_str().map(|h| format!("@{h}")).unwrap_or_default();
+            let watching = p["watching"]["title"].as_str().map(|t| match p["watching"]["episode"].as_str().filter(|e| !e.is_empty()) {
+                Some(e) => format!("watching {t} · {e}"),
+                None => format!("watching {t}"),
+            });
+            div()
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .child(avatar(p["avatar"].as_str(), &name, 36.))
+                .child(
+                    div()
+                        .w(px(260.))
+                        .flex()
+                        .flex_col()
+                        .child(div().flex().gap(px(6.)).child(div().font_weight(FontWeight::SEMIBOLD).truncate().child(name)).child(div().text_size(px(13.)).text_color(theme::label2()).child(handle)))
+                        .children(watching.map(|w| div().text_size(px(13.)).text_color(gpui::rgb(0x5cd68f)).truncate().child(w))),
+                )
+        };
+        let id_of = |p: &Value| p["id"].as_str().unwrap_or("").to_string();
+        for p in f["incoming"].as_array().into_iter().flatten() {
+            let (a, b) = (id_of(p), id_of(p));
+            col = col.child(
+                row(p)
+                    .child(div().text_size(px(13.)).text_color(theme::label2()).child("wants to be friends"))
+                    .child(btn(SharedString::from(format!("fr-yes-{a}")), "accept", true).on_click(cx.listener(move |c, _, _, cx| c.friend_act("/v1/me/friends/accept", json!({ "id": a }), "you're friends", cx))))
+                    .child(btn(SharedString::from(format!("fr-no-{b}")), "no", false).on_click(cx.listener(move |c, _, _, cx| c.friend_act("/v1/me/friends/remove", json!({ "id": b }), "turned down", cx)))),
+            );
+        }
+        for p in f["friends"].as_array().into_iter().flatten() {
+            let (a, b) = (id_of(p), id_of(p));
+            col = col.child(
+                row(p)
+                    .child(btn(SharedString::from(format!("fr-rm-{a}")), "remove", false).on_click(cx.listener(move |c, _, _, cx| c.friend_act("/v1/me/friends/remove", json!({ "id": a }), "removed", cx))))
+                    .child(btn(SharedString::from(format!("fr-bl-{b}")), "block", false).on_click(cx.listener(move |c, _, _, cx| c.friend_act("/v1/me/friends/block", json!({ "id": b }), "blocked", cx)))),
+            );
+        }
+        for p in f["outgoing"].as_array().into_iter().flatten() {
+            let a = id_of(p);
+            col = col.child(
+                row(p)
+                    .child(div().text_size(px(13.)).text_color(theme::label2()).child("asked"))
+                    .child(btn(SharedString::from(format!("fr-back-{a}")), "take back", false).on_click(cx.listener(move |c, _, _, cx| c.friend_act("/v1/me/friends/remove", json!({ "id": a }), "taken back", cx)))),
+            );
+        }
+        if !self.reports.is_empty() {
+            col = col.child(div().mt(px(10.)).text_size(px(24.)).font_weight(FontWeight::BLACK).child("reports")).child(div().text_size(px(13.)).text_color(theme::label2()).child("only you see these."));
+            for r in &self.reports {
+                let who = |n: &str, h: &str, id: &str| format!("{}{}", r[n].as_str().unwrap_or(r[id].as_str().unwrap_or("?")), r[h].as_str().map(|h| format!(" (@{h})")).unwrap_or_default());
+                let line = format!("{} reported {} · {} · {}", who("byName", "byHandle", "by"), who("aboutName", "aboutHandle", "about"), r["what"].as_str().unwrap_or(""), r["why"].as_str().unwrap_or(""));
+                let (at, by) = (r["at"].clone(), r["by"].clone());
+                let key = format!("rep-{}", r["at"].as_f64().unwrap_or(0.) as i64);
+                col = col.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(10.))
+                        .child(div().w(px(620.)).text_size(px(14.)).child(line))
+                        .child(btn(SharedString::from(key), "done", false).on_click(cx.listener(move |c, _, _, cx| c.friend_act("/v1/me/reports/done", json!({ "at": at, "by": by }), "cleared", cx)))),
+                );
+            }
+        }
+        col
     }
 }
 
@@ -281,6 +444,11 @@ impl Render for Couch {
                         )
                 }),
             ));
+        }
+
+        // --------------------------------------------------------- friends
+        if !self.friends.is_null() {
+            page = page.child(self.friends_section(cx));
         }
 
         // ------------------------------------------------------------ crew

@@ -23,6 +23,17 @@ final class Friends {
     private(set) var handle: String?
     private(set) var name: String = ""
     private(set) var loaded = false
+    /// you run the place: you can read the reports
+    private(set) var admin = false
+    private(set) var reports: [Report] = []
+
+    struct Report: Identifiable, Hashable {
+        var id: String { "\(at)-\(by)" }
+        var at: Double
+        var by: String
+        var line: String
+        var why: String
+    }
     private var at = Date.distantPast
 
     var watching: [CrewMember] { friends.compactMap(\.watching) }
@@ -76,8 +87,10 @@ final class Friends {
         if let me = v["me"] as? [String: Any] {
             handle = me["handle"] as? String
             name = me["name"] as? String ?? ""
+            admin = me["admin"] as? Bool ?? false
         }
         loaded = true
+        if admin { await loadReports() }
     }
 
     /// Your name and couch name. Returns what went wrong, or nil.
@@ -119,6 +132,25 @@ final class Friends {
     func block(_ f: Friend) async {
         _ = await call("POST", "/friends/block", ["id": f.id])
         await refresh(force: true)
+    }
+
+    private func loadReports() async {
+        let (code, v) = await call("GET", "/reports")
+        guard code == 200 else { return }
+        reports = ((v["reports"] as? [[String: Any]]) ?? []).compactMap { r in
+            guard let at = (r["at"] as? NSNumber)?.doubleValue, let by = r["by"] as? String else { return nil }
+            let who = { (n: String, h: String, id: String) in
+                (r[n] as? String ?? r[id] as? String ?? "?") + ((r[h] as? String).map { " (@\($0))" } ?? "")
+            }
+            return Report(at: at, by: by, line: "\(who("byName", "byHandle", "by")) reported \(who("aboutName", "aboutHandle", "about"))",
+                          why: [r["what"] as? String, r["why"] as? String].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+        }
+    }
+
+    /// dealt with: off the list
+    func clear(_ r: Report) async {
+        _ = await call("POST", "/reports/done", ["at": r.at, "by": r.by])
+        await loadReports()
     }
 
     func report(_ f: Friend, why: String) async {
