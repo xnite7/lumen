@@ -9,7 +9,7 @@
 use crate::api;
 use crate::theme;
 use crate::ui::{icon, video};
-use gpui::{div, img, prelude::*, px, Context, Div, FontWeight, ObjectFit, ScrollHandle, SharedString, Stateful, Window};
+use gpui::{div, img, prelude::*, px, AnimationExt, Context, Div, FontWeight, ScrollHandle, SharedString, Stateful, Window};
 use std::sync::Arc;
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
@@ -160,7 +160,14 @@ fn card() -> Div {
     div().w_full().p(px(22.)).rounded(px(18.)).bg(theme::white(0.05)).flex().flex_col().gap(px(12.))
 }
 
-/// one square per scene: brighter = got it sooner, hollow = missed
+// the game's colours
+const GOLD: u32 = 0xffc75c;
+const GREEN: u32 = 0x5cd68f;
+const RED: u32 = 0xfa6e69;
+const VIOLET: u32 = 0xab96fa;
+const FLAME: u32 = 0xff9442;
+
+/// one square per scene: gold = in a blink, then cooler; hollow = missed
 fn dots(results: &Value) -> Div {
     div().flex().gap(px(6.)).children(results.as_array().into_iter().flatten().map(|r| {
         let r = r.as_i64().unwrap_or(-1);
@@ -168,7 +175,7 @@ fn dots(results: &Value) -> Div {
         if r < 0 {
             d.border_2().border_color(theme::white(0.3))
         } else {
-            d.bg(theme::white(1. - r as f32 * 0.18))
+            d.bg(gpui::rgb([GOLD, GREEN, 0x4fae78, 0x8b7bd0, 0x777777][(r as usize).min(4)]))
         }
     }))
 }
@@ -714,15 +721,42 @@ impl Scenes {
                             .flex_col()
                             .items_center()
                             .child(div().font_weight(FontWeight::BOLD).child(if total > 0 { format!("scene {n} of {total}") } else { format!("scene {n}") }))
-                            .child(div().text_size(px(12.)).text_color(theme::label2()).child(level)),
+                            .child(div().text_size(px(12.)).font_weight(FontWeight::BOLD).text_color(gpui::rgb(match r["level"].as_i64().unwrap_or(1) { 2 => GOLD, 3 => VIOLET, _ => GREEN })).child(level)),
                     )
-                    .child(div().flex().flex_col().items_end().gap(px(3.)).child(div().text_size(px(20.)).font_weight(FontWeight::BLACK).child(commas(score))).children(hearts)),
+                    .child(div().flex().flex_col().items_end().gap(px(3.)).child(div().text_size(px(20.)).font_weight(FontWeight::BLACK).text_color(gpui::rgb(GOLD)).child(commas(score))).children(hearts)),
             )
             .child(screen);
 
+        // what just happened, said loudly
+        if let Some(x) = &res {
+            let ok = x["correct"].as_bool().unwrap_or(false);
+            let got = x["gained"].as_i64().unwrap_or(0);
+            let praise = ["in a blink!", "one second!", "three seconds", "five seconds", "got it"][self.stage.min(4)];
+            let line = if ok { if got > 0 { format!("{praise}   +{}", commas(got)) } else { praise.to_string() } } else { "not this time".to_string() };
+            col = col.child(
+                div()
+                    .w_full()
+                    .h(px(46.))
+                    .rounded(px(12.))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(10.))
+                    .font_weight(FontWeight::BLACK)
+                    .text_size(px(17.))
+                    .text_color(gpui::black())
+                    .bg(gpui::rgb(if ok { GREEN } else { RED }))
+                    .child(icon(if ok { "check" } else { "close" }, 18.).text_color(gpui::black()))
+                    .child(line)
+                    .with_animation(("sc-verdict", n as usize), gpui::Animation::new(std::time::Duration::from_millis(420)).with_easing(gpui::ease_out_quint()), |d, t| {
+                        d.opacity(t).mt(px(-10. * (1. - t)))
+                    }),
+            );
+        }
+
         if res.is_none() {
             col = col
-                .child(div().flex().gap(px(6.)).children((0..stages.len()).map(|i| div().flex_1().h(px(4.)).rounded_full().bg(if i <= self.stage { theme::white(1.) } else { theme::white(0.18) }))))
+                .child(div().flex().gap(px(6.)).children((0..stages.len()).map(|i| div().flex_1().h(px(4.)).rounded_full().bg(if i <= self.stage { gpui::rgb(GOLD).into() } else { theme::white(0.18) }))))
                 .child(
                     div()
                         .flex()
@@ -733,7 +767,7 @@ impl Scenes {
                             s if s < 1. => "a blink".to_string(),
                             s => format!("the first {} second{}", s as i64, if s == 1. { "" } else { "s" }),
                         }))
-                        .child(div().font_weight(FontWeight::BOLD).child(format!("worth {}", commas(worth)))),
+                        .child(div().font_weight(FontWeight::BOLD).text_color(gpui::rgb(GOLD)).child(format!("worth {}", commas(worth)))),
                 );
         }
 
@@ -756,9 +790,9 @@ impl Scenes {
                 .rounded(px(12.))
                 .font_weight(FontWeight::BOLD)
                 .text_size(px(16.))
-                .when(is_right, |d| d.bg(gpui::white()).text_color(gpui::black()))
+                .when(is_right, |d| d.bg(gpui::rgb(GREEN)).text_color(gpui::black()))
                 .when(!is_right, |d| d.bg(theme::white(if picked == Some(i) { 0.16 } else { 0.08 })))
-                .when(is_wrong, |d| d.border_2().border_color(theme::white(0.6)))
+                .when(is_wrong, |d| d.border_2().border_color(gpui::rgb(RED)).text_color(gpui::rgb(RED)))
                 .when(answered && !is_right && !is_wrong, |d| d.opacity(0.4))
                 .when(!answered, |d| d.cursor_pointer().hover(|s| s.bg(theme::white(0.16))).on_click(cx.listener(move |s, _, _, cx| s.answer(i, cx))))
                 .child(div().min_w_0().truncate().child(o["title"].as_str().unwrap_or("").to_string()))
@@ -785,18 +819,24 @@ impl Scenes {
         let daily = d["mode"].as_str() == Some("daily");
         let score = d["score"].as_i64().unwrap_or(0);
         let mut col = div().w(px(COL)).pt(px(10.)).flex().flex_col().items_center().gap(px(14.));
-        // the card is the summary: what you'd share is what you see
-        col = match &self.card {
-            Some((img_, _)) => col.child(img(img_.clone()).w(px(COL)).h(px(COL * 630. / 1200.)).rounded(px(22.)).object_fit(ObjectFit::Contain)),
-            None => col
-                .child(div().text_color(theme::label2()).font_weight(FontWeight::BOLD).child(if daily { "today's five" } else { "run over" }))
-                .child(div().text_size(px(84.)).font_weight(FontWeight::BLACK).child(commas(score)))
-                .child(div().text_color(theme::label2()).child(format!("{} of {} right", d["right"].as_i64().unwrap_or(0), d["rounds"].as_i64().unwrap_or(0))))
-                .child(dots(&d["results"])),
-        };
-        if !daily && score > 0 && score >= d["bestRun"].as_i64().unwrap_or(0) {
-            col = col.child(div().font_weight(FontWeight::BOLD).child("your best run"));
+        // (the card is only what gets shared: copy / save. It isn't shown here.)
+        col = col
+            .child(div().text_color(theme::label2()).font_weight(FontWeight::BOLD).child(if daily { "today's five" } else { "run over" }))
+            .child(div().text_size(px(92.)).font_weight(FontWeight::BLACK).text_color(gpui::rgb(GOLD)).child(commas(score)))
+            .child(div().text_color(theme::label2()).child(format!("points · {} of {} right", d["right"].as_i64().unwrap_or(0), d["rounds"].as_i64().unwrap_or(0))))
+            .child(dots(&d["results"]));
+        let chip = |text: String, c: u32| div().px(px(12.)).py(px(6.)).rounded_full().bg(gpui::rgba((c << 8) | 0x2a)).text_color(gpui::rgb(c)).font_weight(FontWeight::BOLD).text_size(px(13.)).child(text);
+        let mut chips = div().flex().gap(px(8.));
+        if daily && d["streak"].as_i64().unwrap_or(0) > 0 {
+            chips = chips.child(chip(format!("{} day streak", d["streak"].as_i64().unwrap_or(0)), FLAME));
         }
+        if let Some(r) = d["rank"].as_i64() {
+            chips = chips.child(chip(format!("#{r} {}", if daily { "today" } else { "all time" }), GOLD));
+        }
+        if !daily && score > 0 && score >= d["bestRun"].as_i64().unwrap_or(0) {
+            chips = chips.child(chip("your best run".into(), VIOLET));
+        }
+        col = col.child(chips);
         let mut row = div().w_full().mt(px(8.)).flex().gap(px(10.));
         if self.card.is_some() {
             row = row
