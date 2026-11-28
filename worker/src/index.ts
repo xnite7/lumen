@@ -1040,11 +1040,22 @@ export class Crew {
   constructor(state: DurableObjectState, env: Env) {
     this.storage = state.storage;
     this.env = env;
-    this.accounts = new Social(state.storage, (id) => this.members.get(id));
+    this.accounts = new Social(state.storage, (id) => this.members.get(id), (id) => this.isOwner(id));
     this.game = new Game(state.storage, async (id, title, year) => {
       const p = await clipPick(env, id, title, year);
       return p === undefined ? null : !!p;
     });
+  }
+  /** the Discord server's owner runs the place (reads reports); asked of Discord, kept an hour */
+  owner: { id: string; at: number } | null = null;
+  async isOwner(id: string): Promise<boolean> {
+    if (!/^\d+$/.test(id) || !this.env.GUILD_ID || !this.env.DISCORD_BOT_TOKEN) return false;
+    if (!this.owner || Date.now() - this.owner.at > 3600_000) {
+      const r = await fetch(`https://discord.com/api/guilds/${this.env.GUILD_ID}`, { headers: { authorization: `Bot ${this.env.DISCORD_BOT_TOKEN}` } });
+      if (r.ok) this.owner = { id: String(((await r.json()) as any)?.owner_id ?? ""), at: Date.now() };
+      else return false;
+    }
+    return this.owner.id === id;
   }
   /** Discord's own look for someone: banner and display-name style (an hour) */
   looks = new Map<string, { v: any; at: number }>();
@@ -1433,7 +1444,8 @@ export class Crew {
       const b: any = await req.json().catch(() => ({}));
       if (b.op === "apple" && typeof b.sub === "string") {
         const { account, token } = await this.accounts.appleSignIn(b.sub, typeof b.name === "string" ? b.name : null);
-        return json({ id: account.id, name: account.name, handle: account.handle, avatar: account.avatar, token });
+        const a = await this.accounts.resolve(account);
+        return json({ id: a.id, name: a.name, handle: a.handle, avatar: a.avatar, token });
       }
       const a = b.op === "token" && typeof b.token === "string" ? await this.accounts.byToken(b.token) : null;
       return a ? json({ id: a.id, name: a.name, handle: a.handle, avatar: a.avatar }) : json({ error: "gone" }, 404);

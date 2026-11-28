@@ -10,7 +10,7 @@
 // watching (if you let them); nobody else does.
 
 type Storage = DurableObjectStorage;
-export type Account = { id: string; name: string; handle?: string; avatar?: string; created: number; tok?: string };
+export type Account = { id: string; name: string; handle?: string; avatar?: string; created: number; tok?: string; /** an Apple account joined to a Discord one: that one is who you are */ linked?: string };
 type Edges = { friends: string[]; in: string[]; out: string[]; blocked: string[] };
 export type Watching = { watching: Record<string, unknown> | null; paused: boolean; pos: number; duration: number; at: number };
 
@@ -72,6 +72,8 @@ export class Social {
     private storage: Storage,
     /** the crew's presence, for friends who are couchers */
     private crewWatching: (id: string) => Watching | undefined,
+    /** may this person read the reports? */
+    private isAdmin: (id: string) => Promise<boolean> = async () => false,
   ) {}
 
   private acct = (id: string) => this.storage.get<Account>(`acct:${id}`);
@@ -96,11 +98,71 @@ export class Social {
     return { account: a, token };
   }
 
-  /** a couch token → whose it is */
-  async byToken(token: string): Promise<Account | null> {
+  /** a couch token → the Apple account it belongs to (not following a link) */
+  private async rawByToken(token: string): Promise<Account | null> {
     if (!/^[0-9a-f]{64}$/.test(token)) return null;
     const id = await this.storage.get<string>(`tok:${await sha(token)}`);
     return id ? ((await this.acct(id)) ?? null) : null;
+  }
+
+  /** who an account really is: the Discord one it's joined to, if any */
+  async resolve(a: Account): Promise<Account> {
+    if (!a.linked) return a;
+    return (await this.acct(a.linked)) ?? { id: a.linked, name: a.name, created: a.created };
+  }
+
+  /** a couch token → whose it is */
+  async byToken(token: string): Promise<Account | null> {
+    const a = await this.rawByToken(token);
+    return a ? this.resolve(a) : null;
+  }
+
+  /** Join an Apple account (by its token) to the Discord person asking: one
+   *  person from then on, with the friends and the couch name of both. */
+  private async link(who: { id: string; name: string; avatar?: string }, token: string): Promise<Response> {
+    if (!/^\d+$/.test(who.id)) return j({ error: "sign in with Discord to link" }, 400);
+    const a = await this.rawByToken(token);
+    if (!a || !a.id.startsWith("ap-")) return j({ error: "sign in with Apple again" }, 401);
+    if (a.linked === who.id) return j({ ok: true });
+    if (a.linked) return j({ error: "that Apple sign-in is linked to another Discord" }, 409);
+    const other = await this.storage.get<string>(`link:${who.id}`);
+    if (other && other !== a.id) return j({ error: "this Discord is linked to another Apple sign-in" }, 409);
+    const d: Account = (await this.acct(who.id)) ?? { id: who.id, name: who.name, avatar: who.avatar, created: Date.now() };
+    const puts: Record<string, unknown> = {};
+    const gone: string[] = [`fr:${a.id}`];
+    // the couch name: Discord's if it has one, else the Apple account's comes over
+    if (a.handle) {
+      if (d.handle) gone.push(`h:${a.handle}`);
+      else {
+        d.handle = a.handle;
+        puts[`h:${a.handle}`] = d.id;
+      }
+    }
+    // friendships: everything the Apple account had now belongs to the Discord one
+    const ea = await this.edges(a.id);
+    const ed = await this.edges(d.id);
+    const uniq = (l: string[]) => [...new Set(l)].filter((x) => x !== d.id && x !== a.id);
+    ed.friends = uniq([...ed.friends, ...ea.friends]);
+    ed.blocked = uniq([...ed.blocked, ...ea.blocked]);
+    ed.in = uniq([...ed.in, ...ea.in]).filter((x) => !ed.friends.includes(x));
+    ed.out = uniq([...ed.out, ...ea.out]).filter((x) => !ed.friends.includes(x));
+    for (const o of new Set([...ea.friends, ...ea.in, ...ea.out])) {
+      if (o === d.id) continue;
+      const eo = await this.edges(o);
+      const swap = (l: string[]) => [...new Set(l.map((x) => (x === a.id ? d.id : x)))];
+      puts[`fr:${o}`] = { friends: swap(eo.friends), in: swap(eo.in).filter((x) => !swap(eo.friends).includes(x)), out: swap(eo.out).filter((x) => !swap(eo.friends).includes(x)), blocked: eo.blocked };
+    }
+    a.linked = d.id;
+    a.handle = undefined;
+    puts[`acct:${a.id}`] = a;
+    puts[`acct:${d.id}`] = d;
+    puts[`fr:${d.id}`] = ed;
+    puts[`link:${d.id}`] = a.id;
+    await this.storage.delete(gone);
+    await this.storage.put(puts);
+    const was = this.on.get(a.id);
+    if (was) this.on.delete(a.id);
+    return j({ ok: true, account: this.card(d) });
   }
 
   // ---- /v1/me/account, /v1/me/friends…, /v1/me/presence, /v1/me/report
@@ -108,7 +170,7 @@ export class Social {
   async handle(req: Request, path: string, who: { id: string; name: string; avatar?: string }): Promise<Response | null> {
     // guests and bare purchases aren't people here
     const person = /^\d+$/.test(who.id) || who.id.startsWith("ap-");
-    if (!path.startsWith("/account") && !path.startsWith("/friends") && path !== "/presence" && path !== "/report") return null;
+    if (!path.startsWith("/account") && !path.startsWith("/friends") && path !== "/presence" && !path.startsWith("/report")) return null;
     if (!person) return j({ error: "sign in first" }, 403);
     let b: any = {};
     if (req.method !== "GET") {
@@ -120,7 +182,41 @@ export class Social {
     }
     const me = async (): Promise<Account> => (await this.acct(who.id)) ?? { id: who.id, name: who.name, avatar: who.avatar, created: Date.now() };
 
-    if (path === "/account" && req.method === "GET") return j({ account: this.card(await me()) });
+    if (path === "/account" && req.method === "GET") return j({ account: this.card(await me()), linked: !!(await this.storage.get<string>(`link:${who.id}`)) });
+
+    if (path === "/account/link" && req.method === "POST") return this.link(who, typeof b.account === "string" ? b.account : "");
+
+    // apart again: the Apple sign-in becomes its own (empty) account; friends stay with Discord
+    if (path === "/account/unlink" && req.method === "POST") {
+      const ap = await this.storage.get<string>(`link:${who.id}`);
+      if (ap) {
+        const a = await this.acct(ap);
+        if (a) {
+          a.linked = undefined;
+          await this.storage.put(`acct:${ap}`, a);
+        }
+        await this.storage.delete(`link:${who.id}`);
+      }
+      return j({ ok: true });
+    }
+
+    // the reports, for whoever runs the place
+    if (path === "/reports" && req.method === "GET") {
+      if (!(await this.isAdmin(who.id))) return j({ error: "not yours to read" }, 403);
+      const list = ((await this.storage.get<any[]>("reports")) ?? []).slice().reverse();
+      const out: any[] = [];
+      for (const r of list.slice(0, 200)) {
+        const [by, about] = await Promise.all([this.acct(r.by), this.acct(r.about)]);
+        out.push({ ...r, byName: by?.name, byHandle: by?.handle, aboutName: about?.name, aboutHandle: about?.handle });
+      }
+      return j({ reports: out });
+    }
+    if (path === "/reports/done" && req.method === "POST") {
+      if (!(await this.isAdmin(who.id))) return j({ error: "not yours" }, 403);
+      const list = (await this.storage.get<any[]>("reports")) ?? [];
+      await this.storage.put("reports", list.filter((r) => !(r.at === b.at && r.by === b.by)));
+      return j({ ok: true });
+    }
 
     if (path === "/account" && req.method === "PUT") {
       const a = await me();
@@ -147,7 +243,8 @@ export class Social {
 
     // sign out everywhere (Apple accounts): the couch token stops working
     if (path === "/account/signout" && req.method === "POST") {
-      const a = await this.acct(who.id);
+      const ap = await this.storage.get<string>(`link:${who.id}`);
+      const a = await this.acct(ap ?? who.id);
       if (a?.tok) {
         await this.storage.delete(`tok:${a.tok}`);
         a.tok = undefined;
@@ -166,6 +263,13 @@ export class Social {
         await this.storage.put(`fr:${other}`, { friends: drop(o.friends), in: drop(o.in), out: drop(o.out), blocked: o.blocked });
       }
       const gone = [`acct:${who.id}`, `fr:${who.id}`, `gs:${who.id}`];
+      // (a joined Apple sign-in goes with it)
+      const ap = await this.storage.get<string>(`link:${who.id}`);
+      if (ap) {
+        const x = await this.acct(ap);
+        gone.push(`acct:${ap}`, `link:${who.id}`);
+        if (x?.tok) gone.push(`tok:${x.tok}`);
+      }
       if (a?.handle) gone.push(`h:${a.handle}`);
       if (a?.tok) gone.push(`tok:${a.tok}`);
       await this.storage.delete(gone);
@@ -208,7 +312,7 @@ export class Social {
         return out;
       };
       const acct = await me();
-      return j({ me: this.card(acct), friends: await cards(e.friends, true), incoming: await cards(e.in, false), outgoing: await cards(e.out, false) });
+      return j({ me: { ...this.card(acct), admin: await this.isAdmin(who.id) }, friends: await cards(e.friends, true), incoming: await cards(e.in, false), outgoing: await cards(e.out, false) });
     }
 
     const target = async (): Promise<Account | null> => {
