@@ -6,14 +6,38 @@ struct LibraryView: View {
     @State private var lib = Library.shared
     @State private var crew = Crew.shared
     @State private var coming = ComingUp.shared
+    @State private var friends = Friends.shared
+    @State private var account = Account.shared
     private let cols = [GridItem(.adaptive(minimum: 104, maximum: 170), spacing: 10)]
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
+                if account.isPerson {
+                    NavigationLink { FriendsView() } label: {
+                        HStack {
+                            Label("Friends", systemImage: "person.2.fill").font(.headline)
+                            Spacer()
+                            if !friends.incoming.isEmpty {
+                                Text("\(friends.incoming.count) new").font(.footnote.weight(.bold)).foregroundStyle(.black)
+                                    .padding(.horizontal, 8).padding(.vertical, 3).background(GameTint.green, in: Capsule())
+                            } else if !friends.friends.isEmpty {
+                                Text("\(friends.friends.count)").font(.subheadline).foregroundStyle(Theme.dim)
+                            }
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.faint)
+                        }
+                        .padding(14)
+                        .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(PressScale())
+                    .padding(.horizontal, Theme.pad)
+                }
+                // friends who aren't already in the crew row
+                let fw = friends.watching.filter { f in !crew.watching.contains { $0.id == f.id } }
+                if !fw.isEmpty { WatchingNowRow(members: fw, title: "Friends watching now") }
                 if !crew.watching.isEmpty { WatchingNowRow(members: crew.watching) }
                 if !crew.parties.isEmpty { PartiesSection(parties: crew.parties) }
-                if lib.continueWatching.isEmpty && lib.myList.isEmpty && crew.watching.isEmpty && crew.parties.isEmpty {
+                if lib.continueWatching.isEmpty && lib.myList.isEmpty && crew.watching.isEmpty && crew.parties.isEmpty && !account.isPerson {
                     ContentUnavailableView {
                         Label("Nothing here yet", systemImage: "sofa")
                     } description: {
@@ -51,10 +75,12 @@ struct LibraryView: View {
         .navigationTitle("My couch")
         .task {
             await crew.refresh()
+            await friends.refresh()
             await coming.refresh()
         }
         .refreshable {
             await crew.refresh(force: true)
+            await friends.refresh(force: true)
             await coming.refresh(force: true)
             await Simkl.shared.sync(force: true)
         }

@@ -5,8 +5,9 @@ import SwiftUI
 
 struct WatchingNowRow: View {
     let members: [CrewMember]
+    var title = "On the couch now"
     var body: some View {
-        Shelf(title: "On the couch now") {
+        Shelf(title: title) {
             ForEach(members) { m in
                 let card = VStack(alignment: .leading, spacing: 8) {
                     Art(url: m.preview?.backdropURL)

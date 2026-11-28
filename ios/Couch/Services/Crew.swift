@@ -52,8 +52,8 @@ final class Crew {
 
     private init() {}
 
-    private func request(_ method: String, _ path: String, _ body: [String: Any]? = nil) async -> [String: Any]? {
-        guard Account.shared.crew, let tok = await Account.shared.token() else { return nil }
+    private func request(_ method: String, _ path: String, _ body: [String: Any]? = nil, anyone: Bool = false) async -> [String: Any]? {
+        guard anyone || Account.shared.crew, let tok = await Account.shared.token() else { return nil }
         var r = URLRequest(url: URL(string: crewURL + path)!)
         r.httpMethod = method
         r.timeoutInterval = 12
@@ -119,7 +119,10 @@ final class Crew {
 
     /// Tell the crew what's on here (every ~10 s while playing; once more when it stops).
     func announce() async {
-        guard Account.shared.crew, share else { return }
+        // couchers tell the crew (friends see it too); everyone else tells just their friends
+        guard Account.shared.isPerson, share else { return }
+        let crew = Account.shared.crew
+        let path = crew ? "/v1/presence" : "/v1/me/presence"
         let pb = Playback.shared
         var body: [String: Any] = [:]
         if pb.isOpen, let m = pb.meta {
@@ -135,11 +138,11 @@ final class Crew {
             // only say "stopped" if we'd said "watching"
             guard sent != .distantPast else { return }
             sent = .distantPast
-            _ = await request("PUT", "/v1/presence", ["watching": NSNull()])
+            _ = await request("PUT", path, ["watching": NSNull()], anyone: !crew)
             return
         }
         sent = .now
-        _ = await request("PUT", "/v1/presence", body)
+        _ = await request("PUT", path, body, anyone: !crew)
     }
 }
 

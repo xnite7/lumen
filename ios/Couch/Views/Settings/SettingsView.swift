@@ -1,5 +1,6 @@
 // Settings: your sources (the servers couch plays from), your account, Pro.
 
+import AuthenticationServices
 import SwiftUI
 
 struct SettingsView: View {
@@ -10,6 +11,8 @@ struct SettingsView: View {
     @State private var error: String?
     @State private var simkl = Simkl.shared
     @State private var linking = false
+    @State private var naming = false
+    @State private var deleting = false
 
     var body: some View {
         List {
@@ -33,6 +36,51 @@ struct SettingsView: View {
                 } else {
                     Button { router.paywall = true } label: { Label("Get couch Pro", systemImage: "sparkles") }
                 }
+            }
+
+            Section {
+                if let c = account.couch {
+                    Button { naming = true } label: {
+                        LabeledContent {
+                            Image(systemName: "pencil").foregroundStyle(Theme.dim)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(c.name).font(.headline).foregroundStyle(.white)
+                                Text(c.handle.map { "@\($0)" } ?? "pick a couch name so friends can add you").font(.caption).foregroundStyle(Theme.dim)
+                            }
+                        }
+                    }
+                    Toggle("Show friends what I'm watching", isOn: Binding(get: { Crew.shared.share }, set: { Crew.shared.share = $0 }))
+                    Button("Sign out") { Task { await account.signOutCouch() } }
+                    Button("Delete my account", role: .destructive) { deleting = true }
+                } else if account.discord == nil {
+                    SignInWithAppleButton(.signIn) { req in
+                        req.requestedScopes = [.fullName]
+                    } onCompletion: { result in
+                        switch result {
+                        case .success(let auth):
+                            guard let cred = auth.credential as? ASAuthorizationAppleIDCredential else { return }
+                            Task {
+                                do {
+                                    try await account.signInApple(cred)
+                                    await Friends.shared.refresh(force: true)
+                                    if Friends.shared.handle == nil { naming = true }
+                                } catch { self.error = error.localizedDescription }
+                            }
+                        case .failure(let e):
+                            if (e as? ASAuthorizationError)?.code != .canceled { self.error = e.localizedDescription }
+                        }
+                    }
+                    .signInWithAppleButtonStyle(.white)
+                    .frame(height: 46)
+                    .listRowInsets(EdgeInsets())
+                } else {
+                    Button { naming = true } label: { Label("Your couch name (for friends)", systemImage: "at") }
+                }
+            } header: {
+                Text("couch account")
+            } footer: {
+                Text("Optional. For friends and the game's leaderboard. couch keeps a name and a couch name, nothing else from Apple.")
             }
 
             Section {
@@ -122,6 +170,14 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .sheet(isPresented: $naming) { NameSheet().task { await Friends.shared.refresh(force: true) } }
+        .confirmationDialog("Delete your couch account?", isPresented: $deleting, titleVisibility: .visible) {
+            Button("Delete account", role: .destructive) {
+                Task { if !(await account.deleteAccount()) { self.error = "couldn't reach the couch server. Nothing was deleted." } }
+            }
+        } message: {
+            Text("Your name, couch name and friends are removed for good. Pro and your library on this device stay.")
+        }
         .alert("Sign-in", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {

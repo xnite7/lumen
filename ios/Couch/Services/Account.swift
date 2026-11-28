@@ -29,6 +29,20 @@ final class Account: NSObject {
     }
 
     private(set) var discord: Discord?
+
+    /// A couch account (Sign in with Apple): for friends and the leaderboards
+    /// without Discord. Its token is couch's own, kept in iCloud Keychain.
+    struct Couch: Codable {
+        var id: String
+        var name: String
+        var handle: String?
+    }
+    private(set) var couch: Couch? {
+        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(couch), forKey: "couch.v1") }
+    }
+    /// who you are to other people: the Discord sign-in if there is one, else the couch account
+    var personId: String? { discord?.id ?? couch?.id }
+    var isPerson: Bool { personId != nil }
     /// bought in the App Store (set by Store)
     var storePro = false { didSet { if oldValue != storePro { Library.shared.refreshWidgets() } } }
     var pro: Bool { storePro || (discord?.coucher ?? false) }
@@ -39,6 +53,7 @@ final class Account: NSObject {
     override private init() {
         super.init()
         if let d = UserDefaults.standard.data(forKey: "discord.v1") { discord = try? JSONDecoder().decode(Discord.self, from: d) }
+        if let d = UserDefaults.standard.data(forKey: "couch.v1") { couch = try? JSONDecoder().decode(Couch.self, from: d) }
     }
 
     private func keep() {
@@ -149,6 +164,82 @@ final class Account: NSObject {
         let name: String?
         let avatar: String?
         let coucher: Bool?
+        let handle: String?
+        /// couch's own long-lived token (only when signing in with Apple)
+        let account: String?
+    }
+
+    // MARK: couch account (Sign in with Apple)
+
+    /// Apple said who you are: trade that for a couch account.
+    func signInApple(_ cred: ASAuthorizationAppleIDCredential) async throws {
+        guard let d = cred.identityToken, let tok = String(data: d, encoding: .utf8) else {
+            throw CouchError.message("Apple didn't finish the sign-in")
+        }
+        var body: [String: Any] = ["apple": tok]
+        // (Apple only gives the name the first time)
+        if let n = cred.fullName {
+            let name = PersonNameComponentsFormatter().string(from: n).trimmingCharacters(in: .whitespaces)
+            if !name.isEmpty { body["name"] = name }
+        }
+        let a = try await post(body)
+        guard let t = a.account, let id = a.id else { throw CouchError.message("the couch server said no") }
+        Keychain.set("couch.account", t)
+        couch = Couch(id: id, name: a.name ?? "someone", handle: a.handle)
+    }
+
+    /// what the server now says about your account (after a rename)
+    func accountChanged(name: String, handle: String?) {
+        guard couch != nil else { return }
+        couch?.name = name
+        couch?.handle = handle
+        session = nil
+    }
+
+    /// Leave this account on every device (the token stops working).
+    func signOutCouch() async {
+        if let tok = await token() {
+            var r = URLRequest(url: URL(string: crewURL + "/v1/me/account/signout")!)
+            r.httpMethod = "POST"
+            r.setValue("Bearer \(tok)", forHTTPHeaderField: "authorization")
+            _ = try? await Net.session.data(for: r)
+        }
+        forgetCouch()
+    }
+
+    /// Delete the account for good: name, handle, friends. False if the server couldn't be reached.
+    func deleteAccount() async -> Bool {
+        guard let tok = await token() else { return false }
+        var r = URLRequest(url: URL(string: crewURL + "/v1/me/account")!)
+        r.httpMethod = "DELETE"
+        r.setValue("Bearer \(tok)", forHTTPHeaderField: "authorization")
+        guard let (_, res) = try? await Net.session.data(for: r), (res as? HTTPURLResponse)?.statusCode == 200 else { return false }
+        forgetCouch()
+        return true
+    }
+
+    private func forgetCouch() {
+        Keychain.set("couch.account", nil)
+        couch = nil
+        session = nil
+    }
+
+    /// A session from the couch account's own token (with Pro if it was bought here).
+    private func couchSession() async -> String? {
+        guard let t = Keychain.get("couch.account") else { return nil }
+        var body: [String: Any] = ["account": t]
+        if let jws = await Store.shared.proTransaction() { body["appstore"] = jws }
+        do {
+            let a = try await post(body)
+            if let id = a.id { couch = Couch(id: id, name: a.name ?? couch?.name ?? "someone", handle: a.handle) }
+            return a.session
+        } catch let e as CouchError {
+            // the server doesn't know this token any more (signed out or deleted elsewhere)
+            if case .message(let m) = e, m == "sign in again" { forgetCouch() }
+            return nil
+        } catch {
+            return nil // offline: still signed in
+        }
     }
 
     private func crewLogin(with tok: Token) async throws {
@@ -185,6 +276,7 @@ final class Account: NSObject {
             }
             return r.session
         }
+        if let s = await couchSession() { return s }
         if let jws = await Store.shared.proTransaction(), let r = try? await post(["appstore": jws]) {
             return r.session
         }
@@ -194,7 +286,7 @@ final class Account: NSObject {
     }
 
     /// has a couch-server identity beyond a guest's
-    var known: Bool { discord != nil || storePro }
+    var known: Bool { discord != nil || storePro || couch != nil }
     let deviceId: String = {
         if let id = UserDefaults.standard.string(forKey: "device.id") { return id }
         let id = String((0..<16).map { _ in "abcdefghijklmnopqrstuvwxyz0123456789".randomElement()! })
@@ -205,6 +297,8 @@ final class Account: NSObject {
     /// A new device on the same Apple ID: the Discord link is already in
     /// iCloud Keychain, so sign in quietly with it.
     func restore() async {
+        // (a couch account whose token came over in iCloud Keychain)
+        if discord == nil, couch == nil, Keychain.get("couch.account") != nil { _ = await couchSession() }
         guard discord == nil, Keychain.get("discord.refresh") != nil, let a = await discordAccess(),
               let r = try? await post(["token": a, "open": true]) else { return }
         discord = Discord(id: r.id ?? "", name: r.name ?? "you", avatar: r.avatar, coucher: r.coucher ?? false)

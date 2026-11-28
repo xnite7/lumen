@@ -37,6 +37,7 @@ targets:
       path: Couch/Couch.entitlements
       properties:
         com.apple.security.application-groups: [group.com.midnite.couch]
+        com.apple.developer.applesignin: [Default]
     info:
       path: Couch/Info.plist
       properties:
