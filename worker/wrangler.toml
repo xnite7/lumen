@@ -7,11 +7,12 @@ compatibility_date = "2025-06-01"
 
 # ClipCafe gave couch its own API key (2026-11-27, no limits); the file on
 # their site is the fallback (allowed for account xnite7).
-# CLIPS_POOL_ONLY = "1": clips (and previews) only for the game's films.
+# CLIPS_POOL_ONLY = "1": clips (and previews) only for the game's films
+# (off since 2026-11-28: ClipCafe lifted the download cap).
 # CLIPS_PAUSED = "1" switches clips and the game off.
 [vars]
 CLIPS_PAUSED = ""
-CLIPS_POOL_ONLY = "1"
+CLIPS_POOL_ONLY = ""
 
 [[rules]]
 type = "Data"
@@ -22,6 +23,11 @@ fallthrough = true
 type = "Text"
 globs = ["**/*.html"]
 fallthrough = true
+
+# fetched clips are kept here for good (one ClipCafe download per film, ever)
+[[r2_buckets]]
+binding = "CLIPS"
+bucket_name = "couch-clips"
 
 [[durable_objects.bindings]]
 name = "CREW"
