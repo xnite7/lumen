@@ -95,7 +95,7 @@ struct RootView: View {
                 NavigationStack(path: $router.home) { HomeView().withDestinations() }
             }
             if router.scenes {
-                Tab("Scenes", systemImage: "film.stack.fill", value: AppTab.play) {
+                Tab("Games", systemImage: "gamecontroller.fill", value: AppTab.play) {
                     NavigationStack { GameHomeView() }
                 }
             }

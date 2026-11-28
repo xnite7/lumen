@@ -508,7 +508,7 @@ const TABS: &[(&str, fn() -> Route)] = &[
     ("Couch", || Route::Couch),
 ];
 
-const SCENES_TAB: &[(&str, fn() -> Route)] = &[("Scenes", || Route::Scenes)];
+const SCENES_TAB: &[(&str, fn() -> Route)] = &[("Games", || Route::Scenes)];
 
 impl Root {
     fn nav_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
