@@ -111,6 +111,8 @@ jobs:
           xcrun simctl spawn "$DEV" log show --last 2m --predicate 'process == "Couch"' --style compact 2>/dev/null | grep -i -E "fatal|crash|error" | head -15
           # App Store pictures: full size, from the biggest iPhone and the 13" iPad,
           # with the demo source only (open films), kept on the store-shots release
+          # (only when the commit message says [store]: it takes a quarter of an hour)
+          git log -1 --pretty=%B | grep -q "\[store\]" || exit 0
           mkdir -p store
           store() { # <name of device> <prefix>
             D=$(xcrun simctl list devices available | grep -E "$1" | head -1 | grep -oE "[0-9A-F-]{36}")
