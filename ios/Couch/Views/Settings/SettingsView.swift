@@ -46,6 +46,9 @@ struct SettingsView: View {
                             Text(d.coucher ? "coucher" : "not a coucher yet").font(.caption).foregroundStyle(Theme.dim)
                         }
                     }
+                    if d.coucher {
+                        Toggle("Show the crew what I'm watching", isOn: Binding(get: { Crew.shared.share }, set: { Crew.shared.share = $0 }))
+                    }
                     Button("Check my role again") { Task { await account.refresh() } }
                     Button("Sign out", role: .destructive) { account.signOut() }
                 } else {

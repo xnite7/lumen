@@ -125,6 +125,10 @@ struct RootView: View {
             await Account.shared.restore()
             await Simkl.shared.sync()
         }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            // back from another app (or another device): catch up
+            Task { await Simkl.shared.sync() }
+        }
         .task {
             // `-demo` at launch (CI screenshots): with the demo source added
             if ProcessInfo.processInfo.arguments.contains("-demo") { _ = try? await Sources.shared.add(demoSource) }

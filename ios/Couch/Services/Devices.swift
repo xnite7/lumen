@@ -48,6 +48,7 @@ final class Devices {
         loop = Task {
             while !Task.isCancelled {
                 await tick()
+                await Crew.shared.announce()
                 // quick while something is playing somewhere, relaxed otherwise
                 let busy = playingElsewhere != nil || Playback.shared.isOpen
                 try? await Task.sleep(for: .seconds(busy ? 2.5 : 8))
