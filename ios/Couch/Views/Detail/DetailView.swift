@@ -185,7 +185,7 @@ struct DetailView: View {
             if m.type == .series {
                 season = playback.upNext(m)?.season ?? m.seasons.first ?? 1
             }
-            similar = await Cinemeta.shared.similar(m)
+            similar = Sources.shared.openEnded ? await Cinemeta.shared.similar(m) : []
         } catch {
             failed = true
         }

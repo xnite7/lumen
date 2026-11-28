@@ -96,7 +96,8 @@ jobs:
           grep -n "AppIcon" Couch.xcodeproj/project.pbxproj | head -5
           /usr/libexec/PlistBuddy -c "Print :CFBundleIcons" "$APP/Info.plist" 2>&1 | head -12
           sleep 6; shot springboard
-          go; sleep 25; shot home
+          go; sleep 12; shot welcome
+          go -demo; sleep 25; shot home
           go -open couch://title/series/tt0903747; sleep 16; shot title
           go -open couch://title/movie/tt1727587; sleep 14; shot movie
           go -open couch://pro; sleep 6; shot pro

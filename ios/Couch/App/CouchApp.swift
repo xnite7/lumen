@@ -122,6 +122,11 @@ struct RootView: View {
         .onOpenURL { router.handle($0) }
         .task { await router.loadConfig() }
         .task {
+            // `-demo` at launch (CI screenshots): with the demo source added
+            if ProcessInfo.processInfo.arguments.contains("-demo") { _ = try? await Sources.shared.add(demoSource) }
+            await Sources.shared.refresh()
+        }
+        .task {
             // `-open couch://…` at launch (used by the CI screenshots)
             let a = ProcessInfo.processInfo.arguments
             if let i = a.firstIndex(of: "-open"), i + 1 < a.count, let u = URL(string: a[i + 1]) { router.handle(u) }

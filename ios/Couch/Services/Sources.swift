@@ -26,6 +26,41 @@ final class Sources {
 
     var active: [Source] { list.filter(\.on) }
     var any: Bool { !active.isEmpty }
+    /// A source that can play any title (so the whole catalogue is worth
+    /// showing). Without one, couch shows only what your sources list.
+    var openEnded: Bool { active.contains { !$0.manifest.catalogOnly } }
+    /// changes whenever what's available changes (views reload on it)
+    var stamp: String { active.map { "\($0.id)|\($0.manifest.catalogs?.count ?? 0)|\($0.manifest.catalogOnly)" }.joined(separator: ",") }
+
+    struct Listed: Identifiable {
+        let title: String
+        let items: [MetaPreview]
+        var id: String { title }
+    }
+
+    /// What your sources say they have: one row per catalog.
+    func listed() async -> [Listed] {
+        var out: [Listed] = []
+        for s in active {
+            for c in s.manifest.catalogs ?? [] {
+                struct R: Decodable { let metas: [MetaPreview] }
+                guard let k = Kind(rawValue: c.type),
+                      let r = try? await Net.json(URL(string: "\(s.base)/catalog/\(k.rawValue)/\(c.id).json")!, as: R.self, fresh: true), !r.metas.isEmpty else { continue }
+                out.append(Listed(title: c.name ?? s.name, items: r.metas))
+            }
+        }
+        return out
+    }
+
+    /// Sources change what they offer: re-read each one's manifest (at launch).
+    func refresh() async {
+        for s in list {
+            guard let m = try? await Net.json(URL(string: s.base + "/manifest.json")!, as: Manifest.self, fresh: true), m.givesStreams,
+                  let i = list.firstIndex(where: { $0.id == s.id }), list[i].manifest != m else { continue }
+            list[i].manifest = m
+            save()
+        }
+    }
 
     private func save() {
         if let d = try? JSONEncoder().encode(list) { UserDefaults.standard.set(d, forKey: key) }

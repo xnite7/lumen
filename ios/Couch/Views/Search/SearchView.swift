@@ -9,12 +9,26 @@ struct SearchView: View {
     @State private var genre: String?
     @State private var genreItems: [MetaPreview] = []
     @State private var kind: Kind = .movie
+    @State private var sources = Sources.shared
+    @State private var listed: [MetaPreview] = []
 
     private let cols = [GridItem(.adaptive(minimum: 104, maximum: 170), spacing: 10)]
 
     var body: some View {
         ScrollView {
-            if query.trimmingCharacters(in: .whitespaces).isEmpty {
+            if !sources.any {
+                ContentUnavailableView {
+                    Label("Nothing to search yet", systemImage: "server.rack")
+                } description: {
+                    Text("Add a source in Settings and what it has shows up here.")
+                }
+                .padding(.top, 80)
+            } else if !sources.openEnded {
+                // sources that list what they have: search inside that
+                let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+                grid(q.isEmpty ? listed : listed.filter { $0.name.lowercased().contains(q) })
+                    .padding(.top, 8)
+            } else if query.trimmingCharacters(in: .whitespaces).isEmpty {
                 browse
             } else if results.isEmpty && !searching {
                 ContentUnavailableView.search(text: query).padding(.top, 60)
@@ -27,9 +41,13 @@ struct SearchView: View {
         .searchable(text: $query, prompt: "Movies and series")
         .autocorrectionDisabled()
         .overlay { if searching && results.isEmpty { ProgressView() } }
+        .task(id: sources.stamp) {
+            var seen = Set<String>()
+            listed = await sources.listed().flatMap(\.items).filter { seen.insert($0.id).inserted }
+        }
         .task(id: query) {
             let q = query.trimmingCharacters(in: .whitespaces)
-            guard q.count >= 2 else { results = []; return }
+            guard sources.openEnded, q.count >= 2 else { results = []; return }
             searching = true
             try? await Task.sleep(for: .milliseconds(300)) // wait for typing to settle
             guard !Task.isCancelled else { return }

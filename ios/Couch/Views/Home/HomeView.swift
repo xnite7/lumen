@@ -16,8 +16,49 @@ struct HomeView: View {
     @State private var failed = false
     @State private var lib = Library.shared
     @State private var scrolled = false
+    @State private var sources = Sources.shared
+    @State private var router = Router.shared
+    @State private var adding = false
 
     var body: some View {
+        if sources.any {
+            catalogue
+        } else {
+            welcome
+        }
+    }
+
+    /// No source yet: couch has nothing to show. It plays from servers you add.
+    private var welcome: some View {
+        VStack(spacing: 18) {
+            Spacer()
+            Image("Mark").resizable().scaledToFit().frame(width: 120).foregroundStyle(.white)
+            Text("Add a source to start").font(.title2.weight(.bold))
+            Text("couch is a player for your own media. It shows and plays what the sources you add have. It doesn't come with any.")
+                .font(.subheadline).foregroundStyle(Theme.dim).multilineTextAlignment(.center)
+            Spacer()
+            Button { router.tab = .settings } label: { Label("Add a source", systemImage: "plus") }
+                .buttonStyle(PillButton())
+            Button {
+                adding = true
+                Task {
+                    _ = try? await sources.add(demoSource)
+                    adding = false
+                }
+            } label: { Label("Try the demo source", systemImage: "play.circle") }
+                .buttonStyle(PillButton(primary: false))
+                .disabled(adding)
+            Text("The demo source has two open movies (Big Buck Bunny and Sintel).")
+                .font(.footnote).foregroundStyle(Theme.faint).multilineTextAlignment(.center)
+        }
+        .padding(Theme.pad)
+        .padding(.bottom, 20)
+        .frame(maxWidth: 460)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.bg)
+    }
+
+    private var catalogue: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 if let f = featured {
@@ -66,7 +107,7 @@ struct HomeView: View {
         }
         .toolbarBackground(scrolled ? .visible : .hidden, for: .navigationBar)
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: filter) { await load() }
+        .task(id: "\(filter.rawValue)|\(sources.stamp)") { await load() }
         .refreshable { await load() }
     }
 
@@ -84,6 +125,15 @@ struct HomeView: View {
         defer { loading = false }
         let c = Cinemeta.shared
         let kinds: [Kind] = filter == .series ? [.series] : filter == .movies ? [.movie] : [.movie, .series]
+        // what your sources list comes first; the wider catalogue only when a
+        // source can play any title
+        let mine = await sources.listed().map { Row(title: $0.title, items: $0.items.filter(matches)) }.filter { !$0.items.isEmpty }
+        guard sources.openEnded else {
+            top = []
+            rows = mine
+            if featured == nil || !mine.contains(where: { $0.items.contains(featured!) }) { featured = mine.first?.items.randomElement() }
+            return
+        }
         do {
             async let topMovies = c.catalog(.movie)
             async let topSeries = c.catalog(.series)
@@ -93,7 +143,7 @@ struct HomeView: View {
             let pool = (kinds.contains(.movie) ? Array(tm.prefix(8)) : []) + (kinds.contains(.series) ? Array(ts.prefix(8)) : [])
             if featured == nil || !matches(featured!) { featured = pool.randomElement() }
 
-            var out: [Row] = []
+            var out: [Row] = mine
             if kinds.contains(.series) { out.append(Row(title: "Popular Series", items: Array(ts.dropFirst(filter == .series ? 10 : 0)))) }
             if kinds.contains(.movie) { out.append(Row(title: "Popular Movies", items: Array(tm.dropFirst(filter == .series ? 0 : 10)))) }
             for k in kinds {

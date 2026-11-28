@@ -156,6 +156,18 @@ struct Manifest: Codable, Hashable {
     var logo: String?
     var types: [String]?
     var resources: [Resource]?
+    var catalogs: [Catalog]?
+    var behaviorHints: Hints?
+
+    struct Catalog: Codable, Hashable {
+        let type: String
+        let id: String
+        var name: String?
+    }
+    struct Hints: Codable, Hashable {
+        /// couch's own hint: this source only plays what its catalogs list
+        var catalogOnly: Bool?
+    }
 
     enum Resource: Codable, Hashable {
         case name(String)
@@ -178,6 +190,8 @@ struct Manifest: Codable, Hashable {
     }
 
     var givesStreams: Bool { (resources ?? []).contains { $0.name == "stream" } }
+    /// plays only what it lists (a server of your own files), not "anything with an IMDb id"
+    var catalogOnly: Bool { behaviorHints?.catalogOnly == true && !(catalogs ?? []).isEmpty }
 }
 
 extension ISO8601DateFormatter {
