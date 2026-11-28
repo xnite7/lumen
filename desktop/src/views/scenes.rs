@@ -9,7 +9,8 @@
 use crate::api;
 use crate::theme;
 use crate::ui::{icon, video};
-use gpui::{div, img, prelude::*, px, Context, Div, FontWeight, ScrollHandle, SharedString, Stateful, Window};
+use gpui::{div, img, prelude::*, px, Context, Div, FontWeight, ObjectFit, ScrollHandle, SharedString, Stateful, Window};
+use std::sync::Arc;
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 
@@ -29,14 +30,93 @@ pub struct Scenes {
     /// this round's video
     clip: String,
     /// the bit of it playing now: which play this is, whether it's on, when
-    /// its first picture showed, and how long it may show (None = to the end)
+    /// it was let go, and how long it may show (None = to the end)
     play_no: u64,
     on: bool,
     asked: Option<Instant>,
     seen: Option<Instant>,
     limit: Option<f32>,
     clip_failed: bool,
+    /// loaded and waiting on its first picture, paused and covered: it's let
+    /// go (picture and sound together) once that picture has been drawn
+    held: bool,
+    frames: u8,
+    /// the finished game as a picture to share
+    card: Option<(Arc<gpui::Image>, Vec<u8>)>,
     scroll: ScrollHandle,
+}
+
+/// the couch mark, as an SVG path (in a 1024 box)
+const COUCH: &str = include_str!("couch_path.txt");
+
+fn nice_day(day: &str) -> String {
+    let p: Vec<&str> = day.split('-').collect();
+    let m = p.get(1).and_then(|m| m.parse::<usize>().ok()).unwrap_or(1).clamp(1, 12);
+    format!("{} {} {}", p.get(2).map(|d| d.trim_start_matches('0')).unwrap_or(""), ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1], p.first().unwrap_or(&""))
+}
+
+fn commas(n: i64) -> String {
+    let s = n.abs().to_string();
+    let mut out = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// The finished game as a card (1200 x 630, good for Discord).
+fn card_svg(d: &Value, name: &str, day: &str) -> String {
+    let daily = d["mode"].as_str() == Some("daily");
+    let esc = |s: &str| s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    let mut sq = String::new();
+    for (i, r) in d["results"].as_array().into_iter().flatten().take(6).enumerate() {
+        let r = r.as_i64().unwrap_or(-1);
+        let x = 690 + i as i64 * 80;
+        if r < 0 {
+            sq.push_str(&format!(r##"<rect x="{}" y="252" width="64" height="64" rx="16" fill="none" stroke="#ffffff" stroke-opacity="0.28" stroke-width="4"/>"##, x + 2));
+        } else {
+            let label = ["blink", "1s", "3s", "5s", "all"][r.min(4) as usize];
+            sq.push_str(&format!(
+                r##"<rect x="{x}" y="250" width="68" height="68" rx="16" fill="#ffffff" fill-opacity="{:.2}"/><text x="{}" y="291" text-anchor="middle" font-family="Satoshi" font-weight="900" font-size="21" fill="#000000" fill-opacity="0.75">{label}</text>"##,
+                1. - r as f32 * 0.18,
+                x + 34
+            ));
+        }
+    }
+    let mut facts = vec![];
+    let streak = d["streak"].as_i64().unwrap_or(0);
+    if daily && streak > 0 {
+        facts.push(format!("{streak} day streak"));
+    }
+    if let Some(r) = d["rank"].as_i64() {
+        facts.push(format!("#{r} {}", if daily { "today" } else { "all time" }));
+    }
+    let fx: String = facts.iter().enumerate().map(|(i, t)| format!(r##"<text x="690" y="{}" font-family="Satoshi" font-weight="700" font-size="32" fill="#ffffff" fill-opacity="0.9">{t}</text>"##, 400 + i * 46)).collect();
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+<defs><radialGradient id="g" cx="0.22" cy="0.1" r="1"><stop offset="0" stop-color="#2a2a2e"/><stop offset="0.55" stop-color="#0b0b0c"/><stop offset="1" stop-color="#000000"/></radialGradient></defs>
+<rect width="1200" height="630" fill="#000"/>
+<rect x="24" y="24" width="1152" height="582" rx="44" fill="url(#g)" stroke="#ffffff" stroke-opacity="0.1" stroke-width="2"/>
+<g transform="translate(72,66) scale(0.118) translate(-180.9,-294.8)"><path fill="#ffffff" fill-rule="evenodd" d="{COUCH}"/></g>
+<text x="168" y="100" font-family="Satoshi" font-weight="900" font-size="34" fill="#ffffff">scenes</text>
+<text x="286" y="100" font-family="Satoshi" font-weight="500" font-size="26" fill="#ffffff" fill-opacity="0.5">{} · {}</text>
+<text x="68" y="372" font-family="Satoshi" font-weight="900" font-size="176" fill="#ffffff" letter-spacing="-5">{}</text>
+<text x="76" y="432" font-family="Satoshi" font-weight="500" font-size="34" fill="#ffffff" fill-opacity="0.6">points · {} of {} right</text>
+<text x="690" y="222" font-family="Satoshi" font-weight="700" font-size="21" fill="#ffffff" fill-opacity="0.5" letter-spacing="2">HOW MUCH I NEEDED TO SEE</text>
+{sq}{fx}
+<text x="72" y="558" font-family="Satoshi" font-weight="700" font-size="30" fill="#ffffff">{}</text>
+<text x="1128" y="558" text-anchor="end" font-family="Satoshi" font-weight="500" font-size="26" fill="#ffffff" fill-opacity="0.45">guess the movie from one scene · midnite couch</text>
+</svg>"##,
+        if daily { "daily five" } else { "endless run" },
+        esc(day),
+        commas(d["score"].as_i64().unwrap_or(0)),
+        d["right"].as_i64().unwrap_or(0),
+        d["rounds"].as_i64().unwrap_or(0),
+        esc(name),
+    )
 }
 
 /// Is the game switched on? (the couch server says; asked at start)
@@ -61,7 +141,8 @@ async fn game(method: &str, path: &str, body: Value) -> Result<Value, String> {
 fn pill(id: &'static str, label: impl Into<SharedString>, primary: bool) -> Stateful<Div> {
     div()
         .id(id)
-        .h(px(46.))
+        .w_full()
+        .h(px(48.))
         .px(px(26.))
         .flex()
         .items_center()
@@ -113,6 +194,9 @@ impl Scenes {
             seen: None,
             limit: None,
             clip_failed: false,
+            held: false,
+            frames: 0,
+            card: None,
             scroll: ScrollHandle::new(),
         };
         me.load(cx);
@@ -196,11 +280,13 @@ impl Scenes {
             return None;
         }
         let s = self.round.as_ref().and_then(|r| r["stages"][self.stage].as_f64()).unwrap_or(0.) as f32;
-        // (a blink is 0.1 s on paper; a GPU window needs a moment to appear)
-        (s > 0.).then_some(s.max(0.2))
+        (s > 0.).then_some(s)
     }
 
     /// Play the part you've earned, from the start; then the screen goes dark.
+    /// The clip loads paused and covered; once its first picture has been
+    /// drawn it's let go, so picture and sound start at the same instant and
+    /// the clock only runs while you can actually see it.
     fn replay(&mut self, cx: &mut Context<Self>) {
         if self.clip.is_empty() {
             return;
@@ -208,6 +294,8 @@ impl Scenes {
         self.play_no += 1;
         let play_no = self.play_no;
         self.on = true;
+        self.held = true;
+        self.frames = 0;
         self.asked = Some(Instant::now());
         self.seen = None;
         self.limit = self.secs();
@@ -216,10 +304,11 @@ impl Scenes {
         video::get(cx).update(cx, |v, cx| {
             v.stop(OWNER, cx);
             v.play_once(OWNER, &url, cx);
+            v.hold(OWNER);
         });
         cx.notify();
         cx.spawn(async move |this, cx| loop {
-            crate::timer::after(Duration::from_millis(16)).await;
+            crate::timer::after(Duration::from_millis(8)).await;
             let Ok(go) = this.update(cx, |s, cx| {
                 if s.play_no != play_no || !s.on {
                     return false;
@@ -231,16 +320,31 @@ impl Scenes {
                     cx.notify();
                     return false;
                 }
+                let waited = s.asked.map_or(0., |t| t.elapsed().as_secs_f32());
+                if s.held {
+                    // its first picture has been on screen (under the cover) for
+                    // a couple of frames: go. (After 6 s, go anyway.)
+                    if s.frames >= 3 || waited > 6. {
+                        s.held = false;
+                        s.seen = Some(Instant::now());
+                        vid.update(cx, |v, _| v.set_paused(OWNER, false));
+                    } else if waited > 20. {
+                        vid.update(cx, |v, cx| v.stop(OWNER, cx));
+                        s.on = false;
+                        s.clip_failed = true;
+                        cx.notify();
+                        return false;
+                    }
+                    cx.notify();
+                    return true;
+                }
                 let over = match (s.seen, s.limit) {
                     (Some(t), Some(l)) => t.elapsed().as_secs_f32() >= l,
                     _ => false,
                 };
-                // nothing to see after 20 s: the scene didn't load
-                let stuck = s.seen.is_none() && s.asked.map_or(false, |t| t.elapsed().as_secs() >= 20);
-                if over || stuck {
+                if over {
                     vid.update(cx, |v, cx| v.stop(OWNER, cx));
                     s.on = false;
-                    s.clip_failed = stuck;
                     cx.notify();
                     return false;
                 }
@@ -312,12 +416,31 @@ impl Scenes {
         if !res["next"].is_null() {
             self.show(res["next"].clone(), cx);
         } else {
-            self.stop(cx);
-            self.round = None;
-            self.done = Some(res["done"].clone());
-            self.load(cx);
+            self.finish(res["done"].clone(), cx);
         }
         cx.notify();
+    }
+
+    /// The game is over: the summary, and its card to share.
+    fn finish(&mut self, done: Value, cx: &mut Context<Self>) {
+        self.stop(cx);
+        self.round = None;
+        self.card = None;
+        let name = couch::state::get().core.db.get::<Value>("discord_user").and_then(|u| u["name"].as_str().map(String::from)).unwrap_or_default();
+        let day = nice_day(&chrono::Utc::now().format("%Y-%m-%d").to_string());
+        let svg = card_svg(&done, &name, &day);
+        self.done = Some(done);
+        self.load(cx);
+        cx.spawn(async move |this, cx| {
+            let png = cx.background_executor().spawn(async move { crate::views::month::render(&svg) }).await;
+            let _ = this.update(cx, |s, cx| {
+                if let Some(b) = png {
+                    s.card = Some((Arc::new(gpui::Image::from_bytes(gpui::ImageFormat::Png, b.clone())), b));
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     fn quit(&mut self, cx: &mut Context<Self>) {
@@ -328,18 +451,41 @@ impl Scenes {
         self.done = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
+            let mut done = Value::Null;
             if let Some(g) = g {
-                let _ = game("POST", "/quit", json!({ "game": g })).await;
+                // today's five is only left (you can carry on later, on any
+                // device); an endless run ends, and what you had counts
+                if let Ok(v) = game("POST", "/quit", json!({ "game": g })).await {
+                    done = v["done"].clone();
+                }
             }
-            let _ = this.update(cx, |s, cx| s.load(cx));
+            let _ = this.update(cx, |s, cx| {
+                if done.is_null() {
+                    s.load(cx);
+                } else {
+                    s.finish(done, cx);
+                }
+                cx.notify();
+            });
         })
         .detach();
     }
 
     // ------------------------------------------------------------ pages
+    // One centred column, like the iPhone app: cards in the lobby, then the
+    // screen, the titles stacked under it, one big button at the bottom.
 
     fn lobby(&self, cx: &mut Context<Self>) -> Div {
-        let mut col = div().w_full().max_w(px(760.)).flex().flex_col().gap(px(16.));
+        let mut col = div().w(px(COL)).flex().flex_col().gap(px(14.));
+        col = col.child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(4.))
+                .pb(px(6.))
+                .child(div().text_size(px(40.)).font_weight(FontWeight::BLACK).child("scenes"))
+                .child(div().text_size(px(15.)).text_color(theme::label2()).child("guess the movie from its most famous scene. the less you watch, the more you score.")),
+        );
         let Some(h) = &self.home else {
             return col.child(div().text_color(theme::label2()).child(if self.error.is_empty() { "loading…".to_string() } else { self.error.clone() }));
         };
@@ -352,8 +498,20 @@ impl Scenes {
                 .flex()
                 .items_center()
                 .justify_between()
-                .child(div().text_size(px(20.)).font_weight(FontWeight::BLACK).child("daily 5"))
-                .child(div().font_weight(FontWeight::BOLD).text_color(if streak > 0 { theme::white(1.) } else { theme::white(0.4) }).child(format!("{streak} day streak"))),
+                .child(div().flex().items_center().gap(px(10.)).child(icon("calendar", 20.)).child(div().text_size(px(20.)).font_weight(FontWeight::BLACK).child("daily 5")))
+                .child(
+                    div()
+                        .px(px(12.))
+                        .h(px(30.))
+                        .flex()
+                        .items_center()
+                        .rounded_full()
+                        .bg(theme::white(if streak > 0 { 0.14 } else { 0.06 }))
+                        .font_weight(FontWeight::BOLD)
+                        .text_size(px(14.))
+                        .text_color(if streak > 0 { theme::white(1.) } else { theme::white(0.4) })
+                        .child(format!("{streak} day streak")),
+                ),
         );
         if h["daily"]["played"].as_bool() == Some(true) {
             let left = h["nextIn"].as_i64().unwrap_or(0);
@@ -363,16 +521,24 @@ impl Scenes {
                         .flex()
                         .items_baseline()
                         .gap(px(10.))
-                        .child(div().text_size(px(44.)).font_weight(FontWeight::BLACK).child(h["daily"]["score"].as_i64().unwrap_or(0).to_string()))
+                        .child(div().text_size(px(48.)).font_weight(FontWeight::BLACK).child(commas(h["daily"]["score"].as_i64().unwrap_or(0))))
                         .child(div().text_color(theme::label2()).child("points"))
                         .children(h["ranks"]["daily"].as_i64().map(|r| div().ml_auto().font_weight(FontWeight::BOLD).child(format!("#{r} today")))),
                 )
                 .child(dots(&h["daily"]["results"]))
                 .child(div().text_size(px(13.)).text_color(theme::label2()).child(format!("next five in {}h {}m", left / 3600, (left % 3600) / 60)));
+        } else if let Some(n) = h["daily"]["resume"]["n"].as_i64() {
+            daily = daily
+                .child(div().text_color(theme::label2()).child(format!(
+                    "you're on scene {n} of {} with {} points. carry on here, or on any of your devices.",
+                    h["daily"]["resume"]["total"].as_i64().unwrap_or(5),
+                    commas(h["daily"]["resume"]["score"].as_i64().unwrap_or(0))
+                )))
+                .child(pill("sc-daily", "continue today's five", true).on_click(cx.listener(|s, _, _, cx| s.start(true, cx))));
         } else {
             daily = daily
                 .child(div().text_color(theme::label2()).child("five scenes, the same for everyone. easy first, then nicher. one go a day."))
-                .child(div().flex().child(pill("sc-daily", "play today's five", true).on_click(cx.listener(|s, _, _, cx| s.start(true, cx)))));
+                .child(pill("sc-daily", "play today's five", true).on_click(cx.listener(|s, _, _, cx| s.start(true, cx))));
         }
         let best = h["bestRun"].as_i64().unwrap_or(0);
         let endless = card()
@@ -381,70 +547,72 @@ impl Scenes {
                     .flex()
                     .items_center()
                     .justify_between()
-                    .child(div().text_size(px(20.)).font_weight(FontWeight::BLACK).child("endless"))
-                    .children((best > 0).then(|| div().text_color(theme::label2()).child(format!("best {best}")))),
+                    .child(div().flex().items_center().gap(px(10.)).child(icon("refresh", 20.)).child(div().text_size(px(20.)).font_weight(FontWeight::BLACK).child("endless")))
+                    .children((best > 0).then(|| div().text_color(theme::label2()).child(format!("best {}", commas(best))))),
             )
             .child(div().text_color(theme::label2()).child("play whenever. it starts easy and gets nicher. three misses and the run is over."))
-            .child(div().flex().child(pill("sc-endless", "start a run", false).on_click(cx.listener(|s, _, _, cx| s.start(false, cx)))));
+            .child(pill("sc-endless", "start a run", false).on_click(cx.listener(|s, _, _, cx| s.start(false, cx))));
         col = col.child(daily).child(endless);
         if !self.error.is_empty() {
             col = col.child(div().text_color(gpui::rgb(0xff8a8a)).child(self.error.clone()));
         }
 
-        // the boards
-        let tab = |i: usize, label: &'static str, on: bool| {
+        // the boards: a segmented switch, then rows
+        let seg = |i: usize, label: &'static str, on: bool| {
             div()
                 .id(("sc-tab", i))
-                .px(px(16.))
-                .h(px(34.))
+                .flex_1()
+                .h(px(32.))
                 .flex()
                 .items_center()
-                .rounded_full()
+                .justify_center()
+                .rounded(px(9.))
+                .text_size(px(14.))
                 .font_weight(FontWeight::SEMIBOLD)
                 .cursor_pointer()
-                .when(on, |d| d.bg(gpui::white()).text_color(gpui::black()))
-                .when(!on, |d| d.bg(theme::white(0.08)).hover(|s| s.bg(theme::white(0.14))))
+                .when(on, |d| d.bg(theme::white(0.18)))
+                .when(!on, |d| d.text_color(theme::label2()).hover(|s| s.text_color(theme::text())))
                 .child(label)
         };
-        let rows = &h["boards"][if self.board == 0 { "daily" } else { "runs" }];
-        let rows: Vec<Value> = rows.as_array().cloned().unwrap_or_default();
+        let rows: Vec<Value> = h["boards"][if self.board == 0 { "daily" } else { "runs" }].as_array().cloned().unwrap_or_default();
         let me = couch::crew::member_id(&couch::state::get().core);
-        col = col
-            .child(div().mt(px(10.)).text_size(px(22.)).font_weight(FontWeight::BLACK).child("leaderboard"))
-            .child(
-                div()
-                    .flex()
-                    .gap(px(8.))
-                    .child(tab(0, "today", self.board == 0).on_click(cx.listener(|s, _, _, cx| {
-                        s.board = 0;
-                        cx.notify();
-                    })))
-                    .child(tab(1, "best runs", self.board == 1).on_click(cx.listener(|s, _, _, cx| {
-                        s.board = 1;
-                        cx.notify();
-                    }))),
-            );
+        col = col.child(div().mt(px(12.)).text_size(px(22.)).font_weight(FontWeight::BLACK).child("leaderboard")).child(
+            div()
+                .p(px(3.))
+                .flex()
+                .gap(px(3.))
+                .rounded(px(12.))
+                .bg(theme::white(0.07))
+                .child(seg(0, "today", self.board == 0).on_click(cx.listener(|s, _, _, cx| {
+                    s.board = 0;
+                    cx.notify();
+                })))
+                .child(seg(1, "best runs", self.board == 1).on_click(cx.listener(|s, _, _, cx| {
+                    s.board = 1;
+                    cx.notify();
+                }))),
+        );
         if rows.is_empty() {
-            col = col.child(div().text_color(theme::label2()).child(if self.board == 0 { "nobody has played today yet. be first." } else { "no runs yet." }));
+            col = col.child(div().py(px(8.)).text_color(theme::label2()).child(if self.board == 0 { "nobody has played today yet. be first." } else { "no runs yet." }));
         }
         col.children(rows.into_iter().enumerate().map(|(i, r)| {
             let mine = r["id"].as_str() == Some(me.as_str());
             div()
                 .w_full()
-                .h(px(44.))
+                .h(px(46.))
                 .px(px(12.))
                 .flex()
                 .items_center()
                 .gap(px(12.))
-                .rounded(px(10.))
+                .rounded(px(12.))
                 .when(mine, |d| d.bg(theme::white(0.08)))
-                .child(div().w(px(28.)).text_color(if i < 3 { theme::white(1.) } else { theme::white(0.5) }).font_weight(FontWeight::BLACK).child((i + 1).to_string()))
+                .child(div().w(px(26.)).text_color(if i < 3 { theme::white(1.) } else { theme::white(0.5) }).font_weight(FontWeight::BLACK).child((i + 1).to_string()))
                 .child(match r["avatar"].as_str() {
-                    Some(a) => img(a.to_string()).size(px(28.)).rounded_full().into_any_element(),
-                    None => div().size(px(28.)).rounded_full().bg(theme::surface2()).into_any_element(),
+                    Some(a) => img(a.to_string()).size(px(30.)).rounded_full().into_any_element(),
+                    None => div().size(px(30.)).rounded_full().bg(theme::surface2()).into_any_element(),
                 })
                 .child(div().flex_1().min_w_0().truncate().when(mine, |d| d.font_weight(FontWeight::BOLD)).child(r["name"].as_str().unwrap_or("someone").to_string()))
-                .child(div().font_weight(FontWeight::BOLD).child(r["score"].as_i64().unwrap_or(0).to_string()))
+                .child(div().font_weight(FontWeight::BOLD).child(commas(r["score"].as_i64().unwrap_or(0))))
         }))
     }
 
@@ -459,20 +627,39 @@ impl Scenes {
         let points: Vec<i64> = r["points"].as_array().into_iter().flatten().filter_map(|s| s.as_i64()).collect();
         let worth = points.get(self.stage).copied().unwrap_or(0);
 
-        // the screen: dark until you play your part of the scene
+        // the screen: dark until you play your part of the scene. While the
+        // clip is held on its first picture it's drawn (so its window is in
+        // place) but covered; the cover comes off the moment it's let go.
         let frame = if self.on { video::get(cx).update(cx, |v, _| v.frame(OWNER, window)) } else { None };
-        if self.on && self.seen.is_none() && frame.is_some() {
-            self.seen = Some(Instant::now());
+        if self.on && self.held && frame.is_some() {
+            self.frames = self.frames.saturating_add(1);
         }
-        let mut screen = div().relative().w(px(760.)).h(px(428.)).rounded(px(16.)).overflow_hidden().flex().items_center().justify_center();
+        let (sw, sh) = (COL, COL * 9. / 16.);
+        let mut screen = div().relative().w(px(sw)).h(px(sh)).rounded(px(16.)).overflow_hidden().flex().items_center().justify_center();
+        let waiting = || div().text_size(px(14.)).text_color(theme::label2()).child("loading the scene…");
         screen = match &frame {
-            Some(pic) => screen.children(video::layers(None, pic, 1., 16.)),
+            Some(pic) => {
+                let s = screen.children(video::layers(None, pic, 1., 16.));
+                if self.held {
+                    s.child(div().absolute().top_0().left_0().size_full().bg(gpui::rgb(0x0f0f10)).flex().items_center().justify_center().child(waiting()))
+                } else {
+                    s
+                }
+            }
             None => {
-                let s = screen.bg(theme::white(0.05));
+                let s = screen.bg(gpui::rgb(0x0f0f10));
                 if self.clip_failed {
-                    s.child(div().text_color(theme::label2()).child("couldn't load this scene"))
+                    s.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .items_center()
+                            .gap(px(10.))
+                            .child(div().text_color(theme::label2()).child("couldn't load this scene"))
+                            .child(pill("sc-retry", "try again", false).on_click(cx.listener(|s, _, _, cx| s.replay(cx)))),
+                    )
                 } else if self.on || self.clip.is_empty() {
-                    s.child(div().text_color(theme::label2()).child("loading the scene…"))
+                    s.child(waiting())
                 } else {
                     s.child(
                         div()
@@ -491,48 +678,45 @@ impl Scenes {
             }
         };
 
+        let hearts = lives.map(|l| div().flex().gap(px(3.)).children((0..3).map(move |i| if i < l { crate::ui::icon_fill("heart", 12.) } else { icon("heart", 12.).text_color(theme::white(0.35)) })));
         let mut col = div()
-            .w(px(760.))
+            .w(px(COL))
             .flex()
             .flex_col()
             .gap(px(14.))
             .child(
                 div()
+                    .relative()
+                    .h(px(44.))
                     .flex()
                     .items_center()
                     .justify_between()
                     .child(
                         div()
                             .id("sc-quit")
-                            .px(px(14.))
-                            .h(px(34.))
+                            .size(px(40.))
                             .flex()
                             .items_center()
-                            .gap(px(6.))
+                            .justify_center()
                             .rounded_full()
-                            .bg(theme::white(0.08))
+                            .bg(theme::white(0.1))
                             .cursor_pointer()
-                            .hover(|s| s.bg(theme::white(0.14)))
+                            .hover(|s| s.bg(theme::white(0.18)))
                             .on_click(cx.listener(|s, _, _, cx| s.quit(cx)))
-                            .child(icon("close", 14.))
-                            .child("quit"),
+                            .child(icon("close", 16.)),
                     )
                     .child(
                         div()
+                            .absolute()
+                            .left_0()
+                            .right_0()
                             .flex()
                             .flex_col()
                             .items_center()
                             .child(div().font_weight(FontWeight::BOLD).child(if total > 0 { format!("scene {n} of {total}") } else { format!("scene {n}") }))
                             .child(div().text_size(px(12.)).text_color(theme::label2()).child(level)),
                     )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .items_end()
-                            .child(div().text_size(px(20.)).font_weight(FontWeight::BLACK).child(score.to_string()))
-                            .children(lives.map(|l| div().text_size(px(12.)).text_color(theme::label2()).child(format!("{l} {} left", if l == 1 { "life" } else { "lives" })))),
-                    ),
+                    .child(div().flex().flex_col().items_end().gap(px(3.)).child(div().text_size(px(20.)).font_weight(FontWeight::BLACK).child(commas(score))).children(hearts)),
             )
             .child(screen);
 
@@ -549,7 +733,7 @@ impl Scenes {
                             s if s < 1. => "a blink".to_string(),
                             s => format!("the first {} second{}", s as i64, if s == 1. { "" } else { "s" }),
                         }))
-                        .child(div().font_weight(FontWeight::BOLD).child(format!("worth {worth}"))),
+                        .child(div().font_weight(FontWeight::BOLD).child(format!("worth {}", commas(worth)))),
                 );
         }
 
@@ -558,27 +742,28 @@ impl Scenes {
         let gained = res.as_ref().and_then(|x| x["gained"].as_i64()).unwrap_or(0);
         let answered = res.is_some();
         let picked = self.picked;
-        col = col.child(div().flex().flex_wrap().gap(px(10.)).children(r["options"].as_array().into_iter().flatten().enumerate().map(|(i, o)| {
+        col = col.child(div().flex().flex_col().gap(px(8.)).children(r["options"].as_array().into_iter().flatten().enumerate().map(|(i, o)| {
             let is_right = right == Some(i);
             let is_wrong = answered && picked == Some(i) && !is_right;
             div()
                 .id(("sc-opt", i))
-                .w(px(375.))
-                .min_h(px(56.))
+                .w_full()
+                .h(px(54.))
                 .px(px(18.))
                 .flex()
                 .items_center()
                 .gap(px(10.))
                 .rounded(px(12.))
                 .font_weight(FontWeight::BOLD)
+                .text_size(px(16.))
                 .when(is_right, |d| d.bg(gpui::white()).text_color(gpui::black()))
                 .when(!is_right, |d| d.bg(theme::white(if picked == Some(i) { 0.16 } else { 0.08 })))
                 .when(is_wrong, |d| d.border_2().border_color(theme::white(0.6)))
                 .when(answered && !is_right && !is_wrong, |d| d.opacity(0.4))
                 .when(!answered, |d| d.cursor_pointer().hover(|s| s.bg(theme::white(0.16))).on_click(cx.listener(move |s, _, _, cx| s.answer(i, cx))))
-                .child(div().flex_1().min_w_0().truncate().child(o["title"].as_str().unwrap_or("").to_string()))
-                .child(div().text_size(px(13.)).opacity(0.6).child(o["year"].as_str().unwrap_or("").to_string()))
-                .children((is_right && gained > 0).then(|| div().child(format!("+{gained}"))))
+                .child(div().min_w_0().truncate().child(o["title"].as_str().unwrap_or("").to_string()))
+                .child(div().flex_1().text_size(px(13.)).opacity(0.6).child(o["year"].as_str().unwrap_or("").to_string()))
+                .children((is_right && gained > 0).then(|| div().child(format!("+{}", commas(gained)))))
                 .children(is_right.then(|| icon("check", 18.).text_color(gpui::black())))
                 .children(is_wrong.then(|| icon("close", 16.)))
         })));
@@ -588,10 +773,10 @@ impl Scenes {
         }
         if let Some(x) = &res {
             let last = x["next"].is_null();
-            col = col.child(div().flex().child(pill("sc-next", if last { "see how you did" } else { "next scene" }, true).on_click(cx.listener(|s, _, _, cx| s.next(cx)))));
+            col = col.child(div().pt(px(6.)).child(pill("sc-next", if last { "see how you did" } else { "next scene" }, true).on_click(cx.listener(|s, _, _, cx| s.next(cx)))));
         } else if self.stage + 1 < stages.len() {
             let cost = worth - points.get(self.stage + 1).copied().unwrap_or(0);
-            col = col.child(div().flex().child(pill("sc-more", format!("show more  (−{cost})"), false).on_click(cx.listener(|s, _, _, cx| s.reveal(cx)))));
+            col = col.child(div().pt(px(6.)).child(pill("sc-more", format!("show more  (−{cost})"), false).on_click(cx.listener(|s, _, _, cx| s.reveal(cx)))));
         }
         col
     }
@@ -599,35 +784,49 @@ impl Scenes {
     fn summary(&self, d: &Value, cx: &mut Context<Self>) -> Div {
         let daily = d["mode"].as_str() == Some("daily");
         let score = d["score"].as_i64().unwrap_or(0);
-        let mut col = div()
-            .w_full()
-            .max_w(px(520.))
-            .pt(px(30.))
-            .flex()
-            .flex_col()
-            .items_center()
-            .gap(px(14.))
-            .child(div().text_color(theme::label2()).font_weight(FontWeight::BOLD).child(if daily { "today's five" } else { "run over" }))
-            .child(div().text_size(px(84.)).font_weight(FontWeight::BLACK).child(score.to_string()))
-            .child(div().text_color(theme::label2()).child(format!("{} of {} right", d["right"].as_i64().unwrap_or(0), d["rounds"].as_i64().unwrap_or(0))));
-        if daily {
-            col = col.child(dots(&d["results"])).child(div().font_weight(FontWeight::BOLD).child(format!("{} day streak", d["streak"].as_i64().unwrap_or(0))));
-        } else if score > 0 && score >= d["bestRun"].as_i64().unwrap_or(0) {
+        let mut col = div().w(px(COL)).pt(px(10.)).flex().flex_col().items_center().gap(px(14.));
+        // the card is the summary: what you'd share is what you see
+        col = match &self.card {
+            Some((img_, _)) => col.child(img(img_.clone()).w(px(COL)).h(px(COL * 630. / 1200.)).rounded(px(22.)).object_fit(ObjectFit::Contain)),
+            None => col
+                .child(div().text_color(theme::label2()).font_weight(FontWeight::BOLD).child(if daily { "today's five" } else { "run over" }))
+                .child(div().text_size(px(84.)).font_weight(FontWeight::BLACK).child(commas(score)))
+                .child(div().text_color(theme::label2()).child(format!("{} of {} right", d["right"].as_i64().unwrap_or(0), d["rounds"].as_i64().unwrap_or(0))))
+                .child(dots(&d["results"])),
+        };
+        if !daily && score > 0 && score >= d["bestRun"].as_i64().unwrap_or(0) {
             col = col.child(div().font_weight(FontWeight::BOLD).child("your best run"));
         }
-        if let Some(r) = d["rank"].as_i64() {
-            col = col.child(div().font_weight(FontWeight::SEMIBOLD).child(format!("#{r} on the leaderboard")));
+        let mut row = div().w_full().mt(px(8.)).flex().gap(px(10.));
+        if self.card.is_some() {
+            row = row
+                .child(div().flex_1().child(pill("sc-copy", "copy card", false).on_click(cx.listener(|s, _, _, cx| {
+                    if let Some((i, _)) = &s.card {
+                        cx.write_to_clipboard(gpui::ClipboardItem::new_image(i));
+                        crate::Nav::toast("copied. paste it in Discord".into(), cx);
+                    }
+                }))))
+                .child(div().flex_1().child(pill("sc-save", "save", false).on_click(cx.listener(|s, _, _, cx| {
+                    let Some((_, b)) = s.card.clone() else { return };
+                    let dir = dirs::picture_dir().unwrap_or_else(std::env::temp_dir).join("couch");
+                    let name = format!("scenes-{}.png", chrono::Utc::now().format("%Y-%m-%d-%H%M"));
+                    let ok = std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join(&name), b)).is_ok();
+                    crate::Nav::toast(if ok { format!("saved to Pictures\\couch\\{name}") } else { "couldn't save it".into() }, cx);
+                }))));
         }
-        let mut row = div().mt(px(14.)).flex().gap(px(10.));
         if !daily {
-            row = row.child(pill("sc-again-run", "go again", false).on_click(cx.listener(|s, _, _, cx| s.start(false, cx))));
+            row = row.child(div().flex_1().child(pill("sc-again-run", "go again", false).on_click(cx.listener(|s, _, _, cx| s.start(false, cx)))));
         }
-        col.child(row.child(pill("sc-done", "done", true).on_click(cx.listener(|s, _, _, cx| {
+        col.child(row).child(pill("sc-done", "done", true).on_click(cx.listener(|s, _, _, cx| {
             s.done = None;
+            s.card = None;
             cx.notify();
-        }))))
+        })))
     }
 }
+
+/// the width of the one column everything sits in
+const COL: f32 = 620.;
 
 impl Render for Scenes {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -638,28 +837,29 @@ impl Render for Scenes {
         } else {
             self.lobby(cx)
         };
-        let playing = self.round.is_some();
         div()
             .id("scenes")
             .size_full()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .child(crate::ui::smooth::wheel(&self.scroll, "scenes"))
-            .pt(px(100.))
+            .pt(px(96.))
             .px(px(theme::GUTTER))
             .pb(px(80.))
             .flex()
             .flex_col()
-            .gap(px(18.))
-            .when(!playing, |d| {
-                d.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .child(div().text_size(px(40.)).font_weight(FontWeight::BLACK).child("scenes"))
-                        .child(div().text_size(px(15.)).text_color(theme::label2()).child("guess the movie from its most famous scene. the less you watch, the more you score.")),
-                )
-            })
+            .items_center()
             .child(body)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// `cargo test scenes_card -- --nocapture` writes the share card to /tmp
+    #[test]
+    fn scenes_card() {
+        let d = serde_json::json!({ "mode": "daily", "score": 3800, "right": 4, "rounds": 5, "results": [0, 1, -1, 0, 2], "streak": 3, "rank": 2 });
+        let svg = super::card_svg(&d, "xnite", "28 Nov 2026");
+        assert!(svg.contains("3,800") && svg.contains("3 day streak") && svg.contains("#2 today"));
     }
 }

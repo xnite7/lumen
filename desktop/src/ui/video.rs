@@ -331,6 +331,22 @@ impl Video {
         }
     }
 
+    /// Right after `play_once`: hold the clip on its first picture, silent,
+    /// until `set_paused(owner, false)` (picture and sound then start together).
+    pub fn hold(&mut self, owner: &str) {
+        if self.owner != owner {
+            return;
+        }
+        self.paused = true;
+        #[cfg(target_os = "windows")]
+        if let Some(n) = &self.native {
+            n.hold();
+        }
+        if let Some(s) = &self.surface {
+            s.set_paused(true);
+        }
+    }
+
     /// Pause / resume, if `owner` is the one showing.
     pub fn set_paused(&mut self, owner: &str, paused: bool) {
         if self.owner != owner || self.paused == paused {

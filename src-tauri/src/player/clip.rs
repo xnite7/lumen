@@ -19,6 +19,11 @@ pub struct Clip {
     /// the file has started (its first picture decoded); "ready" waits until
     /// it's actually moving, so nothing fades over a frozen or black frame
     armed: AtomicBool,
+    /// held on its first picture (paused) until it's let go: for the scenes
+    /// game, where picture and sound have to start together
+    held: AtomicBool,
+    /// the first picture of the current file has been drawn
+    restarted: AtomicBool,
 }
 
 impl Clip {
@@ -52,7 +57,7 @@ impl Clip {
             Ok(())
         })
         .map_err(|e| format!("{e:?}"))?;
-        let me = Arc::new(Self { mpv: Arc::new(mpv), wid, ready: AtomicBool::new(false), gen: AtomicU64::new(0), on_ready: Mutex::new(None), armed: AtomicBool::new(false) });
+        let me = Arc::new(Self { mpv: Arc::new(mpv), wid, ready: AtomicBool::new(false), gen: AtomicU64::new(0), on_ready: Mutex::new(None), armed: AtomicBool::new(false), held: AtomicBool::new(false), restarted: AtomicBool::new(false) });
         let w = Arc::downgrade(&me);
         let mpv = me.mpv.clone();
         std::thread::Builder::new()
@@ -63,7 +68,11 @@ impl Clip {
                 let Some(me) = w.upgrade() else { break };
                 match ev {
                     // a file has started (this one: a new load clears `armed` first)
-                    Some(Ok(Event::FileLoaded)) | Some(Ok(Event::PlaybackRestart)) => me.armed.store(true, Ordering::Relaxed),
+                    Some(Ok(Event::FileLoaded)) => me.armed.store(true, Ordering::Relaxed),
+                    Some(Ok(Event::PlaybackRestart)) => {
+                        me.armed.store(true, Ordering::Relaxed);
+                        me.restarted.store(true, Ordering::Relaxed);
+                    }
                     Some(Ok(Event::Shutdown)) => break,
                     _ => {}
                 }
@@ -72,7 +81,9 @@ impl Clip {
                     let t: f64 = me.mpv.get_property("time-pos").unwrap_or(0.0);
                     let waiting: bool = me.mpv.get_property("paused-for-cache").unwrap_or(false);
                     let w_: i64 = me.mpv.get_property("width").unwrap_or(0);
-                    if t > 0.25 && !waiting && w_ > 0 && !me.ready.swap(true, Ordering::Relaxed) {
+                    // (held: ready as soon as the first picture is drawn, still paused)
+                    let go = if me.held.load(Ordering::Relaxed) { me.restarted.load(Ordering::Relaxed) } else { t > 0.25 };
+                    if go && !waiting && w_ > 0 && !me.ready.swap(true, Ordering::Relaxed) {
                         me.fit();
                         if let Some(f) = me.on_ready.lock().as_ref() {
                             f();
@@ -98,6 +109,8 @@ impl Clip {
         self.gen.fetch_add(1, Ordering::Relaxed);
         self.ready.store(false, Ordering::Relaxed);
         self.armed.store(false, Ordering::Relaxed);
+        self.held.store(false, Ordering::Relaxed);
+        self.restarted.store(false, Ordering::Relaxed);
         let _ = self.mpv.set_property("loop-file", if looping { "inf" } else { "no" });
         let _ = self.mpv.set_property("mute", muted);
         let _ = self.mpv.set_property("volume", 100i64);
@@ -113,6 +126,13 @@ impl Clip {
 
     pub fn set_paused(&self, paused: bool) {
         let _ = self.mpv.set_property("pause", paused);
+    }
+
+    /// Right after `play_with`: load it paused and call it ready on its first
+    /// picture. `set_paused(false)` then starts picture and sound together.
+    pub fn hold(&self) {
+        self.held.store(true, Ordering::Relaxed);
+        let _ = self.mpv.set_property("pause", true);
     }
 
     pub fn set_muted(&self, muted: bool) {

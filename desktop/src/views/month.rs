@@ -193,7 +193,7 @@ fn svg(year: i32, month: u32, titles: usize, films: usize, shows: usize, eps: i6
 }
 
 /// SVG to PNG, with couch's own fonts
-fn render(svg: &str) -> Option<Vec<u8>> {
+pub(crate) fn render(svg: &str) -> Option<Vec<u8>> {
     let mut opt = resvg::usvg::Options::default();
     let mut db = resvg::usvg::fontdb::Database::new();
     for f in ["fonts/Satoshi-Black.ttf", "fonts/Satoshi-Bold.ttf", "fonts/Satoshi-Medium.ttf", "fonts/Satoshi-Regular.ttf"] {
