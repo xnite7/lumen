@@ -95,20 +95,14 @@ struct ShareCard: View {
     }
 }
 
-/// The card at whatever width there is, with a Share button under it.
-struct ShareCardPanel: View {
+/// Share your result. The card isn't shown in the app: it's the picture
+/// the share sheet previews and sends.
+struct ShareCardButton: View {
     let d: GameCardData
     @State private var picture: Image?
 
     var body: some View {
-        VStack(spacing: 12) {
-            GeometryReader { g in
-                ShareCard(d: d)
-                    .scaleEffect(g.size.width / 1200, anchor: .topLeading)
-                    .frame(width: g.size.width, height: g.size.width * 630 / 1200, alignment: .topLeading)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            }
-            .aspectRatio(1200 / 630, contentMode: .fit)
+        Group {
             if let picture {
                 ShareLink(item: picture, preview: SharePreview("couch scenes · \(d.score) points", image: picture)) {
                     Label("Share", systemImage: "square.and.arrow.up")

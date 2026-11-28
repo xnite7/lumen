@@ -76,6 +76,8 @@ jobs:
       - name: Simulator screenshots (test branch only)
         if: github.ref == 'refs/heads/ios-native'
         working-directory: ios
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set +e
           xcodebuild -project Couch.xcodeproj -scheme Couch -configuration Debug -sdk iphonesimulator \
@@ -107,6 +109,38 @@ jobs:
           go -open couch://play/daily; sleep 16; shot round
           go -open couch://play/daily -revealAll; sleep 16; shot scene
           xcrun simctl spawn "$DEV" log show --last 2m --predicate 'process == "Couch"' --style compact 2>/dev/null | grep -i -E "fatal|crash|error" | head -15
+          # App Store pictures: full size, from the biggest iPhone and the 13" iPad,
+          # with the demo source only (open films), kept on the store-shots release
+          mkdir -p store
+          store() { # <name of device> <prefix>
+            D=$(xcrun simctl list devices available | grep -E "$1" | head -1 | grep -oE "[0-9A-F-]{36}")
+            [ -z "$D" ] && { echo "store: no $1"; return; }
+            xcrun simctl boot "$D"; xcrun simctl bootstatus "$D" -b
+            xcrun simctl status_bar "$D" override --time "9:41" --batteryState charged --batteryLevel 100 --wifiBars 3 --cellularBars 4 --dataNetwork wifi
+            xcrun simctl install "$D" "$APP"
+            run() { xcrun simctl terminate "$D" com.midnite.couch >/dev/null 2>&1; xcrun simctl launch "$D" com.midnite.couch -demo "$@" >/dev/null; }
+            snap() { xcrun simctl io "$D" screenshot "store/$2-$1.png" >/dev/null 2>&1; }
+            run; sleep 30; run; sleep 14; snap 1-home "$2"
+            run -open couch://title/movie/tt1727587; sleep 16; snap 2-title "$2"
+            run -open couch://tab/play; sleep 10; snap 3-games "$2"
+            run -open couch://play/daily; sleep 16; snap 4-round "$2"
+            run -open couch://tab/search; sleep 10; snap 5-search "$2"
+            run -open couch://pro; sleep 7; snap 6-pro "$2"
+            if [ "$2" = iphone ]; then
+              xcrun simctl io "$D" recordVideo --codec h264 --force store/iphone-preview.mov >/dev/null 2>&1 &
+              REC=$!
+              sleep 2; run; sleep 9
+              run -open couch://title/movie/tt1727587; sleep 8
+              run -open couch://tab/play; sleep 7
+              kill -INT $REC; wait $REC 2>/dev/null
+            fi
+            xcrun simctl shutdown "$D"
+          }
+          store "iPhone 1[6-9] Pro Max" iphone
+          store "iPad Pro 13" ipad
+          ls -la store
+          gh release view store-shots >/dev/null 2>&1 || gh release create store-shots --prerelease --title "store pictures (CI)" --notes "Simulator captures for the App Store listing." --target "$GITHUB_SHA"
+          gh release upload store-shots store/* --clobber
           exit 0
       - name: Signed build → App Store Connect (TestFlight / App Store)
         # (the testflight branch: a TestFlight build without a Windows release)

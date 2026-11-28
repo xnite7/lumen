@@ -78,16 +78,16 @@ struct GameHomeView: View {
     private func daily(_ h: GameHome) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Daily 5", systemImage: "calendar").font(.headline)
+                Label { Text("Daily 5") } icon: { Image(systemName: "calendar").foregroundStyle(GameTint.gold) }.font(.headline)
                 Spacer()
                 Label("\(h.streak)", systemImage: "flame.fill")
                     .font(.headline)
-                    .foregroundStyle(h.streak > 0 ? .white : Theme.faint)
+                    .foregroundStyle(h.streak > 0 ? GameTint.flame : Theme.faint)
                     .accessibilityLabel("\(h.streak) day streak")
             }
             if h.daily.played {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("\(h.daily.score ?? 0)").font(.system(size: 40, weight: .heavy)).monospacedDigit()
+                    Text("\(h.daily.score ?? 0)").font(.system(size: 40, weight: .heavy)).monospacedDigit().foregroundStyle(GameTint.gold)
                     Text("points").foregroundStyle(Theme.dim)
                     Spacer()
                     if let r = h.ranks.daily { Text("#\(r) today").font(.subheadline.weight(.semibold)) }
@@ -95,7 +95,7 @@ struct GameHomeView: View {
                 ResultDots(results: h.daily.results ?? [])
                 (Text("Next five in ") + Text(Date().addingTimeInterval(Double(h.nextIn)), style: .timer))
                     .font(.footnote).foregroundStyle(Theme.dim).monospacedDigit()
-                ShareCardPanel(d: GameCardData(daily: true, score: h.daily.score ?? 0, right: (h.daily.results ?? []).filter { $0 >= 0 }.count,
+                ShareCardButton(d: GameCardData(daily: true, score: h.daily.score ?? 0, right: (h.daily.results ?? []).filter { $0 >= 0 }.count,
                                                rounds: (h.daily.results ?? []).count, results: h.daily.results ?? [], streak: h.streak,
                                                rank: h.ranks.daily, name: account.discord?.name ?? "", day: GameCardData.day(h.day)))
             } else if let r = h.daily.resume {
@@ -112,13 +112,13 @@ struct GameHomeView: View {
                     .disabled(starting)
             }
         }
-        .card()
+        .card(GameTint.gold)
     }
 
     private func endless(_ h: GameHome) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Endless", systemImage: "infinity").font(.headline)
+                Label { Text("Endless") } icon: { Image(systemName: "infinity").foregroundStyle(GameTint.violet) }.font(.headline)
                 Spacer()
                 if h.bestRun > 0 { Text("best \(h.bestRun)").font(.subheadline).foregroundStyle(Theme.dim).monospacedDigit() }
             }
@@ -133,7 +133,7 @@ struct GameHomeView: View {
                     .buttonStyle(PillButton(primary: false))
             }
         }
-        .card()
+        .card(GameTint.violet)
     }
 
     private func boards(_ h: GameHome) -> some View {
@@ -151,7 +151,7 @@ struct GameHomeView: View {
             ForEach(Array(rows.enumerated()), id: \.element.id) { i, r in
                 HStack(spacing: 12) {
                     Text("\(i + 1)").font(.subheadline.weight(.bold)).monospacedDigit().frame(width: 26, alignment: .trailing)
-                        .foregroundStyle(i < 3 ? .white : Theme.dim)
+                        .foregroundStyle(i == 0 ? GameTint.gold : i < 3 ? .white : Theme.dim)
                     AsyncImage(url: r.avatar.flatMap(URL.init(string:))) { $0.resizable() } placeholder: { Color(white: 0.2) }
                         .frame(width: 30, height: 30).clipShape(Circle())
                     Text(r.name).font(.subheadline.weight(r.id == account.discord?.id ? .bold : .regular)).lineLimit(1)
@@ -179,7 +179,7 @@ struct ResultDots: View {
         HStack(spacing: 6) {
             ForEach(Array(results.enumerated()), id: \.offset) { _, r in
                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .fill(r < 0 ? Color.clear : Color.white.opacity(1 - Double(r) * 0.18))
+                    .fill(GameTint.result(r))
                     .overlay { if r < 0 { RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Theme.faint, lineWidth: 1.5) } }
                     .frame(width: 26, height: 26)
             }
@@ -193,8 +193,15 @@ func shareText(day: String, score: Int, results: [Int], streak: Int) -> String {
 }
 
 extension View {
-    func card() -> some View {
+    func card(_ tint: Color? = nil) -> some View {
         padding(18).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background {
+                RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Theme.card)
+                if let tint {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(LinearGradient(colors: [tint.opacity(0.2), .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(tint.opacity(0.22), lineWidth: 1)
+                }
+            }
     }
 }

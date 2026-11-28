@@ -14,17 +14,24 @@ struct GameRoundView: View {
     @State private var error: String?
     @State private var snippet = Snippet()
     @State private var haptic = 0
+    @State private var party = 0
+    @State private var row = 0   // right answers in a row, this sitting
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var size
 
     var body: some View {
         ZStack {
             Theme.bg.ignoresSafeArea()
+            // the room's light: warm while you guess, green or red once you have
+            RadialGradient(colors: [glow.opacity(0.26), .clear], center: .init(x: 0.5, y: 0), startRadius: 0, endRadius: 520)
+                .ignoresSafeArea()
+                .animation(.easeInOut(duration: 0.45), value: result?.correct)
             if let d = done {
                 summary(d)
             } else if let r = round {
                 play(r)
             }
+            Confetti(trigger: party).ignoresSafeArea()
         }
         .task {
             if round == nil { await show(first) }
@@ -42,6 +49,12 @@ struct GameRoundView: View {
         } message: { Text(error ?? "") }
     }
 
+    private var glow: Color {
+        if done != nil { return GameTint.gold }
+        guard let res = result else { return round.map { GameTint.level($0.level) } ?? GameTint.gold }
+        return res.correct ? GameTint.green : GameTint.red
+    }
+
     // MARK: a round
 
     private func play(_ r: GameRound) -> some View {
@@ -57,15 +70,16 @@ struct GameRoundView: View {
                 Spacer()
                 VStack(spacing: 1) {
                     Text(r.total > 0 ? "Scene \(r.n) of \(r.total)" : "Scene \(r.n)").font(.subheadline.weight(.semibold))
-                    Text(["", "easy", "film fan", "deep cut"][min(3, r.level)]).font(.caption2).foregroundStyle(Theme.dim)
+                    Text(["", "easy", "film fan", "deep cut"][min(3, r.level)]).font(.caption2.weight(.semibold)).foregroundStyle(GameTint.level(r.level))
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(result?.score ?? r.score)").font(.headline).monospacedDigit().contentTransition(.numericText())
+                    CountUp(value: result?.score ?? r.score).font(.headline).foregroundStyle(GameTint.gold)
                     if let l = result?.lives ?? r.lives {
                         HStack(spacing: 2) {
                             ForEach(0..<3, id: \.self) { i in
                                 Image(systemName: i < l ? "heart.fill" : "heart").font(.system(size: 10))
+                                    .foregroundStyle(i < l ? GameTint.red : Theme.faint)
                             }
                         }
                         .accessibilityLabel("\(l) lives")
@@ -79,13 +93,14 @@ struct GameRoundView: View {
             if result == nil {
                 HStack(spacing: 6) {
                     ForEach(r.stages.indices, id: \.self) { i in
-                        Capsule().fill(i <= stage ? Color.white : Color.white.opacity(0.18)).frame(height: 4)
+                        Capsule().fill(i <= stage ? GameTint.gold : Color.white.opacity(0.18)).frame(height: 4)
                     }
                 }
                 HStack {
                     Text(label(r.stages[stage])).font(.footnote).foregroundStyle(Theme.dim)
                     Spacer()
-                    Text("worth \(r.points[stage])").font(.footnote.weight(.semibold)).monospacedDigit()
+                    Text("worth \(r.points[stage])").font(.footnote.weight(.bold)).monospacedDigit().foregroundStyle(GameTint.gold)
+                        .contentTransition(.numericText())
                 }
             }
 
@@ -148,7 +163,34 @@ struct GameRoundView: View {
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.line, lineWidth: 0.5))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(result.map { $0.correct ? GameTint.green : GameTint.red } ?? Theme.line, lineWidth: result == nil ? 0.5 : 2))
+            .overlay(alignment: .top) {
+                if let res = result { verdict(res).padding(10).transition(.scale(scale: 0.6).combined(with: .opacity)) }
+            }
+    }
+
+    /// what just happened, said loudly
+    private func verdict(_ res: GameAnswer) -> some View {
+        let praise = ["In a blink!", "One second!", "Three seconds", "Five seconds", "Got it"][min(4, stage)]
+        return HStack(spacing: 8) {
+            Image(systemName: res.correct ? "checkmark.seal.fill" : "xmark.seal.fill")
+            if res.correct {
+                Text(praise)
+                if res.gained > 0 { Text("+\(res.gained)").monospacedDigit() }
+                if row >= 2 {
+                    Label("\(row)", systemImage: "flame.fill").labelStyle(.titleAndIcon).foregroundStyle(.black.opacity(0.7))
+                }
+            } else {
+                Text("Not this time")
+            }
+        }
+        .font(.subheadline.weight(.heavy))
+        .foregroundStyle(.black)
+        .padding(.horizontal, 14).padding(.vertical, 8)
+        .background(res.correct ? GameTint.green : GameTint.red, in: Capsule())
+        .shadow(color: .black.opacity(0.4), radius: 8, y: 3)
+        .accessibilityElement(children: .combine)
     }
 
     private func option(_ o: GameRound.Option, _ i: Int) -> some View {
@@ -164,10 +206,13 @@ struct GameRoundView: View {
         }
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, minHeight: 52)
-        .foregroundStyle(right ? Color.black : Color.white)
-        .background(right ? AnyShapeStyle(.white) : AnyShapeStyle(Theme.card), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay { if wrong { RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.white.opacity(0.6), lineWidth: 1.5) } }
+        .foregroundStyle(right ? Color.black : wrong ? GameTint.red : Color.white)
+        .background(right ? AnyShapeStyle(GameTint.green) : wrong ? AnyShapeStyle(GameTint.red.opacity(0.16)) : AnyShapeStyle(Theme.card),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay { if wrong { RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(GameTint.red.opacity(0.8), lineWidth: 1.5) } }
         .opacity(result != nil && !right && !wrong ? 0.4 : 1)
+        .scaleEffect(right ? 1.03 : 1)
+        .animation(.spring(duration: 0.35, bounce: 0.5), value: right)
     }
 
     private func label(_ s: Double) -> String {
@@ -215,8 +260,10 @@ struct GameRoundView: View {
         Task {
             do {
                 let a = try await GameAPI.answer(r.game, pick: i)
-                withAnimation(.snappy) { result = a }
+                row = a.correct ? row + 1 : 0
+                withAnimation(.spring(duration: 0.4, bounce: 0.45)) { result = a }
                 haptic += 1
+                if a.correct { party += 1 }
                 snippet.play(nil) // now the whole scene
             } catch {
                 picked = nil
@@ -229,22 +276,35 @@ struct GameRoundView: View {
     // MARK: the end
 
     private func summary(_ d: GameDone) -> some View {
-        VStack(spacing: 16) {
+        let best = d.mode != "daily" && d.score >= d.bestRun && d.score > 0
+        return VStack(spacing: 18) {
             Spacer()
             Text(d.mode == "daily" ? "Today's five" : "Run over").font(.headline).foregroundStyle(Theme.dim)
-            // the card is the summary: what you share is what you see
-            ShareCardPanel(d: GameCardData(daily: d.mode == "daily", score: d.score, right: d.right, rounds: d.rounds, results: d.results,
-                                           streak: d.streak, rank: d.rank, name: Account.shared.discord?.name ?? "", day: GameCardData.day()))
-            if d.mode != "daily", d.score >= d.bestRun, d.score > 0 {
-                Label("Your best run", systemImage: "trophy.fill").font(.headline)
+            CountUp(value: d.score)
+                .font(.system(size: 76, weight: .black))
+                .foregroundStyle(LinearGradient(colors: [.white, GameTint.gold], startPoint: .top, endPoint: .bottom))
+                .minimumScaleFactor(0.5).lineLimit(1)
+            Text("points · \(d.right) of \(d.rounds) right").font(.subheadline.weight(.medium)).foregroundStyle(Theme.dim)
+            ResultDots(results: d.results)
+            HStack(spacing: 10) {
+                if d.mode == "daily", d.streak > 0 {
+                    Label("\(d.streak) day streak", systemImage: "flame.fill").chip(GameTint.flame)
+                }
+                if let r = d.rank {
+                    Label("#\(r) \(d.mode == "daily" ? "today" : "all time")", systemImage: "trophy.fill").chip(GameTint.gold)
+                }
+                if best { Label("Your best run", systemImage: "star.fill").chip(GameTint.violet) }
             }
             Spacer()
+            ShareCardButton(d: GameCardData(daily: d.mode == "daily", score: d.score, right: d.right, rounds: d.rounds, results: d.results,
+                                            streak: d.streak, rank: d.rank, name: Account.shared.discord?.name ?? "", day: GameCardData.day()))
             if d.mode != "daily" {
                 Button {
                     Task {
                         do {
                             let r = try await GameAPI.start(daily: false)
                             done = nil
+                            row = 0
                             await show(r)
                         } catch { self.error = error.localizedDescription }
                     }
@@ -255,6 +315,18 @@ struct GameRoundView: View {
         }
         .padding(Theme.pad)
         .frame(maxWidth: 560)
-        .onAppear { snippet.close() }
+        .onAppear {
+            snippet.close()
+            if best || d.right * 5 >= d.rounds * 3, d.right > 0 { party += 1 }
+        }
+    }
+}
+
+extension View {
+    /// a small tinted tag
+    func chip(_ tint: Color) -> some View {
+        font(.footnote.weight(.bold)).foregroundStyle(tint)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(tint.opacity(0.15), in: Capsule())
     }
 }
