@@ -155,6 +155,7 @@ final class Library {
     func record(_ p: Progress) {
         var p = p
         p.updated = .now
+        History.shared.watchedHere(p)
         if p.finished {
             if !watched.contains(p.videoId) { Simkl.shared.watched(p) }
             watched.insert(p.videoId)

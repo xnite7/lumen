@@ -284,6 +284,8 @@ final class Simkl: NSObject {
         var seen: Set<String> = []
         var done: Set<String> = []
         var stat: [String: String] = [:]
+        var seenAt: [WatchedTitle] = []
+        let stamp = ISO8601DateFormatter()
         for bucket in ["shows", "movies", "anime"] {
             // every type has to come back, or nothing here is touched
             guard let v = await get("/sync/all-items/\(bucket)?extended=full&episode_watched_at=yes") else {
@@ -297,6 +299,12 @@ final class Simkl: NSObject {
                 let st = it["status"] as? String ?? ""
                 let film = bucket == "movies" || (bucket == "anime" && (it["anime_type"] as? String ?? m["anime_type"] as? String) == "movie")
                 stat[imdb] = st
+                // when you last watched it (for "your month")
+                if let at = (it["last_watched_at"] as? String).flatMap({ stamp.date(from: $0) }) {
+                    seenAt.append(WatchedTitle(id: imdb, type: film ? .movie : .series, name: title, at: at,
+                                               episodes: (it["watched_episodes_count"] as? NSNumber)?.intValue,
+                                               minutes: (m["runtime"] as? NSNumber)?.intValue))
+                }
                 if st == "plantowatch" || (st == "watching" && !film), seen.insert(imdb).inserted {
                     list.append(MetaPreview(id: imdb, type: film ? .movie : .series, name: title, releaseInfo: (m["year"] as? Int).map(String.init)))
                 }
@@ -315,6 +323,7 @@ final class Simkl: NSObject {
         }
         status = stat
         UserDefaults.standard.set(stat, forKey: "simkl.status")
+        History.shared.fromSimkl(seenAt)
         // with changes of ours still waiting, Simkl's list isn't the whole truth yet
         Library.shared.fromSimkl(list: list, watched: done, complete: outbox.isEmpty)
 

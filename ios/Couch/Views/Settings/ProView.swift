@@ -9,9 +9,11 @@ struct ProView: View {
     @State private var account = Account.shared
     @Environment(\.dismiss) private var dismiss
 
-    // (scene previews and Endless Scenes come back here when clips do)
     private let perks: [(String, String, String)] = [
-        ("square.grid.2x2.fill", "Home-screen widgets", "Continue Watching and My List, right on your Home Screen."),
+        ("play.rectangle.fill", "Scene previews", "Title pages open on a famous scene instead of a still."),
+        ("infinity", "Endless mode", "Guess scenes for as long as you can last. Three lives."),
+        ("calendar", "Your month", "What you watched this month as a card to share."),
+        ("square.grid.2x2.fill", "Home Screen widgets", "Continue Watching and My List, right on your Home Screen."),
         ("heart.fill", "Support couch", "Pro keeps the lights on and the updates coming."),
     ]
 

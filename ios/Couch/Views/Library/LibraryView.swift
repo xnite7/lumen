@@ -8,6 +8,7 @@ struct LibraryView: View {
     @State private var coming = ComingUp.shared
     @State private var friends = Friends.shared
     @State private var account = Account.shared
+    @State private var month = false
     private let cols = [GridItem(.adaptive(minimum: 104, maximum: 170), spacing: 10)]
 
     var body: some View {
@@ -32,6 +33,21 @@ struct LibraryView: View {
                     .buttonStyle(PressScale())
                     .padding(.horizontal, Theme.pad)
                 }
+                Button {
+                    if account.pro { month = true } else { Router.shared.paywall = true }
+                } label: {
+                    HStack {
+                        Label("Your month", systemImage: "calendar").font(.headline)
+                        Spacer()
+                        if !account.pro { Label("Pro", systemImage: "lock.fill").font(.footnote.weight(.bold)).foregroundStyle(GameTint.gold) }
+                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Theme.faint)
+                    }
+                    .padding(14)
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(PressScale())
+                .foregroundStyle(.white)
+                .padding(.horizontal, Theme.pad)
                 // friends who aren't already in the crew row
                 let fw = friends.watching.filter { f in !crew.watching.contains { $0.id == f.id } }
                 if !fw.isEmpty { WatchingNowRow(members: fw, title: "Friends watching now") }
@@ -73,6 +89,7 @@ struct LibraryView: View {
         }
         .background(Theme.bg)
         .navigationTitle("My couch")
+        .navigationDestination(isPresented: $month) { MonthView() }
         .task {
             await crew.refresh()
             await friends.refresh()
