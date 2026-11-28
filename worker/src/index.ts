@@ -85,9 +85,9 @@ async function discordToken(req: Request, env: Env, kind: "exchange" | "refresh"
 }
 
 // ------------------------------------------------------------- demo source
-const DEMO: Record<string, { name: string; url: string; size: number }> = {
-  tt1254207: { name: "Big Buck Bunny", url: "https://archive.org/download/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.mp4", size: 61878609 },
-  tt1727587: { name: "Sintel", url: "https://archive.org/download/Sintel/sintel-2048-surround.mp4", size: 310674005 },
+const DEMO: Record<string, { name: string; url: string; size: number; year: string; about: string }> = {
+  tt1254207: { name: "Big Buck Bunny", year: "2008", about: "A giant rabbit takes on three bullying rodents. An open movie from the Blender Foundation.", url: "https://archive.org/download/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.mp4", size: 61878609 },
+  tt1727587: { name: "Sintel", year: "2010", about: "A girl searches for the baby dragon she raised. An open movie from the Blender Foundation.", url: "https://archive.org/download/Sintel/sintel-2048-surround.mp4", size: 310674005 },
 };
 
 function demoSource(url: URL): Response {
@@ -103,8 +103,29 @@ function demoSource(url: URL): Response {
         logo: `${url.origin}/couch.png`,
         types: ["movie"],
         idPrefixes: ["tt"],
-        resources: ["stream"],
-        catalogs: [],
+        resources: ["catalog", "stream"],
+        catalogs: [{ type: "movie", id: "demo", name: "couch demo" }],
+        // couch reads this: the source plays only what its catalog lists
+        behaviorHints: { catalogOnly: true },
+      },
+      200,
+      cors,
+    );
+  }
+  if (path === "/catalog/movie/demo.json") {
+    return json(
+      {
+        metas: Object.entries(DEMO).map(([id, d]) => ({
+          id,
+          type: "movie",
+          name: d.name,
+          poster: `https://images.metahub.space/poster/medium/${id}/img`,
+          background: `https://images.metahub.space/background/medium/${id}/img`,
+          logo: `https://images.metahub.space/logo/medium/${id}/img`,
+          releaseInfo: d.year,
+          description: d.about,
+          genres: ["Animation", "Short"],
+        })),
       },
       200,
       cors,

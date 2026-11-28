@@ -6,7 +6,8 @@
 // reveal costs points. One guess per round, four titles to pick from.
 //
 //   Daily     5 scenes, the same for everyone, easy first then nicher. One go
-//             a day (UTC). Keeps a streak. Its own leaderboard each day.
+//             a day (UTC), which you can leave and carry on with on any of
+//             your devices. Keeps a streak. Its own leaderboard each day.
 //   Endless   couch Pro. Play whenever. Starts easy and gets nicher; three wrong guesses
 //             end the run. Leaderboard of best runs.
 //
@@ -254,7 +255,7 @@ export class Game {
     return {
       day,
       nextIn: Math.max(0, Math.floor((next - Date.now()) / 1000)),
-      daily: mine ? { played: true, score: mine.score, results: mine.results } : { played: false },
+      daily: mine ? { played: true, score: mine.score, results: mine.results } : { played: false, resume: await this.resumable(who.id, day) },
       streak: alive ? s.streak : 0,
       bestStreak: s.best,
       bestRun: s.run,
@@ -264,6 +265,13 @@ export class Game {
       stages: STAGES,
       points: POINTS,
     };
+  }
+
+  /// today's five left half-way (on any of your devices): where it stands
+  private async resumable(user: string, day: string) {
+    const gid = await this.storage.get<string>(`gu:${user}:daily`);
+    const run = gid ? await this.run(gid) : undefined;
+    return run && run.day === day ? { n: run.rounds.length, total: DAILY_TIERS.length, score: run.score } : null;
   }
 
   private async finish(gid: string, run: Run) {
@@ -318,7 +326,13 @@ export class Game {
       const old = await this.storage.get<string>(`gu:${who.id}:${mode}`);
       const was = old ? await this.run(old) : undefined;
       if (old && was) {
-        if (mode === "daily" && was.day === day) return j(await this.view(old, was));
+        if (mode === "daily" && was.day === day) {
+          // carrying on (maybe on another device): the scene's clock starts again
+          const cur = was.rounds[was.rounds.length - 1];
+          if (cur && !cur.done) cur.at = Date.now();
+          await this.keep(old, was);
+          return j(await this.view(old, was));
+        }
         await this.drop(old, was);
       }
       const run: Run = { user: who.id, name: who.name, avatar: who.avatar, ranked, mode, day, rounds: [], score: 0, lives: LIVES, right: 0, results: [], used: [], at: Date.now() };
@@ -372,7 +386,9 @@ export class Game {
     }
 
     if (path === "/quit") {
-      // leaving a run counts what you had (a daily left early is still your go)
+      // today's five can be left and picked up later, on any device; leaving
+      // an endless run ends it (what you had counts)
+      if (run.mode === "daily") return j({ done: null, paused: true });
       return j({ done: await this.finish(gid, run) });
     }
     return j({ error: "not here" }, 404);
