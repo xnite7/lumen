@@ -22,6 +22,7 @@ import logo from "./logo.png";
 import { TERMS_HTML } from "./terms";
 import { PRIVACY_HTML } from "./privacy";
 import { appStorePro } from "./appstore";
+import { Social, appleSubject, cleanName } from "./social";
 import { Game, POOL_IDS } from "./game";
 import { youtubeSource } from "./youtube";
 import { DOWNLOAD_HTML } from "./download";
@@ -277,6 +278,25 @@ async function auth(req: Request, env: Env): Promise<Response> {
   if (typeof b?.guest === "string" && /^[A-Za-z0-9]{12,40}$/.test(b.guest)) {
     const who: Who = { id: `g-${b.guest}`, name: "guest", pro: false, crew: false };
     return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id, pro: false, crew: false });
+  }
+  // a couch account: Sign in with Apple the first time (Apple's identity
+  // token), couch's own token after that. Pro comes from a purchase sent along.
+  if (typeof b?.apple === "string" || typeof b?.account === "string") {
+    const stub = env.CREW.get(env.CREW.idFromName("midnite"));
+    let body: any;
+    if (typeof b.apple === "string") {
+      const sub = await appleSubject(b.apple, ["com.midnite.couch"]);
+      if (!sub) return json({ error: "Apple didn't recognise that sign-in" }, 401);
+      body = { op: "apple", sub, name: cleanName(b.name) };
+    } else {
+      body = { op: "token", token: b.account };
+    }
+    const r = await stub.fetch(new Request("https://couch.internal/internal/account", { method: "POST", body: JSON.stringify(body) }));
+    if (!r.ok) return json({ error: "sign in again", gone: true }, 401);
+    const a: any = await r.json();
+    const pro = typeof b.appstore === "string" ? !!(await appStorePro(b.appstore)) : false;
+    const who: Who = { id: a.id, name: a.name, avatar: a.avatar, pro, crew: false };
+    return json({ session: await sign(env, who), exp: Math.floor(Date.now() / 1000) + SESSION_TTL, id: who.id, name: who.name, handle: a.handle, pro, crew: false, account: a.token });
   }
   // couch Pro bought in the App Store: Apple's signed transaction
   if (typeof b?.appstore === "string") {
@@ -1016,9 +1036,11 @@ export class Crew {
   lastSeenWrite = new Map<string, number>();
   env: Env;
   game: Game;
+  accounts: Social;
   constructor(state: DurableObjectState, env: Env) {
     this.storage = state.storage;
     this.env = env;
+    this.accounts = new Social(state.storage, (id) => this.members.get(id));
     this.game = new Game(state.storage, async (id, title, year) => {
       const p = await clipPick(env, id, title, year);
       return p === undefined ? null : !!p;
@@ -1407,6 +1429,15 @@ export class Crew {
       return new Response(out, { headers: { "content-type": "image/gif", "cache-control": "public, max-age=604800" } });
     }
     // from the worker only (it never forwards /internal/ from outside)
+    if (url.pathname === "/internal/account") {
+      const b: any = await req.json().catch(() => ({}));
+      if (b.op === "apple" && typeof b.sub === "string") {
+        const { account, token } = await this.accounts.appleSignIn(b.sub, typeof b.name === "string" ? b.name : null);
+        return json({ id: account.id, name: account.name, handle: account.handle, avatar: account.avatar, token });
+      }
+      const a = b.op === "token" && typeof b.token === "string" ? await this.accounts.byToken(b.token) : null;
+      return a ? json({ id: a.id, name: a.name, handle: a.handle, avatar: a.avatar }) : json({ error: "gone" }, 404);
+    }
     if (url.pathname === "/internal/game-clip") {
       const c = await this.game.clipOf(url.searchParams.get("g") ?? "", Number(url.searchParams.get("n")), url.searchParams.get("u") ?? "");
       return c ? json(c) : json({ error: "gone" }, 404);
@@ -1417,8 +1448,13 @@ export class Crew {
     } catch {
       return json({ error: "sign in again" }, 401);
     }
-    // the scenes game; only Discord sign-ins go on the leaderboards
-    if (url.pathname.startsWith("/v1/game/")) return this.game.handle(req, url, who, /^\d+$/.test(who.id), who.pro !== false, !!this.env.CLIPS_PAUSED);
+    // the scenes game; people with an account (Discord or couch) go on the leaderboards
+    if (url.pathname.startsWith("/v1/game/")) return this.game.handle(req, url, who, /^\d+$/.test(who.id) || who.id.startsWith("ap-"), who.pro !== false, !!this.env.CLIPS_PAUSED);
+    // couch accounts and friends (for everyone signed in, couchers or not)
+    if (url.pathname.startsWith("/v1/me/")) {
+      const r = await this.accounts.handle(req, url.pathname.slice("/v1/me".length), who);
+      if (r) return r;
+    }
 
     const line = url.pathname.match(/^\/v1\/room\/([A-Za-z0-9_-]{1,40})\/ws$/);
     if (line && req.headers.get("upgrade") === "websocket") return this.openLine(line[1], who);
